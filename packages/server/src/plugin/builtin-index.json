@@ -58,5 +58,15 @@
     "repository": "https://github.com/Prism-Shadow/penguin-harness",
     "keywords": ["discord", "chat-bot", "messaging"],
     "categories": ["chat-bot"]
+  },
+  {
+    "name": "@prismshadow/penguin-plugin-languages",
+    "version": "0.1.0",
+    "description": "Syntax highlighting for Typst, Swift, Kotlin, C# and Dart in PenguinHarness.",
+    "authors": ["Prism Shadow"],
+    "license": "MIT",
+    "repository": "https://github.com/Prism-Shadow/penguin-harness",
+    "keywords": ["syntax-highlighting", "typst", "swift", "kotlin", "csharp", "dart"],
+    "categories": ["languages"]
   }
 ]
