@@ -28,6 +28,8 @@ export const WEB_MODULES: readonly WebModule[] = [
       // Pointer and viewport hooks the touch key bar and the /terminal page size themselves by.
       "lib/use-coarse-pointer",
       "lib/use-visual-viewport-height",
+      // The one clipboard-write entry: copy-selection keys and a program's own copy (OSC 52).
+      "lib/clipboard",
       // The API client the shell list fetches with.
       "api/client",
       // Theme and sign-in state the view reads.

@@ -27,6 +27,7 @@ import { TerminalKeyBar, type TerminalControl } from "./terminal-keybar";
 import { NO_MODIFIERS, applyModifiers, hasModifier, type TerminalModifiers } from "./terminal-keys";
 import { TouchScroll } from "./terminal-touch";
 import { useCoarsePointer } from "../../lib/use-coarse-pointer";
+import { writeClipboard } from "../../lib/clipboard";
 import { useTheme } from "../../state/theme";
 import { useAuth } from "../../state/auth";
 import { machineForTerminal, terminalUrl } from "../../lib/terminal-machines";
@@ -395,7 +396,7 @@ export function TerminalView({
       const copySelection = (): void => {
         const selection = term.getSelection();
         if (!selection) return;
-        void navigator.clipboard?.writeText(selection).catch(() => {});
+        void writeClipboard(selection);
         term.clearSelection();
       };
       /** Async-clipboard paste (the paths where no native paste event exists). */
