@@ -62,6 +62,7 @@ import {
 } from "./runtime/session-manager.js";
 import {
   GlobalFetch,
+  HttpFetch,
   UpdateCheckService,
   VersionRoutes,
   UpdateCheck,
@@ -165,6 +166,10 @@ import {
 import { Workflows } from "./mechanisms/workflows.js";
 import { WorkflowService } from "./workflows/service.js";
 import { WorkflowRoutes } from "./workflows/routes.js";
+import { WorkflowPrompt, WorkflowRoutes } from "./workflows/routes.js";
+import { AgentPackages } from "./mechanisms/packages.js";
+import { AgentPackageService } from "./packages/service.js";
+import { PackageRoutes } from "./packages/routes.js";
 import {
   ErrorLog,
   Errors,
@@ -465,7 +470,7 @@ export class CompanyModule {}
     LanguagesModule,
     LanguageRoutes,
   ],
-  exports: [Http, WebShell, UpdateCheck],
+  exports: [Http, WebShell, UpdateCheck, HttpFetch],
 })
 export class ApiModule {}
 
@@ -474,6 +479,12 @@ export class ApiModule {}
   exports: [Workflows],
 })
 export class WorkflowsModule {}
+
+@Module({
+  children: [AgentPackageService, PackageRoutes],
+  exports: [AgentPackages],
+})
+export class PackagesModule {}
 
 /** The root: provides nothing and requires nothing; it exists so the groups have a scope to see each other in. */
 @Module({
@@ -498,6 +509,7 @@ export class WorkflowsModule {}
     TerminalRelay,
     WorkflowsModule,
     BuiltinBrowserModule,
+    PackagesModule,
     Startup,
   ],
 })
