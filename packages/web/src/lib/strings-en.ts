@@ -359,6 +359,19 @@ export const en: Strings = {
     loadFailed: "Failed to load traces",
   },
 
+  dashboard: {
+    title: "Dashboard",
+    /** The two counts, read beside their numbers: "3 running", "1 to review". */
+    running: "running",
+    pendingReview: "to review",
+    /** The merged row of auto-created temporary Workspaces, as the sidebar groups them. */
+    temporaryWorkspaces: "Temporary workspaces",
+    empty: "Nothing is running",
+    emptyHint: "Workspaces with a Session running or waiting on an approval appear here.",
+    loadFailed: "Failed to load",
+    silentMachines: (n: number) => `${n} machine${n > 1 ? "s" : ""} did not answer`,
+  },
+
   settings: {
     language: "Language",
     languageInfo: "Interface language; can follow the browser.",
@@ -371,6 +384,8 @@ export const en: Strings = {
     creditsLicense: "License",
     creditsSource: "Source",
     creditsLicenseText: "Full license text",
+    /** Sidebar user-menu row, under the settings row, opening the dashboard page. */
+    dashboard: "Dashboard",
     /** Rail headings: the viewer's own preferences vs. the whole server's. */
     groupPersonal: "Personal",
     groupServer: "Server",
