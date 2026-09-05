@@ -54,6 +54,7 @@ import type {
   MemoryScopeExport,
   MeResponse,
   MessagesResponse,
+  OutlineResponse,
   MessagingBindingsResponse,
   ModelProtocolDetectResponse,
   ModelsResponse,
@@ -856,6 +857,12 @@ const transcriptOf = ({ store, params }: Ctx) => {
 };
 
 router
+  // The outline index: the demo transcript is one window that holds every turn, so the loaded
+  // turns are the whole outline and the index adds nothing to them.
+  .get("/api/sessions/:sessionId/outline", (ctx): OutlineResponse => {
+    transcriptOf(ctx);
+    return { entries: [] };
+  })
   .get("/api/sessions/:sessionId/messages", (ctx): MessagesResponse => {
     const transcript = transcriptOf(ctx);
     const live = ctx.store.liveTail(ctx.params.sessionId!);
