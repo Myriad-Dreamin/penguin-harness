@@ -9,6 +9,8 @@
  * Grouped as endpoints.ts groups them, in its order.
  */
 import type {
+  ContributionsResponse,
+  HostCommandsResponse,
   AdminUserCreateResponse,
   AdminUsersResponse,
   AgentConfigResponse,
@@ -1975,6 +1977,22 @@ router
   .get("/api/desktop/tray", (): DesktopTrayStatusResponse => ({ status: null }))
   .put("/api/desktop/tray", () => empty())
   .post("/api/desktop/privacy-settings", () => notFound("Desktop mode"));
+
+// ---------------------------------------------------------------------------------------------
+// Contributions: no plugin is loaded here, so nothing beyond the local pages, and no surface
+// Session exists to open or close.
+// ---------------------------------------------------------------------------------------------
+
+router
+  .get("/api/contributions", (): ContributionsResponse => ({
+    pages: [],
+    agentTabs: [],
+    sessionTabs: [],
+    sessionSurfaces: [],
+  }))
+  .get("/api/sessions/:sessionId/surface", () => notFound("Session surface"))
+  .post("/api/sessions/:sessionId/surface", () => readOnly("open a session surface"))
+  .delete("/api/sessions/:sessionId/surface", () => notFound("Session surface"));
 
 // ---------------------------------------------------------------------------------------------
 // The built-in browser: the desktop shell's, so it answers as a server with no shell does
