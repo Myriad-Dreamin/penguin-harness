@@ -70,7 +70,9 @@ import { rememberSessionMachine } from "../../lib/session-machines";
 import { cachedMachineAgents, rememberMachineAgents } from "../../lib/machine-cache";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
+import type { Locale } from "../../state/locale";
 import { surfaceLabel, useContributions } from "../../state/contributions";
+import type { SessionSurfaceSummary } from "@prismshadow/penguin-server/api";
 import { SurfaceComposer } from "./surface-composer";
 import { agentDisplayName, useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
@@ -309,8 +311,14 @@ export function DraftView({
     /** A surface Session to open (the sidebar's surface entries) instead of a conversation to compose. */
     surface?: string;
   } | null;
-  const surfaceKind = routeState?.surface ?? null;
+  /**
+   * What this draft opens: the built-in conversation, or one of the surfaces a plugin
+   * contributes. Chosen on this page beside the Agent and the Workspace, so a surface always
+   * opens in a Workspace the user picked rather than one an entry point guessed. A deep link
+   * may seed it (`/chat/new` with `state.surface`); the picker owns it from then on.
+   */
   const { surfaces } = useContributions();
+  const [surfaceKind, setSurfaceKind] = useState<string | null>(routeState?.surface ?? null);
   const surfaceEntry =
     surfaceKind === null ? null : (surfaces.find((s) => s.kind === surfaceKind) ?? null);
   const uiLocale = useLocale().locale;
@@ -1008,6 +1016,16 @@ export function DraftView({
           {/* The dock's Files panel on the folder picked beside it; a temporary Workspace has
               none yet (see FilesPanelToggle). */}
           <FilesPanelToggle available={workspace.trim() !== ""} />
+          {/* Only when a plugin contributes one: with nothing to choose between, a picker
+              offering "conversation" alone is a control that cannot be used. */}
+          {surfaces.length > 0 && (
+            <KindSelect
+              surfaces={surfaces}
+              selected={surfaceKind}
+              onSelect={setSurfaceKind}
+              locale={uiLocale}
+            />
+          )}
         </div>
 
         {/* Example tasks: canned builds showing off the one-sentence → app flow; a click fills
@@ -1152,6 +1170,69 @@ function VersionBadge() {
 }
 
 /** Agent selection (pill dropdown): avatar + name, menu opens downward with an internal scroll cap. */
+/**
+ * What the draft opens: the conversation, or a contributed surface. The same pill dropdown
+ * as the Agent and Workspace pickers it sits beside.
+ */
+function KindSelect({
+  surfaces,
+  selected,
+  onSelect,
+  locale,
+}: {
+  surfaces: readonly SessionSurfaceSummary[];
+  /** null = the built-in conversation. */
+  selected: string | null;
+  onSelect: (kind: string | null) => void;
+  locale: Locale;
+}) {
+  const [open, setOpen] = useState(false);
+  const rows: Array<{ kind: string | null; label: string }> = [
+    { kind: null, label: S.chat.surface.conversation },
+    ...surfaces.map((s) => ({ kind: s.kind, label: surfaceLabel(s, locale) })),
+  ];
+  const current = rows.find((r) => r.kind === selected) ?? rows[0]!;
+  return (
+    <Dropdown
+      open={open}
+      setOpen={setOpen}
+      menuClass="left-0 top-full mt-1 w-56 max-w-[calc(100vw-2rem)] origin-top-left"
+      button={
+        <button
+          type="button"
+          data-testid="draft-kind"
+          data-tooltip={S.chat.surface.chooseKind}
+          aria-label={S.chat.surface.chooseKind}
+          onClick={() => setOpen(!open)}
+          className={pillClass}
+        >
+          <span className="min-w-0 truncate">{current.label}</span>
+          <Chevron open={open} size={12} className="shrink-0 text-gray-400" />
+        </button>
+      }
+    >
+      <div className="max-h-56 overflow-y-auto">
+        {rows.map((row) => {
+          const active = row.kind === selected;
+          return (
+            <MenuItem
+              key={row.kind ?? "conversation"}
+              density="sm"
+              aria-pressed={active}
+              checked={active}
+              onSelect={() => {
+                onSelect(row.kind);
+                setOpen(false);
+              }}
+              label={row.label}
+            />
+          );
+        })}
+      </div>
+    </Dropdown>
+  );
+}
+
 function AgentSelect({
   agents,
   selected,
