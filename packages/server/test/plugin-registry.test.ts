@@ -4,9 +4,9 @@
  * - The shared index format is validated whole: a flat array of per-version entries in order;
  *   a non-array or one malformed entry fails the document, naming the source or the position
  *   (unlike a plugin list's per-entry tolerance).
- * - The builtin catalogue lists the sandbox backends that live in plugins/, each named,
- *   versioned, described and licensed as the package names itself, and serves each one's own
- *   shipped README.md; a listed package not on this machine, a name it does not list and a
+ * - The builtin catalogue lists the sandbox backends and session surfaces that live in plugins/,
+ *   each named, versioned, described and licensed as the package names itself, and serves each
+ *   one's own shipped README.md; a listed package not on this machine, a name it does not list and a
  *   remote registry have no readme.
  * - The HTTP registry fetches its index URL and runs the document through the same validator;
  *   an HTTP error, non-JSON and a malformed document fail it; a failed connection is tried
@@ -231,7 +231,7 @@ describe("plugin readmes", () => {
 });
 
 describe("the builtin catalogue and the packages it lists", () => {
-  it("lists the sandbox backends in plugins/, each named as that package names itself", async () => {
+  it("lists the sandbox backends and surfaces in plugins/, each named as that package names itself", async () => {
     const index = await builtinPluginRegistry().index();
     // Valid under the format every registry is held to.
     expect(parsePluginIndex(index, "builtin")).toEqual(index);
@@ -240,7 +240,7 @@ describe("the builtin catalogue and the packages it lists", () => {
       const pkg = packages.get(entry.name);
       expect(pkg, `${entry.name} is listed but is no package in plugins/`).toBeDefined();
       expect(entry.categories, entry.name).toHaveLength(1);
-      expect(entry.categories![0], entry.name).toBe("sandbox");
+      expect(["sandbox", "surface"], entry.name).toContain(entry.categories![0]);
       expect(pkg!.manifest.version, entry.name).toBe(entry.version);
       expect(pkg!.manifest.description, entry.name).toBe(entry.description);
       expect(pkg!.manifest.license, entry.name).toBe(entry.license);

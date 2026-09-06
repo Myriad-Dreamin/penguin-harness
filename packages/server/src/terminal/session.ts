@@ -20,7 +20,7 @@ import xterm, { type Terminal } from "@xterm/headless";
 import type { IPty } from "node-pty";
 import { loadNodePty } from "./pty-module.js";
 import { defaultTerminalShell } from "./shell.js";
-import { shellLaunch, type TerminalPathFirst } from "./shell-startup.js";
+import { shellLaunch, type ShellLaunch, type TerminalPathFirst } from "./shell-startup.js";
 import { TerminalInputModeTracker } from "./input-mode.js";
 import { ensureSpawnHelperExecutable } from "../terminal/spawn-helper.js";
 import {
@@ -74,6 +74,11 @@ export interface CreateTerminalSessionOptions {
   seq?: number;
   name?: string;
   shell?: string;
+  /**
+   * A program to run INSTEAD of a shell: argv as given, nothing appended (`shell` and its
+   * login flag are ignored). What a session surface uses to put one program in a pty.
+   */
+  command?: readonly string[];
   cols?: number;
   rows?: number;
   env?: Record<string, string>;
@@ -174,15 +179,22 @@ export class TerminalSession {
     });
 
     const shell = options.shell ?? defaultTerminalShell();
-    const launch = shellLaunch(
-      shell,
-      buildTerminalEnv(options.env, options.cwd),
-      options.pathFirst ?? null,
-    );
+    const command = options.command;
+    if (command !== undefined && command.length === 0) {
+      throw new Error("command must name a program");
+    }
+    const env = buildTerminalEnv(options.env, options.cwd);
+    // A program run instead of a shell takes argv as given: no shell startup files, so the
+    // `pathFirst` launch (a shell's rc files plus PATH) does not apply to it.
+    const file = command === undefined ? shell : command[0]!;
+    const launch: ShellLaunch =
+      command === undefined
+        ? shellLaunch(shell, env, options.pathFirst ?? null)
+        : { args: [...command.slice(1)], env };
     // Before the first spawn on macOS: node-pty's prebuilt spawn-helper ships without an
     // exec bit, and posix_spawnp refuses it (see spawn-helper.ts).
     ensureSpawnHelperExecutable();
-    this.ptyProcess = loadNodePty(options.assets).spawn(shell, launch.args, {
+    this.ptyProcess = loadNodePty(options.assets).spawn(file, launch.args, {
       name: "xterm-256color",
       cols,
       rows,

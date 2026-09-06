@@ -9,6 +9,7 @@
  * Grouped as endpoints.ts groups them, in its order.
  */
 import type {
+  ContributionsResponse,
   HostCommandsResponse,
   AdminUserCreateResponse,
   AdminUsersResponse,
@@ -2095,6 +2096,22 @@ router
   // Host commands: a plain server's host offers none, so there is nothing to run.
   .get("/api/command", (): HostCommandsResponse => ({ commands: [], offers: [] }))
   .post("/api/command/:command", () => notFound("Host command"));
+
+// ---------------------------------------------------------------------------------------------
+// Contributions: no plugin is loaded here, so nothing beyond the local pages, and no surface
+// Session exists to open or close.
+// ---------------------------------------------------------------------------------------------
+
+router
+  .get("/api/contributions", (): ContributionsResponse => ({
+    pages: [],
+    agentTabs: [],
+    sessionTabs: [],
+    sessionSurfaces: [],
+  }))
+  .get("/api/sessions/:sessionId/surface", () => notFound("Session surface"))
+  .post("/api/sessions/:sessionId/surface", () => readOnly("open a session surface"))
+  .delete("/api/sessions/:sessionId/surface", () => notFound("Session surface"));
 
 // ---------------------------------------------------------------------------------------------
 // The agent browser: the demo answers as a server with no desktop shell does, where the only

@@ -56,6 +56,7 @@ export { sessionShell } from "../environment/tools/command/shell.js";
 
 export type * from "./sandbox.js";
 export type * from "./languages.js";
+export type * from "./surfaces.js";
 
 /**
  * What a plugin package's default export is.
