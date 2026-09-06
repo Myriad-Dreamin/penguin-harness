@@ -10,6 +10,7 @@
  */
 import type {
   ContributionsResponse,
+  HostCommandsResponse,
   AdminUserCreateResponse,
   AdminUsersResponse,
   AgentConfigResponse,
@@ -2120,7 +2121,10 @@ router
   .post("/api/desktop/update/install", () => notFound("Desktop updater"))
   .get("/api/desktop/tray", (): DesktopTrayStatusResponse => ({ status: null }))
   .put("/api/desktop/tray", () => empty())
-  .post("/api/desktop/privacy-settings", () => notFound("Desktop mode"));
+  .post("/api/desktop/privacy-settings", () => notFound("Desktop mode"))
+  // Host commands: a plain server's host offers none, so there is nothing to run.
+  .get("/api/command", (): HostCommandsResponse => ({ commands: [] }))
+  .post("/api/command/:command", () => notFound("Host command"));
 
 // ---------------------------------------------------------------------------------------------
 // Contributions: no plugin is loaded here, so nothing beyond the local pages, and no surface
