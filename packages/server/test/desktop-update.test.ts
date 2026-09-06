@@ -7,6 +7,8 @@
  * - A password session against the same desktop server gets 403, an anonymous caller 401, and
  *   nothing reaches the shell (install replaces the running app, so its gate is pinned every
  *   way); a plain server has no such routes; with no shell wired a command answers 503.
+ * - /api/desktop/shell serves what the shell offered and forwards install-cli, for the shell's
+ *   own window only.
  * - Only a well-formed updater frame is read.
  * - A wired port stores pushed frames, ignores garbage, and carries commands out.
  * - A plain Node process has no shell port to wire.
@@ -167,6 +169,52 @@ describe("POST /api/desktop/update/{check,download,install}", () => {
   });
 });
 
+describe("/api/desktop/shell", () => {
+  it("says what the shell offers once it has pushed, and forwards install-cli", async () => {
+    const t = await createDesktopApp();
+    try {
+      const cookie = await desktopLoginCookie(t.app);
+      const before = await t.app.request("/api/desktop/shell", { headers: { cookie } });
+      expect(before.status).toBe(200);
+      expect(await before.json()).toEqual({ info: null });
+
+      // Nothing to install yet: the route refuses rather than asking the shell for nothing.
+      const early = await t.app.request("/api/desktop/shell/install-cli", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(early.status).toBe(409);
+
+      t.deps.desktop!.setShellInfo({ cliInstall: true });
+      const actions: string[] = [];
+      t.deps.desktop!.onShellCommand((action) => actions.push(action));
+      const after = await t.app.request("/api/desktop/shell", { headers: { cookie } });
+      expect(await after.json()).toEqual({ info: { cliInstall: true } });
+      const install = await t.app.request("/api/desktop/shell/install-cli", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: "{}",
+      });
+      expect(install.status).toBe(202);
+      expect(actions).toEqual(["install-cli"]);
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("is the shell's own window's alone", async () => {
+    const t = await createDesktopApp();
+    try {
+      const { cookie } = await loginAdmin(t.app);
+      const res = await t.app.request("/api/desktop/shell", { headers: { cookie } });
+      expect(res.status).toBe(403);
+    } finally {
+      await t.cleanup();
+    }
+  });
+});
+
 describe("desktop-update-port", () => {
   it("parses only well-formed status frames", () => {
     expect(parseUpdaterStatusMessage({ type: "desktop-updater-status", status: STATUS })).toEqual(
@@ -199,6 +247,14 @@ describe("desktop-update-port", () => {
 
     expect(desktop.requestUpdateCommand("check")).toBe(true);
     expect(port.sent).toEqual([{ type: "desktop-updater-command", action: "check" }]);
+
+    // The shell's native actions ride the same port: its offer in, the page's ask out.
+    port.emit({ type: "desktop-shell-info", info: { cliInstall: true } });
+    expect(desktop.getShellInfo()).toEqual({ cliInstall: true });
+    port.emit({ type: "desktop-shell-info", info: { cliInstall: "yes" } });
+    expect(desktop.getShellInfo()).toEqual({ cliInstall: true });
+    expect(desktop.requestShellCommand("install-cli")).toBe(true);
+    expect(port.sent.at(-1)).toEqual({ type: "desktop-shell-command", action: "install-cli" });
   });
 
   it("finds no shell port on a plain Node process without parentPort", () => {

@@ -175,6 +175,17 @@ function fatal(context: string, err: unknown): void {
   app.exit(1);
 }
 
+function hideMenuBar(target: BrowserWindow): void {
+  if (process.platform === "darwin") return;
+  target.setMenuBarVisibility(false);
+  target.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || input.key !== "F10") return;
+    if (input.alt || input.control || input.meta || input.shift) return;
+    target.setMenuBarVisibility(!target.isMenuBarVisible());
+    event.preventDefault();
+  });
+}
+
 function createWindow(url: string): void {
   // Linux window/taskbar icon (and Windows dev runs); packaged Windows uses the exe
   // resources and macOS its bundle icns, so those ignore it (see app-icon.ts).
@@ -221,6 +232,7 @@ function createWindow(url: string): void {
   // the Files panel previews Agent-written HTML in an iframe that allows popups, so any window
   // allowed here is one that HTML can open too — a hidden one, it could own outright.
   win.webContents.setWindowOpenHandler(({ url: target }) => openWindowFor(target, iconPath));
+  hideMenuBar(win);
   win.webContents.on("did-create-window", (child) => guardOpenedWindow(child, iconPath));
   win.webContents.on("will-navigate", (event, target) => {
     if (!isAppUrl(target, appOrigin)) {
@@ -320,6 +332,7 @@ function openWindowFor(target: string, iconPath: string | null): WindowOpenHandl
  * which Electron would otherwise apply, is refused: off-screen is hidden too.
  */
 function guardOpenedWindow(child: BrowserWindow, iconPath: string | null): void {
+  hideMenuBar(child);
   child.center();
   child.webContents.on("content-bounds-updated", (event) => event.preventDefault());
   child.webContents.setWindowOpenHandler(({ url: target }) => openWindowFor(target, iconPath));
