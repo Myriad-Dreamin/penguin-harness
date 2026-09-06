@@ -10,7 +10,10 @@
  * Under a plain `penguin server|web` run the port does not exist and this module wires
  * nothing; those routes then answer 503 `shell_unreachable`.
  *
- * Wire shapes live in api/types.ts (the updater, tray and folder-access messages) so the
+ * The same port carries the shell's native actions for the command palette: one
+ * `desktop-shell-info` push saying what it offers, and `desktop-shell-command` frames back.
+ *
+ * Wire shapes live in api/types.ts (the updater, tray, folder-access and shell messages) so the
  * shell imports the same contract.
  */
 import { randomUUID } from "node:crypto";
@@ -19,6 +22,9 @@ import type {
   DesktopFolderAccessResult,
   DesktopFolderAccessResultMessage,
   DesktopOpenPrivacySettingsMessage,
+  DesktopShellCommandMessage,
+  DesktopShellInfo,
+  DesktopShellInfoMessage,
   DesktopTrayCommandMessage,
   DesktopTrayStatus,
   DesktopTrayStatusMessage,
@@ -62,6 +68,17 @@ export function parseUpdaterStatusMessage(data: unknown): DesktopUpdateStatus | 
   if (typeof status.state !== "string" || !UPDATE_STATES.has(status.state)) return null;
   if (status.seq !== undefined && typeof status.seq !== "number") return null;
   return status as DesktopUpdateStatus;
+}
+
+/** Validates the shell's once-per-wiring push of what it can do for the page. */
+export function parseShellInfoMessage(data: unknown): DesktopShellInfo | null {
+  if (typeof data !== "object" || data === null) return null;
+  const msg = data as Partial<DesktopShellInfoMessage>;
+  if (msg.type !== "desktop-shell-info") return null;
+  const info = msg.info as Partial<DesktopShellInfo> | undefined;
+  if (typeof info !== "object" || info === null) return null;
+  if (typeof info.cliInstall !== "boolean") return null;
+  return { cliInstall: info.cliInstall };
 }
 
 /** Reads Electron's injected port off `process`, absent under plain Node. */
@@ -126,7 +143,12 @@ export function wireShellUpdatePort(desktop: DesktopService, port: ShellPort): v
       }
       // A reply nobody waits for any more (its request timed out) is dropped.
       const access = parseFolderAccessResultMessage(e.data);
-      if (access !== null) awaiting.get(access.id)?.(access);
+      if (access !== null) {
+        awaiting.get(access.id)?.(access);
+        return;
+      }
+      const info = parseShellInfoMessage(e.data);
+      if (info !== null) desktop.setShellInfo(info);
     } catch (err) {
       console.error(`[server] dropped a frame from the desktop shell: ${String(err)}`);
     }
@@ -170,5 +192,11 @@ export function wireShellUpdatePort(desktop: DesktopService, port: ShellPort): v
       type: "desktop-open-privacy-settings",
       pane,
     } satisfies DesktopOpenPrivacySettingsMessage);
+  });
+  desktop.onShellCommand((action) => {
+    port.postMessage({
+      type: "desktop-shell-command",
+      action,
+    } satisfies DesktopShellCommandMessage);
   });
 }
