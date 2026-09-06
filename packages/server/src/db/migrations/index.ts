@@ -60,6 +60,7 @@ import { modelPromotions } from "./steps/model-promotions.js";
 import { modelProviderAuthTokens } from "./steps/model-provider-auth-tokens.js";
 import { sessionsSandbox } from "./steps/sessions-sandbox.js";
 import { userProfile } from "./steps/user-profile.js";
+import { sessionsSurface } from "./steps/sessions-surface.js";
 
 export type { Migration } from "./migration.js";
 export { IrreversibleMigrationError, UnknownMigrationError, appliedMigrations } from "./runner.js";
@@ -84,6 +85,7 @@ export const MIGRATIONS: readonly Migration[] = [
   sessionsSandbox,
   machinesColumns,
   browserExtensions,
+  sessionsSurface,
 ];
 
 /**
