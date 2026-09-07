@@ -33,6 +33,7 @@ import type {
   HostCommandsMessage,
 } from "../api/types.js";
 import type { DesktopService } from "./desktop-service.js";
+import type { ShellFrames } from "../hmr/capabilities.js";
 
 /**
  * How long the shell may take to answer a folder-access request. Generous: its read holds
@@ -151,11 +152,23 @@ export function parseFolderAccessResultMessage(
 
 /**
  * Connects the port to the service: stores validated status pushes, registers the command
- * senders, and pairs each folder-access reply with the request it answers. A frame that fails
- * to apply is logged and dropped: an exception escaping a port listener is uncaught, and an
- * uncaught exception ends the server (index.ts).
+ * senders, pairs each folder-access reply with the request it answers, and keeps the host's
+ * raw frames where the PLATFORM can read them. A frame that fails to apply is logged and
+ * dropped: an exception escaping a port listener is uncaught, and an uncaught exception ends
+ * the server (index.ts).
+ *
+ * The frames holder is the whole point of the split. What a `host-commands` frame means is
+ * policy — which commands exist, what they are called, who may run one — and policy ships by
+ * push, so this function stores the frame unread and the platform interprets it (see
+ * http/routes/command.ts). Parsing it here as well is a shim for platforms older than the
+ * holder, which still ask the service for a parsed list; it goes when they do.
  */
-export function wireShellUpdatePort(desktop: DesktopService, port: ShellPort): void {
+export function wireShellUpdatePort(
+  desktop: DesktopService,
+  port: ShellPort,
+  frames: ShellFrames | null = null,
+): void {
+  if (frames !== null) frames.post = (frame) => port.postMessage(frame);
   /** Folder-access requests still waiting for the shell, by id. */
   const awaiting = new Map<string, (reply: DesktopFolderAccessResultMessage) => void>();
   port.on("message", (e) => {
@@ -177,7 +190,10 @@ export function wireShellUpdatePort(desktop: DesktopService, port: ShellPort): v
         return;
       }
       const offers = parseHostCommandsMessage(e.data);
-      if (offers !== null) desktop.setCommands(offers);
+      if (offers !== null) {
+        if (frames !== null) frames.hostCommands = e.data;
+        desktop.setCommands(offers);
+      }
     } catch (err) {
       console.error(`[server] dropped a frame from the desktop shell: ${String(err)}`);
     }
