@@ -1147,7 +1147,8 @@ export class MessagingBridge {
 
   // -------------------------------------------------------------------------
 
-  private connectorFor(channel: string): MessagingChannelConnector {
+  /** The connector for a channel (throws for one no connector was contributed for). */
+  connectorFor(channel: string): MessagingChannelConnector {
     const connector = this.connectors.get(channel);
     if (!connector) throw new Error(`no messaging connector for channel "${channel}"`);
     return connector;
@@ -2112,6 +2113,7 @@ export abstract class Messaging extends Interface<
     | "statusOf"
     | "testCredentials"
     | "sendTestMessage"
+    | "connectorFor"
   >
 >() {}
 
