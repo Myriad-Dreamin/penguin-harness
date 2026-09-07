@@ -10,6 +10,7 @@ import type { MeResponse, UploadLimits, UserInfo } from "@prismshadow/penguin-se
 import * as api from "../api/endpoints";
 import { ApiError, setUnauthorizedHandler } from "../api/client";
 import { probeSession } from "../api/session-probe";
+import { setSocketUser } from "../api/socket";
 
 /**
  * Stand-in until GET /api/me answers, matching the server's shipped defaults. The window is the
@@ -155,6 +156,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", recheck);
     };
   }, [signedIn]);
+  // The API socket is addressed by the signed-in user (api/socket.ts): tell it who that is,
+  // and that it changed — a sign-out closes the socket, a sign-in lets the next stream open it.
+  const userId = user?.userId ?? null;
+  useEffect(() => {
+    setSocketUser(userId);
+  }, [userId]);
 
   const login = useCallback(async (userId: string, password: string) => {
     const res = await api.login({ userId, password });
