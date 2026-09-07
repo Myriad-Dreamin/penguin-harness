@@ -86,6 +86,9 @@ export interface ApiFetchMeta {
   etag: string | null;
 }
 
+/** Whether this runtime can open a WebSocket at all (one without it only ever fetches). */
+const socketPossible = (): boolean => typeof WebSocket !== "undefined";
+
 /** Makes an API request; non-2xx responses uniformly throw ApiError; 204/empty body returns undefined. */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   return (await apiFetchWithMeta<T>(path, options)).data;
@@ -115,8 +118,9 @@ export async function apiFetchWithMeta<T>(
   // where the cookie's own session facts come from — the socket knows only the user.
   const wantsSocket = target !== null || !httpOnly(path);
   // ready() waits for a handshake in progress, so the page's first calls ride the socket
-  // instead of racing it; false means HTTP for this call.
-  const overSocket = wantsSocket && (await apiSocket.ready());
+  // instead of racing it; false means HTTP for this call. Where there is no WebSocket at all
+  // the call goes straight to HTTP, without asking who is signed in or waiting a turn.
+  const overSocket = wantsSocket && socketPossible() && (await apiSocket.ready());
   let answer = overSocket ? await callOverSocket(method, url, options.body) : null;
   if (answer === null || answer.status === 415 || answer.status === 421)
     answer = await callOverHttp(method, url, options.body);
@@ -134,8 +138,21 @@ export async function apiFetchWithMeta<T>(
     // as a local logout is how clicking a remote host in a picker bounced the window to the
     // login page of a server it was still perfectly signed in to.
     const fromThisServer = target === null;
-    if (answer.status === 401 && fromThisServer && !isAuthEndpoint(path)) onUnauthorized?.();
+    if (answer.status === 401 && fromThisServer && !isAuthEndpoint(path)) {
+      apiSocket.identityChanged();
+      onUnauthorized?.();
+    }
     throw new ApiError(answer.status, code, message, answer.retryAfterSeconds);
+  }
+
+  // What passes through here tells the socket who the page is: a `/api/me` answer names the
+  // user, a sign-in or sign-out changes it. The socket never has to be told by anyone else.
+  if (target === null) {
+    if (path === "/api/me") {
+      apiSocket.identityIs((answer.body as { user?: { userId?: string } })?.user?.userId ?? null);
+    } else if (isAuthEndpoint(path)) {
+      apiSocket.identityChanged();
+    }
   }
 
   const headerDate = Date.parse(answer.date ?? "");
