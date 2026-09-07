@@ -27,4 +27,4 @@ Web App 现在每个登录用户取一次 `GET /api/contributions`。其 `pages`
 
 ## 插件集成测试框架
 
-`@prismshadow/penguin-plugin-test`（`packages/plugin-test`）以插件已安装的方式启动真实服务端，一如 `@vscode/test-electron` 启动真实的 VS Code：`startHarness({ plugins })` 写好临时数据根的 `plugins.json`、以子进程运行服务端、返回一个已登录的客户端（`get` / `post` / …、一个终端助手）与 `stop()`。插件由真实 loader 加载，因此测试证明的是「这个包能被解析、装载、进树」，而不是它的替身。`claude-code` 的集成测试用它、配一个假 `claude` 跑完整条表面生命周期。
+`@prismshadow/penguin-plugin-test`（`packages/plugin-test`）以插件已安装的方式启动真实服务端，一如 `@vscode/test-electron` 启动真实的 VS Code：`startHarness({ plugins })` 把插件写进临时数据根中 Project 的 `[plugins]` 表、以子进程运行服务端、返回一个已登录的客户端（`get` / `post` / …、一个终端助手）与 `stop()`。插件由真实 loader 加载，因此测试证明的是「这个包能被解析、装载、进树」，而不是它的替身。`claude-code` 的集成测试用它、配一个假 `claude` 跑完整条表面生命周期。
