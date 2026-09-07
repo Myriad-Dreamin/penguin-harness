@@ -33,10 +33,16 @@ export interface FakeFetch {
   answer(handler: FetchHandler): void;
 }
 
-/** Installs the fake as the global `fetch` for the current test. By default everything is a 404. */
+/**
+ * Installs the fake as the global `fetch` for the current test. By default everything is a 404.
+ * The API socket is taken out of the way with it (no `WebSocket`, as in a browser without one),
+ * so every call the app makes is a fetch this fake records; the socket's own behaviour is
+ * api-socket.test.ts'.
+ */
 export function stubFetch(handler: FetchHandler = () => apiError(404, "not_found")): FakeFetch {
   const requests: FetchRequest[] = [];
   let current = handler;
+  vi.stubGlobal("WebSocket", undefined);
   vi.stubGlobal("fetch", async (input: string | URL, init: RequestInit = {}) => {
     const url = String(input);
     const parsed = new URL(url, "http://localhost");
