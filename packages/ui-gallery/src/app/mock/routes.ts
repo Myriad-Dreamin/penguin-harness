@@ -960,7 +960,7 @@ router
 router.get("/api/sessions/:sessionId/messaging", (): MessagingBindingsResponse => ({
   bindings: [],
 }));
-for (const channel of ["feishu", "telegram", "qq", "wechat"]) {
+for (const channel of ["feishu", "telegram", "qq", "discord", "wechat"]) {
   router
     .put(`/api/sessions/:sessionId/messaging/${channel}`, () =>
       readOnly("save a messaging binding"),
