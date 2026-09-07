@@ -36,6 +36,7 @@ import { loadPlugins } from "./plugin/loader.js";
 import { attachTerminalWebSocket } from "./terminal/ws.js";
 import { attachExtensionWebSocket } from "./builtin-browser/extension-ws.js";
 import type { ExtensionGate } from "./builtin-browser/extension-ws.js";
+import { attachApiSocket } from "./socket/ws.js";
 import { loopbackHostRoles } from "./services/preview-token.js";
 import { acquireServerLock, liveServerLock, releaseServerLock } from "./lock.js";
 import { shellPortOf, wireShellUpdatePort } from "./services/desktop-update-port.js";
@@ -229,20 +230,11 @@ class PenguinServer {
    */
   buildApp(): void {
     this.app = createApp(this.deps);
-    attachTerminalWebSocket(this.httpServer as unknown as HttpServer, this.terminalWebSocketDeps());
-    attachExtensionWebSocket(
-      this.httpServer as unknown as HttpServer,
-      this.extensionWebSocketDeps(),
-    );
-    if (this.ipv6Loopback !== null) {
-      attachTerminalWebSocket(
-        this.ipv6Loopback as unknown as HttpServer,
-        this.terminalWebSocketDeps(),
-      );
-      attachExtensionWebSocket(
-        this.ipv6Loopback as unknown as HttpServer,
-        this.extensionWebSocketDeps(),
-      );
+    for (const listener of [this.httpServer, this.ipv6Loopback]) {
+      if (listener === null) continue;
+      attachTerminalWebSocket(listener as unknown as HttpServer, this.terminalWebSocketDeps());
+      attachExtensionWebSocket(listener as unknown as HttpServer, this.extensionWebSocketDeps());
+      attachApiSocket(listener as unknown as HttpServer, this.apiSocketDeps());
     }
   }
 
@@ -453,12 +445,14 @@ class PenguinServer {
         `[server] IPv6 loopback listener unavailable (${err.code ?? err.message}); previews via localhost may not resolve.`,
       );
     });
-    // The terminal stream is bound on every listener in buildApp(), this one included, or
-    // the terminal only works on whichever address the browser happened to resolve; a
-    // loopback opened after buildApp() (never in practice — binding is quick) gets it here.
+    // The terminal stream, the extension socket and the API socket are bound on every
+    // listener in buildApp(), this one included, or they only work on whichever address the
+    // browser happened to resolve; a loopback opened after buildApp() (never in practice)
+    // gets them here.
     if (this.app !== undefined) {
       attachTerminalWebSocket(loopback as unknown as HttpServer, this.terminalWebSocketDeps());
       attachExtensionWebSocket(loopback as unknown as HttpServer, this.extensionWebSocketDeps());
+      attachApiSocket(loopback as unknown as HttpServer, this.apiSocketDeps());
     }
   }
 
@@ -485,6 +479,19 @@ class PenguinServer {
   }
 
   /** Terminal WebSocket wiring, shared by every listener this process opens. */
+  /**
+   * The API socket (socket/ws.ts) dispatches every call through `this.app.fetch` — the
+   * runtime app HTTP requests enter by, seam included — so a socket call and its HTTP twin
+   * are one code path from the auth guard down.
+   */
+  private apiSocketDeps() {
+    return {
+      fetch: async (request: Request) => this.app.fetch(request),
+      authService: this.auth(),
+      log: (line: string) => console.log(line),
+    };
+  }
+
   private terminalWebSocketDeps() {
     const auth = () => this.auth();
     return {
