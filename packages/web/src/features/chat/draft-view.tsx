@@ -49,6 +49,7 @@ import type {
   ModelsResponse,
   SessionCreateRequest,
   SessionSandbox,
+  SessionSurfaceSummary,
   SkillMetadataItem,
   TaskInputPart,
 } from "@prismshadow/penguin-server/api";
@@ -72,7 +73,6 @@ import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import type { Locale } from "../../state/locale";
 import { surfaceLabel, useContributions } from "../../state/contributions";
-import type { SessionSurfaceSummary } from "@prismshadow/penguin-server/api";
 import { SurfaceComposer } from "./surface-composer";
 import { agentDisplayName, useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
