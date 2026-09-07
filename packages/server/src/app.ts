@@ -38,6 +38,9 @@ import {
   HMR_HOST_RESOURCE_ID,
   HMR_CONTROL_RESOURCE_ID,
   HMR_OVERRIDES_RESOURCE_ID,
+  HMR_SHELL_FRAMES_RESOURCE_ID,
+  newShellFrames,
+  type ShellFrames,
   HMR_TEST_PLUGINS_RESOURCE_ID,
   type Replacements,
   HMR_PROXY_RESOURCE_ID,
@@ -102,7 +105,6 @@ import { TitleGenerator, TitleNotifier } from "./runtime/title-generator.js";
 import { AdminService } from "./services/admin-service.js";
 import { DesktopService } from "./services/desktop-service.js";
 import { LifecycleService } from "./services/lifecycle-service.js";
-import { commandRoutes } from "./http/routes/command.js";
 import { AgentConfigService } from "./services/agent-config-service.js";
 import { MemoryService } from "./services/memory-service.js";
 import { AgentService } from "./services/agent-service.js";
@@ -191,6 +193,8 @@ export interface ServerBoot {
   desktop: DesktopService | null;
   /** Process lifecycle: whether a supervisor relaunches this process, and the restart trigger (the "restart to update" step). */
   lifecycle: LifecycleService;
+  /** The host's message port as state; index.ts fills it when a port exists. */
+  shellFrames: ShellFrames;
   tree: ModuleTree;
 }
 
@@ -299,6 +303,8 @@ export async function bootAppDeps(
   hmr.resources.register(HMR_DESKTOP_RESOURCE_ID, desktop);
   const lifecycle = new LifecycleService(config.supervised);
   hmr.resources.register(HMR_LIFECYCLE_RESOURCE_ID, lifecycle);
+  const shellFrames = newShellFrames();
+  hmr.resources.register(HMR_SHELL_FRAMES_RESOURCE_ID, shellFrames);
   // The registry sweep only STARTS plugin disposal (its disposers are sync) — the
   // fallback for exit paths that skip the graceful shutdown. The graceful path awaits
   // host.dispose() itself, bounded (index.ts); dispose is idempotent, so both may fire.
@@ -320,7 +326,7 @@ export async function bootAppDeps(
   // Callers that outlive swaps (index.ts, the runtime app) may only touch the swap-stable
   // members: the runtime singletons published above. The tree is THIS generation's and
   // goes stale at the next push — per-request business dispatch rides the seam.
-  booted = { config, db, channels, hmr, control: ctl, desktop, lifecycle, tree };
+  booted = { config, db, channels, hmr, control: ctl, desktop, lifecycle, shellFrames, tree };
   return booted;
 }
 
@@ -366,6 +372,7 @@ export function createApp(boot: ServerBoot): Hono<AppEnv> {
   const deps = {
     config: boot.config,
     desktop: boot.desktop,
+    shellFrames: boot.shellFrames,
     get authService() {
       return authService();
     },
@@ -472,12 +479,6 @@ export function createApp(boot: ServerBoot): Hono<AppEnv> {
 
   // Every route but /api/hmr is the platform's, served through the seam above. What follows
   // is the layer's own tail: static hosting and the SPA fallback.
-
-  // Host commands for the command palette, mounted in every mode — a plain server answers
-  // with an empty list, so the page has one question to ask wherever it runs.
-  app.use("/api/command", authMiddleware(deps.authService, deps.config.trustProxy));
-  app.use("/api/command/*", authMiddleware(deps.authService, deps.config.trustProxy));
-  app.route("/api/command", commandRoutes(deps));
 
   // Static hosting (production): serves the frontend build output with SPA fallback to
   // index.html. The source resolves per request — the hot host can point it at a
