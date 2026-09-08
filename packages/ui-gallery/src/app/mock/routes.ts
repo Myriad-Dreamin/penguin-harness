@@ -1388,6 +1388,8 @@ router
 const normalizePath = (path: string) => path.replace(/^\.?\/+/, "").replace(/\/+$/, "");
 
 router
+  // The demo's Workspaces are no git checkout, so none is on a pull request.
+  .get("/api/sessions/:sessionId/pull-request", () => ({ pullRequest: null }))
   .get("/api/sessions/:sessionId/files", ({ store, query }): WorkspaceFilesResponse => {
     const path = normalizePath(query.get("path") ?? "");
     const entries = store.f.workspace.entries[path];
