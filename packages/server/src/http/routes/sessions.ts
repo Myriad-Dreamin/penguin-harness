@@ -77,6 +77,8 @@ import type { SessionService } from "../../services/session-service.js";
 /** What this route group reaches — bound by its module (src/modules). */
 export interface SessionsRouteDeps {
   agentConfigService: AgentConfig;
+  /** The open pull request a Workspace is on, for the header chip; silent when there is none. */
+  pullRequests: PullRequests;
   channels: ChannelHub;
   config: ServerConfig;
   manager: SessionManager;
@@ -145,7 +147,7 @@ import type { ModelScopeAuth } from "../../services/modelscope-auth-service.js";
 import type { Schedules, SessionIndex, SessionOrigins } from "../../mechanisms/sessions.js";
 import type { ErrorLog, UsageQueries } from "../../mechanisms/observability.js";
 import type { TraceIndex, Traces } from "../../mechanisms/traces.js";
-import type { FileReveal, WorkspaceFiles } from "../../mechanisms/workspace.js";
+import type { FileReveal, PullRequests, WorkspaceFiles } from "../../mechanisms/workspace.js";
 import type { Machines } from "../../machines/service.js";
 import type { AgentConfig, AgentLifecycle } from "../../mechanisms/agents.js";
 import type { Settings } from "../../mechanisms/settings.js";
@@ -1499,6 +1501,16 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
   // the Session's alone.
   registerWorkspaceFileRoutes(app, "/:sessionId/files", deps, (c) => resolveSession(c).workspace);
 
+  /**
+   * The open pull request the Session's Workspace is on, for the header chip. Answers
+   * `{ pullRequest: null }` for every reason there could be none (see the service): the chip
+   * simply does not appear, and nothing here is an error the reader has to act on.
+   */
+  app.get("/:sessionId/pull-request", async (c) => {
+    const row = resolveSession(c);
+    return c.json({ pullRequest: await deps.pullRequests.forWorkspace(row.workspace) });
+  });
+
   // "Open in a new tab" for Workspace HTML: mints a token and redirects to the separate
   // preview origin.
   //
@@ -1754,6 +1766,7 @@ export class SessionApiRoutes {
   @Use() private readonly usage!: UsageQueries;
   @Use() private readonly liveStreams!: LiveStreams;
   @Use() private readonly auth!: Auth;
+  @Use() private readonly pullRequests!: PullRequests;
   @Bind("session-api.model-oauth-callback") modelOauthCallbackRoutes!: Hono<AppEnv>;
   @Bind("session-api.models") modelsRoutes!: Hono<AppEnv>;
   @Bind("session-api.model-oauth") modelOauthRoutes!: Hono<AppEnv>;
@@ -1779,6 +1792,7 @@ export class SessionApiRoutes {
     const channels = this.channels as ChannelHub;
     const sessionsDeps = {
       agentConfigService,
+      pullRequests: this.pullRequests,
       channels,
       config: this.config,
       manager,
