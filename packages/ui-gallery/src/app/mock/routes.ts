@@ -2108,6 +2108,7 @@ router
     agentTabs: [],
     sessionTabs: [],
     sessionSurfaces: [],
+    quickStarts: [],
   }))
   .get("/api/sessions/:sessionId/surface", () => notFound("Session surface"))
   .post("/api/sessions/:sessionId/surface", () => readOnly("open a session surface"))
