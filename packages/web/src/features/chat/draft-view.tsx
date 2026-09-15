@@ -321,6 +321,8 @@ export function DraftView({
     machineId?: string;
     /** A surface Session to open (the sidebar's surface entries) instead of a conversation to compose. */
     surface?: string;
+    /** The surface composer's first prompt, pre-filled (a plugin's quick start); never sent by itself. */
+    surfacePrompt?: string;
   } | null;
   /**
    * What this draft opens: the built-in conversation, or one of the surfaces a plugin
@@ -1012,6 +1014,9 @@ export function DraftView({
             label={surfaceEntry === null ? surfaceKind : surfaceLabel(surfaceEntry, uiLocale)}
             unavailable={surfaceEntry === null}
             busy={openingSurface}
+            {...(routeState?.surfacePrompt !== undefined
+              ? { initialPrompt: routeState.surfacePrompt }
+              : {})}
             onOpen={(prompt) => void onOpenSurface(prompt)}
           />
         ) : (
@@ -1041,6 +1046,7 @@ export function DraftView({
             {...(agentId ? { currentAgentId: agentId } : {})}
             skills={agentSkills}
             {...(cached.skills && cached.skills.length > 0 ? { initialSkills: cached.skills } : {})}
+            {...(cached.goal === true ? { initialGoal: true } : {})}
             onSkillsChange={onSkillsChange}
             initialText={cached.text ?? ""}
             onTextChange={onTextChange}
