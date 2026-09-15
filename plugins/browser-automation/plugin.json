@@ -4,5 +4,10 @@
   "short_description": "Read pages, act and extract data in the built-in browser.",
   "short_description_zh": "在内置浏览器中读取页面、执行操作、提取数据。",
   "version": "2026.09.24.1",
-  "category": "office-productivity"
+  "category": "office-productivity",
+  "quick_start": {
+    "prompt": "Open https://example.com in the built-in browser with penguin browser, read the page as text, and tell me its title, its one paragraph in a sentence, and where its link leads.",
+    "prompt_zh": "用 penguin browser 在内置浏览器中打开 https://example.com，以纯文本读取页面，告诉我它的标题、用一句话概括它唯一的段落，以及它的链接指向哪里。",
+    "skills": ["browser-automation"]
+  }
 }
