@@ -4,5 +4,10 @@
   "short_description": "Choices, forms, steps, callouts and diagrams in replies, with a checker.",
   "short_description_zh": "在回复里使用选项、表单、步骤、提示框和图表，并自带检查脚本。",
   "version": "2026.10.03.1",
-  "category": "office-productivity"
+  "category": "office-productivity",
+  "quick_start": {
+    "prompt": "I want to back up this Workspace every night. Ask me with one choice block whether to use cron, a systemd timer or a scheduled task in this app, recommend one, and show the setup for the one I pick as steps.",
+    "prompt_zh": "我想每晚备份当前工作区。用一个选择组件问我用 cron、systemd timer 还是本应用的定时任务，推荐其中一个，再把我选中那个的配置写成分步操作。",
+    "skills": ["a2ui"]
+  }
 }
