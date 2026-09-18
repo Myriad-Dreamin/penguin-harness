@@ -66,20 +66,21 @@ export interface OrgView {
  * narrowing of OrganizationService with no behaviour the routes do not have; `openRoom` is
  * the routes' channel creation with one difference, the channel is left out of the listing.
  */
-export abstract class OrgGateway extends Interface<{
+@Interface()
+export abstract class OrgGateway {
   /** The admin master switch: every company-mode surface answers 404 while it is off. */
-  companyModeEnabled(): boolean;
+  abstract companyModeEnabled(): boolean;
   /** The organization, or null when it does not exist. */
-  organization(projectId: string, orgId: string): Promise<OrgView | null>;
+  abstract organization(projectId: string, orgId: string): Promise<OrgView | null>;
   /** `agent:<id>` when the actor is (or speaks from a session of) an employee, else `user:<id>`. */
-  principalOf(projectId: string, orgId: string, actor: OrgActor): Promise<string>;
+  abstract principalOf(projectId: string, orgId: string, actor: OrgActor): Promise<string>;
   /**
    * One line of work on the employee's desk, attributed to no one: `text` is the desk's next
    * user input as given (sender `server`), queued behind a running Task. Fails with
    * `org_paused` / `employee_paused` (budget, its own or an ancestor's) instead of delivering,
    * and with `desk_unavailable` when no desk can be opened.
    */
-  deliverToDesk(
+  abstract deliverToDesk(
     projectId: string,
     orgId: string,
     agentId: string,
@@ -90,7 +91,7 @@ export abstract class OrgGateway extends Interface<{
    * its first user input — what a ticket session is, minus the ticket. The workspace defaults
    * to the employee's desk workspace and may name another directory inside the shared one.
    */
-  openEmployeeSession(args: {
+  abstract openEmployeeSession(args: {
     projectId: string;
     orgId: string;
     agentId: string;
@@ -106,7 +107,7 @@ export abstract class OrgGateway extends Interface<{
    * the start. 409 `channel_exists` when the id is taken; 400 for an id that is not a channel
    * id or an Agent that is not an employee.
    */
-  openRoom(args: {
+  abstract openRoom(args: {
     projectId: string;
     orgId: string;
     channelId: string;
@@ -116,8 +117,8 @@ export abstract class OrgGateway extends Interface<{
     agentIds: string[];
   }): Promise<{ channelId: string }>;
   /** A user-level event to everyone with access to the Project. */
-  notifyProject(projectId: string, event: ServerEvent): void;
-}>() {}
+  abstract notifyProject(projectId: string, event: ServerEvent): void;
+}
 
 /** One channel of one organization, as a channel claim is asked about it. */
 export interface OrgChannelRef {
