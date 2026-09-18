@@ -16,38 +16,39 @@ import type {
  * keys to the samples it causes. Off by default; while off, `on()` is the one check a probe
  * pays and nothing is allocated.
  */
-export abstract class Telemetry extends Interface<{
+@Interface()
+export abstract class Telemetry {
   /** Whether the fixed probes record — one boolean held in memory, never a settings read. */
-  on(): boolean;
+  abstract on(): boolean;
   /** Stores the switch in the server settings and applies it at once (off drops the buffer). */
-  setEnabled(enabled: boolean): void;
+  abstract setEnabled(enabled: boolean): void;
   /**
    * Calls `listener` with the switch now and again whenever setEnabled changes it; returns the
    * unsubscribe. For probes that cannot ask `on()` themselves — the machine transport's, whose
    * sessions outlive this App generation and read a process-wide slot (machines/transport/timings.ts).
    */
-  watch(listener: (on: boolean) => void): () => void;
+  abstract watch(listener: (on: boolean) => void): () => void;
   /**
    * Records one sample (a no-op while off) and returns the stored copy, or null. The keys of
    * the enclosing scope (see within) are merged under the sample's own. The caller may still
    * add to the returned sample's `bytes` — a streamed response is counted as it is written.
    */
-  record(sample: TelemetrySampleInput): TelemetrySample | null;
+  abstract record(sample: TelemetrySampleInput): TelemetrySample | null;
   /** The keys of the enclosing scope (the request's id among them), or undefined outside one or while off. */
-  keys(): TelemetryKeys | undefined;
+  abstract keys(): TelemetryKeys | undefined;
   /** Runs `run` with `keys` added to the scope every sample recorded inside it inherits; while off, just runs it. */
-  within(keys: TelemetryKeys, run: () => Promise<unknown>): Promise<unknown>;
+  abstract within(keys: TelemetryKeys, run: () => Promise<unknown>): Promise<unknown>;
   /** The buffered samples matching the query, oldest first. */
-  samples(query: TelemetryQuery): TelemetrySample[];
+  abstract samples(query: TelemetryQuery): TelemetrySample[];
   /** Empties the buffer. */
-  clear(): void;
+  abstract clear(): void;
   /**
    * Registers a self-report under `name` (the Sessions' is "sessions"): read only when the
    * machine view is asked for, never on a schedule. A later registration replaces it.
    */
-  addReport(name: string, read: () => unknown): void;
+  abstract addReport(name: string, read: () => unknown): void;
   /** Reads the report registered under `name`; undefined when none is. */
-  report(name: string): unknown;
+  abstract report(name: string): unknown;
   /** This App's generation number and how many times each platform bundle has been created in this process. */
-  generations(): TelemetryGenerations;
-}>() {}
+  abstract generations(): TelemetryGenerations;
+}

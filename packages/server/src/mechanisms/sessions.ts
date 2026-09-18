@@ -51,17 +51,18 @@ export interface RunStarter {
 }
 
 /** AgentState: the mechanism AgentStateStore implements — the Session runtime's in-memory state, data only. */
-export abstract class AgentState extends Interface<{
-  readonly entries: Map<string, RuntimeEntry>;
-  readonly childRoots: Map<string, string>;
-  readonly locks: Map<string, Promise<unknown>>;
-  readonly deletingAgents: Set<string>;
-  readonly deletingSessions: Set<string>;
-  readonly agentGenerations: Map<string, number>;
-  readonly liveTail: LiveTail;
+@Interface()
+export abstract class AgentState {
+  abstract readonly entries: Map<string, RuntimeEntry>;
+  abstract readonly childRoots: Map<string, string>;
+  abstract readonly locks: Map<string, Promise<unknown>>;
+  abstract readonly deletingAgents: Set<string>;
+  abstract readonly deletingSessions: Set<string>;
+  abstract readonly agentGenerations: Map<string, number>;
+  abstract readonly liveTail: LiveTail;
   /** The generation working on this state right now; every generation points it at itself when it takes the state over. */
-  current: RunStarter | null;
-}>() {}
+  abstract current: RunStarter | null;
+}
 
 /** SessionOrigins: the mechanism SessionSources implements. */
 @Interface()
