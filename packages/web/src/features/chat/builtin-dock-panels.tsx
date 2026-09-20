@@ -1,11 +1,11 @@
 /**
  * The built-in dock panels as registry definitions: the conversation's views (subagents,
- * Files, Memory, Trace, messaging, schedules) and the built-in browser. A definition names its
+ * Files, Memory, Trace, messaging, schedules, ports) and the built-in browser. A definition names its
  * panel once — the label and glyph every surface that lists panels reads — and carries the
  * tab's body. The conversation's bodies read the chat page's state through useChatDock (the
  * page provides it around both docks); the browser needs none of it.
  *
- * Importing the module registers the seven — chat-page.tsx does, so they are in the registry
+ * Importing the module registers the eight — chat-page.tsx does, so they are in the registry
  * before any dock renders.
  */
 import { EmptyState, ICONS } from "@prismshadow/penguin-ui";
@@ -18,6 +18,8 @@ import { BuiltinBrowserPanel } from "../builtin-browser/browser-panel";
 import { TracePanel } from "../traces/trace-panel";
 import { MessagingPanel } from "../messaging/messaging-panel";
 import { SchedulePanel } from "../schedules/schedule-panel";
+import { PortsPanel } from "../ports/ports-panel";
+import { machineForSession } from "../../lib/session-machines";
 import { approvalModeChoices } from "./approval-mode";
 import { useChatDock } from "./chat-dock-context";
 import { ChatMemoryView } from "./memory-view";
@@ -173,6 +175,22 @@ function SchedulesPanelBody({ active }: DockPanelBodyProps) {
   );
 }
 
+function PortsPanelBody({ active }: DockPanelBodyProps) {
+  const { selected } = useChatDock();
+  if (!selected) return draftPlaceholder("ports");
+  const machineId = machineForSession(selected.sessionId);
+  return (
+    <PortsPanel
+      // Keyed by the Workspace, not the Session: a forward belongs to the directory on
+      // its machine, and two conversations there are looking at the same rows.
+      key={`${machineId ?? ""}:${selected.workspace}`}
+      machineId={machineId}
+      workspace={selected.workspace}
+      active={active}
+    />
+  );
+}
+
 const BUILTIN_DOCK_PANELS: readonly DockPanelDefinition[] = [
   {
     id: "agents",
@@ -227,6 +245,13 @@ const BUILTIN_DOCK_PANELS: readonly DockPanelDefinition[] = [
     offered: isBrowserOffered,
     subscribeOffered: subscribeBrowser,
     Body: BuiltinBrowserPanel,
+  },
+  {
+    id: "ports",
+    label: () => S.ports.panelTitle,
+    glyph: ICONS.arrowsOpposed,
+    order: 80,
+    Body: PortsPanelBody,
   },
 ];
 
