@@ -57,10 +57,12 @@ import { NAV_ICONS } from "../../lib/nav-icons";
 import { toneInk } from "../../lib/tone";
 import { subscribeTerminals, terminalApiSupported } from "../terminal/terminal-list";
 import { isBrowserOffered, subscribeBrowser } from "../builtin-browser/browser-store";
+import { newBrowserTab } from "../browser/browser-tabs";
 import { openTerminalInDock } from "./dock-terminal";
 import { panelGlyph, panelLabel } from "./panel-meta";
 import {
   PANEL_KINDS,
+  addBrowserTab,
   dockVersion,
   isDockVisible,
   isNarrow,
@@ -439,6 +441,17 @@ function FloatingLauncher({
       },
     });
   }
+  entries.push({
+    key: "browser",
+    label: S.browser.title,
+    glyphAt: (size) => <GlyphIcon d={ICONS.globe} size={size} />,
+    badge: false,
+    testId: "dock-launcher-open-browser",
+    choose: () => {
+      closeFan(false);
+      addBrowserTab(newBrowserTab(), target);
+    },
+  });
   entries.push({
     key: "hide",
     label: S.dock.launcherHide,
