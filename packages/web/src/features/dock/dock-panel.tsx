@@ -119,6 +119,7 @@ const PICKER_PANELS: readonly PanelKind[] = [
   "trace",
   "messaging",
   "schedules",
+  "ports",
 ];
 
 /**

@@ -24,6 +24,7 @@
  * schedule (probe-schedule.ts) so a machine that went quiet is noticed without a tap.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import type { MachineInfo, MachineJob, MachinesResponse } from "@prismshadow/penguin-server/api";
 import {
   Button,
@@ -137,6 +138,7 @@ function toggled(set: Set<string>, id: string): Set<string> {
 export function MachinesPage() {
   useDocumentTitle(S.machines.pageTitle);
   const { locale } = useLocale();
+  const navigate = useNavigate();
   // Machines belong to the Project, like every other row in this nav group: switching
   // Projects switches which machines are listed, and enabling one here gives the machine to
   // THIS Project — the same one whose Model credentials it will be handed.
@@ -563,6 +565,11 @@ export function MachinesPage() {
               onUse={(replaceProgram) => void use([machine.id], replaceProgram)}
               onStopUsing={() => void stopUsing([machine.id])}
               onConfigure={() => void configure(machine.alias)}
+              onPorts={
+                machine.machineId === null
+                  ? null
+                  : () => navigate(`/machines/${encodeURIComponent(machine.machineId!)}/ports`)
+              }
             />
           ))}
           {inUse.length === 0 && (
@@ -754,6 +761,7 @@ function MachineCard({
   onUse,
   onStopUsing,
   onConfigure,
+  onPorts,
 }: {
   machine: MachineInfo;
   job: MachineJob | null;
@@ -767,6 +775,8 @@ function MachineCard({
   onUse: (replaceProgram: boolean) => void;
   onStopUsing: () => void;
   onConfigure: () => void;
+  /** Opens this machine's Ports page; null while the machine has no id to address it by. */
+  onPorts: (() => void) | null;
 }) {
   const reading = readMachine(machine, job, imageVersion);
   const tone = readingTone(reading);
@@ -851,6 +861,9 @@ function MachineCard({
             disabled={busy}
             onClick={onConfigure}
           />
+          {onPorts !== null && (
+            <Verb label={S.ports.verb} title={S.ports.verbTitle} d={ICONS.arrowsOpposed} onClick={onPorts} />
+          )}
         </div>
         <Output job={job} />
       </div>
