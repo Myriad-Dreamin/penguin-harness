@@ -29,6 +29,9 @@ import { createPortForward, deletePortForward, listPortForwards } from "../../ap
 import { apiErrorText } from "../../lib/api-error";
 import { S } from "../../lib/strings";
 import { useAuth } from "../../state/auth";
+import { useLocale } from "../../state/locale";
+import { newBrowserTab } from "../browser/browser-tabs";
+import { addBrowserTab } from "../dock/dock-state";
 import { parsePort } from "./port-forward-facts";
 import { Cable, ForwardRow, Plug } from "./forward-cable";
 import { useMachineName } from "./use-machine-name";
@@ -187,6 +190,19 @@ function MachinePorts({
                   machineName={machineName}
                   actions={
                     <>
+                      <button
+                        type="button"
+                        title={S.browser.openInBrowser}
+                        aria-label={S.browser.openInBrowser}
+                        // The Browser's localhost is the MACHINE's: the remote port, not the
+                        // local one — it reaches the same server through the same connection.
+                        onClick={() =>
+                          addBrowserTab(newBrowserTab(`localhost:${forward.remotePort}`))
+                        }
+                        className={ROW_BUTTON}
+                      >
+                        <GlyphIcon d={ICONS.globe} size={ICON_SIZE.inlineGlyph} />
+                      </button>
                       <CopyButton
                         text={address}
                         label={S.ports.copyAddress}
