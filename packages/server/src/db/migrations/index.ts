@@ -60,6 +60,7 @@ import { modelProviderAuthTokens } from "./steps/model-provider-auth-tokens.js";
 import { sessionsSandbox } from "./steps/sessions-sandbox.js";
 import { userProfile } from "./steps/user-profile.js";
 import { sessionsSurface } from "./steps/sessions-surface.js";
+import { portForwards } from "./steps/port-forwards.js";
 
 export type { Migration } from "./migration.js";
 export {
@@ -89,6 +90,7 @@ export const MIGRATIONS: readonly Migration[] = [
   sessionsSandbox,
   machinesColumns,
   sessionsSurface,
+  portForwards,
 ];
 
 /**
