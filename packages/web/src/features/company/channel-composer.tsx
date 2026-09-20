@@ -33,6 +33,11 @@
  * the browser's own, and so does its undo step. A cut deletes its selection itself, natively,
  * since writing the clipboard means cancelling the browser's cut.
  *
+ * The unsent draft is the caller's to keep (channel-draft.ts): the box starts from
+ * `initialDraft` — its text and its picked mentions — and reports every change, so leaving the
+ * channel does not lose what was typed. The caller remounts the composer per channel, which is
+ * what makes `initialDraft` apply.
+ *
  * The keys are named in the placeholder and nothing is rendered under the box, the way
  * development mode's chat input reads: a line of hint below the composer is read once and
  * then costs a row of the stream on every later visit.
@@ -105,16 +110,22 @@ function kindTitle(kind: MentionKind): string {
 export function ChannelComposer({
   candidates,
   names,
+  initialDraft = EMPTY_DRAFT,
+  onDraftChange,
   onSend,
 }: {
   candidates: readonly MentionCandidate[];
   names: ReadonlyMap<string, string>;
+  /** The draft this channel was left with. Read once, at mount. */
+  initialDraft?: MentionDraft;
+  /** Every change of the draft, the clearing after a send included. */
+  onDraftChange?: (draft: MentionDraft) => void;
   /** Sends the draft; resolves true once it is in the stream (the draft is then cleared). */
   onSend: (text: string) => Promise<boolean>;
 }) {
-  const [draft, setDraft] = useState(EMPTY_DRAFT);
+  const [draft, setDraft] = useState(initialDraft);
   const text = draft.text;
-  const [caret, setCaret] = useState(0);
+  const [caret, setCaret] = useState(initialDraft.text.length);
   const [highlight, setHighlight] = useState(0);
   /** The `start:query` token Escape dismissed the panel for; typing on changes the token and reopens it. */
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -175,6 +186,15 @@ export function ChannelComposer({
     el.style.height = `${Math.min(el.scrollHeight + border, MAX_BOX_PX)}px`;
     syncLayer();
   }, [text]);
+
+  // Reports each change to the keeper of the unsent draft; the draft it started from is already
+  // theirs, so the first render reports nothing.
+  const reportedDraft = useRef(draft);
+  useEffect(() => {
+    if (reportedDraft.current === draft) return;
+    reportedDraft.current = draft;
+    onDraftChange?.(draft);
+  }, [draft, onDraftChange]);
 
   useLayoutEffect(() => {
     draftRef.current = draft;
