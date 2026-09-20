@@ -103,7 +103,7 @@ export function SettingsDialog({
     account: S.settings.accountTitle,
     browser: S.settings.browserTitle,
     proxy: S.settings.proxyTitle,
-    uploads: S.settings.uploadLimitsTitle,
+    uploads: S.settings.uploadsTitle,
     company: S.settings.companyModeTitle,
     chromeExtension: S.settings.chromeExtensionTitle,
     sharing: S.settings.sharingTitle,

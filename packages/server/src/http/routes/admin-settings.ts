@@ -2,9 +2,10 @@
  * Admin server-settings routes (admin only, 403 for non-admins):
  * GET|PUT /api/admin/settings — the server-global settings stored in server_settings:
  * the proxy settings (the "application uses the proxy" and "agent environment uses the
- * proxy" switches and their shared explicit address) and the upload limits (the
- * per-file and per-message attachment caps, in whole MB), the company-mode switch, and the
- * switch that lets users drive their own Chrome through the extension.
+ * proxy" switches and their shared explicit address), the upload limits (the
+ * per-file and per-message attachment caps, in whole MB), the upload policy (the
+ * automatic image-compression switch and the size above which it applies), the company-mode
+ * switch, and the switch that lets users drive their own Chrome through the extension.
  * A PUT applies immediately: everything is validated first (a rejected request writes
  * nothing), then the persisted values are written, then the process dispatcher is
  * rebuilt so new outbound connections follow the change without a restart (the agent
@@ -34,6 +35,10 @@ export interface AdminSettingsRouteDeps {
 }
 import { applyProxySettings, normalizeProxyUrl } from "../../net/proxy.js";
 import { MAX_ATTACHMENT_MB, MIN_ATTACHMENT_MB } from "../../services/attachment-limits.js";
+import {
+  MAX_IMAGE_COMPRESSION_OVER_MB,
+  MIN_IMAGE_COMPRESSION_OVER_MB,
+} from "../../services/image-compression.js";
 import {
   PROXY_PROBE_TARGETS,
   probeProxyReachabilityOf,
@@ -77,6 +82,24 @@ function parseAttachmentMb(value: unknown, field: string): number {
   );
 }
 
+/**
+ * A compression-threshold update value -> stored whole-MB integer. Out of range is refused with
+ * its own code for the same reason the attachment limits have one: an admin typing 100GB into a
+ * MB field has made a legible mistake and deserves a legible answer, not a generic `bad_request`.
+ */
+function parseImageCompressionMb(value: unknown): number {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    if (value >= MIN_IMAGE_COMPRESSION_OVER_MB && value <= MAX_IMAGE_COMPRESSION_OVER_MB) {
+      return value;
+    }
+  }
+  throw new HttpError(
+    400,
+    "invalid_image_compression",
+    `imageCompressionOverMb must be a whole number of MB between ${MIN_IMAGE_COMPRESSION_OVER_MB} and ${MAX_IMAGE_COMPRESSION_OVER_MB}.`,
+  );
+}
+
 export function adminSettingsRoutes(deps: AdminSettingsRouteDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -94,6 +117,7 @@ export function adminSettingsRoutes(deps: AdminSettingsRouteDeps): Hono<AppEnv> 
       proxyUrl: deps.serverSettingsRepo.getProxyUrl(),
       githubTokenSet: deps.serverSettingsRepo.hasGithubToken(),
       ...deps.serverSettingsRepo.getAttachmentLimitsMb(),
+      ...deps.serverSettingsRepo.getImageCompressionSettings(),
       companyMode: deps.serverSettingsRepo.getCompanyMode(),
       browserExtensionsEnabled: deps.serverSettingsRepo.getBrowserExtensionsEnabled(),
     },
@@ -119,6 +143,11 @@ export function adminSettingsRoutes(deps: AdminSettingsRouteDeps): Hono<AppEnv> 
       body.attachmentTotalMb === undefined
         ? undefined
         : parseAttachmentMb(body.attachmentTotalMb, "attachmentTotalMb");
+    const imageCompression = optionalBoolean(body, "imageCompression");
+    const imageCompressionOverMb =
+      body.imageCompressionOverMb === undefined
+        ? undefined
+        : parseImageCompressionMb(body.imageCompressionOverMb);
     // The pair is only meaningful together, so the relation is checked against the EFFECTIVE
     // post-write values: a PUT that raises only the per-file cap must be refused when the stored
     // total would leave a legal single attachment unsendable, and one that lowers only the total
@@ -152,6 +181,12 @@ export function adminSettingsRoutes(deps: AdminSettingsRouteDeps): Hono<AppEnv> 
     if (proxyUrlProvided) deps.serverSettingsRepo.setProxyUrl(proxyUrl);
     if (typeof githubToken === "string") deps.serverSettingsRepo.setGithubToken(githubToken.trim());
     if (attachmentMaxMb !== undefined) deps.serverSettingsRepo.setAttachmentMaxMb(attachmentMaxMb);
+    if (imageCompression !== undefined) {
+      deps.serverSettingsRepo.setImageCompression(imageCompression);
+    }
+    if (imageCompressionOverMb !== undefined) {
+      deps.serverSettingsRepo.setImageCompressionOverMb(imageCompressionOverMb);
+    }
     if (attachmentTotalMb !== undefined) {
       deps.serverSettingsRepo.setAttachmentTotalMb(attachmentTotalMb);
     }

@@ -618,7 +618,7 @@ export const en: Strings = {
     githubTokenMissing: "No token yet: Agents can be installed from a gist, but not published.",
     githubTokenReplace: "Enter a new token to replace it",
     githubTokenClear: "Clear token",
-    uploadLimitsTitle: "Upload limits",
+    uploadsTitle: "Uploads",
     /** Its two number fields, both in whole MB. */
     attachmentMaxMb: "Max attachment size (MB)",
     attachmentTotalMb: "Max total per message (MB)",
@@ -626,12 +626,19 @@ export const en: Strings = {
     attachmentMaxMbHint: (min: number, max: number): string => `${min}–${max} MB`,
     attachmentTotalMbHint: (min: number, max: number): string =>
       `${min}–${max} MB, and not below the per-file limit`,
+    /** The compression switch and the size above which it applies. */
+    imageCompression: "Compress large images",
+    imageCompressionOverMb: "Compress images larger than (MB)",
+    /** Accepted range: read while typing, so it stays under the field. */
+    imageCompressionOverMbHint: (min: number, max: number): string => `${min}–${max} MB`,
     /** What these two numbers do NOT govern — disclosed at the pane heading. */
     uploadLimitsInfo: (count: number, imageMb: number): string =>
       `A message may carry at most ${count} attachments. Images placed inline in the ` +
       `conversation keep a separate ${imageMb}MB limit that this setting does not raise — an ` +
       `inline image enters the conversation and the Trace, where its size is paid again on ` +
-      `every history page and resume.`,
+      `every history page and resume. An image over the compression threshold is resized and ` +
+      `re-encoded in the browser before it is uploaded, so a large picture is shrunk rather ` +
+      `than refused; a smaller one, and any animated or vector image, is sent untouched.`,
     theme: "Theme",
     themeInfo:
       "The app's overall style: layout, lines, type and motion change with it; content and every other setting stay as they are.",
@@ -5730,6 +5737,8 @@ Scenarios:
         "Invalid proxy address — use an http(s):// or socks5:// proxy URL, or host[:port].",
       invalid_attachment_limit:
         "Invalid upload limit — use a whole number of MB inside the allowed range, with the total no lower than the per-file limit.",
+      invalid_image_compression:
+        "Invalid compression threshold — use a whole number of MB inside the allowed range.",
       invalid_trace: "This file is not a valid Trace file.",
       trace_not_found: "This Trace file no longer exists.",
       trace_session_exists:
