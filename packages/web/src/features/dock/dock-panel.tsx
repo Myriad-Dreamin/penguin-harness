@@ -73,6 +73,7 @@ import {
 } from "../terminal/terminal-view-pool";
 import type { TerminalInfo } from "../terminal/terminal-view";
 import { isBrowserOffered, subscribeBrowser } from "../builtin-browser/browser-store";
+import { forgetBrowserTab, newBrowserTab } from "../browser/browser-tabs";
 import { confirmClose } from "./close-guard";
 import { createShellInDock, detachTerminal, openTerminalInDock } from "./dock-terminal";
 import { DockDragOverlay, dockDropCandidate } from "./dock-drag";
@@ -82,6 +83,7 @@ import {
   DOCK_RATIO_MAX,
   PANEL_KINDS,
   activateTab,
+  addBrowserTab,
   addTerminalTab,
   bottomRatio,
   dockVersion,
@@ -171,6 +173,11 @@ export interface DockPanelProps {
   panelBadges?: Partial<Record<PanelKind, boolean>>;
   /** Whether the server serves the terminal API at all (an older runtime does not). */
   terminalSupported: boolean;
+  /**
+   * A Browser tab's body. The page's, like the panel bodies: what `localhost` means in a
+   * Browser tab is the machine the conversation's Workspace is on, which the page knows.
+   */
+  renderBrowser: (id: string, active: boolean, onTitle: (title: string) => void) => ReactNode;
   /** False only while the dock collapses on its way out (use-dock-mount keeps it mounted). */
   open?: boolean;
   /** Whether mounting plays the expand transition (false for instant changes — scope switches, moves). */
@@ -182,6 +189,7 @@ export function DockPanel({
   renderPanel,
   panelBadges,
   terminalSupported,
+  renderBrowser,
   open = true,
   animateEntrance = true,
 }: DockPanelProps) {
@@ -205,6 +213,11 @@ export function DockPanel({
   // a close guard (the Files panel's editor holding unsaved text), which asks first: the
   // tab's × is the one gesture here that really unmounts a body.
   const [confirmKill, setConfirmKill] = useState<{ id: string; label: string } | null>(null);
+  /** Page titles the Browser tabs reported, by tab id — the strip's labels. In memory: a title is the page's to say again. */
+  const [browserTitles, setBrowserTitles] = useState<Record<string, string>>({});
+  const setBrowserTitle = useCallback((id: string, title: string) => {
+    setBrowserTitles((titles) => (titles[id] === title ? titles : { ...titles, [id]: title }));
+  }, []);
   const closeTab = useCallback((tab: DockTab, label: string) => {
     if (tab.kind === "terminal") {
       setConfirmKill({ id: tab.terminalId, label });
@@ -212,7 +225,9 @@ export function DockPanel({
     }
     const key = tabKey(tab);
     void confirmClose([key]).then((ok) => {
-      if (ok) removeTab(key);
+      if (!ok) return;
+      removeTab(key);
+      if (tab.kind === "browser") forgetBrowserTab(tab.browserId);
     });
   }, []);
   // Hiding puts the surface away and nothing else — every body stays mounted at zero size —
@@ -451,6 +466,16 @@ export function DockPanel({
             onSelect={() => openPanelHere(kind)}
           />
         ))}
+        <MenuSeparator />
+        <MenuItem
+          data-testid="dock-add-browser"
+          glyph={ICONS.globe}
+          label={S.browser.newTab}
+          onSelect={() => {
+            setAddOpen(false);
+            addBrowserTab(newBrowserTab(), merged ? undefined : position);
+          }}
+        />
         {terminalSupported && (
           <>
             <MenuSeparator />
@@ -530,6 +555,11 @@ export function DockPanel({
   const overlayActive = headerDrag.active || tabDrag.active;
   const overlayCandidate = headerDrag.active ? headerDrag.candidate : tabDrag.candidate;
 
+  const browserOrdinals = new Map<string, number>();
+  tabs.forEach((tab) => {
+    if (tab.kind === "browser") browserOrdinals.set(tab.browserId, browserOrdinals.size + 1);
+  });
+
   const terminalOrdinals = new Map<string, number>();
   tabs.forEach((tab) => {
     if (tab.kind === "terminal") terminalOrdinals.set(tab.terminalId, terminalOrdinals.size + 1);
@@ -559,6 +589,20 @@ export function DockPanel({
         label: panelLabel(tab.panel),
         glyph: panelGlyph(tab.panel, ICON_SIZE.inlineGlyph),
         badge: panelBadges?.[tab.panel] === true,
+        closeLabel: S.dock.closeTab,
+      };
+    }
+    if (tab.kind === "browser") {
+      const title = browserTitles[tab.browserId];
+      const label =
+        title !== undefined && title !== ""
+          ? title
+          : `${S.browser.title} ${browserOrdinals.get(tab.browserId) ?? 1}`;
+      return {
+        key,
+        label,
+        title: label,
+        glyph: <GlyphIcon d={ICONS.globe} size={ICON_SIZE.inlineGlyph} />,
         closeLabel: S.dock.closeTab,
       };
     }
@@ -603,6 +647,12 @@ export function DockPanel({
           },
         ]
       : []),
+    {
+      key: "browser",
+      label: S.browser.title,
+      glyph: <GlyphIcon d={ICONS.globe} size={ICON_SIZE.iconButton} />,
+      onChoose: () => addBrowserTab(newBrowserTab(), merged ? undefined : position),
+    },
     ...(browserOffered ? [pickPanel("builtin-browser")] : []),
     ...PICKER_PANELS.map(pickPanel),
   ];
@@ -622,6 +672,10 @@ export function DockPanel({
                   collapsed dock should cost nothing while it is away. */}
               {tab.kind === "panel" ? (
                 renderPanel(tab.panel, active && open)
+              ) : tab.kind === "browser" ? (
+                renderBrowser(tab.browserId, active && open, (title) =>
+                  setBrowserTitle(tab.browserId, title),
+                )
               ) : (
                 <TerminalBody id={tab.terminalId} active={active && open} />
               )}
