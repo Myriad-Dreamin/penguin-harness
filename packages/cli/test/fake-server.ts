@@ -2058,7 +2058,7 @@ export class FakeServer {
         previewIsolated: true,
         desktopMode: false,
         sessionVia: "token",
-        uploadLimits: {},
+        uploadPolicy: {},
         companyMode: true,
       });
     }

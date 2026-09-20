@@ -6,11 +6,9 @@ import type { Duplex } from "node:stream";
 import type { AppEnv } from "../auth/middleware.js";
 import { Config, Log } from "../hmr/capabilities.js";
 import type { MiddlewareHandler } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { authMiddleware, jsonOnlyWrites, sameOriginWrites } from "../auth/middleware.js";
 import { HttpError, handleError } from "./errors.js";
 import { attributedProjectId } from "./attribution.js";
-import { bodyLimitBytes } from "../services/attachment-limits.js";
 import { declined, isDeclined } from "../hmr/hono-seam.js";
 import { hostOnly, requestAuthority } from "../services/preview-token.js";
 import type { Auth, Users } from "../mechanisms/identity.js";
@@ -284,30 +282,9 @@ export class HttpModule {
         c.header(REQUEST_ID_HEADER, request);
       });
     }
-    let capped: { size: number; mw: MiddlewareHandler } | null = null;
-    app.use("/api/*", (c, next) => {
-      // The upgrade channel streams a push into the blob store and buffers nothing, and the
-      // attachment budget says nothing about how large a push may be; a push-size policy, if a
-      // deployment wants one, belongs on that route group itself (hmr/routes.ts).
-      if (c.req.path === "/api/hmr" || c.req.path.startsWith("/api/hmr/")) return next();
-      const size = bodyLimitBytes(this.settings.getAttachmentLimitsMb());
-      if (capped === null || capped.size !== size) {
-        capped = {
-          size,
-          mw: bodyLimit({
-            maxSize: size,
-            onError: () => {
-              throw new HttpError(
-                413,
-                "payload_too_large",
-                `Request body exceeds the ${Math.floor(size / (1024 * 1024))}MB limit.`,
-              );
-            },
-          }),
-        };
-      }
-      return capped.mw(c, next);
-    });
+    // No request body size cap: a size refusal here could only ever fire on a request the
+    // transport was going to fail anyway (the body becomes one string for JSON.parse, and V8
+    // caps a string near 512MB). http/validate.ts readJson names that ceiling when it is hit.
     app.use("/api/*", sameOriginWrites);
     // A machine's API is reached through this server (machines/proxy.ts), with this server's
     // cookie: the same question, asked here because the hop drops the Origin.
