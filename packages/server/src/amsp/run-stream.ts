@@ -32,15 +32,9 @@ import { badRequest, readJson } from "../http/validate.js";
 import type { AgentApi } from "../mechanisms/agent-api.js";
 import type { Errors } from "../mechanisms/observability.js";
 import type { SessionIndex } from "../mechanisms/sessions.js";
-import type { Settings } from "../mechanisms/settings.js";
 import type { ChannelEvent } from "../runtime/channel.js";
 import type { SessionManager } from "../runtime/session-manager.js";
 import type { SessionService } from "../services/session-service.js";
-import {
-  INLINE_IMAGE_MAX_BYTES,
-  INLINE_IMAGE_MAX_MB,
-  toAttachmentLimits,
-} from "../services/attachment-limits.js";
 import { sessionNotFound } from "./gate.js";
 import type { AmspEnv } from "./gate.js";
 import { AmspTranslator } from "./translate.js";
@@ -57,7 +51,6 @@ export interface RunStreamDeps {
   sessionService: Pick<SessionService, "createSession">;
   sessions: Pick<SessionIndex, "findById">;
   agentApi: AgentApi;
-  settings: Pick<Settings, "getAttachmentLimitsMb">;
   channels: Pick<Channels, "get">;
   errors: Errors;
   log: Log;
@@ -70,19 +63,13 @@ export interface RunStreamDeps {
  */
 const IMAGE_DATA_URL = /^data:image\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$/;
 
-/** Decoded size of a base64 data URL, from its length (padding and whitespace carry no bytes). */
-function dataUrlBytes(url: string): number {
-  const payload = url.slice(url.indexOf(",") + 1).replace(/[=\s]+/g, "");
-  return Math.floor((payload.length * 3) / 4);
-}
-
 /**
  * `input` as the run's messages: a string is one user text; items are texts and images, texts
- * first. At least one non-empty text or one image. A `data:` image must be an image MIME within
- * the inline-image cap, and all of them together within the admin's per-message total; an
- * http(s) URL is passed on untouched (the server does not fetch it).
+ * first. At least one non-empty text or one image. A `data:` image must have an image MIME;
+ * http(s) URLs are passed on untouched. Like the other API input paths, no retired
+ * attachment byte ceiling is imposed here.
  */
-export function parseRunInput(input: unknown, totalImageBytes: number): OmniMessage[] {
+export function parseRunInput(input: unknown): OmniMessage[] {
   const empty = () =>
     badRequest("input must be a non-empty string, or an array of text and image_url items.");
   if (typeof input === "string") {
@@ -92,7 +79,6 @@ export function parseRunInput(input: unknown, totalImageBytes: number): OmniMess
   if (!Array.isArray(input) || input.length === 0) throw empty();
   const texts: OmniMessage[] = [];
   const images: OmniMessage[] = [];
-  let imageBytes = 0;
   input.forEach((item: unknown, i) => {
     if (item === null || typeof item !== "object" || Array.isArray(item)) {
       throw badRequest(`input[${i}] must be an object.`);
@@ -116,19 +102,11 @@ export function parseRunInput(input: unknown, totalImageBytes: number): OmniMess
           `input[${i}].image_url must be an http(s) URL or a base64 data URL of an image (data:image/<type>;base64,<bytes>).`,
         );
       }
-      // Sized before it is pattern-checked: an oversized body is refused without a scan.
-      const bytes = dataUrlBytes(url);
-      if (bytes > INLINE_IMAGE_MAX_BYTES) {
-        throw badRequest(
-          `input[${i}].image_url exceeds the ${INLINE_IMAGE_MAX_MB}MB inline image limit.`,
-        );
-      }
       if (!IMAGE_DATA_URL.test(url)) {
         throw badRequest(
           `input[${i}].image_url must be an http(s) URL or a base64 data URL of an image (data:image/<type>;base64,<bytes>).`,
         );
       }
-      imageBytes += bytes;
       images.push(imageUrlMessage(url));
       return;
     }
@@ -137,11 +115,6 @@ export function parseRunInput(input: unknown, totalImageBytes: number): OmniMess
     }
     throw badRequest(`input[${i}].type must be text or image_url.`);
   });
-  if (imageBytes > totalImageBytes) {
-    throw badRequest(
-      `input's images exceed the ${Math.floor(totalImageBytes / (1024 * 1024))}MB per-message limit.`,
-    );
-  }
   return [...texts, ...images];
 }
 
@@ -201,10 +174,7 @@ export async function runStream(c: Context<AmspEnv>, deps: RunStreamDeps): Promi
   ) {
     throw badRequest("session_id must be a Session id.");
   }
-  const input = parseRunInput(
-    body.input,
-    toAttachmentLimits(deps.settings.getAttachmentLimitsMb()).totalBytes,
-  );
+  const input = parseRunInput(body.input);
   const full = () =>
     deps.manager.activeCountForAgent(projectId, agentId) >= AMSP_MAX_CONCURRENT_RUNS;
 
