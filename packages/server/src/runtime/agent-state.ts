@@ -12,6 +12,7 @@
 import { Component } from "@prismshadow/penguin-core/kernel";
 import type { AgentState } from "../mechanisms/sessions.js";
 import { LiveTailTracker } from "./live-tail.js";
+import type { LiveTail } from "./live-tail.js";
 import type { RuntimeEntry } from "./session-manager.js";
 
 @Component()
@@ -29,5 +30,5 @@ export class AgentStateStore implements AgentState {
   /** Per-Agent config generation (key = agentKey). */
   readonly agentGenerations = new Map<string, number>();
   /** Open streaming fragments of running sessions. */
-  readonly liveTail = new LiveTailTracker();
+  readonly liveTail: LiveTail = new LiveTailTracker();
 }
