@@ -22,6 +22,7 @@ import { useLocale } from "../../state/locale";
 import { formatMessageTime } from "../../lib/format";
 import { splitAttachments } from "../../lib/attachments";
 import type { ChatItem, ReconnectItem } from "../../lib/omni/stream-model";
+import { PROPOSAL_COMPONENTS, PROPOSAL_REMARK_PLUGINS } from "../proposals/proposal-links";
 import { MessageFilesCard } from "./message-files-card";
 import { MemoryChangesCard } from "./memory-changes-card";
 import { SessionThinking } from "./thinking-block";
@@ -306,7 +307,12 @@ export function MessageItem({ item, ctx }: { item: ChatItem; ctx: StreamRenderCo
       // The body (Markdown, caret, the theme's reveal) is AssistantText; the stop reason and a
       // nested reply's files card follow the text once it is fully revealed.
       return (
-        <AssistantText text={item.text} streaming={item.streaming}>
+        <AssistantText
+          text={item.text}
+          streaming={item.streaming}
+          extraPlugins={PROPOSAL_REMARK_PLUGINS}
+          components={PROPOSAL_COMPONENTS}
+        >
           {item.stopReason && item.stopReason !== "completed" && (
             <span className="ml-1 font-mono text-xs text-gray-400">[{item.stopReason}]</span>
           )}
