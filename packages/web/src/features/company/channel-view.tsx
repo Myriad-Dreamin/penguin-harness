@@ -41,6 +41,7 @@ import {
   Button,
   ChannelBubble,
   ChannelRun,
+  ChannelTimeGap,
   EmptyState,
   GlyphIcon,
   ICON_GAP,
@@ -469,6 +470,8 @@ export function ChannelView() {
             {S.company.channels.replyTo}
           </RefChip>
         )}
+        {/* The room the bubble's time needs, at the row's end. */}
+        <ChannelTimeGap />
       </span>
     );
   };

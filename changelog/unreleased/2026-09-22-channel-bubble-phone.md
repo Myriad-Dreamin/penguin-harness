@@ -2,7 +2,7 @@
 
 - **Date:** 2026-09-22
 - **Type:** fix
-- **Scope:** `web`
+- **Scope:** `ui`, `web`
 - **PR:** [#826](https://github.com/Prism-Shadow/penguin-harness/pull/826)
 
 [中文版](2026-09-22-channel-bubble-phone.zh.md)
@@ -15,6 +15,7 @@ words: Chinese wrapped at about seven characters a line.
 - A bubble may take 88% of its column on a narrow screen (75% from the `sm` breakpoint up, as
   before). The column is already the avatar gutter short of the screen; three quarters of what
   was left was not enough.
-- The time no longer sits in a column of its own beside the body. It ends the bubble: beside
-  the words when a message fits on one line with it, and on a line of its own — right-aligned,
-  under the last line — when the words need the width.
+- The time no longer sits in a column of its own beside the body. It sits in the bubble's
+  bottom-right corner, and the words keep room for it on their last line: beside the words when
+  they end short of it, tucked under the last line's end otherwise.
+- On a phone a message's words are a size up (16px), as messengers draw them.
