@@ -16,6 +16,7 @@
  */
 import type { ReactNode } from "react";
 import { Md } from "../../content/prose/prose";
+import type { MdProps } from "../../content/prose/prose";
 import { StreamingCaret } from "./streaming-caret";
 import { useStreamReveal } from "./use-stream-reveal";
 
@@ -26,9 +27,19 @@ export interface AssistantTextProps {
   streaming: boolean;
   /** Rendered after the reply once it is fully revealed. */
   children?: ReactNode;
+  /** Extra remark passes over the Markdown (e.g. the Web App's `proposal:<n>` capsules). */
+  extraPlugins?: MdProps["extraPlugins"];
+  /** Element renderers merged over the Markdown's own (the nodes those passes produce). */
+  components?: MdProps["components"];
 }
 
-export function AssistantText({ text, streaming, children }: AssistantTextProps) {
+export function AssistantText({
+  text,
+  streaming,
+  children,
+  extraPlugins,
+  components,
+}: AssistantTextProps) {
   const revealed = useStreamReveal(text, streaming);
   const live = streaming || revealed.length < text.length;
   return (
@@ -37,7 +48,12 @@ export function AssistantText({ text, streaming, children }: AssistantTextProps)
       data-state={live ? "streaming" : "done"}
     >
       {/* Re-renders the revealed text directly while live; memoized, so a settled reply skips the re-parse, and code blocks highlight once on settle (see prose.tsx). */}
-      <Md text={revealed} streaming={live} />
+      <Md
+        text={revealed}
+        streaming={live}
+        {...(extraPlugins !== undefined ? { extraPlugins } : {})}
+        {...(components !== undefined ? { components } : {})}
+      />
       {live && <StreamingCaret />}
       {!live && children}
     </div>
