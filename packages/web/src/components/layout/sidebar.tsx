@@ -217,7 +217,7 @@ import { NoOrganizationsSidebar, OrgSwitcher } from "../../features/company/org-
 import { CompanyBetaBadge } from "../../features/company/company-beta";
 import { ChannelSidebar } from "../../features/company/channel-sidebar";
 import { OrgSessionGroups } from "../../features/company/org-session-groups";
-import { COMPANY_NAV_ICONS } from "../../features/company/company-nav-icons";
+import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
 import {
   COMPANY_NAV_KEYS,
   ORG_PAGE_RENDERERS,
@@ -227,7 +227,6 @@ import {
   parseOrgKey,
 } from "../../features/company/company-nav";
 import type { WorkMode } from "../../features/company/company-nav";
-import { ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
 import { useOrgPages } from "../../features/company/use-org-pages";
 
 /** New-chat pencil (the pinned "New chat" button and the collapsed rail share it). */
