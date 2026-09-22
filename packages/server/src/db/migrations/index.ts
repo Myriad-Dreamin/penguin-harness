@@ -62,6 +62,8 @@ import { userProfile } from "./steps/user-profile.js";
 import { sessionsSurface } from "./steps/sessions-surface.js";
 import { portForwards } from "./steps/port-forwards.js";
 import { browserSites } from "./steps/browser-sites.js";
+import { portForwardsAdoption } from "./steps/port-forwards-adoption.js";
+import { portForwardsDirection } from "./steps/port-forwards-direction.js";
 
 export type { Migration } from "./migration.js";
 export {
@@ -92,6 +94,8 @@ export const MIGRATIONS: readonly Migration[] = [
   machinesColumns,
   sessionsSurface,
   portForwards,
+  portForwardsAdoption,
+  portForwardsDirection,
   browserSites,
 ];
 
