@@ -10,9 +10,10 @@
  * its own tint, with no avatar and no name; a screen reader hears `ownLabel` instead, since a side
  * and a colour are not something every reader can read.
  *
- * Each bubble carries its own time at its end, inside it, bottom-aligned: on a one-line message it
- * lands beside the words, on a longer one it settles into the bottom-right corner, and it never
- * overlaps the body. A time that only appeared on hover would be one a touch reader never sees, and
+ * Each bubble carries its own time at its end, inside it, bottom-aligned: beside the words on a
+ * message that fits one line with it, and on a line of its own — right-aligned, under the last
+ * line — when the words need the width. It is not a column beside the body, which on a phone took
+ * a fifth of the bubble off every line of a long message. A time that only appeared on hover would be one a touch reader never sees, and
  * one time per run would leave every later message in a long run unstamped. The body is Markdown in
  * the compact reading box; what the caller renders into it is its own (a channel keeps its
  * `@mentions` as chips), and `footer` sits under it — the chips for what the message refers to.
@@ -174,16 +175,18 @@ export function ChannelBubble({
     <div
       id={id}
       data-side={own ? "own" : "other"}
-      className={`channel-bubble max-w-[75%] px-3 py-1.5 text-sm leading-relaxed ${corners(own, last)} ${own ? SURFACE.own : SURFACE.other}`}
+      // A phone's column is the avatar gutter short of the screen already; three quarters of what
+      // is left wrapped Chinese at seven characters a line.
+      className={`channel-bubble max-w-[88%] px-3 py-1.5 text-sm leading-relaxed sm:max-w-[75%] ${corners(own, last)} ${own ? SURFACE.own : SURFACE.other}`}
     >
-      <div className={`flex items-end ${ICON_GAP.menu}`}>
-        <div className="min-w-0 flex-1">
+      <div className={`flex flex-wrap items-end justify-end ${ICON_GAP.menu}`}>
+        <div className="min-w-0 flex-[1_1_auto]">
           <div className="md-body md-compact">{children}</div>
           {footer}
         </div>
         <span
           data-tooltip={timeTooltip}
-          className="shrink-0 text-xs tabular-nums text-tone-neutral-fg"
+          className="ml-auto shrink-0 text-xs tabular-nums text-tone-neutral-fg"
         >
           <span className="sr-only">{timeLabel}</span>
           <span aria-hidden>{time}</span>
