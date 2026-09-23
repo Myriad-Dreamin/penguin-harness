@@ -54,6 +54,7 @@ function memorySettings(maxMb = 7): Settings {
     setProxyForAgent: () => {},
     getProxyUrl: () => null,
     hasGithubToken: () => false,
+    getGithubToken: () => null,
     setGithubToken: () => {},
     setProxyUrl: () => {},
     getAttachmentMaxMb: () => maxMb,
