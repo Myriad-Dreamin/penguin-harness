@@ -1571,7 +1571,6 @@ export abstract class Machines extends Interface<
     | "dialPort"
     | "setForwards"
     | "forwardFacts"
-    | "ownId"
     | "jobs"
     | "startUse"
     | "stopUsing"
