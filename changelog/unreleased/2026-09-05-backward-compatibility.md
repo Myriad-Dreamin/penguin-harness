@@ -14,7 +14,7 @@ The session surface work ([2026-09-05-session-surface.md](2026-09-05-session-sur
 A database written before this change has a `sessions` table with no `surface` column. It reaches the new shape two ways, and it needs both:
 
 - **A restart** applies `openDatabase`'s declarative column list, as every additive column here has.
-- **A hot push** applies migration 6 (`sessions-surface`), which is `swapSafe`. This is the one that matters: the declarative list runs when the PROCESS starts, and a push never restarts the runtime. Without the migration, a pushed platform would write `surface` to a table that has no such column, and every session insert would fail — creation, fork, subagent registration, and the Trace adoption the session list hydrates through.
+- **A hot push** applies migration 13 (`sessions-surface`), which is `swapSafe`. This is the one that matters: the declarative list runs when the PROCESS starts, and a push never restarts the runtime. Without the migration, a pushed platform would write `surface` to a table that has no such column, and every session insert would fail — creation, fork, subagent registration, and the Trace adoption the session list hydrates through.
 
 ## Scope, and whether anyone has to act
 
@@ -24,4 +24,4 @@ A platform rolled back to a build from before this change finds a column it does
 
 ## When it can be removed
 
-Never, and there is nothing to clean up: a migration is a permanent record of a shape change, not a compatibility shim. `SCHEMA_SQL` declares the column for fresh databases, migration 6 carries it to existing ones, and both stay.
+Never, and there is nothing to clean up: a migration is a permanent record of a shape change, not a compatibility shim. `SCHEMA_SQL` declares the column for fresh databases, migration 13 carries it to existing ones, and both stay.
