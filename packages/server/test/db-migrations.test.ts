@@ -62,7 +62,7 @@ function dropCompanyModeTables(db: DatabaseSync): void {
 }
 
 /**
- * Takes migration 13's table off a database built from the current declaration. Every
+ * Takes the port-forwards table off a database built from the current declaration. Every
  * fixture standing for a database OLDER than port forwarding needs it: a round trip that
  * rolls back through 13 drops the table, and would otherwise land on less than it began with.
  */
@@ -590,8 +590,9 @@ describe("migration 8 → current: model-promotions", () => {
         "model-provider-auth-tokens",
         "sessions-sandbox",
         "machines-columns",
+        "port-forwards",
       ]);
-      expect(schemaVersion(db)).toBe(12);
+      expect(schemaVersion(db)).toBe(13);
       expect(promotionsTableExists()).toEqual({ "1": 1 });
       expect(authTokensTableExists()).toEqual({ "1": 1 });
 
@@ -612,8 +613,9 @@ describe("migration 8 → current: model-promotions", () => {
         "model-provider-auth-tokens",
         "sessions-sandbox",
         "machines-columns",
+        "port-forwards",
       ]);
-      expect(schemaVersion(db)).toBe(12);
+      expect(schemaVersion(db)).toBe(13);
     } finally {
       db.close();
     }
@@ -634,8 +636,9 @@ describe("migration 9 → current: model-provider-auth-tokens", () => {
         "model-provider-auth-tokens",
         "sessions-sandbox",
         "machines-columns",
+        "port-forwards",
       ]);
-      expect(schemaVersion(db)).toBe(12);
+      expect(schemaVersion(db)).toBe(13);
       expect(tableExists()).toEqual({ "1": 1 });
       db.exec(
         "INSERT INTO users (user_id, password_hash, is_admin, created_at)" +
