@@ -5703,7 +5703,7 @@ export interface ProposalItem {
   author: string;
   /** The employee that builds it, once `implement` named one. */
   implementer: string | null;
-  /** The person who delegated it (`userId`). */
+  /** The principal that started it: `user:<id>` for a person, `agent:<id>` for an employee proposing on its own. */
   delegatedBy: string;
   createdAt: string;
   updatedAt: string;
@@ -5735,8 +5735,8 @@ export interface ProposalsResponse {
 }
 
 export interface ProposalCreateRequest {
-  /** The author employee's Agent id. */
-  author: string;
+  /** The author employee's Agent id; default = the calling employee (a person has to name one). */
+  author?: string;
   brief: string;
   title?: string;
   sessionId?: string;
@@ -5751,7 +5751,8 @@ export interface ProposalPublishRequest {
 }
 
 export interface ProposalImplementRequest {
-  agentId: string;
+  /** The employee that builds it; default = the author itself. */
+  agentId?: string;
   message?: string;
   workspace?: string;
   sessionId?: string;
