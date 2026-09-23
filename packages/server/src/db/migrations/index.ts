@@ -64,6 +64,7 @@ import { sessionsSurface } from "./steps/sessions-surface.js";
 import { portForwards } from "./steps/port-forwards.js";
 import { portForwardsAdoption } from "./steps/port-forwards-adoption.js";
 import { portForwardsDirection } from "./steps/port-forwards-direction.js";
+import { modelTablesAdoption } from "./steps/model-tables-adoption.js";
 
 export type { Migration } from "./migration.js";
 export { IrreversibleMigrationError, UnknownMigrationError, appliedMigrations } from "./runner.js";
@@ -92,6 +93,7 @@ export const MIGRATIONS: readonly Migration[] = [
   portForwards,
   portForwardsAdoption,
   portForwardsDirection,
+  modelTablesAdoption,
 ];
 
 /**
