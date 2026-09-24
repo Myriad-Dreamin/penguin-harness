@@ -1132,6 +1132,7 @@ export class FakeServer {
       materials: [],
       approvedRevision: null,
       brief: "",
+      root: "",
       scope: [],
       sections: [],
       comments: [],
