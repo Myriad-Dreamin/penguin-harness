@@ -1095,6 +1095,7 @@ export class FakeServer {
       unread: 0,
       pendingComments: 0,
       materials: [],
+      approvedRevision: null,
       brief: "",
       scope: [],
       sections: [],
