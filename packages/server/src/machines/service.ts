@@ -37,6 +37,7 @@ import type {
   MachineJob,
   MachinePhase,
   MachineServerStatus,
+  MachineSocketFact,
   MachineUseRefusal,
 } from "../api/types.js";
 import { readServerLock } from "../lock.js";
@@ -87,6 +88,8 @@ import type { AppEnv } from "../auth/middleware.js";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import { machinesRoutes } from "../http/routes/machines.js";
 import { machinesProxy } from "./proxy.js";
+import { MachineEventHub } from "./event-hub.js";
+import { MachineSockets } from "./machine-sockets.js";
 import { HttpError } from "../http/errors.js";
 import type { Access } from "../mechanisms/projects.js";
 import { Hono } from "hono";
@@ -152,6 +155,12 @@ export interface MachinesEffects {
   loadConfig: (projectId: string) => Promise<ProjectConfig>;
   /** Injected so a test can pin the recorded timestamp instead of asserting around the clock. */
   now: () => Date;
+  /**
+   * What the API socket to a machine is doing (machines/machine-sockets.ts), for `MachineInfo.socket`:
+   * connected, dialling, refused or failed, and since when. The sockets themselves are the
+   * proxy's, created beside it, so this is an injected reader rather than a field here.
+   */
+  socketFact: (machineId: string) => MachineSocketFact | null;
 }
 
 /** The id of the entry standing for the machine this server runs on. */
@@ -249,6 +258,7 @@ export class MachinesService {
       loadConfig: (projectId) => loadProjectConfig(dataRoot, projectId),
       now: () => new Date(),
       lateSweepMs: 20_000,
+      socketFact: () => null,
       ...effects,
     };
   }
@@ -355,6 +365,7 @@ export class MachinesService {
       },
       local: true,
       connection: null,
+      socket: null,
       api: null,
       root: this.dataRoot,
       status: {
@@ -379,6 +390,7 @@ export class MachinesService {
           row?.version == null ? null : { version: row.version, at: row.installedAt ?? "" },
         local: false,
         connection: session === null ? null : { pid: session.pid },
+        socket: row?.machineId == null ? null : (this.#effects.socketFact(row.machineId) ?? null),
         api: this.#apiSeen.get(id) ?? null,
         // The layout's own spelling, in the shell that machine speaks. Unknown platform
         // reads as POSIX: it is the majority, and an install corrects the record.
@@ -1654,12 +1666,21 @@ export class MachinesModule {
     // needs it before start() re-holds anything, or a delivered session would be opened
     // again beside itself.
     attachSessionRegistry(this.hmr.resources, this.resourceGroups.adoptable(SESSION_GROUP));
-    const machines = new MachinesService(this.paths.root, repo.ownId(), repo, {}, () =>
-      this.hmr.assetsDir(),
+    // The generation's one socket cache and the event hub over it (PRFC-0011): the proxy's
+    // streams and the machines' aggregate event stream share both, so the hub holds ONE
+    // subscription per machine however many tabs read it.
+    const sockets = new MachineSockets((line) => console.log(line));
+    const events = new MachineEventHub(sockets, (line) => console.log(line));
+    const machines = new MachinesService(
+      this.paths.root,
+      repo.ownId(),
+      repo,
+      { socketFact: (machineId) => sockets.fact(machineId) },
+      () => this.hmr.assetsDir(),
     );
     this.machines = machines;
-    this.routes = machinesRoutes({ machines, access: this.access });
-    this.serverProxyRoutes = machinesServerProxyRoutes(machines);
+    this.routes = machinesRoutes({ machines, access: this.access, events });
+    this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events });
     // This generation's transient sessions close with it; held ones stay up in the registry
     // for the successor to claim, and its start() re-holds whatever the record says was
     // held and is not there.
@@ -1673,12 +1694,16 @@ export class MachinesModule {
  * that machine's admin, with a session this server minted over the ssh access that installed
  * it, so this server's admin session is the one credential involved.
  */
-export function machinesServerProxyRoutes(machines: MachinesService): Hono<AppEnv> {
+export function machinesServerProxyRoutes(
+  machines: MachinesService,
+  shared: { sockets?: MachineSockets; events?: MachineEventHub } = {},
+): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const proxy = machinesProxy(
     (machineId) => machines.proxyTarget(machineId),
     (machineId, outcome) => machines.noteApiSeen(machineId, outcome),
     (line) => console.log(line),
+    shared,
   );
   app.all("*", async (c) => {
     if (!c.var.user.isAdmin) {
