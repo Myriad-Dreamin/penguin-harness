@@ -25,7 +25,13 @@ export function eventsRoutes(deps: EventsRouteDeps): Hono<AppEnv> {
 
   app.get("/", (c) => {
     const channel = deps.channels.get(userChannelKey(c.var.user.userId));
-    return sseEndpoint(c, channel, { initialEvents: [{ type: "hello" }] });
+    return sseEndpoint(c, channel, {
+      initialEvents: [{ type: "hello" }],
+      // The stream beats as well as pings: a machine's events reach the hub over this
+      // endpoint, and both the hub and the browser end a stream that misses two beats
+      // (machines/event-hub.ts, web api/socket.ts). A comment line is invisible to both.
+      heartbeatEvent: true,
+    });
   });
 
   return app;
