@@ -2373,6 +2373,7 @@ router
       machineId: null,
       local: false,
       connection: null,
+      socket: null,
       api: null,
       status: null,
       root: `~/.penguin/data`,
