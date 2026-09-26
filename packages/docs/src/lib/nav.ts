@@ -66,6 +66,7 @@ export const DOCS_NAV: DocsSectionDef[] = [
     pages: pages(
       "architecture",
       "server-boot",
+      "plugins",
       "omni-message",
       "agent-loop",
       "message-flow",
