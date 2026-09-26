@@ -11,8 +11,9 @@
  * this server's, the far side's words when it failed. State is said once: the dot at the
  * card's edge is blue for a live link — this server, and a held connection — amber and red
  * for what needs a person, grey for settled. Everything else — the build, the install
- * date, the server, the machine id, the job's output, the forced install — lives inside
- * the card and unfolds on the chevron, so the fleet at rest is names and dots.
+ * date, the server, when it was last checked, the API socket this server holds to it, the
+ * machine id, the job's output, the forced install — lives inside the card and unfolds on
+ * the chevron, so the fleet at rest is names and dots.
  *
  * Selection is the card: clicking one toggles it and a selected card darkens its border;
  * nothing is selected until someone clicks. Select all, select none, plug and unplug are icon
@@ -32,7 +33,7 @@ import { useLocale } from "../../state/locale";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { useDocumentTitle } from "../../lib/use-document-title";
-import { formatDateTime, formatMessageTime } from "../../lib/format";
+import { formatDateTime, formatMessageTime, formatRelativeShort } from "../../lib/format";
 import { toneDot, toneInk, toneStrip } from "../../lib/tone";
 import { ICON_SIZE } from "../../lib/icon-scale";
 import { Button } from "../../components/ui/button";
@@ -51,6 +52,7 @@ import {
   localMachine,
   readMachine,
   readingTone,
+  socketReading,
   wantsUse,
 } from "./machines-view";
 import type { MachineReading } from "./machines-view";
@@ -867,9 +869,20 @@ function MachineCard({
   );
 }
 
-/** The record, unfolded inside a card. */
-function Record({ machine, locale }: { machine: MachineInfo; locale: "zh" | "en" }) {
+/**
+ * The record, unfolded inside a card. Exported so the socket line can be exercised as markup
+ * (test/machines-socket-detail.test.ts): it is a pure function of the machine, and this
+ * package's Node test environment renders components, not pages.
+ */
+export function Record({ machine, locale }: { machine: MachineInfo; locale: "zh" | "en" }) {
   const m = S.machines;
+  const socket = socketReading(machine);
+  // The socket's own line is grey unless it names something to act on, like the line under a
+  // card's name: a live handshake is contact, a refusal or a dead dial is a problem.
+  const socketInk =
+    socket !== null && (socket.tone === "attention" || socket.tone === "danger")
+      ? toneInk[socket.tone]
+      : undefined;
   return (
     <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-gray-200 pt-3 text-xs dark:border-gray-800">
       {machine.installed !== null && (
@@ -892,6 +905,22 @@ function Record({ machine, locale }: { machine: MachineInfo; locale: "zh" | "en"
           </dd>
           <dt className="text-gray-500">{m.detailChecked}</dt>
           <dd>{formatMessageTime(new Date(machine.status.checkedAt).getTime(), locale)}</dd>
+        </>
+      )}
+      {/* Absent for the local entry and until a stream has asked for a socket: a fact about one
+          process on THIS side, exactly like `connection`, and read here so a stuck stream does
+          not have to be found in the browser console. How long the state has held is the point
+          — a socket that stays `connected` while its machine's stream has gone quiet is the
+          case the card cannot show — so the line carries the compact relative form the app
+          uses elsewhere, with the exact instant on hover, and the page's own polling keeps it
+          current. */}
+      {socket !== null && (
+        <>
+          <dt className="text-gray-500">{m.detailSocket}</dt>
+          <dd className={socketInk} title={formatDateTime(socket.since)}>
+            {`${socket.label} · ${formatRelativeShort(socket.since, locale)}`}
+            {socket.detail === null ? null : ` · ${socket.detail}`}
+          </dd>
         </>
       )}
       {machine.machineId !== null && (

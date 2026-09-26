@@ -54,7 +54,7 @@ import { useStore } from "zustand/react";
 import { createStore } from "zustand/vanilla";
 import * as api from "../api/endpoints";
 import { ApiError } from "../api/client";
-import { openUserEvents } from "../api/sse";
+import { openMachineEvents, openUserEvents } from "../api/sse";
 import {
   isCompanyEvent,
   isPluginEvent,
@@ -1467,27 +1467,34 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
 
   const { pageState, countsByAgent, machineIds } = state;
 
-  // One more stream per connected machine: a Session there changes state on that machine's
-  // server, and this server never hears of it. Keyed on the held set, so a machine that
-  // drops out has its stream closed and one that comes up gets one. Each is a call on the
-  // page's one socket (api/socket.ts), re-issued on its own while the connection behind the
-  // proxy is briefly down.
-  const heldKey = machineIds.join(",");
+  /**
+   * Every connected machine's events, on ONE stream whatever the machine count. Watching N
+   * machines used to mean N streams — one `/server/<machineId>/api/events` each; the hub now
+   * holds one subscription per machine over there and fans it into this tab's single aggregate
+   * (`GET /api/projects/<projectId>/machines/events`), tagging each event with the machine it
+   * came from. Keyed on the Project, like the list itself: a switch closes this stream and
+   * opens the next one's. The machine set is deliberately NOT part of the key — a machine
+   * coming or going changes which sources the hub attaches upstream, not which stream this tab
+   * holds, and closing the stream for a machine appearing would drop the others' events with
+   * it.
+   */
+  const streamProjectId = state.projectId;
   useEffect(() => {
-    const ids = heldKey === "" ? [] : heldKey.split(",");
-    const conns = ids.map((machineId) =>
-      openUserEvents(
-        {
-          onOmniMessage: () => undefined,
-          onServerEvent: (ev) => applyUserEvent(store, ev, () => undefined, machineId),
-        },
-        machineId,
-      ),
-    );
-    return () => {
-      for (const conn of conns) conn.close();
-    };
-  }, [store, heldKey]);
+    if (streamProjectId === null) return;
+    const conn = openMachineEvents(streamProjectId, {
+      // The machine's own server event, routed exactly as its own stream's would have been:
+      // `() => undefined` because a machine's web being hot-swapped is that machine's affair,
+      // not a reason for this window to reload.
+      onMachineEvent: (machineId, ev) => applyUserEvent(store, ev, () => undefined, machineId),
+      // The hub's own frames. `resync_required` says the tab's last event id could not be
+      // honoured, so flips for an unknown number of machines are gone; the same refetch that
+      // answers it locally answers it here. `hello` is the handshake and moves nothing.
+      onHubEvent: (ev) => {
+        if (ev.type === "resync_required") applyUserEvent(store, ev, () => undefined);
+      },
+    });
+    return () => conn.close();
+  }, [store, streamProjectId]);
   const sources = useMemo<(string | null)[]>(() => [null, ...machineIds], [machineIds]);
 
   // Loaded only when EVERY source has answered: one machine's first page arriving does not
