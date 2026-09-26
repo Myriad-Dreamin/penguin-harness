@@ -146,6 +146,14 @@ export const en: Strings = {
     detailChecked: "Checked",
     detailMachineId: "Machine id",
     detailRoot: "Server root",
+    /** The API socket this server holds to the machine (machines-view's socketReading). */
+    detailSocket: "API socket",
+    socket: {
+      connected: "Connected",
+      dialling: "Dialling",
+      refused: "Refused",
+      failed: "Failed",
+    },
     serverUpOn: (port: number) => `up on port ${port}`,
     output: "Output",
     agentsUnreachable: "That machine is not connected — use it from the Machines page",
