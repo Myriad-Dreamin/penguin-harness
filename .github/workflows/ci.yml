@@ -60,7 +60,10 @@ jobs:
 
   # A plugin's files changed without its plugin.json version moving: installed copies would
   # never learn about the change (the update flag reads the version). Compared against the
-  # pull request's base; a push has no base and the script passes on an empty one.
+  # pull request's base; a push has no base and the script passes on an empty one. The second
+  # step reads the content those versions gate -- the SKILL.md files themselves, which nothing
+  # else here opens -- and needs neither a build nor an install, so this job stays the cheap
+  # one it is.
   plugin-versions:
     name: plugin versions
     runs-on: ubuntu-latest
@@ -70,6 +73,8 @@ jobs:
           fetch-depth: 0
       - name: Changed plugins carry a new version
         run: node scripts/check-plugin-versions.mjs '${{ github.event.pull_request.base.sha }}'
+      - name: Shipped skill content is well-formed
+        run: node scripts/check-plugin-skills.mjs
 
   # The npm publishing path, walked without publishing. CI used to prove only that the sources
   # typecheck and the tests pass, and the release workflow built a different, narrower set -- so a
