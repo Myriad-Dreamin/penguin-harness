@@ -5,7 +5,11 @@
  *
  * - Response headers: text/event-stream, no-cache, `X-Accel-Buffering: no` (disables
  *   buffering on reverse proxies);
- * - Heartbeat: writes a `: ping` comment line every 20s; the connection is torn down on write failure;
+ * - Heartbeat: writes a `: ping` comment line every 20s; the connection is torn down on write
+ *   failure. A channel whose consumer must time the STREAM's own silence — the user channel,
+ *   which a machine's events reach the hub over (machines/event-hub.ts) and which the browser
+ *   watches for two missed beats — also gets a `heartbeat` server event on the same cadence: a
+ *   comment is invisible to everything that reads events rather than bytes;
  * - Replay protocol: a fresh subscription without Last-Event-ID does not replay the buffer
  *   (history is served by the messages endpoint) — it only sends the initial events the
  *   caller supplied (pending approvals / hello). With a Last-Event-ID that hits the buffer,
@@ -25,7 +29,8 @@ import type { LiveStreams } from "../auth/live-streams.js";
 import type { Auth } from "../mechanisms/identity.js";
 import { bearerToken, sessionCookies } from "../auth/middleware.js";
 
-const HEARTBEAT_MS = 20_000;
+/** The beat both the comment line and the `heartbeat` server event are written on (machines/event-hub.ts times the hub's silence by it). */
+export const HEARTBEAT_MS = 20_000;
 
 /** How the session behind one connection reaches the stream it authorised. */
 export interface SseRevocation {
@@ -42,6 +47,13 @@ export interface SseEndpointOptions {
   initialEvents?: ServerEvent[];
   /** Omitted only where there is no authenticated session to revoke. */
   revocation?: SseRevocation;
+  /**
+   * Also write a `heartbeat` server event every beat, not only the `: ping` comment. Set on
+   * the user channel, whose readers (a browser tab, and the hub reading a machine's events)
+   * must be able to tell a live stream from a silent one — the socket's ping and the comment
+   * line both being invisible to a stream's consumer.
+   */
+  heartbeatEvent?: boolean;
 }
 
 /**
@@ -151,6 +163,12 @@ export function sseEndpoint(c: Context, channel: Channel, opts: SseEndpointOptio
           return;
         }
         enqueue(() => stream.write(": ping\n\n"));
+        if (opts.heartbeatEvent === true) {
+          // Unicast: the beat is this subscriber's own liveness, so it consumes a seq (as any
+          // event does) but is neither buffered nor broadcast to the channel's other readers.
+          const beat: ServerEvent = { type: "heartbeat" };
+          channel.sendTo(listener, beat, "server_event");
+        }
       }, HEARTBEAT_MS);
 
       stream.onAbort(() => finish());
