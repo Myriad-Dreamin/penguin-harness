@@ -168,6 +168,14 @@ export const zh = {
     detailChecked: "上次检查",
     detailMachineId: "机器 ID",
     detailRoot: "服务端根目录",
+    /** The API socket this server holds to the machine (machines-view's socketReading). */
+    detailSocket: "API 套接字",
+    socket: {
+      connected: "已连接",
+      dialling: "拨号中",
+      refused: "被拒绝",
+      failed: "失败",
+    },
     serverUpOn: (port: number) => `运行中，端口 ${port}`,
     /** The progress log's own heading, so the block is not an unlabelled wall of text. */
     output: "输出",
