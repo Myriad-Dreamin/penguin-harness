@@ -208,6 +208,7 @@ describe("dashboardServers", () => {
     local: false,
     root: "$HOME/.penguin/data",
     connection: null,
+    socket: null,
     api: null,
     status: null,
     ...over,
