@@ -177,7 +177,8 @@ Installs this server's build on other hosts over ssh and manages the connections
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/projects/:projectId/machines` | This machine and the host aliases in the server's own `~/.ssh/config`, with this Project's installs, the last statuses and the current job: `{machines: [{id, alias, machineId, installed, elsewhere?, local, connection, api, status}], imageVersion, job}` |
+| GET | `/api/projects/:projectId/machines` | This machine and the host aliases in the server's own `~/.ssh/config`, with this Project's installs, the last statuses and the current job: `{machines: [{id, alias, machineId, installed, elsewhere?, local, connection, socket, api, status}], imageVersion, job}` |
+| GET | `/api/projects/:projectId/machines/events` | One SSE stream for this Project's connected machines: every machine's own events, each tagged with the machine it came from, on the hub's one subscription per machine — see **One event stream per machine** |
 | POST | `/api/projects/:projectId/machines/probe` | Asks this Project's installed machines what they are doing (one ssh round trip each, five at a time) and returns the list with fresh statuses |
 | POST | `/api/projects/:projectId/machines/:machineId/install` | Starts installing this build on that host and assigns the host to this Project; `202` with the same body while the job runs |
 | POST | `/api/projects/:projectId/machines/:machineId/connect` | Starts that machine's server and holds the one connection to it; `202` with the same body while the connect job runs |
@@ -201,6 +202,7 @@ These routes are admin only on a personal server as much as on a multi-user one:
 - `installed`: the last install this server carried out on that machine, as `{version, at}`, or `null` if there was none. It is stored under the data root, so it survives a restart, a hot push and installs on other machines. It records what was done rather than checking the far side, so a machine wiped by hand still shows as installed until the next install corrects it. A failed install records nothing.
 - `machineId`: the machine's own id, 16 base64url characters minted by the server running there (in its `machine` table). It stays the same across renames, alias changes and reinstalls, and stored references should point at it. It is `null` until a server has started on that machine, since nothing has minted it yet. The server learns it on the same round trip as `status` and stores it beside the install record. Two aliases for one host report the same `machineId`.
 - `local`: marks the machine this server runs on. It is always listed, always installed and always running, since it is the one answering, and it is never an install target: `POST …/install` on it returns `409` `self_install`.
+- `socket`: the API socket this server holds to that machine, as `{state, since, detail?}` — `connected` once the handshake completed, `dialling` while a dial is outstanding, `refused` when the machine answered the handshake with a status, `failed` when the dial itself failed — with `since` the instant that state was entered and `detail` the transport's own words where there are any. It is `null` for the local entry, and until a stream has asked for a socket at all. It is a fact about one process on this side, exactly like `connection`, and the Machines page reads it so a stuck stream does not have to be found in the browser console.
 - `status`: `{state, checkedAt, port?, detail?}`, where `state` is `running`, `stopped` or `unreachable`; `null` when the machine has never been probed. There is no separate ssh status. Because ssh is the transport, a machine ssh cannot reach is `unreachable`, and `detail` carries OpenSSH's own message. `GET` never probes and reports the last answer, because a probe costs one ssh round trip per machine while the list itself is only the config's text. Only `POST …/machines/probe` spends those round trips, and only on machines that have an install.
 
 ### Connected machine API
@@ -210,6 +212,25 @@ A connected machine's API is reachable at `/server/<machineId>/api/…` on this 
 The URL uses the machine's own id rather than the ssh alias it was reached through. An alias lives in one config file, so keying on it would change a machine's URLs as soon as someone renamed a host. The id is base64url, so it needs no percent-encoding in a path.
 
 This proxy is admin only and uses one identity: the request runs on the far side as that machine's admin, with a session this server mints through its own ssh access (`penguin auth token` on the machine). The browser's cookies never go across, and the machine's cookies never come back. Only `/api` is forwarded; the frontend stays local.
+
+**Streams ride the socket, and only it.** A request whose `accept` asks for `text/event-stream` is relayed over the socket this server holds to that machine; a stream forwarded over HTTP would be a never-ending response — one channel inside the ssh session — held per stream per machine, which is the pile of held connections the socket exists to remove. So when no socket can carry a stream, the proxy answers the request itself, in the error shape above, and the browser re-issues that stream on its own backoff (1 s doubling to 30 s, reset once the stream opens) rather than asking for an HTTP twin:
+
+- `502` `machine_socket_refused` — the machine answered the socket handshake with a status. That is a program predating the socket, or one that turned this server away; the refusal is remembered for a minute, so the streams of that minute are answered at once instead of dialling again, and such a machine is one whose program needs an update.
+- `502` `machine_socket_unavailable` — the dial to the machine failed. A dial that has neither opened nor failed within 10 s is torn down rather than awaited, so one stuck handshake can never hold every later stream of that machine behind it. This answer is not remembered: the next stream dials again.
+- `504` `machine_stream_not_opened` — the socket is up, but the machine has not opened the stream within 8 s. That is a socket left bound to an App a hot push disposed: the heartbeat keeps it looking alive while nothing is answered. It is torn down here, which ends every stream on it so the browser re-issues each, and the next stream dials the machine's current program.
+
+The socket belongs to the ssh session it was dialled through, not to the machine id alone: when the transport reopens the session — a drop, a reconnect — the socket dialled over the old one is closed and the next stream dials anew, so none outlives the connection it was made on. A machine's own non-streaming answer (a `403`, a `404`) is passed through as it is; only these three codes are the proxy's own.
+
+### One event stream per machine
+
+Watching N machines used to cost a tab N streams: it called `/server/<machineId>/api/events` once per machine, so a hub with T tabs held T × N upstream subscriptions, and one machine going quiet multiplied its re-issue storm by the number of tabs. The hub now holds ONE subscription to a machine's `/api/events`, over the same socket it holds to that machine, and serves every local reader from it — one machine's own stream, or any number of tabs:
+
+- `GET /api/projects/:projectId/machines/events` is the aggregate (admin only, on a Project this caller is a member of, like the routes above): one stream per tab whatever the machine count, carrying every connected machine's events, each tagged with the machine it came from. Its frames are `event: machine_event` with `data: {"machineId": "…", "event": {…ServerEvent}}`, and `event: heartbeat` on the SSE cadence — a tab tells a live aggregate from a stalled one by its frames, exactly as it does on `/api/events`.
+- `/server/<machineId>/api/events` keeps answering one machine's stream, out of that same subscription and in the machine's own words: the same events, the same ids, the same replay by `last-event-id` at the boundary the buffer still holds.
+
+A subscription carries its own replay buffer per machine — the most recent 10,000 events or 8MB, whichever comes first, like a channel's. That buffer is what answers a `last-event-id` a reader brings back: an id still in it is replayed from, an id the buffer never held (or has already evicted) is answered with `resync_required` first, and a fresh reader without one is answered with `hello`, as on `/api/events`. The buffer is bounded per MACHINE, never per reader: a reader that stops consuming has its own stream ended rather than buffered without limit, and re-issues it with its last event id.
+
+**A stream that goes silent is detected.** A machine's `/api/events` writes a `heartbeat` server event every 20 seconds, the same cadence as the socket's own ping — on the stream, where the socket's ping cannot be seen. That is what makes the second case of the board's console report visible: a machine whose App an earlier hot push disposed keeps the socket heartbeat while nothing arrives on the stream. The hub ends such an upstream subscription after two missed beats and re-subscribes it with the last event id the machine gave it; the browser ends its own stream on the same rule and re-issues it with its `last-event-id`. Two beats is the cheapest honest reading of "still there": a machine with nothing to say still beats.
 
 ### Jobs
 
@@ -1076,7 +1097,8 @@ Real-time delivery uses Server-Sent Events, not WebSocket, on two kinds of chann
 | Channel | Path | Contents |
 | --- | --- | --- |
 | Per Session | `GET /api/sessions/:sessionId/stream` | The Session's message stream and run events, including `session_created` for its subagent Sessions and the goal-mode events |
-| Per user | `GET /api/events` | The `hello` handshake and notifications across Sessions: `session_created`, `session_state`, `session_background`, `session_title`, `schedule_fired`, `schedule_queued`, `web_updated` and company mode's `org_*` events |
+| Per user | `GET /api/events` | The `hello` handshake and notifications across Sessions: `session_created`, `session_state`, `session_background`, `session_title`, `schedule_fired`, `schedule_queued`, `web_updated` and company mode's `org_*` events, with a `heartbeat` every 20 s |
+| Per Project's machines | `GET /api/projects/:projectId/machines/events` | Every connected machine's own events, each tagged with the machine it came from, merged from the hub's one subscription per machine (**One event stream per machine**) |
 
 ### Wire Format
 
@@ -1100,6 +1122,7 @@ export type ServerEvent =
   | { type: "resync_required" }
   | { type: "credentials_updated" }
   | { type: "hello" }
+  | { type: "heartbeat" }
   | { type: "web_updated"; rev: string }
   | { type: "session_created"; projectId: string; agentId: string; sessionId: string; source?: SessionSource; client?: "org" }
   | { type: "schedule_fired"; projectId: string; agentId: string; name: string; sessionId: string }
@@ -1123,6 +1146,7 @@ export type ServerEvent =
 | `resync_required` | The `Last-Event-ID` was evicted from the buffer; the client must refetch history |
 | `credentials_updated` | The Project's model credentials changed |
 | `hello` | Handshake on the user channel |
+| `heartbeat` | The stream's own beat, every 20 s: on `/api/events` and on the machines' aggregate, so a reader can tell a live stream from a silent one |
 | `web_updated` | A hot update replaced the served web assets; clients reload |
 | `session_created` | A Session now exists: created by the Web App, the CLI, a schedule, or an agent spawning a child |
 | `schedule_fired` | A scheduled task fired and its prompt was delivered |
@@ -1141,6 +1165,7 @@ export type ServerEvent =
 - `session_state` names the Session by `sessionId`, so every row of a Session list stays live, not only the conversation a client has open. It carries the row fields needed to redraw the row without refetching: `lastActiveAt` as just stamped, and `hasTrace`, which is true whenever the state is `running` or `compacting`, because a running Session has by definition started a Task. It is sent to the user channels of the Project's owner and members.
 - `session_background` fires when a command moves to the background past its yield window or starts with `run_in_background`, when a process exits or is stopped, and when a background subagent starts, settles or is released. It carries `SessionInfo.backgroundTasks` as it now stands (`processes` = background command sessions still running, `subagents` = subagent Sessions moved to the background and mid-round), zeros included, so a list can clear its mark without refetching. The list rows and the single-Session GET omit the field when both counts are zero. Its audience is the same as for `session_state`.
 - `credentials_updated` follows `PUT /models` or a completed key-minting flow. Cached runtimes were invalidated, so the client clears any composer state disabled by an auth failure.
+- `heartbeat` is written by the endpoint's own SSE writer every 20 seconds — on `/api/events` and on a machine's aggregate stream (**One event stream per machine**). It is what a reader times its own silence by: the socket's ping and the SSE comment line are invisible to a stream consumer, so a stream that stops while the socket stays healthy would otherwise look alive forever.
 - `web_updated` carries the new web revision as `rev` and is sent to every user channel.
 - `session_created` is sent for every creation to the user channels of the Project's owner and members, and for a subagent also on the parent Session's channel. `source` is absent for a user-created Session, as it is on the row. `client` is `"org"` for a Session an organization opened (a desk or ticket Session, or a child of one) and absent otherwise, so a list that asks with `excludeOrg=1` can skip the refetch. A title set through `PATCH /api/sessions/:id` is announced as `session_title` the same way.
 - `schedule_fired` names in `sessionId` the Session that received the prompt, which in new-Session mode is a new Session. A queued firing is sent once the Session is idle.
@@ -1152,7 +1177,7 @@ export type ServerEvent =
 - Event ids increase monotonically per channel and have the form `<epoch>-<seq>`.
 - Each channel keeps a bounded replay buffer: the most recent 10,000 events or 8MB.
 - On reconnect with `Last-Event-ID`, the server replays the gap if the id is still in the buffer. Otherwise it first sends `resync_required`, and the client refetches `/messages` before continuing.
-- A heartbeat comment line is written every 20 seconds. The same beat re-checks the session behind the connection and ends the stream when that session is gone or has expired, so a client whose sign-in was revoked stops streaming instead of waiting for its next request to fail. Revoking sessions directly — an admin resetting a password or deleting an account — ends that user's open streams at once; the heartbeat is the catch-all. A stream authenticated by the local API token has no session row and is left alone.
+- A heartbeat comment line is written every 20 seconds, and a `heartbeat` server event on the same cadence on `/api/events` and on a machine's aggregate stream: a comment is invisible to a stream's consumer, so a stream that goes silent while its socket stays up is detected by the stream's own reader, not by the connection's. The same beat re-checks the session behind the connection and ends the stream when that session is gone or has expired, so a client whose sign-in was revoked stops streaming instead of waiting for its next request to fail. Revoking sessions directly — an admin resetting a password or deleting an account — ends that user's open streams at once; the heartbeat is the catch-all. A stream authenticated by the local API token has no session row and is left alone.
 - Event order: on a reconnect that carries `Last-Event-ID`, the replayed gap (or `resync_required`) arrives first, then the initial events (the authoritative `task_state` snapshot and any still-pending `approval_request`s), then the live stream. A fresh connection without `Last-Event-ID` skips the replay, so its first event is the `task_state` snapshot.
 
 ### Recommended Client Pattern
@@ -1177,7 +1202,8 @@ Frames are JSON text frames, ids are the client's and unique for the socket's li
 // client -> server
 { "id": 1, "call": { "method": "GET", "path": "/api/projects" } }
 { "id": 2, "call": { "method": "GET", "path": "/api/sessions/session-…/stream", "headers": { "last-event-id": "3-41" } } }
-{ "id": 3, "call": { "method": "GET", "path": "/server/<machineId>/api/events" } }   // a machine's endpoint, as the proxy names it
+{ "id": 3, "call": { "method": "GET", "path": "/server/<machineId>/api/events" } }   // one machine's endpoint, as the proxy names it
+{ "id": 4, "call": { "method": "GET", "path": "/api/projects/<projectId>/machines/events" } }   // every machine's events, one stream
 { "id": 2, "cancel": true }                                                          // end a streaming call
 
 // server -> client
@@ -1188,6 +1214,8 @@ Frames are JSON text frames, ids are the client's and unique for the socket's li
 ```
 
 Only `last-event-id`, `accept` and `content-type` are honoured in `call.headers`; credentials come from the handshake. A JSON body is sent as `application/json`; multipart bodies and binary responses (downloads) do not ride the socket — the latter answer `415 unsupported_transport`, and the client fetches instead. The server pings on the SSE heartbeat's cadence and terminates a peer silent for two beats; a client lagging past the send watermark has its stream ended with `reason: "lagging"` — the delivery guarantees above then apply to the re-issued call exactly as to a reconnect.
+
+A machine's events are calls on the tab's socket, and the hop under each is socket-only as well: when no socket to that machine can carry the stream, the call is answered `502`/`504` with the reason **Connected machine API** spells out, never by an HTTP forward, and the client re-issues it on its own backoff. The tab no longer opens one such call per machine, though. It opens ONE — `GET /api/projects/<projectId>/machines/events` — and the hub fans its own one-subscription-per-machine into it, tagging each event with the machine it came from (**One event stream per machine**). So a tab's stream count is a constant whatever the machine count, and the hub's holds one stream per machine, never one per tab per machine.
 
 ## Type Imports
 
