@@ -740,6 +740,22 @@ html.dark .code-lines .line::before {
   @apply bg-gray-950 text-gray-600;
 }
 
+/* The proposal file panel's name-pattern matches: a wash over each matched line, and the
+   matched span painted through the Custom Highlight API (proposal-file-panel.tsx), which leaves
+   the highlighter's markup alone. A background wash, not a status tone. */
+.proposal-file .line[data-match] {
+  @apply bg-amber-50;
+}
+html.dark .proposal-file .line[data-match] {
+  @apply bg-amber-400/10;
+}
+::highlight(proposal-match) {
+  background-color: rgb(252 211 77 / 0.6);
+}
+html.dark ::highlight(proposal-match) {
+  background-color: rgb(245 158 11 / 0.35);
+}
+
 /* The editor's two layers, stacked in one grid cell so the taller of them sizes the box and a
    single scroll container moves both — no scroll syncing in JS, and so nothing to drift. The
    textarea keeps a visible caret over transparent text and must not scroll on its own. */
