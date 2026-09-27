@@ -1099,6 +1099,7 @@ export class FakeServer {
       brief: "",
       root: "",
       scope: [],
+      tests: [],
       sections: [],
       comments: [],
       events: [],
@@ -1150,7 +1151,7 @@ export class FakeServer {
         });
         return this.json(created, 201);
       }
-      return this.json({ proposals: list(), channelId: "proposals" });
+      return this.json({ proposals: list() });
     }
     const number = Number(b);
     const proposal = proposals.get(number);
