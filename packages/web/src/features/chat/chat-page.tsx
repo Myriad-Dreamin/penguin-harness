@@ -157,7 +157,7 @@ import {
   panelDock,
   subscribeDock,
 } from "../dock/dock-state";
-import { terminalApiSupported, subscribeTerminals } from "../terminal/terminal-list";
+import { terminalApiSupported, subscribeTerminals } from "../terminal";
 import { advancePanelTaskScope, createPanelTaskScope } from "./panel-task-scope";
 import { useSessionDraft } from "./use-session-draft";
 import { useSessionStream } from "./use-session-stream";
