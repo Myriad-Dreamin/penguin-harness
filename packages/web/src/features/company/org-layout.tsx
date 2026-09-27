@@ -290,12 +290,15 @@ export function OrgLayout() {
  */
 export function OrgPage({
   title,
+  heading,
   info,
   actions,
   wide = false,
   children,
 }: {
   title: string;
+  /** What the heading shows when it is more than the plain title (a title with its changes marked); `title` still names the "?". */
+  heading?: ReactNode;
   info?: string;
   actions?: ReactNode;
   /** Board-shaped pages take the whole width; the rest read better in a column. */
@@ -306,7 +309,7 @@ export function OrgPage({
     <OrgFrame wide={wide}>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h1 className={`flex min-w-0 items-center ${ICON_GAP.row} text-xl font-semibold`}>
-          {title}
+          {heading ?? title}
           {info !== undefined && <InfoPopover label={title}>{info}</InfoPopover>}
         </h1>
         {actions !== undefined && (
