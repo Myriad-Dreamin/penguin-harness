@@ -23,12 +23,12 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import * as api from "../../api/endpoints";
 import type { OrgRoadmapItem } from "../../api/endpoints";
+import { writeClipboard } from "../../lib/clipboard";
 import { S } from "../../lib/strings";
 import { ICON_GAP, ICON_SIZE } from "../../lib/icon-scale";
 import { toneInk } from "../../lib/tone";
 import { STAT_ICONS } from "../../lib/stat-icons";
 import { useRowContextMenu } from "../../components/ui/context-menu";
-import { writeClipboard } from "../../components/ui/copy-button";
 import { Dropdown } from "../../components/ui/dropdown";
 import { FOLDER_ROW_CLASS, FolderSection, Icon } from "../../components/ui/group-list";
 import { NAV_ICONS, PlusIcon } from "../../components/ui/icons";
@@ -111,8 +111,7 @@ export function RoadmapRow({
   const copy = (text: string) => {
     link()?.focus();
     ctx.close();
-    writeClipboard(text);
-    toastSuccess(S.common.copied);
+    void writeClipboard(text).then((ok) => ok && toastSuccess(S.common.copied));
   };
   return (
     <li
