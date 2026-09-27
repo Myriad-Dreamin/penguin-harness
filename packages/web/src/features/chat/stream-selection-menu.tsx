@@ -36,7 +36,7 @@ import {
 } from "../../lib/selection-menu";
 import type { ComposerReference } from "../../lib/workspace-tree";
 import { useRowContextMenu } from "../../components/ui/context-menu";
-import { writeClipboard } from "../../components/ui/copy-button";
+import { writeClipboard } from "../../lib/clipboard";
 import { Dropdown } from "../../components/ui/dropdown";
 import { ADD_TO_CHAT_ICON } from "../../components/ui/icons";
 import { overflowMenuGlyph, overflowMenuRowClass } from "../../components/ui/session-row-menu";
@@ -81,8 +81,7 @@ export function SelectionMenuRows({
             type="button"
             className={overflowMenuRowClass}
             onClick={() => {
-              writeClipboard(selection.text);
-              toastSuccess(S.common.copied);
+              void writeClipboard(selection.text).then((ok) => ok && toastSuccess(S.common.copied));
               onDone(selection);
             }}
           >

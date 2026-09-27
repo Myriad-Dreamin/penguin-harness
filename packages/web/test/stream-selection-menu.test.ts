@@ -3,8 +3,8 @@
  * own element tree for their click handlers — node env, no DOM): the rows it draws, and what
  * each does with the selection it was opened on. "Add to conversation" stages a chip
  * through the composer's control — the same `addReference` the Files panel stages through —
- * and that chip shows the excerpt rather than a path; Copy writes the selection and confirms
- * with a toast, the menu-row convention.
+ * and that chip shows the excerpt rather than a path; Copy writes the selection through the
+ * clipboard entry and confirms with a toast, the menu-row convention — once the write landed.
  *
  * Reading the selection off the page and anchoring the panel are DOM work this environment
  * cannot run; the rules deciding both are pinned in selection-menu.test.ts.
@@ -36,6 +36,11 @@ vi.mock("../src/components/ui/toast", async (importOriginal) => {
   };
 });
 
+/** The clipboard entry's answer for the next write (its own behaviour is clipboard.test.ts's). */
+const writeClipboard = vi.hoisted(() => vi.fn<(text: string) => Promise<boolean>>());
+
+vi.mock("../src/lib/clipboard", () => ({ writeClipboard }));
+
 const EXCERPT = "Run the migration first.\nThen restart the server so it picks up the new schema.";
 
 /** A selection as the stream captures it: the text as selected (a trailing newline included). */
@@ -59,7 +64,7 @@ const label = (row: Row) =>
 afterEach(() => {
   setActiveStrings(zh);
   toasts.length = 0;
-  vi.unstubAllGlobals();
+  writeClipboard.mockReset();
 });
 
 describe("SelectionMenuRows", () => {
@@ -134,17 +139,30 @@ describe("Add to conversation", () => {
 });
 
 describe("Copy", () => {
-  it("writes the selection as it was selected, and confirms with a toast", () => {
-    const writeText = vi.fn(async () => {});
-    vi.stubGlobal("navigator", { clipboard: { writeText } });
+  it("writes the selection as it was selected, and confirms with a toast", async () => {
+    writeClipboard.mockResolvedValue(true);
     const onDone = vi.fn();
     const copy = rows({ selection: SELECTION, onAddExcerpt: () => {}, onDone }).find(
       (row) => label(row) === S.common.copy,
     );
     copy!.props.onClick();
 
-    expect(writeText).toHaveBeenCalledExactlyOnceWith(SELECTION.text);
-    expect(toasts).toEqual([S.common.copied]);
+    expect(writeClipboard).toHaveBeenCalledExactlyOnceWith(SELECTION.text);
+    expect(onDone).toHaveBeenCalledExactlyOnceWith(SELECTION);
+    await vi.waitFor(() => expect(toasts).toEqual([S.common.copied]));
+  });
+
+  it("raises no toast when the write was refused", async () => {
+    writeClipboard.mockResolvedValue(false);
+    const onDone = vi.fn();
+    const copy = rows({ selection: SELECTION, onAddExcerpt: () => {}, onDone }).find(
+      (row) => label(row) === S.common.copy,
+    );
+    copy!.props.onClick();
+    await writeClipboard.mock.results[0]?.value;
+    await Promise.resolve();
+
+    expect(toasts).toEqual([]);
     expect(onDone).toHaveBeenCalledExactlyOnceWith(SELECTION);
   });
 });

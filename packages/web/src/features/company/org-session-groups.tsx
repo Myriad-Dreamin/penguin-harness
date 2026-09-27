@@ -36,7 +36,7 @@ import { useLiveSessionStatuses } from "../../state/sessions";
 import { EmployeeAvatar, FACE_PX } from "./employee-avatar";
 import { Button } from "../../components/ui/button";
 import { useRowContextMenu } from "../../components/ui/context-menu";
-import { writeClipboard } from "../../components/ui/copy-button";
+import { writeClipboard } from "../../lib/clipboard";
 import { Dropdown } from "../../components/ui/dropdown";
 import { FolderSection, Icon } from "../../components/ui/group-list";
 import { MESSAGING_RELAY_ICON } from "../../components/ui/icons";
@@ -155,9 +155,9 @@ function DeskRow({
     }
     if (action === "copy") {
       // The panel closes under the click, so the confirmation is a toast rather than
-      // feedback on the row that ran it — the development list's rule for the same action.
-      writeClipboard(sessionId);
-      toastSuccess(S.common.copied);
+      // feedback on the row that ran it — the development list's rule for the same action —
+      // and it appears only once the write has landed.
+      void writeClipboard(sessionId).then((ok) => ok && toastSuccess(S.common.copied));
     }
   };
   /**
