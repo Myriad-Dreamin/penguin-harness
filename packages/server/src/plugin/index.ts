@@ -15,11 +15,23 @@ export type { Terminals } from "../terminal/manager.js";
 export type { Sessions, SessionServiceIface } from "../runtime/session-manager.js";
 export type { AgentService } from "../services/agent-service.js";
 export type { AgentConfigService } from "../services/agent-config-service.js";
-export type { Messaging, MessagingSlots } from "../runtime/messaging/bridge.js";
+export type {
+  Messaging,
+  MessagingSlots,
+  MessagingTaskRunner,
+} from "../runtime/messaging/bridge.js";
 export type { AgentLifecycle } from "../mechanisms/agents.js";
 export type { Log, Paths } from "../hmr/capabilities.js";
 export type { Settings } from "../mechanisms/settings.js";
-export type { OrgActor, OrgEmployeeView, OrgGateway, OrgView } from "../mechanisms/organization.js";
+export type { SessionIndex } from "../mechanisms/sessions.js";
+export type {
+  OrgActor,
+  OrgChannelRef,
+  OrgEmployeeView,
+  OrgGateway,
+  OrgGatewaySlots,
+  OrgView,
+} from "../mechanisms/organization.js";
 export type {
   PluginConfig,
   PluginConfigField,
