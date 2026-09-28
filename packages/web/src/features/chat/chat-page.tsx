@@ -52,6 +52,7 @@ import {
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { switchDeskModel } from "../company/desk-model";
+import { conversationMode } from "../company/company-nav";
 import { useCompany } from "../../state/company";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
@@ -66,7 +67,7 @@ import {
   humanizeDurationLive,
   humanizeTokens,
 } from "../../lib/format";
-import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
+import { isOrgSession, latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
 import {
   sessionActivity,
   sessionActivityLabel,
@@ -503,6 +504,22 @@ export function ChatPage() {
     probeKey !== null && probeFailedKey === probeKey,
   );
   const selected = draft ? null : heldSession.current;
+  // Entering a conversation is a choice of mode, as entering an organization route is
+  // (features/company/org-layout.tsx): the new-chat draft and the user's own conversations are
+  // development mode's, so the switch and the sidebar follow whichever way the page was reached
+  // — a typed URL, the tray's New Session, a link. Once per route, like the organization
+  // routes: the switch's own move to company mode leaves this page, and re-claiming on a mode
+  // change would undo the click before it does. A desk or ticket Session claims nothing.
+  const { available: companyAvailable, setWorkMode } = company;
+  const claimedMode = conversationMode(draft, selected === null ? null : isOrgSession(selected));
+  const claimedRoute = useRef<string | null>(null);
+  useEffect(() => {
+    if (routeSessionId === null || claimedMode === null) return;
+    if (claimedRoute.current === routeSessionId) return;
+    claimedRoute.current = routeSessionId;
+    if (companyAvailable) setWorkMode(claimedMode);
+  }, [routeSessionId, claimedMode, companyAvailable, setWorkMode]);
+
   /**
    * The Agent this page renders under: the routed Session's own, else the current Agent (a
    * draft has no Session). The current Agent is resolved against THIS server's Agent list and
