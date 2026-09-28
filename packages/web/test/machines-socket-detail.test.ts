@@ -29,6 +29,7 @@ const NAS = "2026-08-24T12:00:00.000Z";
 const machine = (socket: MachineSocketFact | null): MachineInfo => ({
   id: "ssh:nas",
   alias: "nas",
+  kind: "ssh",
   machineId: "noeSE0FFHhNXl2J5",
   installed: { version: "9.9.9", at: NAS },
   local: false,

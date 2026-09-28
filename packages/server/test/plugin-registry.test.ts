@@ -329,6 +329,20 @@ describe("the builtin index and the packages it lists", () => {
     }
   });
 
+  it("files the three machine kinds under their own category", () => {
+    const kinds = built.filter(([, { dir }]) => dir.startsWith("machine-"));
+    expect(kinds.map(([name]) => name).sort()).toEqual([
+      "@prismshadow/penguin-plugin-machine-docker",
+      "@prismshadow/penguin-plugin-machine-ssh",
+      "@prismshadow/penguin-plugin-machine-wsl",
+    ]);
+    for (const [name, { manifest }] of kinds) {
+      expect(manifestOf(manifest as never, name, manifest.version, hash("c")).categories).toEqual([
+        "machine",
+      ]);
+    }
+  });
+
   it("serves each package's own README.md, which the package ships", async () => {
     const shipped = await shippedPrefix(built.map(([name]) => name));
     try {
