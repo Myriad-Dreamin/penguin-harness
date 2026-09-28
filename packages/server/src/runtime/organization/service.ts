@@ -3080,9 +3080,7 @@ export class OrganizationModule {
     // The channels plugins handle themselves (OrgGatewaySlots.channelClaims): none, and every
     // channel delivers its mentions as before.
     const channelClaimed = channelClaimsOf(
-      (contributions.channelClaims ?? []).map(
-        (c) => c.code as (channel: OrgChannelRef) => boolean,
-      ),
+      (contributions.channelClaims ?? []).map((c) => c.code as (channel: OrgChannelRef) => boolean),
       (err, channel) =>
         this.errors.record({
           source: "organization",
