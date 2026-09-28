@@ -94,6 +94,8 @@ export function dropPortForwardsAndLater(db: DatabaseSync): void {
   db.exec(
     "DROP INDEX IF EXISTS idx_port_forwards_local_in; DROP INDEX IF EXISTS idx_port_forwards_machine; DROP TABLE IF EXISTS port_forwards;",
   );
+  // And the machine definitions, newer still.
+  db.exec("DROP TABLE IF EXISTS machine_definitions;");
 }
 
 /** Takes user-profile's two columns off a database built from the current declaration. */

@@ -70,6 +70,41 @@ export const PLUGINS_FILE = ".project_config.toml";
 
 export type { LoadedPlugin } from "./host.js";
 
+/**
+ * The RESIDENT builtin plugins: loaded whatever the Projects list, the one exception to the
+ * rule above. A resident plugin is not in any Project's list, so the strict alignment that
+ * hands a Project's list to its machines (machines/plugins-sync.ts) neither sends it nor
+ * takes it away — a machine loads it by the same rule, in its own build.
+ *
+ * One entry, reviewed on its own (changelog: backward-compatibility): the ssh machine kind.
+ * Machines were ssh before kinds were plugins, and every ssh machine a deployment uses would
+ * vanish from its list until someone enabled a plugin nobody knew was needed.
+ *
+ * RESIDENT MEANS SHIPPED: it is loaded when a builtin prefix — the pushed assets, the
+ * installation's own — carries it, never found by accident beside the program. A build that
+ * ships none (a source checkout nothing was pushed to) runs without it, the way it runs without
+ * every other builtin plugin, and its machines read "kind unavailable". One that ships it and
+ * fails to load it is reported and skipped like any plugin; the server comes up either way.
+ */
+export const RESIDENT_PLUGINS: readonly string[] = ["@prismshadow/penguin-plugin-machine-ssh"];
+
+/**
+ * The closure with the resident plugins this build ships put first, asking for nothing: such a
+ * plugin resolves to the store's highest version of it — what the build carries before any
+ * other content of that version — whatever a Project's table says of it. One the build does
+ * not ship stays as the Projects list it (or absent), like any other plugin.
+ */
+export function withResident(
+  asks: ReadonlyMap<string, PluginAsk[]>,
+  resident: readonly string[],
+  shipped: ReadonlySet<string>,
+): Map<string, PluginAsk[]> {
+  const out = new Map<string, PluginAsk[]>();
+  for (const name of resident) if (shipped.has(name)) out.set(name, []);
+  for (const [name, list] of asks) if (!out.has(name)) out.set(name, list);
+  return out;
+}
+
 export interface PluginLoadResult {
   loaded: LoadedPlugin[];
   /** specifier → why it was skipped. */
@@ -589,13 +624,20 @@ export async function loadPlugins(
   reuse: ReadonlyMap<string, LoadedPlugin> = new Map(),
   /** This server's own machine id, which selects its `[plugins.<id>]` tables; null reads the shared tables alone. */
   machineId: string | null = null,
+  /** Loaded whatever the Projects list (RESIDENT_PLUGINS); a test passes its own. */
+  resident: readonly string[] = RESIDENT_PLUGINS,
 ): Promise<PluginLoadResult> {
   const failed = new Map<string, string>();
   const pushedAssets = assetsDir === undefined ? await committedAssetsDir(root) : assetsDir;
   // The closure over this root's Projects, and nothing else. A plugin the BUILD ships is
   // available without a download — that is what `builtin` means — but availability is not
-  // consent: it loads when a Project asks for it, like every other plugin.
-  const asks = await readPluginAsks(root, machineId);
+  // consent: it loads when a Project asks for it, like every other plugin — a resident one
+  // excepted, which loads first and whatever the Projects say.
+  const asks = withResident(
+    await readPluginAsks(root, machineId),
+    resident,
+    new Set(await shippedNames(pushedAssets)),
+  );
   // The generation the closure resolves to becomes current before anything is imported. When
   // activation itself fails, whatever generation was current stays so and is loaded.
   let activation: Activation | null = null;
@@ -718,13 +760,15 @@ export async function loadPluginHost(
   assetsDir?: string | null,
   /** This server's own machine id (see loadPlugins). */
   machineId: string | null = null,
+  /** Loaded whatever the Projects list (see loadPlugins); a test passes its own. */
+  resident: readonly string[] = RESIDENT_PLUGINS,
 ): Promise<PluginHost> {
   const inherited = pluginHostFrom(resources);
   // An older generation's host may predate `entries()`; then nothing is reused and every
   // specifier is imported again, which the ESM cache makes cheap.
   const reuse =
     typeof inherited.entries === "function" ? inherited.entries() : new Map<string, LoadedPlugin>();
-  const result = await loadPlugins(root, assetsDir, reuse, machineId);
+  const result = await loadPlugins(root, assetsDir, reuse, machineId, resident);
   const host = new PluginHost();
   for (const entry of result.loaded) {
     // A module name clash is a LOAD failure, isolated per entry like an import failure.

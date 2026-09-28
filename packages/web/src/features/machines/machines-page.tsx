@@ -21,12 +21,21 @@
  * never move when a selection appears or goes. A queued or working card grows a stepper under its name, one
  * segment per step of the pipeline, fed by the step the server says it is on.
  *
+ * Machines are of KINDS the server's plugins contribute (ssh, WSL, a container): the page knows
+ * none of them. The + and the gear draw each kind's own form (machine-definition-dialog.tsx);
+ * a card whose kind is not loaded here says so and offers nothing to do.
+ *
  * The page polls while a job is queued or running, and re-probes the servers on a widening
  * schedule (probe-schedule.ts) so a machine that went quiet is noticed without a tap.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import type { MachineInfo, MachineJob, MachinesResponse } from "@prismshadow/penguin-server/api";
+import type {
+  MachineInfo,
+  MachineJob,
+  MachineKindInfo,
+  MachinesResponse,
+} from "@prismshadow/penguin-server/api";
 import {
   Badge,
   Button,
@@ -68,8 +77,9 @@ import {
 import type { MachineReading } from "./machines-view";
 import { MAX_VISIBLE_MACHINES, highlightSegments, matchMachines } from "./machines-match";
 import { probeDelayMs, probeFingerprint } from "./probe-schedule";
-import { SshHostDialog } from "./ssh-host-dialog";
-import type { HostFormMode } from "./ssh-host-dialog";
+import { MachineDefinitionDialog } from "./machine-definition-dialog";
+import type { DefinitionFormMode } from "./machine-definition-dialog";
+import { localizedText } from "../chat/skill-use";
 
 /** How often the page re-reads the list while a job is queued or running. */
 const POLL_MS = 1500;
@@ -163,8 +173,8 @@ export function MachinesPage() {
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   /** Cards unfolded to show their details. */
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  /** The form that adds a host to the ssh config, or configures one; null while closed. */
-  const [hostForm, setHostForm] = useState<HostFormMode | null>(null);
+  /** The form that defines a machine by hand, or configures one; null while closed. */
+  const [definitionForm, setDefinitionForm] = useState<DefinitionFormMode | null>(null);
   const [pendingVerb, setPendingVerb] = useState<PendingVerb | null>(null);
 
   /** The picker panel; closing it always clears the query and its picks, so it reopens fresh. */
@@ -233,9 +243,23 @@ export function MachinesPage() {
   /** Machines in use that carry another build: what one tap brings to this server's version. */
   const behind = useMemo(() => (state === null ? [] : behindMachines(state)), [state]);
 
-  /** Hosts the picker offers: in the config, not this machine, not already in use here. */
+  const kinds = useMemo(() => state?.kinds ?? [], [state]);
+  const kindOf = (machine: MachineInfo): MachineKindInfo | null =>
+    kinds.find((k) => k.kind === machine.kind) ?? null;
+  const kindTitle = (machine: MachineInfo): string => {
+    const kind = kindOf(machine);
+    return kind === null ? machine.kind : localizedText(locale, kind.title, kind.titleZh);
+  };
+  /** More than one kind loaded: the picker says which each row is. */
+  const severalKinds = kinds.length > 1;
+  const definable = kinds.some((k) => k.form !== null);
+  /** Machines the picker offers: listed by a loaded kind, not this machine, not already in use here. */
   const addable = useMemo(
-    () => machines.filter((machine) => !machine.local && !inUseIds.has(machine.id)),
+    () =>
+      machines.filter(
+        (machine) =>
+          !machine.local && machine.unavailable === undefined && !inUseIds.has(machine.id),
+      ),
     [machines, inUseIds],
   );
   const matched = useMemo(() => matchMachines(addable, query), [addable, query]);
@@ -314,6 +338,7 @@ export function MachinesPage() {
                 const alias = byId.get(machineId) ?? machineId;
                 if (why === "self") return S.machines.refusedSelf(alias);
                 if (why === "no-image") return S.machines.noImage;
+                if (why === "kind-unavailable") return S.machines.refusedKind(alias);
                 return S.machines.refusedUnknown(alias);
               })
               .join(" "),
@@ -356,10 +381,14 @@ export function MachinesPage() {
               body: S.machines.updateAllConfirm(pendingVerb.ids.length),
               tone: "primary" as const,
             };
-  const configure = async (alias: string) => {
+  const configure = async (machine: MachineInfo) => {
     if (projectId === null) return;
     try {
-      setHostForm({ kind: "edit", host: await api.getSshHost(projectId, alias) });
+      setDefinitionForm({
+        kind: "edit",
+        machineKind: machine.kind,
+        definition: await api.getMachineDefinition(projectId, machine.kind, machine.alias),
+      });
     } catch (err) {
       toastError(apiErrorText(err));
     }
@@ -457,6 +486,11 @@ export function MachinesPage() {
                                 </span>
                               ))}
                         </span>
+                        {severalKinds && (
+                          <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                            {kindTitle(machine)}
+                          </span>
+                        )}
                         {/* Installed by this server for another Project: adding it costs no
                             transfer, and the version says whether it is current. */}
                         {machine.elsewhere !== undefined && (
@@ -490,15 +524,19 @@ export function MachinesPage() {
                 ) : (
                   <span />
                 )}
-                <Verb
-                  label={S.machines.host.newVerb}
-                  title={S.machines.host.addTitle}
-                  d={ICONS.plus}
-                  onClick={() => {
-                    setPickerOpen(false);
-                    setHostForm({ kind: "add" });
-                  }}
-                />
+                {definable ? (
+                  <Verb
+                    label={S.machines.definition.newVerb}
+                    title={S.machines.definition.newTitle}
+                    d={ICONS.plus}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setDefinitionForm({ kind: "add" });
+                    }}
+                  />
+                ) : (
+                  <span />
+                )}
               </div>
               {/* The confirm appears once something is picked; an empty footer says nothing. */}
               {adding.size > 0 && (
@@ -533,12 +571,17 @@ export function MachinesPage() {
           </NoticeStrip>
         )}
       </PageHeader>
-      {projectId !== null && hostForm !== null && (
-        <SshHostDialog
-          key={hostForm.kind === "edit" ? hostForm.host.alias : "add"}
-          mode={hostForm}
+      {projectId !== null && definitionForm !== null && (
+        <MachineDefinitionDialog
+          key={
+            definitionForm.kind === "edit"
+              ? `${definitionForm.machineKind}:${definitionForm.definition.name}`
+              : "add"
+          }
+          mode={definitionForm}
+          kinds={kinds}
           projectId={projectId}
-          onClose={() => setHostForm(null)}
+          onClose={() => setDefinitionForm(null)}
           onSaved={(next) => {
             setState(next);
             setError(null);
@@ -626,7 +669,12 @@ export function MachinesPage() {
                   : void use([machine.id])
               }
               onStopUsing={() => setPendingVerb({ kind: "stopUsing", ids: [machine.id] })}
-              onConfigure={() => void configure(machine.alias)}
+              kindTitle={kindTitle(machine)}
+              onConfigure={
+                machine.unavailable === undefined && kindOf(machine)?.form != null
+                  ? () => void configure(machine)
+                  : null
+              }
               onPorts={
                 machine.machineId === null
                   ? null
@@ -826,6 +874,7 @@ function MachineCard({
   busy,
   onUse,
   onStopUsing,
+  kindTitle,
   onConfigure,
   onPorts,
 }: {
@@ -840,12 +889,17 @@ function MachineCard({
   busy: boolean;
   onUse: (replaceProgram: boolean) => void;
   onStopUsing: () => void;
-  onConfigure: () => void;
+  /** The kind's name for this card's machine. */
+  kindTitle: string;
+  /** Opens the kind's form for this machine; null when its kind has none, or is not loaded. */
+  onConfigure: (() => void) | null;
   /** Opens this machine's Ports page; null while the machine has no id to address it by. */
   onPorts: (() => void) | null;
 }) {
   const reading = readMachine(machine, job, imageVersion);
-  const tone = readingTone(reading);
+  // A kind that is not loaded here: the record is shown, and nothing can be done to it.
+  const unavailable = machine.unavailable;
+  const tone = unavailable !== undefined ? "attention" : readingTone(reading);
   const moving = reading.kind === "working" || reading.kind === "queued";
   const step = moving ? stepIndex(job) : -1;
   const caption =
@@ -871,7 +925,14 @@ function MachineCard({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className={`${MONO} truncate font-medium`}>{machine.alias}</div>
-          {moving ? (
+          {unavailable !== undefined ? (
+            <div
+              className={`mt-0.5 truncate text-xs ${toneInk.attention}`}
+              data-tooltip={unavailable}
+            >
+              {`${S.machines.kindUnavailable} · ${kindTitle}`}
+            </div>
+          ) : moving ? (
             <Stepper step={step} caption={caption} />
           ) : (
             <div
@@ -883,7 +944,7 @@ function MachineCard({
             </div>
           )}
         </div>
-        {wantsUse(reading) && (
+        {wantsUse(reading) && unavailable === undefined && (
           <Verb label={S.machines.use} d={PLUG_PATH} disabled={busy} onClick={() => onUse(false)} />
         )}
         <span
@@ -910,7 +971,10 @@ function MachineCard({
                 onClick={() => onUse(true)}
               />
             )}
-            {wantsUse(reading) && (
+            {unavailable !== undefined && (
+              <p className={`w-full text-xs ${toneInk.attention}`}>{unavailable}</p>
+            )}
+            {wantsUse(reading) && unavailable === undefined && (
               <Verb
                 label={S.machines.use}
                 d={PLUG_PATH}
@@ -924,13 +988,15 @@ function MachineCard({
               disabled={busy}
               onClick={onStopUsing}
             />
-            <Verb
-              label={S.machines.host.configureVerb}
-              title={S.machines.host.configure}
-              d={ICONS.gear}
-              disabled={busy}
-              onClick={onConfigure}
-            />
+            {onConfigure !== null && (
+              <Verb
+                label={S.machines.definition.configureVerb}
+                title={S.machines.definition.configure}
+                d={ICONS.gear}
+                disabled={busy}
+                onClick={onConfigure}
+              />
+            )}
             {onPorts !== null && (
               <Verb
                 label={S.ports.verb}

@@ -64,3 +64,21 @@ export type {
   WorkflowLoadRequest,
   WorkflowVersion,
 } from "../mechanisms/workflows.js";
+export type { Machines, MachinesSlots } from "../machines/service.js";
+export type {
+  ExecResult,
+  ForwardDirection,
+  ForwardFact,
+  ForwardSpec,
+  Machine,
+  MachineDefinition,
+  MachineDial,
+  MachineForm,
+  MachineForwards,
+  MachineKind,
+  MachineSession,
+  ShellLaunch,
+  ShellResult,
+  ShellRunOptions,
+  ShellSession,
+} from "../mechanisms/machines.js";
