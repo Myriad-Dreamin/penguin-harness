@@ -69,6 +69,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readCliCommands as readRegisteredCommands } from "../../../scripts/lib/plugin-skill-commands.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..", "..");
@@ -170,90 +171,13 @@ function assertSkillFrontmatter(skills) {
 // The CLI command surface
 // ---------------------------------------------------------------------------------------------
 
-const COMMAND_DECLARATION =
-  /(?:const\s+([A-Za-z_$][\w$]*)\s*=\s*)?([A-Za-z_$][\w$]*)\s*\.\s*command\(\s*(["'])([^"']*)\3/g;
-const REGISTER_FUNCTION = /export function (register[A-Za-z0-9_]*)\s*\(\s*([A-Za-z_$][\w$]*)\s*:/g;
-const REGISTER_CALL = /(register[A-Za-z0-9_]*)\s*\(\s*([A-Za-z_$][\w$]*)\s*,/g;
-
 /**
  * The commands `packages/cli/src/commands/*.ts` registers at this revision, as full paths
- * (`"org ticket block"`) with the number of positional arguments the registration declares
- * (`.command("block <ticket_id>")` → 1, `.command("ls")` → 0). Read statically — the CLI's own
- * `commander` dependency is not installed here — by walking `X.command("name …")` declarations
- * where `X` is `program` or a variable that already holds a command path, across files: a group is
- * registered in one function and its subcommands in another (`registerServeCommands` passes its
- * `server` command to `registerStatusCommand`), so call sites are resolved too, to a fixed point.
- *
- * A `.command(…)` whose receiver cannot be traced is reported rather than skipped: silently
- * shrinking the surface would turn a broken instruction into a passing check.
+ * (`"org ticket block"`) with their positional arity. The static reader is the one the tree guard
+ * `scripts/check-plugin-skills.mjs` uses too (`scripts/lib/plugin-skill-commands.mjs`); it throws,
+ * naming each one, on a registration it cannot trace rather than shrinking the surface.
  */
-function readCliCommands() {
-  const files = fs
-    .readdirSync(CLI_COMMANDS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-    .map((entry) => entry.name)
-    .sort();
-  assert.ok(
-    files.length > 0,
-    `no command modules under ${path.relative(REPO_ROOT, CLI_COMMANDS_DIR)}`,
-  );
-
-  const sources = new Map(
-    files.map((file) => [file, fs.readFileSync(path.join(CLI_COMMANDS_DIR, file), "utf8")]),
-  );
-  // file → variable name → command path it holds; `program` is the root.
-  const variables = new Map(files.map((file) => [file, new Map([["program", ""]])]));
-  const functionParam = new Map();
-  const calls = [];
-  for (const [file, source] of sources) {
-    for (const match of source.matchAll(REGISTER_FUNCTION)) {
-      functionParam.set(match[1], { file, param: match[2] });
-    }
-    for (const match of source.matchAll(REGISTER_CALL)) {
-      calls.push({ file, name: match[1], argument: match[2] });
-    }
-  }
-
-  const commands = new Map();
-  const scan = (collectUntraced) => {
-    for (const [file, source] of sources) {
-      const vars = variables.get(file);
-      for (const match of source.matchAll(COMMAND_DECLARATION)) {
-        const [, declared, receiver, , raw] = match;
-        const parent = vars.get(receiver);
-        if (parent === undefined) {
-          if (collectUntraced)
-            collectUntraced.push(`${file}: .command("${raw.trim()}") on "${receiver}"`);
-          continue;
-        }
-        const name = raw.trim().split(/\s+/)[0];
-        const fullPath = parent === "" ? name : `${parent} ${name}`;
-        if (declared !== undefined) vars.set(declared, fullPath);
-        commands.set(fullPath, { path: fullPath, arity: raw.trim().split(/\s+/).length - 1 });
-      }
-    }
-    // A group registered in one module and extended in another: `registerX(server, t)` binds
-    // registerX's own parameter to the path `server` holds at the call site.
-    for (const call of calls) {
-      const target = functionParam.get(call.name);
-      if (target === undefined) continue;
-      const parentPath = variables.get(call.file).get(call.argument);
-      if (parentPath === undefined) continue;
-      const targetVars = variables.get(target.file);
-      if (!targetVars.has(target.param)) targetVars.set(target.param, parentPath);
-    }
-  };
-
-  for (let pass = 0; pass < 5; pass++) scan(null);
-  const untraced = [];
-  scan(untraced);
-  assert.deepEqual(
-    untraced,
-    [],
-    `command registrations this check cannot trace — the surface would be measured only in part:\n  - ${untraced.join("\n  - ")}`,
-  );
-  return commands;
-}
+const readCliCommands = () => readRegisteredCommands(CLI_COMMANDS_DIR, { root: REPO_ROOT });
 
 /**
  * A command path this revision's registration does not hold, grown from the registration itself.
