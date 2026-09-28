@@ -5745,7 +5745,11 @@ export type ProposalEventKind =
   /** A channel message the plugin had to send did not go out (the text says to whom, and why). */
   | "notify_failed"
   /** The brief was rewritten (the text is the new brief); the revisions are untouched. */
-  | "brief_edited";
+  | "brief_edited"
+  /** A person opened a discussion with the owner (the text is the owner's agent id). */
+  | "discussion_started"
+  /** A discussion's conclusion reached the owner's desk (the text is the conclusion). */
+  | "discussion_concluded";
 
 /** One thing that happened to a proposal; `seq` orders the whole ledger and is what a read position points at. */
 export interface ProposalEvent {
@@ -5799,6 +5803,8 @@ export interface ProposalDetail extends ProposalItem {
   events: ProposalEvent[];
   /** Implementation sessions, in the order they were opened. */
   sessions: string[];
+  /** Discussions with the owner, in the order they were opened. */
+  discussions: ProposalDiscussion[];
   /**
    * The revision the standing approval covers, or null. An approval covers ONE revision: a
    * later publish puts the proposal back to `ready`, and this stays at the approved one so
@@ -5809,6 +5815,22 @@ export interface ProposalDetail extends ProposalItem {
   seq: number;
   /** The test groups the proposals plugin's configuration declares, in display order — on a read. */
   testGroups?: ProposalTestGroup[];
+}
+
+/**
+ * A discussion: a session of the owner's Agent (the implementer, else the author) that a
+ * person opened from the proposal page to talk the proposal over — not the owner's desk. Its
+ * conclusion is delivered to the desk once; until then it is open.
+ */
+export interface ProposalDiscussion {
+  sessionId: string;
+  /** The owner the session runs as. */
+  agentId: string;
+  /** The person that opened it (`user:<id>`). */
+  by: string;
+  at: string;
+  /** Set once the conclusion reached the owner's desk. */
+  concluded: { by: string; at: string; text: string } | null;
 }
 
 /**
@@ -5889,6 +5911,13 @@ export interface ProposalImplementRequest {
   sessionId?: string;
   /** The caller's identity claim (the CLI's PENGUIN_AGENT_ID); distinct from `agentId`, the implementer. */
   callerAgentId?: string;
+}
+
+/** `POST …/:number/discussions/:sessionId/conclude` — the conclusion, delivered to the owner's desk. */
+export interface ProposalConcludeRequest {
+  text: string;
+  sessionId?: string;
+  agentId?: string;
 }
 
 export interface ProposalMaterialRequest {
