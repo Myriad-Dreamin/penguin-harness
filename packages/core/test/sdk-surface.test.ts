@@ -54,7 +54,7 @@ interface SubpathRecord {
 
 /**
  * The eight subpath exports of package.json, with the runtime names each one ships at revision
- * 9eebc91c (root 0.2.13).
+ * c7ea1ad6 (root 0.2.13).
  */
 const SUBPATHS: SubpathRecord[] = [
   {
@@ -129,6 +129,8 @@ const SUBPATHS: SubpathRecord[] = [
       "ManagedSession",
       "ManagedSubagentSession",
       "McpToolProvider",
+      "ModelCredentialError",
+      "ModelSwitchRefusedError",
       "OS_VERSION_PLACEHOLDER",
       "OUTPUT_SAFETY_MARGIN",
       "PENGUIN_GO_BASE_URL",
@@ -160,10 +162,12 @@ const SUBPATHS: SubpathRecord[] = [
       "TRANSCRIPT_TAGS",
       "ToolCallIdAllocator",
       "USER_MEMORY_INDEX_PLACEHOLDER",
+      "USER_PROMPT_EVERY_PROMPT_SINCE",
       "USER_SCOPE_KEY",
       "VAULT_KEYS_PLACEHOLDER",
       "VAULT_PLACEHOLDER",
       "VAULT_VALUE_MAX_LENGTH",
+      "VENDOR_ENDPOINTS",
       "VERSION",
       "WORKSPACE_MARKER_FILENAME",
       "WORKSPACE_MEMORY_DIR_PLACEHOLDER",
@@ -236,6 +240,7 @@ const SUBPATHS: SubpathRecord[] = [
       "effectivePluginTable",
       "effectivePricing",
       "emptyTokenCounts",
+      "endpointEnvApiKey",
       "ensureUserMemoryDir",
       "ensureWorkspaceMemoryDir",
       "extractSummary",
@@ -262,12 +267,14 @@ const SUBPATHS: SubpathRecord[] = [
       "installHook",
       "installPlugin",
       "installSkill",
+      "isAddableGroup",
       "isAuthenticationError",
       "isCompleteModelMessage",
       "isEventMessage",
       "isFastModeUnsupportedError",
       "isFatalProviderRejection",
       "isHarnessInput",
+      "isHookContinue",
       "isHookInput",
       "isIncompleteStreamError",
       "isKernelOutdated",
@@ -280,6 +287,7 @@ const SUBPATHS: SubpathRecord[] = [
       "isTemporaryWorkspace",
       "isValidId",
       "isValidVaultKey",
+      "isVendorGroup",
       "isWholeOriginBlock",
       "kernelTabHash",
       "latestSessionId",
@@ -295,6 +303,7 @@ const SUBPATHS: SubpathRecord[] = [
       "loadPluginGroups",
       "loadPreinstalledPlugins",
       "loadProjectConfig",
+      "localFsPort",
       "mapThinkingLevel",
       "markerBlock",
       "markerClose",
@@ -309,6 +318,8 @@ const SUBPATHS: SubpathRecord[] = [
       "memoryScopeDir",
       "mergeOmniToUniMessage",
       "metaMaxTokens",
+      "modelEnvFallback",
+      "modelEnvPreviewKey",
       "modelHomepageUrl",
       "modelVisiblePath",
       "normalizeVersion",
@@ -337,12 +348,14 @@ const SUBPATHS: SubpathRecord[] = [
       "partialToolCallOutput",
       "pluginTableToToml",
       "pluginTablesToToml",
+      "predatesEveryPromptHooks",
       "presetModelEntries",
       "presetPromotions",
       "projectConfigFromTable",
       "projectConfigPath",
       "projectDir",
       "providerClientType",
+      "providerEnvFallbackKey",
       "providerInfo",
       "provisionExampleBenchmark",
       "provisionProjectAgents",
@@ -364,6 +377,7 @@ const SUBPATHS: SubpathRecord[] = [
       "resolveContextWindow",
       "resolveMCPServer",
       "resolveMCPServers",
+      "resolveModelCredential",
       "resolveModelEnv",
       "resolveModelRef",
       "resolveProviderModelEnv",
@@ -373,6 +387,9 @@ const SUBPATHS: SubpathRecord[] = [
       "runHookScript",
       "runPreToolUseHooks",
       "runStopHooks",
+      "runUserPromptHooks",
+      "sameEndpoint",
+      "sameModelRef",
       "sanitizeTitle",
       "saveAgentVault",
       "saveProjectConfig",
@@ -413,9 +430,12 @@ const SUBPATHS: SubpathRecord[] = [
       "transcribeUserInput",
       "translateEvents",
       "truncateTitle",
+      "unaddableModel",
+      "unroutableVendorModel",
       "unwrapSyntheticBlock",
       "usageToTokenCounts",
       "userMemoryDir",
+      "userPromptTrigger",
       "userSteeringText",
       "userText",
       "valueAtPath",
@@ -466,6 +486,7 @@ const SUBPATHS: SubpathRecord[] = [
       "isCompleteModelMessage",
       "isEventMessage",
       "isHarnessInput",
+      "isHookContinue",
       "isHookInput",
       "isModelMessage",
       "isPartialPayload",
@@ -540,6 +561,7 @@ const SUBPATHS: SubpathRecord[] = [
       "buildTurnRetriedBlock",
       "dualFormPatterns",
       "extractSummary",
+      "isHookContinue",
       "isHookInput",
       "isSteeredBackgroundNotice",
       "isWholeOriginBlock",
@@ -613,24 +635,36 @@ const SUBPATHS: SubpathRecord[] = [
       "MODELSCOPE_PROVIDER_ID",
       "MODEL_CATALOG",
       "MODEL_PROVIDERS",
+      "ModelCredentialError",
       "PENGUIN_GO_BASE_URL",
       "PENGUIN_GO_PROVIDER_ID",
       "QWEN_OFF_PEAK",
+      "VENDOR_ENDPOINTS",
       "attributionHeaders",
       "canonicalClientType",
       "catalogEntryFor",
       "catalogModelEntries",
       "effectivePricing",
+      "endpointEnvApiKey",
       "fastModeProtocol",
+      "isAddableGroup",
+      "isVendorGroup",
+      "modelEnvFallback",
+      "modelEnvPreviewKey",
       "modelHomepageUrl",
       "offPeakAt",
       "offPeakScheduledRefs",
       "presetModelEntries",
       "presetPromotions",
       "providerClientType",
+      "providerEnvFallbackKey",
       "providerInfo",
+      "resolveModelCredential",
       "resolveModelEnv",
       "resolveProviderModelEnv",
+      "sameEndpoint",
+      "unaddableModel",
+      "unroutableVendorModel",
     ],
   },
   {
@@ -703,7 +737,7 @@ type StatementRecord =
   | { kind: "decl"; declaration: string };
 
 /**
- * Every export statement of src/index.ts as it stands at 9eebc91c: 29 statements, of which 25
+ * Every export statement of src/index.ts as it stands at c7ea1ad6: 29 statements, of which 25
  * re-export from a module and 4 declare the release identity and buildInfo(). A statement that
  * adds, drops or renames a name changes its record; one that disappears changes the count.
  */
@@ -776,12 +810,19 @@ const BARREL_STATEMENTS: StatementRecord[] = [
   {
     kind: "named",
     from: "./session.js",
-    names: ["Session"],
+    names: ["ModelSwitchRefusedError", "Session"],
   },
   {
     kind: "type-named",
     from: "./session.js",
-    names: ["SessionConfig"],
+    names: [
+      "ModelSwitchOptions",
+      "ModelSwitchRefusal",
+      "ModelSwitchSupport",
+      "SessionConfig",
+      "SessionOpenContextOptions",
+      "SessionOpenedContext",
+    ],
   },
   {
     kind: "type-named",
@@ -1004,7 +1045,7 @@ describe("the package barrel (src/index.ts)", () => {
  * barrel), and two bare imports of one name in one file are a compile error (TS2300), which would
  * make this file fail its own guard. Read the prefix as the subpath that must keep exporting it.
  */
-// . — 192 public names that exist only at compile time.
+// . — 204 public names that exist only at compile time.
 import type {
   AbortPayload as _barrel_AbortPayload,
   AgentAssembly as _barrel_AgentAssembly,
@@ -1050,6 +1091,10 @@ import type {
   EventPayload as _barrel_EventPayload,
   FastModeProtocol as _barrel_FastModeProtocol,
   Fidelity as _barrel_Fidelity,
+  FsDirent as _barrel_FsDirent,
+  FsFetchResult as _barrel_FsFetchResult,
+  FsPort as _barrel_FsPort,
+  FsStat as _barrel_FsStat,
   GenerativeModelConfig as _barrel_GenerativeModelConfig,
   GenerativeModelParameters as _barrel_GenerativeModelParameters,
   HandoffOrigin as _barrel_HandoffOrigin,
@@ -1093,7 +1138,9 @@ import type {
   MemoryTopicMetadata as _barrel_MemoryTopicMetadata,
   MessageOrigin as _barrel_MessageOrigin,
   ModelCatalogEntry as _barrel_ModelCatalogEntry,
+  ModelCredentialShape as _barrel_ModelCredentialShape,
   ModelEntry as _barrel_ModelEntry,
+  ModelEnvFallback as _barrel_ModelEnvFallback,
   ModelEnvInfo as _barrel_ModelEnvInfo,
   ModelMessage as _barrel_ModelMessage,
   ModelPayload as _barrel_ModelPayload,
@@ -1138,6 +1185,7 @@ import type {
   ResolveMCPServersResult as _barrel_ResolveMCPServersResult,
   ResolvedMCPServer as _barrel_ResolvedMCPServer,
   ResolvedMCPTransport as _barrel_ResolvedMCPTransport,
+  ResolvedModelCredential as _barrel_ResolvedModelCredential,
   ResolvedPluginGroup as _barrel_ResolvedPluginGroup,
   ResumeResult as _barrel_ResumeResult,
   ResumeSessionOptions as _barrel_ResumeSessionOptions,
@@ -1149,12 +1197,14 @@ import type {
   RunOptions as _barrel_RunOptions,
   ScheduledOrigin as _barrel_ScheduledOrigin,
   SchedulesConfig as _barrel_SchedulesConfig,
+  ScriptHookOptions as _barrel_ScriptHookOptions,
   SessionConfig as _barrel_SessionConfig,
   SessionEnvironmentValues as _barrel_SessionEnvironmentValues,
   SessionHooks as _barrel_SessionHooks,
   SessionMemory as _barrel_SessionMemory,
   SessionMetaMessage as _barrel_SessionMetaMessage,
   SessionMetaPayload as _barrel_SessionMetaPayload,
+  SessionOpenedContext as _barrel_SessionOpenedContext,
   SessionTitleResult as _barrel_SessionTitleResult,
   SessionWorkspaceMemory as _barrel_SessionWorkspaceMemory,
   SkillMetadata as _barrel_SkillMetadata,
@@ -1191,9 +1241,12 @@ import type {
   ToolListReadyPayload as _barrel_ToolListReadyPayload,
   ToolPermission as _barrel_ToolPermission,
   TraceSink as _barrel_TraceSink,
+  UserPromptFn as _barrel_UserPromptFn,
   UserPromptHook as _barrel_UserPromptHook,
   UserPromptHookInput as _barrel_UserPromptHookInput,
   UserPromptHookResult as _barrel_UserPromptHookResult,
+  UserPromptOutcome as _barrel_UserPromptOutcome,
+  UserPromptTrigger as _barrel_UserPromptTrigger,
   VaultConfig as _barrel_VaultConfig,
   VersionReport as _barrel_VersionReport,
   VisionDescriberService as _barrel_VisionDescriberService,
@@ -1274,7 +1327,7 @@ import type {
   SkillsMessage as _markers_SkillsMessage,
 } from "../src/omnimessage/markers/index.js";
 
-// ./interfaces — 32 public names that exist only at compile time.
+// ./interfaces — 34 public names that exist only at compile time.
 import type {
   ApproveFn as _interfaces_ApproveFn,
   BackgroundCommandInfo as _interfaces_BackgroundCommandInfo,
@@ -1307,6 +1360,8 @@ import type {
   ToolDetachResult as _interfaces_ToolDetachResult,
   ToolExecutionRequest as _interfaces_ToolExecutionRequest,
   ToolPermission as _interfaces_ToolPermission,
+  UserPromptFn as _interfaces_UserPromptFn,
+  UserPromptOutcome as _interfaces_UserPromptOutcome,
   VisionDescriberService as _interfaces_VisionDescriberService,
 } from "../src/interfaces/index.js";
 
@@ -1333,15 +1388,18 @@ import type {
   Slot as _plugin_Slot,
 } from "../src/plugin/index.js";
 
-// ./model-catalog — 7 public names that exist only at compile time.
+// ./model-catalog — 10 public names that exist only at compile time.
 import type {
   FastModeProtocol as _model_catalog_FastModeProtocol,
   ModelCatalogEntry as _model_catalog_ModelCatalogEntry,
+  ModelCredentialShape as _model_catalog_ModelCredentialShape,
+  ModelEnvFallback as _model_catalog_ModelEnvFallback,
   ModelEnvInfo as _model_catalog_ModelEnvInfo,
   ModelProviderBridgeAuth as _model_catalog_ModelProviderBridgeAuth,
   ModelProviderInfo as _model_catalog_ModelProviderInfo,
   ModelProviderOAuth as _model_catalog_ModelProviderOAuth,
   OffPeakDiscount as _model_catalog_OffPeakDiscount,
+  ResolvedModelCredential as _model_catalog_ResolvedModelCredential,
 } from "../src/state/model-catalog.js";
 
 // ./kernel — 54 public names that exist only at compile time.
