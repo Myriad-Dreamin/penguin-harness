@@ -4712,6 +4712,7 @@ Scenarios:
         approved: "Approved",
         merged: "Merged",
         rejected: "Rejected",
+        withdrawn: "Withdrawn",
       } as Record<string, string>,
       revision: (n: number): string => `Revision ${n}`,
       /** The panel above the body while an older approval stands: what changed since it. */
@@ -4856,6 +4857,7 @@ Scenarios:
         approved: "approved it and requested the merge",
         merged: "reported it merged",
         rejected: "rejected the proposal",
+        withdrawn: "withdrew the proposal",
         brief_edited: "rewrote the brief",
         discussion_started: (who: string): string => `opened a discussion with ${who}`,
         discussion_concluded: "sent the discussion's conclusion to the owner's desk",
