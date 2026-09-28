@@ -700,37 +700,53 @@ export function PluginsPage() {
   return (
     <div className="h-full overflow-y-auto p-4 [scrollbar-gutter:stable] md:p-6">
       <div className="mx-auto max-w-5xl">
-        <div className="flex items-center justify-between gap-2">
+        <div className="@container flex flex-wrap items-center justify-between gap-2">
           <h1 className="flex items-center gap-1.5 text-xl font-semibold">
             {S.plugins.pageTitle}
             <InfoPopover label={S.plugins.pageTitle}>{S.plugins.pageDesc}</InfoPopover>
           </h1>
-          {/* The options loaded plugins declare live on the Settings dialog's Plugins page, an
-              admin's page; this opens the dialog there rather than sending anyone through the
-              user menu to find it. */}
-          {isAdmin && (
-            <div className="flex shrink-0 items-center gap-2">
-              {/* Which machine's plugins the rows show, and which table an install or a
-                  removal edits: the shared one, or that machine's own. */}
-              {otherMachines.length > 0 && (
-                <MachinePicker
-                  aria-label={S.plugins.viewMachine}
-                  choices={machineChoices}
-                  value={viewMachine ?? ALL_MACHINES_CHOICE}
-                  onChange={(v) => setViewMachine(v === ALL_MACHINES_CHOICE ? null : v)}
-                />
-              )}
-              <Button
+          {/* The header's right side holds search for everyone and the admin's machine picker and
+              settings button; on narrow screens (flex-wrap wraps it to its own line) the search
+              box shrinks flexibly, fixed width at >=sm. */}
+          <div className="flex min-w-0 max-w-full grow items-center gap-2 sm:grow-0">
+            <div className="min-w-0 flex-1 sm:w-56 sm:flex-none">
+              <Input
                 size="sm"
-                className="h-8 w-8 shrink-0 justify-center p-0"
-                aria-label={S.plugins.openSettings}
-                title={S.plugins.openSettings}
-                onClick={() => setSettingsOpen(true)}
-              >
-                <GlyphIcon d={GEAR_ICON} size={ICON_SIZE.iconButton} />
-              </Button>
+                type="search"
+                value={query}
+                placeholder={S.plugins.searchPlaceholder}
+                aria-label={S.plugins.searchPlaceholder}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-          )}
+            {/* The options loaded plugins declare live on the Settings dialog's Plugins page, an
+                admin's page; this opens the dialog there rather than sending anyone through the
+                user menu to find it. */}
+            {isAdmin && (
+              <div className="flex shrink-0 items-center gap-2">
+                {/* Which machine's plugins the rows show, and which table an install or a
+                    removal edits: the shared one, or that machine's own. */}
+                {otherMachines.length > 0 && (
+                  <MachinePicker
+                    aria-label={S.plugins.viewMachine}
+                    choices={machineChoices}
+                    value={viewMachine ?? ALL_MACHINES_CHOICE}
+                    onChange={(v) => setViewMachine(v === ALL_MACHINES_CHOICE ? null : v)}
+                  />
+                )}
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0"
+                  aria-label={S.plugins.openSettings}
+                  title={S.plugins.openSettings}
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <GlyphIcon d={GEAR_ICON} size={ICON_SIZE.iconButton} />
+                  <span className="hidden @3xl:inline">{S.plugins.openSettings}</span>
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
         <SettingsDialog
           open={settingsOpen}
@@ -790,14 +806,6 @@ export function PluginsPage() {
         ) : (
           <div className="mt-6 md:grid md:grid-cols-[minmax(0,1fr)_12rem] md:gap-4">
             <div className="min-w-0 space-y-3">
-              <Input
-                size="sm"
-                type="search"
-                value={query}
-                placeholder={S.plugins.searchPlaceholder}
-                aria-label={S.plugins.searchPlaceholder}
-                onChange={(e) => setQuery(e.target.value)}
-              />
               {/* ONE list, one plugin per row, every kind in the same card: what is installed
                   first — the library's plugins (they ship with the build and every Agent may use
                   them) and the module plugins this Project asks for — then what could be. A
@@ -1448,7 +1456,7 @@ function PluginCard({
     .filter((v): v is string => v !== null)
     .join(" · ");
   return (
-    <div className="flex items-center gap-3 rounded-md p-4 transition-colors hover:bg-gray-100/70 dark:hover:bg-gray-800/60">
+    <div className="@container flex items-center gap-3 rounded-md p-4 transition-colors hover:bg-gray-100/70 dark:hover:bg-gray-800/60">
       <button
         type="button"
         onClick={() => setDetailOpen(true)}
@@ -1497,8 +1505,9 @@ function PluginCard({
       {detailOpen && (
         <PluginDetailModal plugin={plugin} meta={meta} onClose={() => setDetailOpen(false)} />
       )}
-      {/* Actions: equal-square light icon buttons in a single row, vertically centered at the
-          card's right edge (copy goes into aria-label and title). */}
+      {/* Actions: light buttons in a single row, vertically centered at the card's right edge —
+          the Models page's group-header shape: the icon always, its copy beside it once the card
+          is wide enough (@3xl), and aria-label and title carrying the name either way. */}
       <div className="flex shrink-0 items-center justify-center gap-1.5">
         {/* Light (secondary): an update nudge, not the card's primary action. The last stop on
             the plugins trail, so it carries the dot itself — straddling the top-right corner of
@@ -1509,12 +1518,13 @@ function PluginCard({
           <Button
             size="sm"
             variant="secondary"
-            className="relative h-8 w-8 shrink-0 justify-center p-0"
+            className="relative h-8 shrink-0"
             aria-label={`${S.plugins.updateOutdated(outdated.length)} ${plugin.name}`}
             title={S.plugins.updateOutdated(outdated.length)}
             onClick={() => setPendingUpdate(outdated)}
           >
             <GlyphIcon d={UPDATE_ICON} size={ICON_SIZE.iconButton} />
+            <span className="hidden @3xl:inline">{S.plugins.updateOutdated(outdated.length)}</span>
             <UpdateDot
               size="inline"
               position="right-0.5 top-0.5 -translate-y-1/2 translate-x-1/2"
@@ -1523,22 +1533,24 @@ function PluginCard({
         )}
         <Button
           size="sm"
-          className="h-8 w-8 shrink-0 justify-center p-0"
+          className="h-8 shrink-0"
           aria-label={`${S.skills.quickInvoke} ${plugin.name}`}
           title={S.plugins.quickStartHint}
           disabled={!canQuickStart}
           onClick={() => onQuickStart(plugin)}
         >
           <GlyphIcon d={SEND_ICON} size={ICON_SIZE.iconButton} />
+          <span className="hidden @3xl:inline">{S.skills.quickInvoke}</span>
         </Button>
         <Button
           size="sm"
-          className="h-8 w-8 shrink-0 justify-center p-0"
+          className="h-8 shrink-0"
           aria-label={`${S.skills.manageInstall} ${plugin.name}`}
           title={S.skills.manageInstall}
           onClick={() => setInstallOpen(true)}
         >
           <GlyphIcon d={INSTALL_ICON} size={ICON_SIZE.iconButton} />
+          <span className="hidden @3xl:inline">{S.skills.manageInstall}</span>
         </Button>
       </div>
       {installOpen && (
@@ -1664,6 +1676,7 @@ function InstallRow({
           aria-label={`${S.skills.updateAction} ${agentId}`}
           onClick={onUpdate}
         >
+          <GlyphIcon d={UPDATE_ICON} size={ICON_SIZE.inlineGlyph} />
           {S.skills.updateAction}
         </Button>
       )}
@@ -1677,7 +1690,8 @@ function InstallRow({
           onClick={() => onToggle(false)}
         >
           <span className="group-hover:hidden">{S.skills.installed}</span>
-          <span className="hidden text-red-600 group-hover:inline dark:text-red-400">
+          <span className="hidden items-center gap-1 text-red-600 group-hover:inline-flex dark:text-red-400">
+            <GlyphIcon d={TRASH_ICON} size={ICON_SIZE.inlineGlyph} />
             {S.skills.uninstall}
           </span>
         </Button>
@@ -1688,6 +1702,7 @@ function InstallRow({
           aria-label={`${S.skills.install} ${agentId}`}
           onClick={() => onToggle(true)}
         >
+          <GlyphIcon d={INSTALL_ICON} size={ICON_SIZE.inlineGlyph} />
           {S.skills.install}
         </Button>
       )}
@@ -1820,7 +1835,7 @@ function ModuleRow({
     </>
   );
   return (
-    <div className="flex items-center gap-3 rounded-md p-4 transition-colors hover:bg-gray-100/70 dark:hover:bg-gray-800/60">
+    <div className="@container flex items-center gap-3 rounded-md p-4 transition-colors hover:bg-gray-100/70 dark:hover:bg-gray-800/60">
       {entry !== undefined ? (
         <Link to={`/plugins/registry/${specifier}`} className="min-w-0 flex-1">
           {body}
@@ -1828,24 +1843,26 @@ function ModuleRow({
       ) : (
         <div className="min-w-0 flex-1">{body}</div>
       )}
-      {/* The verb, in the library card's shape: one square light icon button, its copy in
-          aria-label and title. While it runs, a spinner stands in for the glyph. */}
+      {/* The verb, in the library card's shape: a light button, its icon always and its copy
+          beside it once the row is wide enough (@3xl), aria-label and title naming it either
+          way. While it runs, a spinner stands in for the glyph. */}
       <div className="flex shrink-0 items-center justify-center gap-1.5">
         <Button
           size="sm"
-          className="h-8 w-8 shrink-0 justify-center p-0"
+          className="h-8 shrink-0"
           aria-label={`${S.skills.quickInvoke} ${specifier}`}
           title={"reason" in quickStart ? quickStart.reason : S.plugins.quickStartHint}
           disabled={"reason" in quickStart || busy || blocked}
           onClick={"onStart" in quickStart ? quickStart.onStart : undefined}
         >
           <GlyphIcon d={SEND_ICON} size={ICON_SIZE.iconButton} />
+          <span className="hidden @3xl:inline">{S.skills.quickInvoke}</span>
         </Button>
         {state === "none"
           ? onInstall !== null && (
               <Button
                 size="sm"
-                className="h-8 w-8 shrink-0 justify-center p-0"
+                className="h-8 shrink-0"
                 aria-label={`${busy ? S.plugins.installing : S.plugins.install} ${specifier}`}
                 aria-busy={busy}
                 title={busy ? S.plugins.installing : S.plugins.install}
@@ -1857,12 +1874,15 @@ function ModuleRow({
                 ) : (
                   <GlyphIcon d={INSTALL_ICON} size={ICON_SIZE.iconButton} />
                 )}
+                <span className="hidden @3xl:inline">
+                  {busy ? S.plugins.installing : S.plugins.install}
+                </span>
               </Button>
             )
           : onRemove !== null && (
               <Button
                 size="sm"
-                className="h-8 w-8 shrink-0 justify-center p-0"
+                className="h-8 shrink-0"
                 aria-label={`${S.plugins.uninstall} ${specifier}`}
                 aria-busy={busy}
                 title={removeBlocked ?? S.plugins.uninstall}
@@ -1874,6 +1894,7 @@ function ModuleRow({
                 ) : (
                   <GlyphIcon d={TRASH_ICON} size={ICON_SIZE.iconButton} />
                 )}
+                <span className="hidden @3xl:inline">{S.plugins.uninstall}</span>
               </Button>
             )}
       </div>
