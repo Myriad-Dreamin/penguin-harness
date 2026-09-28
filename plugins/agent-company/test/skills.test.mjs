@@ -23,7 +23,10 @@
  *    registrations included). A named token that is not a registered subcommand of the resolved
  *    command and not one of its positional arguments is a mismatch.
  * 3. **the check itself fails when it should** — a skill naming a command that does not exist must
- *    make this file fail, and that case is a test here, so the guard cannot rot into a no-op.
+ *    make this file fail, and that case is a test here, so the guard cannot rot into a no-op. The
+ *    command it injects is grown from the registration read in the same run (`unregisteredPath`), not
+ *    written into the file: a name in the source is a claim about one revision's CLI and goes stale
+ *    when the line moves, which is what happened to the `org channel notify` this fixture first had.
  *
  * Boundaries — what this does not measure:
  * - an invocation written in prose rather than in a code span is not seen (the skills write every
@@ -252,6 +255,26 @@ function readCliCommands() {
   return commands;
 }
 
+/**
+ * A command path this revision's registration does not hold, grown from the registration itself.
+ *
+ * The negative control below has to hand the check a command it can find fault with, and the CLI is a
+ * surface this file does not own: a name written into the source is a claim about *one revision's*
+ * CLI, which is how the fixture this replaced went stale. It asserted that `penguin org channel
+ * notify` does not exist — true at its base `9eebc91c`, where `packages/cli/src/commands/org.ts`
+ * registers no such subcommand; false on the running line `8ac8680e`, whose line 1672 registers
+ * `.command("notify <channel_id> [principals...]")`. The check then found nothing wrong with the
+ * injected skill, `assert.throws` reported `Missing expected exception`, and the control had rotted
+ * into a positive case without a word. A name grown from the registry read in the same run is absent
+ * at whichever revision the file runs on, by construction rather than by assertion; a revision that
+ * does register the seed name moves the loop past it instead.
+ */
+function unregisteredPath(commands, parent, seed) {
+  let path = parent === "" ? seed : `${parent} ${seed}`;
+  while (commands.has(path)) path += "x";
+  return path;
+}
+
 // ---------------------------------------------------------------------------------------------
 // The invocations a skill names
 // ---------------------------------------------------------------------------------------------
@@ -478,18 +501,29 @@ test("the command check fails on a skill naming a command the CLI does not regis
   const real = readSkills();
   const commands = readCliCommands();
 
-  // `penguin org channel notify` is a real command of the *installed* harness (v0.2.13-238) and not
-  // of the CLI this revision ships: exactly the cross-revision mismatch this check has to catch.
+  // Both injected names are derived from the registration read above, so this fixture claims nothing
+  // about a particular revision's CLI (see `unregisteredPath`). They cover the two shapes a mismatch
+  // takes: a name under a registered group that is neither one of its subcommands nor one of its
+  // arguments, and a first token that is no command at all.
+  const subcommand = unregisteredPath(commands, "org channel", "frobnicate");
+  const unknown = unregisteredPath(commands, "", "frobnicate");
+  assert.equal(
+    commands.get("org channel")?.arity,
+    0,
+    "`org channel` is registered and takes no positional argument: a stray leaf after it is a name " +
+      "the check must reject, not an argument it could swallow — with one, this case would pass again",
+  );
+
   const injected = {
     dirName: "company-injected",
     file: path.join(SKILLS_DIR, "company-injected", "SKILL.md"),
     content:
       "---\nname: company-injected\ndescription: An injected skill.\n---\n\n" +
-      "Answer in the channel the trigger names: `penguin org channel notify <channel_id> <principal>…`.\n",
+      `Answer in the channel the trigger names: \`penguin ${subcommand} <channel_id> <principal>…\`.\n`,
   };
   assert.throws(
     () => assertSkillsAgainstCli([...real, injected], commands),
-    /org channel notify <channel_id>/,
+    new RegExp(`penguin ${subcommand} `),
     "a skill naming a command that does not exist must fail the check",
   );
   assert.throws(
@@ -500,12 +534,13 @@ test("the command check fails on a skill naming a command the CLI does not regis
           {
             ...injected,
             content:
-              "---\nname: company-injected\ndescription: x\n---\nInvoke `penguin org frobnicate 4`.\n",
+              "---\nname: company-injected\ndescription: An injected skill.\n---\n\n" +
+              `Invoke \`penguin ${unknown} 4\`.\n`,
           },
         ],
         commands,
       ),
-    /frobnicate/,
+    /is not a command the CLI registers/,
     "an unknown command name is a mismatch too",
   );
 
