@@ -17,7 +17,7 @@ import { S } from "../lib/strings";
 import { apiUrl } from "../lib/server-context";
 import { machineForOrgPath, orgInPath, rememberSessionsIn } from "../lib/org-machines";
 import { machineForPath } from "../lib/session-machines";
-import { apiSocket } from "./socket";
+import { SocketTimeoutError, apiSocket } from "./socket";
 
 /** Unified API error: carries the HTTP status code and server error code (server error body {error:{code,message}}). */
 export class ApiError extends Error {
@@ -135,7 +135,7 @@ export async function apiFetchWithMeta<T>(
   // instead of racing it; false means HTTP for this call. Where there is no WebSocket at all
   // the call goes straight to HTTP, without asking who is signed in or waiting a turn.
   const overSocket = wantsSocket && socketPossible() && (await apiSocket.ready());
-  let answer = overSocket ? await callOverSocket(method, url, options.body) : null;
+  let answer = overSocket ? await callOverSocket(method, url, options.body, target) : null;
   if (answer === null || answer.status === 415 || answer.status === 421)
     answer = await callOverHttp(method, url, options.body);
 
@@ -200,8 +200,26 @@ interface Answer {
 const retryAfterOf = (value: string | null | undefined): number | undefined =>
   value != null && /^\d+$/.test(value) ? Number(value) : undefined;
 
+/**
+ * Whether an unanswered read is asked again over HTTP. Not when it was for a MACHINE and the
+ * socket kept carrying frames while it waited: the hub forwards both transports through the
+ * same route and the same held connection to that machine, so the HTTP copy waits on exactly
+ * what the socket call waited on — and a page asks a machine about every Agent at once, so
+ * each such copy is one more browser connection held open on a silent machine (the sessions
+ * list's two dozen of them exhausted the browser: ERR_INSUFFICIENT_RESOURCES). A quiet socket
+ * is the transport's own failure, and HTTP is the way around it.
+ */
+function retriesOverHttp(err: SocketTimeoutError, method: string, onMachine: boolean): boolean {
+  return isReadMethod(method) && !(onMachine && err.socketLive);
+}
+
 /** The socket transport; null when the socket dropped before answering (the caller then fetches). */
-async function callOverSocket(method: string, url: string, body: unknown): Promise<Answer | null> {
+async function callOverSocket(
+  method: string,
+  url: string,
+  body: unknown,
+  target: string | null,
+): Promise<Answer | null> {
   try {
     const res = await apiSocket.call(method, url, body !== undefined ? { body } : {});
     return {
@@ -214,9 +232,12 @@ async function callOverSocket(method: string, url: string, body: unknown): Promi
   } catch (err) {
     // A read the server never answered (socket.ts ANSWER_TIMEOUT_MS, warned about there) is
     // asked again over HTTP: nothing was changed by asking, and a page waiting on it would
-    // otherwise wait for good. A write is not repeated — it may have landed.
-    if (err instanceof Error && err.message === "socket_timeout" && isReadMethod(method)) {
-      return null;
+    // otherwise wait for good — unless it is a machine's read on a live socket, which HTTP
+    // would only ask again of the same silent machine (retriesOverHttp). A write is not
+    // repeated — it may have landed.
+    if (err instanceof SocketTimeoutError) {
+      if (retriesOverHttp(err, method, target !== null)) return null;
+      if (isReadMethod(method)) throw new ApiError(0, "machine_no_answer", S.errors.networkError);
     }
     // The socket closed under the call. A lost answer is a lost answer whichever transport
     // lost it, so this is not retried blindly: the HTTP fallback is only for calls that never
@@ -266,7 +287,7 @@ async function callOverHttp(method: string, url: string, body: unknown): Promise
 export async function apiRequest(url: string, init: { method?: string } = {}): Promise<Response> {
   const path = url.split("?")[0] ?? url;
   const local = !url.startsWith("/server/");
-  const overSocket = !(local && httpOnly(path)) && (await apiSocket.ready());
+  const overSocket = !(local && httpOnly(path)) && socketPossible() && (await apiSocket.ready());
   if (overSocket) {
     try {
       const res = await apiSocket.call(init.method ?? "GET", url);
@@ -278,9 +299,10 @@ export async function apiRequest(url: string, init: { method?: string } = {}): P
         });
       }
     } catch (err) {
-      // An unanswered read goes over HTTP, as in callOverSocket; anything else is a lost connection.
-      const unanswered = err instanceof Error && err.message === "socket_timeout";
-      if (!(unanswered && isReadMethod(init.method ?? "GET"))) {
+      // An unanswered read goes over HTTP under callOverSocket's rule; anything else is a lost connection.
+      const retry =
+        err instanceof SocketTimeoutError && retriesOverHttp(err, init.method ?? "GET", !local);
+      if (!retry) {
         throw new TypeError("network error"); // what fetch throws when the connection is lost
       }
     }
