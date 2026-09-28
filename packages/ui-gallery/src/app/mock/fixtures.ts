@@ -1011,6 +1011,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       {
         id: IDS.machine,
         alias: "local",
+        kind: "local",
         installed: { version: "0.2.13", at: iso(ago(19)) },
         machineId: "demo-machine-0001",
         local: true,
@@ -1022,6 +1023,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       {
         id: "ssh:gpu-box",
         alias: "gpu-box",
+        kind: "ssh",
         installed: { version: "0.2.13", at: iso(ago(5)) },
         machineId: "gpu-box-a8f3c2",
         local: false,
@@ -1033,6 +1035,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       {
         id: "ssh:office-mac",
         alias: "office-mac",
+        kind: "ssh",
         installed: null,
         machineId: null,
         local: false,
@@ -1040,6 +1043,16 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
         api: null,
         status: null,
         root: "~/.penguin/data",
+      },
+    ],
+    kinds: [
+      {
+        kind: "ssh",
+        title: "SSH",
+        form: {
+          name: { type: "string", title: "Alias" },
+          fields: { hostName: { type: "string", title: "Host name" } },
+        },
       },
     ],
     imageVersion: "0.2.13",
