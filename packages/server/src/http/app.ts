@@ -79,30 +79,45 @@ export class HttpModule {
     // gated on that user — assembled lazily, since most users never open a socket, and kept,
     // since the one who did opens it on every page load. Hono copies a group's routes into
     // each parent it is mounted on, so mounting the groups twice shares handlers, not state.
-    const cookieGated = this.assemble(routes, authMiddleware(this.auth, this.config.trustProxy));
+    //
+    // Only the socket's surface writes a request line. An HTTP request reaches the cookie-gated
+    // one through the runtime's seam, and the runtime's app has already logged it — once, with
+    // the status the client actually got, which for a path declined here is the static tail's
+    // answer. Logging it here as well printed every HTTP request twice, a declined static file
+    // as a 404 followed by its 200. A socket call never passes the runtime's app, so this is
+    // its only line.
+    const cookieGated = this.assemble(
+      routes,
+      authMiddleware(this.auth, this.config.trustProxy),
+      false,
+    );
     const asUser = new Map<string, Hono<AppEnv>>();
     const enteredAs = (userId: string, via: SessionVia): Hono<AppEnv> => {
       // One surface per user and kind of session: the gate below stamps both on every call.
       const key = `${via}\0${userId}`;
       let app = asUser.get(key);
       if (app === undefined) {
-        app = this.assemble(routes, async (c, next) => {
-          const user = this.users.findById(userId);
-          if (user === null) throw new HttpError(401, "unauthorized", "Unknown user.");
-          // The handshake's cookie is not re-read per call, so a socket opened before the
-          // user was signed out everywhere (a password reset, AdminService.signOutEverywhere)
-          // would otherwise keep answering as that user. A 401 here reaches the page's
-          // unauthorized handler, exactly as the same call over HTTP would.
-          if (!this.auth.userHasLiveSession(userId)) {
-            throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
-          }
-          c.set("user", user);
-          // The kind of session the handshake's cookie was: the shell's own window keeps
-          // being the shell's own window over the socket, and what needs the old password
-          // of a password session keeps needing it.
-          c.set("sessionVia", via);
-          await next();
-        });
+        app = this.assemble(
+          routes,
+          async (c, next) => {
+            const user = this.users.findById(userId);
+            if (user === null) throw new HttpError(401, "unauthorized", "Unknown user.");
+            // The handshake's cookie is not re-read per call, so a socket opened before the
+            // user was signed out everywhere (a password reset, AdminService.signOutEverywhere)
+            // would otherwise keep answering as that user. A 401 here reaches the page's
+            // unauthorized handler, exactly as the same call over HTTP would.
+            if (!this.auth.userHasLiveSession(userId)) {
+              throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
+            }
+            c.set("user", user);
+            // The kind of session the handshake's cookie was: the shell's own window keeps
+            // being the shell's own window over the socket, and what needs the old password
+            // of a password session keeps needing it.
+            c.set("sessionVia", via);
+            await next();
+          },
+          true,
+        );
         asUser.set(key, app);
       }
       return app;
@@ -119,6 +134,8 @@ export class HttpModule {
   private assemble(
     routes: { prefix: string; auth: "user" | "none"; order: number; app: Hono<AppEnv> }[],
     gate: MiddlewareHandler<AppEnv>,
+    /** Whether this surface writes the request line: only when nothing in front of it does. */
+    logRequests: boolean,
   ): Hono<AppEnv> {
     const errors = this.errors;
     const access = this.access;
@@ -133,13 +150,15 @@ export class HttpModule {
       return handleError(err, c);
     });
     app.notFound(() => declined());
-    app.use("*", async (c, next) => {
-      const start = performance.now();
-      await next();
-      this.log.line(
-        `${c.req.method} ${c.req.path} ${c.res.status} ${Math.round(performance.now() - start)}ms`,
-      );
-    });
+    if (logRequests) {
+      app.use("*", async (c, next) => {
+        const start = performance.now();
+        await next();
+        this.log.line(
+          `${c.req.method} ${c.req.path} ${c.res.status} ${Math.round(performance.now() - start)}ms`,
+        );
+      });
+    }
     let capped: { size: number; mw: MiddlewareHandler } | null = null;
     app.use("/api/*", (c, next) => {
       // The upgrade channel streams a push into the blob store and buffers nothing, and the
