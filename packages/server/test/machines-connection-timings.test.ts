@@ -4,9 +4,11 @@
  * Two layers. The service's: a connect job keeps each stage it ran — probe, start the server,
  * probe again, hold, sync models, sync plugins — with when it began and ended, and the result
  * says when the connection was held; while telemetry is on each stage is also a sample, and so
- * is a re-hold that has no job. The transport's: the ssh session coming up, every command on
- * it and the SOCKS handshakes are samples while telemetry is on — shape only, never a
- * command's text — and while it is off, nothing is recorded, not even a clock read.
+ * is a re-hold that has no job. The transport's: the session its kind launched coming up, every
+ * command on it and the dials through it are samples while telemetry is on — shape only, never
+ * a command's text — and while it is off, nothing is recorded, not even a clock read. (The
+ * probe names keep their `machine.ssh.*` and `machine.socks.*` spelling from before machine
+ * kinds: they are what the telemetry buffer has always been read by.)
  */
 import fs from "node:fs";
 import http from "node:http";
@@ -19,7 +21,7 @@ import type { MachineJob } from "../src/api/types.js";
 import { openDatabase } from "../src/db/database.js";
 import { MachinesRepo } from "../src/db/repos/machines.js";
 import { MachinesService } from "../src/machines/service.js";
-import type { MachinesEffects } from "../src/machines/service.js";
+import type { MachineKindEntry, MachinesEffects } from "../src/machines/service.js";
 import {
   closeConnectionTo,
   connectionTo,
@@ -27,7 +29,8 @@ import {
   setTimingsSink,
   timingsSink,
 } from "../src/machines/transport/index.js";
-import type { MachineSample } from "../src/machines/transport/index.js";
+import type { MachineSample, RemoteTarget } from "../src/machines/transport/index.js";
+import type { Machine } from "../src/mechanisms/machines.js";
 import { tallyHandshake } from "../src/machines/transport/timings.js";
 import { makeTempRoot, waitFor } from "./helpers.js";
 
@@ -42,6 +45,44 @@ afterEach(() => {
   flushHandshakes();
   setTimingsSink(null);
 });
+
+/**
+ * The test kind: its shell is `machine-shell <name>`, found on PATH (the stub below); a dial
+ * through it is refused, the way a SOCKS port with nothing behind it refuses one.
+ */
+const testMachine = (name: string): Machine => ({
+  launch: async () => ({ program: "machine-shell", args: [name] }),
+  up: async () => {},
+  ready: async () => ({ ok: true }),
+  dial: async () => {
+    throw new Error("connection refused");
+  },
+  oneShot: async () => ({ code: 0, stdout: "", stderr: "", timedOut: false }),
+  copyTo: async () => ({ code: 0, stdout: "", stderr: "", timedOut: false }),
+  diagnose: () => null,
+  forwards: () => null,
+});
+
+const target = (name: string): RemoteTarget => ({
+  address: `ssh:${name}`,
+  kind: "ssh",
+  name,
+  machine: testMachine(name),
+  node: "node",
+});
+
+/** A kind named `ssh` that discovers one machine, `nas`; the effects do the reaching-out. */
+const sshKind: MachineKindEntry = {
+  kind: "ssh",
+  title: "SSH",
+  impl: {
+    discover: () => ["nas"],
+    form: () => null,
+    define: async () => ({ ok: false, field: null, message: "not here" }),
+    read: () => null,
+    connect: (name) => testMachine(name),
+  },
+};
 
 describe("a connect, stage by stage", () => {
   let root: string;
@@ -93,29 +134,41 @@ describe("a connect, stage by stage", () => {
 
   function service(over: Partial<MachinesEffects> = {}): MachinesService {
     let up = false;
-    return new MachinesService(root, "TESTlocalID00000", repo, {
-      listAliases: () => ["nas"],
-      resolvePlan: () => ({ baseVersion: "9.9.9", harness: null, hmrDir: null, version: "9.9.9" }),
-      now: ticking(),
-      // Down until started: the connect runs every stage there is.
-      probe: async () =>
-        up
-          ? { state: { kind: "running" as const, port: farPort, pid: 4242 }, machineId: null }
-          : { state: { kind: "stopped" as const }, machineId: null },
-      startServer: async () => {
-        up = true;
-        return { ok: true };
+    return new MachinesService(
+      root,
+      "TESTlocalID00000",
+      repo,
+      {
+        resolvePlan: () => ({
+          baseVersion: "9.9.9",
+          harness: null,
+          hmrDir: null,
+          version: "9.9.9",
+        }),
+        now: ticking(),
+        // Down until started: the connect runs every stage there is.
+        probe: async () =>
+          up
+            ? { state: { kind: "running" as const, port: farPort, pid: 4242 }, machineId: null }
+            : { state: { kind: "stopped" as const }, machineId: null },
+        startServer: async () => {
+          up = true;
+          return { ok: true };
+        },
+        hold: async (target) => {
+          held.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
+        },
+        session: (address) => (held.has(address) ? { pid: process.pid } : null),
+        agent: () => new http.Agent(),
+        mintToken: async () => ({ kind: "minted" as const, token: "remote-token" }),
+        loadConfig: async () => ({ models: [] }) as unknown as ProjectConfig,
+        ...over,
       },
-      hold: async (target) => {
-        held.add(`ssh:${target.alias}`);
-        return { ok: true, session: { pid: process.pid, socksPort: 1 } };
-      },
-      session: (address) => (held.has(address) ? { pid: process.pid, socksPort: 1 } : null),
-      agent: () => new http.Agent(),
-      mintToken: async () => ({ kind: "minted" as const, token: "remote-token" }),
-      loadConfig: async () => ({ models: [] }) as unknown as ProjectConfig,
-      ...over,
-    });
+      undefined,
+      undefined,
+      [sshKind],
+    );
   }
 
   async function connectJob(machines: MachinesService): Promise<MachineJob> {
@@ -271,7 +324,7 @@ describe("the SOCKS handshakes, tallied", () => {
   });
 });
 
-// The stub `ssh` is a shell script, which execFile cannot run on Windows (same as
+// The stub `machine-shell` is a shell script, which execFile cannot run on Windows (same as
 // machines-transport-session.test.ts, whose stub this is).
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
 
@@ -281,16 +334,13 @@ posixOnly("the session's own collection points", () => {
   beforeEach(() => {
     stubBin = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-timings-"));
     fs.writeFileSync(
-      path.join(stubBin, "ssh"),
+      path.join(stubBin, "machine-shell"),
       `#!/bin/sh
 case "$*" in *refused*) echo "deploy@refused: Permission denied (publickey)." >&2; exit 255 ;; esac
-case "$*" in *" -O "*) exit 0 ;; esac
-for a in "$@"; do last=$a; done
-[ "$last" = sh ] && exec /bin/sh
-exit 1
+exec /bin/sh
 `,
     );
-    fs.chmodSync(path.join(stubBin, "ssh"), 0o755);
+    fs.chmodSync(path.join(stubBin, "machine-shell"), 0o755);
     originalPath = process.env.PATH;
     process.env.PATH = `${stubBin}:${process.env.PATH ?? ""}`;
   });
@@ -302,7 +352,7 @@ exit 1
 
   it("the session coming up is one sample, and every command one more — never its text", async () => {
     const samples = collect();
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
+    const conn = connectionTo(target("nas"));
     expect(await conn.exec("echo top-secret-words")).toMatchObject({ code: 0 });
     expect((await conn.exec("exit 3")).code).toBe(3);
     await conn.stream("cat >/dev/null", { input: Buffer.from("twelve bytes") });
@@ -331,7 +381,7 @@ exit 1
 
   it("a session that dies before it answers is a failed open", async () => {
     const samples = collect();
-    const opened = await connectionTo({ alias: "refused", user: "deploy" }).open();
+    const opened = await connectionTo(target("refused")).open();
     expect(opened.ok).toBe(false);
     expect(samples.find((s) => s.probe === "machine.ssh.open")).toMatchObject({
       status: "error",
@@ -345,7 +395,7 @@ exit 1
 
   it("a command that outlasts its timeout says so", async () => {
     const samples = collect();
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
+    const conn = connectionTo(target("nas"));
     await conn.stream("sleep 5", { input: Buffer.alloc(0), timeoutMs: 150 });
     expect(samples.filter((s) => s.probe === "machine.ssh.command").map((s) => s.status)).toEqual([
       "timeout",
@@ -353,7 +403,7 @@ exit 1
   });
 
   it("with telemetry off, a session opened then is never sampled — only what is asked after", async () => {
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
+    const conn = connectionTo(target("nas"));
     await conn.exec("true");
     const samples = collect();
     await conn.exec("true");
@@ -362,10 +412,10 @@ exit 1
     ]);
   });
 
-  it("a SOCKS dial through the session is tallied, failure included", async () => {
+  it("a dial through the session is tallied, failure included", async () => {
     const samples = collect();
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
-    // The stub's session has no SOCKS listener behind its port: the handshake is refused.
+    const conn = connectionTo(target("nas"));
+    // The test kind's dial is refused, as a SOCKS port with nothing behind it refuses one.
     await expect(conn.dial(7364)).rejects.toThrow();
     await expect(conn.dial(7364)).rejects.toThrow();
     flushHandshakes();

@@ -79,8 +79,9 @@ const cancelledResponse = (): Response =>
 /**
  * How long a forwarded read may wait for the machine's first answer (its headers), the dial
  * included. Under the browser's own 20 s (web api/socket.ts), so the browser hears this answer
- * rather than giving up first; over the SOCKS handshake deadline (transport/socks.ts), so a
- * stalled session is reported in that layer's words, not this one's.
+ * rather than giving up first; over the ssh kind's SOCKS handshake deadline
+ * (plugins/machine-ssh/src/socks.ts, whose test restates this value), so a stalled session is
+ * reported in that layer's words, not this one's.
  */
 export const FORWARD_ANSWER_TIMEOUT_MS = 15_000;
 

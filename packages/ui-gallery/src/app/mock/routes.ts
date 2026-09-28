@@ -92,7 +92,7 @@ import type {
   SessionProcessesResponse,
   SessionResponse,
   SessionTracesResponse,
-  SshHostResponse,
+  MachineDefinitionResponse,
   SubagentMessageResponse,
   TaskCreateResponse,
   TraceAnalysisResponse,
@@ -1949,33 +1949,42 @@ router
       : [];
     return json({ ...machinesResponse(store), refused } satisfies MachinesUseResponse, 202);
   })
-  .post("/api/projects/:projectId/machines/ssh-hosts", ({ store, body }): unknown => {
-    const { alias, hostName } = record(body);
-    const name = str(alias, "new-host");
-    if (store.f.machines.machines.some((m) => m.alias === name))
-      fail(409, "ssh_host_exists", "That alias exists.");
-    store.f.machines.machines.push({
-      id: `ssh:${name}`,
-      alias: name,
-      installed: null,
-      machineId: null,
-      local: false,
-      connection: null,
-      api: null,
-      status: null,
-      root: `~/.penguin/data`,
-    });
-    void hostName;
-    return json(machinesResponse(store), 201);
-  })
-  .get("/api/projects/:projectId/machines/ssh-hosts/:alias", ({ params }): SshHostResponse => ({
-    alias: params.alias!,
-    hostName: `${params.alias}.example.internal`,
-    user: "ubuntu",
-    port: 22,
-    editable: true,
-  }))
-  .put("/api/projects/:projectId/machines/ssh-hosts/:alias", ({ store }) => machinesResponse(store))
+  .post(
+    "/api/projects/:projectId/machines/kinds/:kind/definitions",
+    ({ store, params, body }): unknown => {
+      const { name: given } = record(body);
+      const name = str(given, "new-host");
+      if (store.f.machines.machines.some((m) => m.alias === name))
+        fail(409, "machine_exists", "That name exists.");
+      store.f.machines.machines.push({
+        id: `${params.kind}:${name}`,
+        alias: name,
+        kind: params.kind!,
+        installed: null,
+        machineId: null,
+        local: false,
+        connection: null,
+        api: null,
+        status: null,
+        root: `~/.penguin/data`,
+      });
+      return json(machinesResponse(store), 201);
+    },
+  )
+  .get(
+    "/api/projects/:projectId/machines/kinds/:kind/definitions/:name",
+    ({ params }): MachineDefinitionResponse => ({
+      name: params.name!,
+      values: { hostName: `${params.name}.example.internal` },
+      forgettable: true,
+    }),
+  )
+  .put("/api/projects/:projectId/machines/kinds/:kind/definitions/:name", ({ store }) =>
+    machinesResponse(store),
+  )
+  .delete("/api/projects/:projectId/machines/kinds/:kind/definitions/:name", ({ store }) =>
+    machinesResponse(store),
+  )
   .post("/api/projects/:projectId/machines/stop-using", ({ store }) => machinesResponse(store))
   .post("/api/projects/:projectId/machines/:machineId/install", () =>
     readOnly("install on a machine"),
