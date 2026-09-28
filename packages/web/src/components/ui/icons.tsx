@@ -414,6 +414,8 @@ export const NAV_ICONS = {
   orgHandbook: "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z",
   /** Proposals (a page with a folded corner and a check on it: a change written up, waiting to be approved). */
   orgProposals: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 15l2 2 4-4",
+  /** Roadmaps (lucide map: three folded panels — where a discussion leads, and the proposals on the way). */
+  orgRoadmaps: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14",
 } as const;
 
 /** Company mode (lucide building-2: a tower with wings and windows), the settings rail, the sidebar's organization groups and the collapsed rail's toggle. */
