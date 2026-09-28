@@ -82,9 +82,7 @@ function Choice({
       }`}
     >
       <span className="min-w-0 flex-1 truncate whitespace-nowrap">{label}</span>
-      {off && (
-        <span className="shrink-0 text-[10px]">{note ?? S.chat.permission.unsupported}</span>
-      )}
+      {off && <span className="shrink-0 text-[10px]">{note ?? S.chat.permission.unsupported}</span>}
       <span className="w-3 shrink-0 text-center">{selected ? "✓" : ""}</span>
     </button>
   );
@@ -131,7 +129,10 @@ export function PermissionSelect({
       ? {}
       : block === "no-backend"
         ? { unavailable: P.noBackend, note: P.notInstalled }
-        : { unavailable: block === "local-unsupported" ? P.localUnsupported : P.noNetworkUnsupported };
+        : {
+            unavailable:
+              block === "local-unsupported" ? P.localUnsupported : P.noNetworkUnsupported,
+          };
   const level = permissionLevel(approvalMode, sandbox);
   // The swap animation plays only for a CHANGE of level, never on the first paint — React's
   // "adjust state while rendering" pattern for information from the previous render.
