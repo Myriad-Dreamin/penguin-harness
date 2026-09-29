@@ -293,4 +293,17 @@ describe("events arriving from a machine", () => {
     applyUserEvent(store, created("other"), () => undefined, null);
     expect(reloads()).toBe(0);
   });
+
+  it("ignores an organization's Session in this Project — the list never fetches one", () => {
+    // Every fetch asks for the user's own rows (excludeOrg), so reloading for a desk or ticket
+    // Session came back with nothing new: Agents x sources calls per desk run.
+    const { store, reloads } = countingStore();
+    const org = { ...created("p"), client: "org" } as ServerEvent;
+    applyUserEvent(store, org, () => undefined, "M1");
+    applyUserEvent(store, org, () => undefined, null);
+    expect(reloads()).toBe(0);
+    // A server that predates the field says nothing about the creator, and still reloads.
+    applyUserEvent(store, created("p"), () => undefined, "M1");
+    expect(reloads()).toBe(1);
+  });
 });
