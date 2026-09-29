@@ -2664,6 +2664,7 @@ export class OrganizationService {
         reportsTo: e.reportsTo,
       })),
       userIds: this.projectUserIds(org),
+      machineId: runsOn(this.deps, org.config),
     };
   }
 
