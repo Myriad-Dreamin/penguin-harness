@@ -549,6 +549,28 @@ export interface Messages {
     proposalRejectReason: string;
     /** A 404 with no organization code under `…/proposals`: the plugin is not on this Project. */
     proposalsPluginMissing(): string;
+    /** `penguin org claude-code`: the claude-code plugin's queue of Claude Code runs. */
+    claudeCodeDesc: string;
+    claudeCodeRunDesc: string;
+    claudeCodeLsDesc: string;
+    claudeCodeShowDesc: string;
+    claudeCodeReleaseDesc: string;
+    claudeCodeWorkspace: string;
+    claudeCodeTitle: string;
+    claudeCodeAgent: string;
+    claudeCodeScreen: string;
+    /** A 404 with no organization code under `…/claude-code`: the plugin is not on this Project. */
+    claudeCodePluginMissing(): string;
+    claudeCodeRunIdInvalid(value: string): string;
+    claudeCodeQueuedAt(position: number): string;
+    claudeCodeRunning(activity: "working" | "idle"): string;
+    claudeCodeEnded(end: string): string;
+    claudeCodeQueued(id: number, state: string): string;
+    claudeCodeReleased(id: number, state: string): string;
+    claudeCodeSlots(running: number, capacity: number, queued: number): string;
+    claudeCodeEmpty(): string;
+    claudeCodeWorkspaceLabel(): string;
+    claudeCodeSessionLabel(): string;
     proposalNumberInvalid(value: string): string;
     proposalStatusInvalid(value: string): string;
     /** `material add` without a `<kind>=<url>` of a known kind. */
@@ -1434,6 +1456,33 @@ const en: Messages = {
     proposalRejectReason: "Why the proposal is rejected",
     proposalsPluginMissing: () =>
       "The organization has no proposals plugin: install company-proposals on this Project.",
+    claudeCodeDesc:
+      "Claude Code runs (the claude-code plugin): queue one, and it starts when a slot is free",
+    claudeCodeRunDesc:
+      "Queue a Claude Code run for the calling employee (or --agent); it starts by itself when a slot is free",
+    claudeCodeLsDesc: "List the organization's Claude Code runs, and the server's slots",
+    claudeCodeShowDesc: "Show one run (--screen N: the last N lines of its program's screen)",
+    claudeCodeReleaseDesc:
+      "Let go of a run: a queued one is cancelled, a running one's program is closed",
+    claudeCodeWorkspace:
+      "The run's Workspace: inside the organization's workspace, or the calling Session's own (default)",
+    claudeCodeTitle: "The Session's title (default: the prompt's first line)",
+    claudeCodeAgent: "The employee the run is for, when a person queues it",
+    claudeCodeScreen: "How many of the screen's last lines to show",
+    claudeCodePluginMissing: () =>
+      "The organization has no Claude Code queue: install the claude-code plugin on this Project.",
+    claudeCodeRunIdInvalid: (value) => `Invalid run id "${value}": expected a positive integer.`,
+    claudeCodeQueuedAt: (position) => (position > 0 ? `queued (#${position} in line)` : "queued"),
+    claudeCodeRunning: (activity) =>
+      activity === "working" ? "running (working)" : "running (waiting for input)",
+    claudeCodeEnded: (end) => (end === "" ? "ended" : `ended (${end})`),
+    claudeCodeQueued: (id, state) => `Run #${id}: ${state}`,
+    claudeCodeReleased: (id, state) => `Run #${id}: ${state}`,
+    claudeCodeSlots: (running, capacity, queued) =>
+      `${running} of ${capacity} slots in use on this server, ${queued} waiting`,
+    claudeCodeEmpty: () => "No Claude Code runs yet.",
+    claudeCodeWorkspaceLabel: () => "Workspace",
+    claudeCodeSessionLabel: () => "Session",
     proposalNumberInvalid: (value) =>
       `Invalid proposal number "${value}": expected a positive integer.`,
     proposalStatusInvalid: (value) =>
@@ -2274,6 +2323,30 @@ const zh: Messages = {
     proposalResolveText: "为它改了什么",
     proposalRejectReason: "拒绝的理由",
     proposalsPluginMissing: () => "该组织没有提案插件：请在这个 Project 上安装 company-proposals。",
+    claudeCodeDesc: "Claude Code 运行（claude-code 插件）：排队，有空位时自动启动",
+    claudeCodeRunDesc:
+      "为调用方员工（或 --agent 指定的员工）排队一次 Claude Code 运行；有空位时自动启动",
+    claudeCodeLsDesc: "列出组织的 Claude Code 运行，以及本服务器的名额",
+    claudeCodeShowDesc: "显示一次运行（--screen N：其程序屏幕的最后 N 行）",
+    claudeCodeReleaseDesc: "释放一次运行：排队中的取消，运行中的关闭其程序",
+    claudeCodeWorkspace: "运行的工作区：组织工作区之内，或调用方会话自己的工作区（默认）",
+    claudeCodeTitle: "会话标题（默认：提示词的第一行）",
+    claudeCodeAgent: "由人排队时，运行所属的员工",
+    claudeCodeScreen: "显示屏幕最后几行",
+    claudeCodePluginMissing: () =>
+      "该组织没有 Claude Code 队列：请在这个 Project 上安装 claude-code 插件。",
+    claudeCodeRunIdInvalid: (value) => `运行编号「${value}」无效：应为正整数。`,
+    claudeCodeQueuedAt: (position) => (position > 0 ? `排队中（第 ${position} 位）` : "排队中"),
+    claudeCodeRunning: (activity) =>
+      activity === "working" ? "运行中（工作中）" : "运行中（等待输入）",
+    claudeCodeEnded: (end) => (end === "" ? "已结束" : `已结束（${end}）`),
+    claudeCodeQueued: (id, state) => `运行 #${id}：${state}`,
+    claudeCodeReleased: (id, state) => `运行 #${id}：${state}`,
+    claudeCodeSlots: (running, capacity, queued) =>
+      `本服务器已用 ${running} / ${capacity} 个名额，${queued} 个在排队`,
+    claudeCodeEmpty: () => "还没有 Claude Code 运行。",
+    claudeCodeWorkspaceLabel: () => "工作区",
+    claudeCodeSessionLabel: () => "会话",
     proposalNumberInvalid: (value) => `提案编号「${value}」无效：应为正整数。`,
     proposalStatusInvalid: (value) =>
       `状态「${value}」无效：应为 drafting、ready、approved、merged 或 rejected。`,

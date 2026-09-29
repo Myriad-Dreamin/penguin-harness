@@ -47,6 +47,8 @@ export const zh = {
       handbook: "手册",
       /** The proposals page a plugin contributes (ORG_PAGE_RENDERERS); the row exists only while the plugin does. */
       proposals: "提案",
+      /** The Claude Code console a plugin contributes (ORG_PAGE_RENDERERS); the row exists only while the plugin does. */
+      claudeCode: "Claude Code",
     },
   },
 
