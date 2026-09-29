@@ -1216,3 +1216,33 @@ describe("history load failure and retry (#6)", () => {
     expect(h.controller.model.items.filter((i) => i.kind === "user_text")).toHaveLength(1);
   });
 });
+
+describe("a child Session announced on the parent's channel", () => {
+  it("refreshes the list for the user's own child, not for an organization's", () => {
+    const created: string[] = [];
+    const controller = createStreamController({
+      sessionId: "s1",
+      loadMessages: () => new Promise(() => undefined),
+      onTaskState: () => {},
+      onLoading: () => {},
+      onError: () => {},
+      onModelChange: () => {},
+      onPendingChange: () => {},
+      onSessionCreated: (id) => created.push(id),
+      now: () => 1_000_000,
+    });
+    const child = (sessionId: string, org: boolean): ServerEvent =>
+      ({
+        type: "session_created",
+        projectId: "p",
+        agentId: "a",
+        sessionId,
+        source: "subagent",
+        ...(org ? { client: "org" } : {}),
+      }) as ServerEvent;
+    controller.handleServer(child("mine", false));
+    // A desk's subagent is never a row of the list the callback refreshes (excludeOrg).
+    controller.handleServer(child("desk-child", true));
+    expect(created).toEqual(["mine"]);
+  });
+});
