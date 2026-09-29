@@ -8,7 +8,8 @@
  * one flat index of the three — an entry per content, the first source's kept — and
  * GET /api/plugins behind the auth gate.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -271,6 +272,31 @@ const built = [...packages].filter(
   ([, { manifest }]) => manifest.main !== undefined || manifest.exports !== undefined,
 );
 
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+/**
+ * The sandbox backends' package prefix before the rename, and after it. Kept on one line: that
+ * line names both, so the check below reads it as a migration note and passes this file.
+ */
+const [RETIRED, CURRENT] = ["@prismshadow/penguin-plugin-sandbox-", "@penguinharness/sandbox-"];
+
+/** A released version's changelog folder; those are frozen, so their text keeps its names. */
+const RELEASED_CHANGELOG = /^changelog\/\d+\.\d+\.\d+\//;
+
+/** Every `file:line: text` that uses a retired sandbox package name. */
+function retiredSandboxNameUses(files: Array<{ file: string; text: string }>): string[] {
+  const uses: string[] = [];
+  for (const { file, text } of files) {
+    if (RELEASED_CHANGELOG.test(file)) continue;
+    text.split("\n").forEach((line, i) => {
+      if (line.includes(RETIRED) && !line.includes(CURRENT)) {
+        uses.push(`${file}:${i + 1}: ${line.trim()}`);
+      }
+    });
+  }
+  return uses;
+}
+
 /**
  * The packages as npm ships them, staged as a prefix a registry can read from: each listed
  * package's own package.json and README.md under `node_modules/<name>/` — what
@@ -309,6 +335,43 @@ describe("the builtin index and the packages it lists", () => {
     for (const [name, { dir }] of sandboxes) {
       expect(name, `plugins/${dir}`).toBe(`@penguinharness/${dir}`);
     }
+  });
+
+  /**
+   * The rename kept no alias (stored configuration is explicitly incompatible), so a retired
+   * name that comes back names a package that no longer exists — the usual way back is a change
+   * written before the rename and rebased after it. Every tracked file is read. A retired name
+   * may stay in a released version's changelog, which is frozen, and on a line that also names
+   * its replacement: that line is a migration note, not a use.
+   */
+  it("leaves no retired sandbox package name in the tracked tree", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: REPO_ROOT, encoding: "utf8" })
+      .split("\0")
+      .filter((file) => file !== "");
+    expect(tracked.length).toBeGreaterThan(0);
+    const files = tracked.flatMap((file) => {
+      const abs = path.join(REPO_ROOT, file);
+      // A tracked symlink or a file deleted in the working tree has no text of its own.
+      if (!existsSync(abs) || !lstatSync(abs).isFile()) return [];
+      const bytes = readFileSync(abs);
+      return bytes.includes(0) ? [] : [{ file, text: bytes.toString("utf8") }];
+    });
+    expect(retiredSandboxNameUses(files)).toEqual([]);
+  });
+
+  it("counts a retired name as used unless it is frozen history or a migration note", () => {
+    const uses = retiredSandboxNameUses([
+      { file: "plugins/sandbox-bwrap/README.md", text: `# ${RETIRED}bwrap\n` },
+      { file: ".github/workflows/release.yml", text: `a\n  test -f ${RETIRED}wsl/x\n` },
+      { file: "changelog/0.2.13/entry.md", text: `the backends are ${RETIRED}*\n` },
+      { file: "changelog/unreleased/entry.md", text: `${RETIRED}dsh -> ${CURRENT}dsh\n` },
+      { file: "changelog/unreleased/other.md", text: `still ${RETIRED}seatbelt\n` },
+    ]);
+    expect(uses).toEqual([
+      `plugins/sandbox-bwrap/README.md:1: # ${RETIRED}bwrap`,
+      `.github/workflows/release.yml:2: test -f ${RETIRED}wsl/x`,
+      `changelog/unreleased/other.md:1: still ${RETIRED}seatbelt`,
+    ]);
   });
 
   it("describes every package the build ships from its own package.json", () => {
