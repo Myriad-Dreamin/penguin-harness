@@ -28,6 +28,8 @@ import {
 } from "../src/machines/transport/index.js";
 import type { Resources } from "@prismshadow/penguin-core/kernel";
 
+// The stub `ssh` below is a shell script, which execFile cannot run on Windows; what stays
+// unmeasured on Windows is listed in ci.yml's test-windows note.
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
 
 posixOnly("the session", () => {
