@@ -3,6 +3,7 @@
 - **Date:** 2026-09-29
 - **Type:** fix
 - **Scope:** `server`
+- **PR:** [Myriad-Dreamin/penguin-harness#56](https://github.com/Myriad-Dreamin/penguin-harness/pull/56)
 
 [English](2026-09-29-org-desk-mentions.md)
 
@@ -12,7 +13,7 @@
 
 ## Details
 
-- @ 现在先记入公司模式新增的表 `org_desk_mentions`（迁移 22，`company-mode-desk-mentions`，
+- @ 现在先记入公司模式新增的表 `org_desk_mentions`（迁移 20，`company-mode-desk-mentions`，
   swap-safe），与推进频道扫描游标在同一次对账里落库，按（员工、频道、消息）去重；工位会话的
   follow-up 队列不再承载它们。
 - 未 @ 任何人的消息同样记入这张表，等待送达频道的默认接收人（`notify`），送达方式相同。
