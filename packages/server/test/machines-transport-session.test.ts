@@ -18,6 +18,10 @@ import {
 } from "../src/machines/transport/index.js";
 import type { Resources } from "@prismshadow/penguin-core/kernel";
 
+// The stub `ssh` below is a shell script, which execFile cannot run on Windows. The Windows
+// session's own branch is the no-control-socket one, measured here through
+// useControlSockets(false); what stays unmeasured on Windows is listed in ci.yml's
+// test-windows note.
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
 
 posixOnly("the session", () => {
