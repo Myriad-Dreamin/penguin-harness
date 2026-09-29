@@ -60,11 +60,11 @@ runs:
     # the shards that never import a built package stayed green -- a failure that looks like
     # a broken test, not a broken workflow. The echo makes the decision visible in the log.
     #
-    # The heap is pinned because V8 sizes its default from the machine's memory: about 4 GB
-    # on the 16 GB ubuntu and windows runners, about 2 GB on the 7 GB macos-latest runner.
-    # The server's declaration build (tsup's DTS worker) needs more than 2 GB, so every
-    # macOS job died at ERR_WORKER_OUT_OF_MEMORY while the other runners passed. 4096 is the
-    # ceiling the larger runners already had; the flag reaches the worker threads too.
+    # The heap is pinned because Node's default differs by runner: 4288 MB on ubuntu and
+    # windows, 2240 MB on macos-latest (measured on both its 7 GB and 14 GB machines). The
+    # server's declaration build (tsup's DTS worker) outgrew 2240 MB, so every macOS job died
+    # at ERR_WORKER_OUT_OF_MEMORY while the others passed. 4096 gives every runner the 4288 MB
+    # ubuntu and windows already had, and the flag reaches the worker threads too.
     - name: Build (tsup)
       shell: bash
       env:
