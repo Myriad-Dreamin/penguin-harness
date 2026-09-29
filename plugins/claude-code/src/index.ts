@@ -69,7 +69,50 @@ import type {
   SurfaceState,
   SurfaceView,
 } from "@prismshadow/penguin-core/plugin";
-import type { Terminals } from "@prismshadow/penguin-server/plugin";
+import type { Hono } from "hono";
+import type {
+  Log,
+  OrgGateway,
+  Paths,
+  PluginConfig,
+  SessionIndex,
+  SessionServiceIface,
+  SessionSurfaces,
+  Terminals,
+} from "@prismshadow/penguin-server/plugin";
+import { ClaudeCodeQueue } from "./queue.js";
+import { QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
+import { PAGE_ROUTES_ID, pageRoutes } from "./console-page.js";
+
+export {
+  ClaudeCodeQueue,
+  KEEP_ENDED,
+  PROMPT_MAX,
+  PUMP_MS,
+  QueueError,
+  RUNS_FILE,
+  SCREEN_MAX,
+  parseRunsFile,
+  runsPath,
+} from "./queue.js";
+export type {
+  EndReason,
+  QueueConfig,
+  QueueDeps,
+  RowLike,
+  Run,
+  RunStatus,
+  RunView,
+} from "./queue.js";
+export { QUEUE_PREFIX, QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
+export {
+  PAGE_PREFIX,
+  PAGE_ROUTES_ID,
+  PAGE_SRC,
+  PAGE_STRINGS,
+  pageHtml,
+  pageRoutes,
+} from "./console-page.js";
 
 /**
  * The screen is re-read this long after a burst of output settles — the TUI redraws its bar
@@ -650,6 +693,7 @@ export class ClaudeCode {
   setup(_ctx: ClassCtx, context: Json) {
     this.surface = new ClaudeCodeSurface(this.terminals);
     this.surface.adopt(context);
+    liveSurface.current = this.surface;
   }
 
   park(): Json {
@@ -657,5 +701,144 @@ export class ClaudeCode {
   }
 }
 
-const plugin: Plugin = { modules: [ClaudeCode] };
+/**
+ * The surface of the current App, for the queue to read a program's activity off: the two
+ * modules are rebuilt together, and the queue asks at every pass rather than holding on.
+ */
+const liveSurface: { current: ClaudeCodeSurface | null } = { current: null };
+
+/** The queue's settings group — its contribution id, which the values are stored under. */
+export const QUEUE_CONFIG_GROUP = "claude-code-queue";
+export const DEFAULT_CAPACITY = 4;
+export const DEFAULT_IDLE_MINUTES = 30;
+
+function bounded(raw: unknown, min: number, max: number, fallback: number): number {
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= min && raw <= max
+    ? raw
+    : fallback;
+}
+
+/** The stored values, each one outside its bounds read as its default. */
+export function queueConfigOf(values: Record<string, unknown>): {
+  capacity: number;
+  idleMinutes: number;
+} {
+  return {
+    capacity: bounded(values.capacity, 1, 64, DEFAULT_CAPACITY),
+    idleMinutes: bounded(values.idleMinutes, 0, 1440, DEFAULT_IDLE_MINUTES),
+  };
+}
+
+/**
+ * The queue (queue.ts), its routes, and the console page company mode shows it on. A node of
+ * its own: it requires the session surfaces the ClaudeCode node contributes to, which that
+ * node must not (a cycle).
+ */
+@Component({
+  contributes: {
+    "HttpModule.routes": [
+      {
+        // These literals repeat QUEUE_PREFIX / PAGE_PREFIX; a test holds the copies together.
+        id: "claude-code.queue-routes",
+        prefix: "/api/projects/:projectId/organizations/:orgId/claude-code",
+        auth: "user",
+        order: 150,
+      },
+      {
+        id: "claude-code.page-routes",
+        prefix: "/api/claude-code",
+        auth: "user",
+        order: 151,
+      },
+    ],
+    "WebModule.pages": [
+      {
+        id: "claude-code.console",
+        key: "claude-code",
+        path: "claude-code",
+        nav: "org",
+        admin: false,
+        renderer: { iframe: { src: "/api/claude-code/page", namespace: "claude-code" } },
+      },
+    ],
+    "PluginConfigProvider.groups": [
+      {
+        // These literals repeat QUEUE_CONFIG_GROUP and the defaults; a test holds them together.
+        id: "claude-code-queue",
+        title: "Claude Code queue",
+        titleZh: "Claude Code 队列",
+        description:
+          "The runs employees queue in company mode. The settings apply to every organization on this server.",
+        descriptionZh: "公司模式下员工排队的 Claude Code 运行。设置对本服务器上的所有组织生效。",
+        properties: {
+          capacity: {
+            type: "number",
+            title: "Slots",
+            titleZh: "名额",
+            description:
+              "How many Claude Code runs may be open at once on this server; the rest wait in line.",
+            descriptionZh: "本服务器上同时打开的 Claude Code 运行数上限，其余的排队等待。",
+            minimum: 1,
+            maximum: 64,
+            default: 4,
+          },
+          idleMinutes: {
+            type: "number",
+            title: "Close when idle (minutes)",
+            titleZh: "空闲关闭（分钟）",
+            description:
+              "A run whose program has been waiting for input this long is closed and its slot handed on. 0 never closes one.",
+            descriptionZh: "程序等待输入满这么久的运行会被关闭，名额交给下一个。0 表示从不关闭。",
+            minimum: 0,
+            maximum: 1440,
+            default: 30,
+          },
+        },
+      },
+    ],
+  },
+})
+export class ClaudeCodeQueueModule {
+  @Use("CompanyModule") private readonly gateway!: OrgGateway;
+  @Use("SessionRuntimeModule") private readonly sessionService!: SessionServiceIface;
+  @Use("SessionRuntimeModule") private readonly sessions!: SessionIndex;
+  @Use("SessionRuntimeModule") private readonly surfaces!: SessionSurfaces;
+  @Use() private readonly terminals!: Terminals;
+  @Use("RuntimeModule") private readonly paths!: Paths;
+  @Use("RuntimeModule") private readonly log!: Log;
+  @Use("PluginConfigModule") private readonly pluginConfig!: PluginConfig;
+  @Bind(QUEUE_ROUTES_ID) routes!: Hono;
+  @Bind(PAGE_ROUTES_ID) page!: Hono;
+
+  setup({ effect }: ClassCtx) {
+    const queue = new ClaudeCodeQueue({
+      gateway: this.gateway,
+      sessionService: this.sessionService,
+      sessions: this.sessions,
+      surfaces: this.surfaces,
+      activity: (sessionId) => liveSurface.current?.status(sessionId) ?? "idle",
+      screen: (terminalId) => {
+        const terminal = this.terminals.get(terminalId);
+        if (terminal === undefined || !terminal.alive) return null;
+        try {
+          return [...terminal.capture().lines];
+        } catch {
+          return null;
+        }
+      },
+      root: this.paths.root,
+      config: () => queueConfigOf(this.pluginConfig.get(QUEUE_CONFIG_GROUP)),
+      surfaceKind: "claude-code",
+      log: (line) => this.log.line(line),
+    });
+    void queue.start();
+    effect(() => {
+      void queue.stop();
+    });
+    this.routes = queueRoutes(queue);
+    this.page = pageRoutes();
+  }
+}
+
+const plugin: Plugin = { modules: [ClaudeCode, ClaudeCodeQueueModule] };
 export default plugin;
