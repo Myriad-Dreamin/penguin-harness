@@ -624,8 +624,10 @@ export function createStreamController(deps: StreamControllerDeps): StreamContro
         deps.onSessionTitle?.(ev.sessionId, ev.title);
         return;
       }
+      // An organization's child (`client: "org"`) is not a row of the user's own list, which
+      // is all the callback refreshes.
       if (ev.type === "session_created") {
-        deps.onSessionCreated?.(ev.sessionId);
+        if (ev.client !== "org") deps.onSessionCreated?.(ev.sessionId);
         return;
       }
       // Goal progress only affects the banner (UI state, not the transcript model): forwarded
