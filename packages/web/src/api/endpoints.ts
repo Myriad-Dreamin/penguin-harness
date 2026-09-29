@@ -1944,7 +1944,6 @@ export interface OrgRoadmapItem {
   number: number;
   name: string;
   status: string;
-  archived: boolean;
   channelId: string | null;
   createdAt: string;
   events?: ReadonlyArray<{ at: string }>;
