@@ -157,7 +157,7 @@ jobs:
           # sandbox-bwrap is built so its live suite confines with the bwrap the plugin ships
           # (the build vendors it), not whatever the runner has on PATH.
           - shard: rest
-            build: "@prismshadow/penguin-desktop...,@prismshadow/penguin-cli...,@prismshadow/penguin-plugin-claude-code...,@prismshadow/penguin-plugin-discord-bot...,@prismshadow/penguin-plugin-sandbox-bwrap..."
+            build: "@prismshadow/penguin-desktop...,@prismshadow/penguin-cli...,@prismshadow/penguin-plugin-claude-code...,@prismshadow/penguin-plugin-discord-bot...,@penguinharness/sandbox-bwrap..."
             tests: >-
               pnpm -r --filter '!@prismshadow/penguin-core' --filter '!@prismshadow/penguin-server'
               --filter '!@prismshadow/penguin-web' --filter '!@prismshadow/penguin-cli' test
