@@ -23,12 +23,7 @@ import { machineForSession } from "../../lib/session-machines";
 import { rememberTerminalMachine } from "../../lib/terminal-machines";
 import { useLocale } from "../../state/locale";
 import { useSessions } from "../../state/sessions";
-import {
-  TerminalView,
-  probeJson,
-  type TerminalInfo,
-  type TerminalStatus,
-} from "../terminal";
+import { TerminalView, probeJson, type TerminalInfo, type TerminalStatus } from "../terminal";
 
 interface SurfaceRendererProps {
   session: SessionInfo;
