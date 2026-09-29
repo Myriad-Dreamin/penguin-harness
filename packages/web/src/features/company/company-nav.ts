@@ -76,6 +76,8 @@ export function orgPagePath(projectId: string, orgId: string, page: CompanyNavKe
  */
 export const ORG_PAGE_RENDERERS = {
   OrgProposalsPage: { label: "proposals", segment: "proposals", kind: "builtin" },
+  /** The claude-code plugin's console: the organization's queued and running Claude Code runs. */
+  "claude-code": { label: "claudeCode", segment: "claude-code", kind: "iframe" },
 } as const satisfies Record<string, { label: string; segment: string; kind: "builtin" | "iframe" }>;
 export type OrgPageRenderer = keyof typeof ORG_PAGE_RENDERERS;
 

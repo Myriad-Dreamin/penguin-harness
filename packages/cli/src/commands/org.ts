@@ -34,6 +34,9 @@
  *                    | comments <n> [--pending] | resolve <n> <comment_id> [-m <text>] | merged <n>
  *                    | approve <n> | reject <n> --reason <s> | groups
  *                    (the company-proposals plugin's routes: without the plugin, every one is a 404)
+ *   penguin org claude-code run <prompt> [--workspace <dir>] [--title <s>] [--agent <agent_id>]
+ *                    | ls | show <id> [--screen <lines>] | release <id>
+ *                    (the claude-code plugin's queue: without the plugin, every one is a 404)
  *
  * Every subcommand takes `--org-id` (default: PENGUIN_ORG_ID, the variable company mode
  * adds to the control environment of desk and ticket sessions; there is no default
@@ -2215,6 +2218,179 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     // Tokens were counted but some model had no pricing: the figures are a lower bound.
     if (res.unpriced) process.stderr.write(`${t.org.unpriced()}\n`);
   });
+
+  registerClaudeCodeCommands(org, t);
+}
+
+/** One run of the claude-code plugin's queue, as its routes answer it. */
+interface ClaudeCodeRun {
+  id: number;
+  agentId: string;
+  by: string;
+  prompt: string;
+  title: string | null;
+  workspace: string;
+  status: "queued" | "running" | "ended";
+  sessionId?: string;
+  position?: number;
+  activity?: "working" | "idle";
+  end?: string;
+  error?: string;
+  screen?: string[];
+}
+
+interface ClaudeCodeRunsResponse {
+  runs: ClaudeCodeRun[];
+  capacity: number;
+  idleMinutes: number;
+  running: number;
+  queued: number;
+}
+
+/**
+ * A request under the organization's `claude-code` routes — the claude-code plugin's queue. As
+ * with the proposals: a 404 without an organization code means the plugin is not on the
+ * Project, and that is said instead of "not found". Null after that error.
+ */
+async function claudeCodeRequest<T>(
+  scope: OrgScope,
+  t: Messages,
+  method: string,
+  suffix: string,
+  body?: unknown,
+): Promise<T | null> {
+  try {
+    return await scope.client.request<T>(method, `${scope.base}/claude-code${suffix}`, body);
+  } catch (err) {
+    if (
+      err instanceof ApiError &&
+      err.status === 404 &&
+      !ORG_404_CODES.has(err.code) &&
+      err.code !== "run_not_found"
+    ) {
+      fail(t, t.org.claudeCodePluginMissing());
+      return null;
+    }
+    throw err;
+  }
+}
+
+/** A run's state in a word or three: its place in line, what its program is doing, or how it ended. */
+function claudeCodeState(run: ClaudeCodeRun, t: Messages): string {
+  if (run.status === "queued") return t.org.claudeCodeQueuedAt(run.position ?? 0);
+  if (run.status === "running") return t.org.claudeCodeRunning(run.activity ?? "working");
+  return t.org.claudeCodeEnded(run.end ?? "");
+}
+
+/** `#<id>  <state>  <agent>  <title or the prompt's first line>`. */
+function claudeCodeLine(run: ClaudeCodeRun, t: Messages): string {
+  const name = run.title ?? run.prompt.split(/\r?\n/, 1)[0] ?? "";
+  return `#${run.id}  ${claudeCodeState(run, t)}  ${run.agentId}  ${name}`;
+}
+
+/**
+ * `penguin org claude-code`: queue a Claude Code run, list the runs, show one (with the last
+ * lines of its screen), release one. The run is the calling employee's (PENGUIN_AGENT_ID); a
+ * person names the employee with `--agent`.
+ */
+function registerClaudeCodeCommands(org: Command, t: Messages): void {
+  const cc = org.command("claude-code").description(t.org.claudeCodeDesc);
+  const runId = (raw: string): number | null => {
+    if (!/^[1-9][0-9]*$/.test(raw)) {
+      fail(t, t.org.claudeCodeRunIdInvalid(raw));
+      return null;
+    }
+    return Number(raw);
+  };
+
+  scoped(
+    cc
+      .command("run <prompt>")
+      .description(t.org.claudeCodeRunDesc)
+      .option("--workspace <dir>", t.org.claudeCodeWorkspace)
+      .option("--title <title>", t.org.claudeCodeTitle)
+      .option("--agent <agent_id>", t.org.claudeCodeAgent),
+    t,
+  ).action(async (prompt: string, opts) => {
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const run = await claudeCodeRequest<ClaudeCodeRun>(scope, t, "POST", "/runs", {
+      prompt,
+      ...(opts.workspace !== undefined ? { workspace: path.resolve(String(opts.workspace)) } : {}),
+      ...(opts.title !== undefined ? { title: String(opts.title) } : {}),
+      ...(opts.agent !== undefined ? { agent: String(opts.agent) } : {}),
+      ...actorFields(),
+    });
+    if (run === null) return;
+    if (opts.json === true) printJson(run);
+    else printLine(t.org.claudeCodeQueued(run.id, claudeCodeState(run, t)));
+  });
+
+  scoped(cc.command("ls").description(t.org.claudeCodeLsDesc), t).action(async (opts) => {
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const res = await claudeCodeRequest<ClaudeCodeRunsResponse>(
+      scope,
+      t,
+      "GET",
+      `/runs${query(actorQuery())}`,
+    );
+    if (res === null) return;
+    if (opts.json === true) {
+      printJson(res);
+      return;
+    }
+    printLine(t.org.claudeCodeSlots(res.running, res.capacity, res.queued));
+    if (res.runs.length === 0) printLine(t.org.claudeCodeEmpty());
+    for (const run of res.runs) printLine(claudeCodeLine(run, t));
+  });
+
+  scoped(
+    cc
+      .command("show <id>")
+      .description(t.org.claudeCodeShowDesc)
+      .option("--screen <lines>", t.org.claudeCodeScreen),
+    t,
+  ).action(async (raw: string, opts) => {
+    const id = runId(raw);
+    if (id === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const lines = opts.screen !== undefined ? String(opts.screen) : undefined;
+    const run = await claudeCodeRequest<ClaudeCodeRun>(
+      scope,
+      t,
+      "GET",
+      `/runs/${id}${query([...actorQuery(), ["screen", lines]])}`,
+    );
+    if (run === null) return;
+    if (opts.json === true) {
+      printJson(run);
+      return;
+    }
+    printLine(claudeCodeLine(run, t));
+    printLine(`${t.org.claudeCodeWorkspaceLabel()}: ${run.workspace}`);
+    if (run.sessionId !== undefined)
+      printLine(`${t.org.claudeCodeSessionLabel()}: ${run.sessionId}`);
+    if (run.error !== undefined) printLine(run.error);
+    if (run.title !== null) printLine(run.prompt);
+    for (const line of run.screen ?? []) printLine(`  ${line}`);
+  });
+
+  scoped(cc.command("release <id>").description(t.org.claudeCodeReleaseDesc), t).action(
+    async (raw: string, opts) => {
+      const id = runId(raw);
+      if (id === null) return;
+      const scope = await orgScope(opts, t);
+      if (scope === null) return;
+      const run = await claudeCodeRequest<ClaudeCodeRun>(scope, t, "POST", `/runs/${id}/release`, {
+        ...actorFields(),
+      });
+      if (run === null) return;
+      if (opts.json === true) printJson(run);
+      else printLine(t.org.claudeCodeReleased(run.id, claudeCodeState(run, t)));
+    },
+  );
 }
 
 /**

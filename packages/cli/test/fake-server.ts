@@ -100,6 +100,8 @@ export interface FakeOrgState {
   unpriced: boolean;
   /** The company-proposals plugin's ledger, keyed by number; absent (undefined) = the plugin is not installed, every proposals route is a plain 404. */
   proposals?: Map<number, Json>;
+  /** The claude-code plugin's queue, by run id; absent = the plugin is not installed (plain 404). */
+  claudeCodeRuns?: Map<number, Json>;
 }
 
 /** Who a fake request is attributed to, or the error response that settles it. */
@@ -1065,7 +1067,80 @@ export class FakeServer {
     }
 
     if (a === "proposals") return this.handleProposals(method, org, b, c, segments[4], body, url);
+    if (a === "claude-code")
+      return this.handleClaudeCode(method, org, b, c, segments[4], body, url);
 
+    return this.error(404, "not_found", `No fake route for ${method} ${url.pathname}`);
+  }
+
+  // ---- company mode: the claude-code plugin's queue ----
+
+  /**
+   * `…/claude-code/runs[/<id>[/release]]`: a run is queued for the calling employee (or the
+   * `agent` a person names), never started — the fake has no slots — and a release ends it.
+   */
+  private handleClaudeCode(
+    method: string,
+    org: FakeOrgState,
+    b: string | undefined,
+    c: string | undefined,
+    d: string | undefined,
+    body: Json | undefined,
+    url: URL,
+  ): Response {
+    const runs = org.claudeCodeRuns;
+    if (runs === undefined || b !== "runs") {
+      return this.error(404, "not_found", `No route for ${method} ${url.pathname}`);
+    }
+    const all = (): Json[] => [...runs.values()];
+    if (c === undefined && method === "GET") {
+      return this.json({
+        runs: all().reverse(),
+        capacity: 4,
+        idleMinutes: 30,
+        running: all().filter((r) => r.status === "running").length,
+        queued: all().filter((r) => r.status === "queued").length,
+      });
+    }
+    if (c === undefined && method === "POST") {
+      if (!isNonEmptyString(body?.prompt)) return this.badRequest("A run needs a prompt.");
+      const agentId = isNonEmptyString(body?.agentId)
+        ? body.agentId
+        : isNonEmptyString(body?.agent)
+          ? body.agent
+          : null;
+      if (agentId === null) return this.badRequest("Name the employee the run is for.");
+      const id = runs.size + 1;
+      const run: Json = {
+        id,
+        agentId,
+        by: isNonEmptyString(body?.agentId) ? `agent:${agentId}` : `user:${this.userId}`,
+        prompt: body?.prompt,
+        title: isNonEmptyString(body?.title) ? body.title : null,
+        workspace: isNonEmptyString(body?.workspace) ? body.workspace : `/shared/${org.orgId}`,
+        status: "queued",
+        queuedAt: "2026-09-29T16:00:00.000Z",
+        position: all().filter((r) => r.status === "queued").length + 1,
+      };
+      runs.set(id, run);
+      return this.json(run, 201);
+    }
+    const run = runs.get(Number(c));
+    if (run === undefined) return this.error(404, "run_not_found", `No run #${c}.`);
+    if (d === undefined && method === "GET") {
+      const screen = url.searchParams.get("screen");
+      return this.json(
+        screen !== null && run.status === "running" ? { ...run, screen: ["> ready"] } : run,
+      );
+    }
+    if (d === "release" && method === "POST") {
+      if (run.status !== "ended") {
+        run.end = run.status === "queued" ? "cancelled" : "released";
+        run.status = "ended";
+        delete run.position;
+      }
+      return this.json(run);
+    }
     return this.error(404, "not_found", `No fake route for ${method} ${url.pathname}`);
   }
 
