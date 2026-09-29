@@ -23,15 +23,17 @@ import {
 } from "../../lib/semantic-id";
 import { agentDisplayName, projectDisplayName, useProject } from "../../state/project";
 import { useAuth } from "../../state/auth";
-import { clearDraftChatDefaults, clearDraftModelRef } from "../../features/chat/draft-cache";
 import {
+  clearDraftChatDefaults,
+  clearDraftModelRef,
   dispatchChatDefaultsChanged,
   type ChatDefaultsChangedDetail,
-} from "../../features/chat/chat-defaults-event";
-import { ModelSelect, modelLabel } from "../../features/chat/model-select";
-import { SELECTABLE_THINKING_LEVELS } from "../../features/chat/thinking-level";
-import { WorkspaceSelect } from "../../features/chat/workspace-select";
-import { sameModelRef } from "../../features/models/model-grouping";
+  ModelSelect,
+  modelLabel,
+  SELECTABLE_THINKING_LEVELS,
+  WorkspaceSelect,
+} from "../../features/chat";
+import { sameModelRef } from "../../features/models";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
@@ -43,7 +45,7 @@ import { Modal } from "../ui/modal";
 import { ConfirmModal } from "../ui/confirm-modal";
 import { Badge } from "../ui/badge";
 import { InfoPopover } from "../ui/info-popover";
-import { SemanticIdField } from "../../features/semantic-id/semantic-id-field";
+import { SemanticIdField } from "../../features/semantic-id";
 
 /** Approval modes offered by the new-chat-defaults select, in the composer menu's order. */
 const APPROVAL_MODES: readonly ApprovalMode[] = [

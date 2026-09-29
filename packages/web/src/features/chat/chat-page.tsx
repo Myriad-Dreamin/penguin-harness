@@ -33,11 +33,11 @@ import type {
   TaskInputPart,
 } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
-import { switchDeskModel } from "../company/desk-model";
+import { switchDeskModel } from "../company";
 import { useCompany } from "../../state/company";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
-import { useWorkflowTabs, WorkflowFrame, WorkflowTabStrip } from "../workflows/workflow-tabs";
+import { useWorkflowTabs, WorkflowFrame, WorkflowTabStrip } from "../workflows";
 import { apiErrorText } from "../../lib/api-error";
 import { configuredCompactionLimit } from "../../lib/context";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -118,26 +118,24 @@ import { useOutlineIndex } from "./use-outline-index";
 import { parseUserMessageBody } from "./user-message-body";
 import { GoalStatusBanner } from "./goal-banner";
 import { handoffMessage, modelSwitchMessage } from "./agent-handoff";
-import { hasConfiguredKey, promotedPricing, sameModelRef } from "../models/model-grouping";
+import { hasConfiguredKey, promotedPricing, sameModelRef } from "../models";
 import { providerInfo } from "@prismshadow/penguin-core/model-catalog";
 import { WorkspaceBrowser } from "./workspace-browser";
 import { ChatMemoryView } from "./memory-view";
 import { useMemoryListing } from "./use-memory-listing";
 import { deletedChangeKeys } from "./memory-nav";
 import { SubagentsView } from "./subagents-view";
-import { TracePanel } from "../traces/trace-panel";
-import { MessagingPanel } from "../messaging/messaging-panel";
-import { SchedulePanel } from "../schedules/schedule-panel";
-import { PortsPanel } from "../ports/ports-panel";
-import { BrowserTab } from "../browser/browser-tab";
-import { noteScheduleEvent } from "../schedules/schedule-store";
-import { DockPanel } from "../dock/dock-panel";
-import { DockLauncher } from "../dock/dock-launcher";
-import { useDockMount } from "../dock/use-dock-mount";
-import { panelLabel } from "../dock/panel-meta";
-// importing it also registers the global Ctrl+` hotkey with the app bundle
-import { setDockCwd } from "../dock/dock-terminal";
+import { TracePanel } from "../traces";
+import { MessagingPanel } from "../messaging";
+import { SchedulePanel, noteScheduleEvent } from "../schedules";
+import { PortsPanel } from "../ports";
+import { BrowserTab } from "../browser";
 import {
+  DockPanel,
+  DockLauncher,
+  useDockMount,
+  panelLabel,
+  setDockCwd,
   adoptDockScope,
   closedDockView,
   dockViews,
@@ -147,7 +145,8 @@ import {
   panelDock,
   subscribeDock,
   type PanelKind,
-} from "../dock/dock-state";
+} from "../dock";
+// importing it also registers the global Ctrl+` hotkey with the app bundle
 import { terminalApiSupported, subscribeTerminals } from "../terminal";
 import { advancePanelTaskScope, createPanelTaskScope } from "./panel-task-scope";
 import { useSessionDraft } from "./use-session-draft";

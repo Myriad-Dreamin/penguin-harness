@@ -56,15 +56,14 @@ import { ConfirmModal } from "../../components/ui/confirm-modal";
 import { InfoPopover } from "../../components/ui/info-popover";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { ICON_GAP } from "../../lib/icon-scale";
-import { ModelSelect, modelLabel } from "../chat/model-select";
-import { WorkspaceSelect } from "../chat/workspace-select";
+import { ModelSelect, modelLabel, WorkspaceSelect } from "../chat";
 import { machineForOrg } from "../../lib/org-machines";
-import { sameModelRef } from "../models/model-grouping";
+import { sameModelRef } from "../models";
 import { ErrorLine, MoneyPerMonthInput, OrgStatusPill } from "./shared";
 import { orgCreatedTarget } from "./company-nav";
 import { fromStoredUsd, isBudgetText, toStoredUsd } from "./budget-input";
 import { ORG_EXAMPLES } from "./org-examples";
-import { SemanticIdField } from "../semantic-id/semantic-id-field";
+import { SemanticIdField } from "../semantic-id";
 import {
   EMPTY_ORG_DRAFT,
   clearOrgDraft,

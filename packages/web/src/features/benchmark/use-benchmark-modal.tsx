@@ -38,7 +38,7 @@ import { Modal } from "../../components/ui/modal";
 import { Segmented } from "../../components/ui/segmented";
 import { Select } from "../../components/ui/select";
 import { PromptFold, composeAiPrompt, pickDefaultAgent, useAiBridge } from "../ai-create";
-import { ModelSelect } from "../chat/model-select";
+import { ModelSelect } from "../chat";
 import { defaultTargetScore, latestScoreOfAgent } from "./benchmark-metrics";
 import { MAX_RUNS, evaluateTail, optimizeTail } from "./benchmark-prompts";
 import type { EvaluateParams, OptimizeParams } from "./benchmark-prompts";

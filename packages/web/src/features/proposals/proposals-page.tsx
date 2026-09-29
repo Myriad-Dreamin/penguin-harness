@@ -74,18 +74,24 @@ import { Modal } from "../../components/ui/modal";
 import { Select } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
-import { Md } from "../chat/md";
-import { orgContributedPagePath, orgProposalPath } from "../company/company-nav";
-import { EmployeeAvatar } from "../company/employee-avatar";
-import { OrgEmptyLine, OrgPage, OrgSection, useOrg } from "../company/org-layout";
-import { dismissHint, hintKey, isHintDismissed } from "../company/page-hints";
+import { Md } from "../chat";
 import {
+  orgContributedPagePath,
+  orgProposalPath,
+  EmployeeAvatar,
+  OrgEmptyLine,
+  OrgPage,
+  OrgSection,
+  useOrg,
+  dismissHint,
+  hintKey,
+  isHintDismissed,
   ErrorLine,
   JumpButton,
   PrincipalChip,
   TitleButton,
   principalLabel,
-} from "../company/shared";
+} from "../company";
 import { PROPOSAL_COMPONENTS, PROPOSAL_REMARK_PLUGINS } from "./proposal-links";
 import { ProposalFilePanel, useFilePanelWidth } from "./proposal-file-panel";
 import {

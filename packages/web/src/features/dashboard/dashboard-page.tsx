@@ -28,7 +28,7 @@ import { rememberSessionMachine } from "../../lib/session-machines";
 import { EmptyState } from "../../components/ui/empty-state";
 import { SkeletonList } from "../../components/ui/skeleton";
 import { SessionActivityIcon } from "../../components/ui/session-activity-icon";
-import { shortSessionId } from "../chat/agent-topology";
+import { shortSessionId } from "../chat";
 import { dashboardRows, dashboardServers, dashboardTotals } from "./dashboard-view";
 import type {
   DashboardRow,

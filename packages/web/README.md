@@ -20,13 +20,13 @@ DTO types are imported type-only from `@prismshadow/penguin-server/api`; no serv
 
 ## Modules
 
-A feature directory can be a **module**: `src/features/<name>/` with a public entry (`index.ts`), its own zh/en dictionary fragments (`strings.ts`, mounted by reference as a section of the app dictionaries, so components still read `S.<name>.*`), and its unit tests under `test/`. `test/web-modules.ts` lists the modules and what each may import from the rest of the app; `vitest.config.ts` turns every entry into a test project, and `test/module-boundaries.test.ts` fails on an import that goes around a module's entry or outside its declared dependencies.
+Every directory under `src/features/` is a **module**: a public entry (`index.ts`, the only file outside code may import), its own zh/en dictionary fragments (`strings.ts`, mounted by reference as a section of the app dictionaries, so components still read `S.<section>.*`), and its unit tests under `test/`. `test/web-modules.ts` lists the modules, the dictionary section each fills (`section`, when it is not the module's name; `null` for a module with no copy of its own) and what each may import from the rest of the app (`dependsOn`); `vitest.config.ts` turns every entry into a test project, `test/module-boundaries.test.ts` fails on an import that goes around a module's entry or outside its declared dependencies, and `test/module-entries.test.ts` loads each entry first in a fresh module graph, so a cycle between modules that bites at load time fails there.
 
 ```bash
-pnpm --filter @prismshadow/penguin-web exec vitest run --project terminal   # one module's tests alone
+pnpm --filter @prismshadow/penguin-web exec vitest run --project chat   # one module's tests alone
 ```
 
-The terminal is the first module. To add one: create the entry and the fragments, move the section out of both app dictionaries (leave `<name>: <name>Zh` / `<name>: <name>En`), route outside imports through the entry, move its tests, and add the manifest entry.
+A new dependency of a module is added to its `dependsOn` on purpose; another module is named by its entry (`features/<name>/index`). A test that reads source files across the app (an audit of every renderer, of every persisted key) stays in the app's `test/`. A new feature directory is a module from its first commit: entry, fragments, tests, manifest entry.
 
 ## Development
 

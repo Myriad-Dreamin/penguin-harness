@@ -19,7 +19,10 @@ const answers = new Map<string, Answer>();
 const asked: { machineId: string | null; workspaceGroup?: string }[] = [];
 const key = (machineId: string | null, agentId: string) => `${machineId ?? ""}|${agentId}`;
 
-vi.mock("../src/api/endpoints", () => ({
+// Partial: the store reaches feature code through module entries, and an entry evaluates
+// every file of its module, some of which name other endpoints at the top level.
+vi.mock("../src/api/endpoints", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   listSessions: async (
     _projectId: string,
     agentId: string,

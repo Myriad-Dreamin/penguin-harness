@@ -23,7 +23,7 @@ import { Input, Textarea } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { TRASH_ICON } from "../../components/ui/session-row-menu";
 import { toastSuccess } from "../../components/ui/toast";
-import { SemanticIdField } from "../semantic-id/semantic-id-field";
+import { SemanticIdField } from "../semantic-id";
 import { ID_PATTERN, caseId, isValidRuns } from "./benchmark-prompts";
 
 interface CaseDraft {

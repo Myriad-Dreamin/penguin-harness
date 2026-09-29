@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { proposalValue } from "../src/features/semantic-id/id-suggest-notice";
+import { proposalValue } from "../src/features/semantic-id";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));
 

@@ -10,8 +10,8 @@
  * In the desktop app a `<label>.localhost` URL on the instance's port is part of the local
  * surface, so the same call opens a window of the app.
  */
-import { currentDockScope, removeTab, restoreBrowserTab } from "../dock/dock-state";
-import type { DockPosition } from "../dock/dock-state";
+import { currentDockScope, removeTab, restoreBrowserTab } from "../dock";
+import type { DockPosition } from "../dock";
 import { browserLocation } from "./browser-tabs";
 
 export function detachBrowser(id: string, position: DockPosition): void {

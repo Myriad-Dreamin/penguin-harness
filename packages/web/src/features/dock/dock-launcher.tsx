@@ -54,7 +54,7 @@ import { scrollMovesAnchor } from "../../lib/context-menu";
 import { SPRING_DEFAULT, SPRING_MOMENTUM, createSpringDriver } from "../../lib/spring";
 import type { SpringDriver } from "../../lib/spring";
 import { subscribeTerminals, terminalApiSupported } from "../terminal";
-import { newBrowserTab } from "../browser/browser-tabs";
+import { newBrowserTab } from "../browser";
 import { openTerminalInDock } from "./dock-terminal";
 import { panelGlyph, panelLabel } from "./panel-meta";
 import {

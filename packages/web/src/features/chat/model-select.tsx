@@ -26,8 +26,8 @@ import {
   isFreeModel,
   sameModelRef,
   visibleChatModels,
-} from "../models/model-grouping";
-import { loadModelGroupOrder } from "../models/model-group-order";
+  loadModelGroupOrder,
+} from "../models";
 import { useProject } from "../../state/project";
 
 /**

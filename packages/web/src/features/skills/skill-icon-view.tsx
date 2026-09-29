@@ -14,7 +14,7 @@
  */
 import { useMemo } from "react";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
-import { BOOK_ICON } from "../chat/skill-use";
+import { BOOK_ICON } from "../chat";
 import { sanitizeSkillIcon } from "./skill-icon";
 
 /**

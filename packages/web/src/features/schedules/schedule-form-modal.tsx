@@ -31,9 +31,8 @@ import { Modal } from "../../components/ui/modal";
 import { FormPicker } from "../../components/ui/form-picker";
 import { FieldError, FieldHint, FieldLabel } from "../../components/ui/field";
 import { toastInfo, toastSuccess } from "../../components/ui/toast";
-import { ModelSelect, PickerList } from "../chat/model-select";
-import { WorkspaceSelect } from "../chat/workspace-select";
-import { sameModelRef } from "../models/model-grouping";
+import { ModelSelect, PickerList, WorkspaceSelect } from "../chat";
+import { sameModelRef } from "../models";
 import { itemModelRef } from "./schedule-upsert";
 
 /** ISO → datetime-local input value (local timezone, minute precision); returns "" when missing/invalid. */

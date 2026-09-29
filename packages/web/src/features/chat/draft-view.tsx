@@ -82,8 +82,7 @@ import { versionBadgeFor } from "../../lib/update-flow";
 import { openUpdateModal, useUpdateFlow } from "../../lib/use-update-flow";
 import { ChatInput } from "./chat-input";
 import type { ComposerControl } from "./chat-input";
-import { adoptDockScope } from "../dock/dock-state";
-import { setDockCwd } from "../dock/dock-terminal";
+import { adoptDockScope, setDockCwd } from "../dock";
 import { EXAMPLE_FOLDERS } from "./example-tasks";
 import type { ExampleFolderId, ExampleTask } from "./example-tasks";
 import { ExampleFolderRow, exampleRowClass } from "./example-folder-row";
@@ -110,7 +109,7 @@ import {
 import { newChatAgentId } from "./new-chat";
 import { effectiveThinkingLevel } from "./thinking-level";
 import { WorkspaceSelect, pillClass } from "./workspace-select";
-import { sameModelRef } from "../models/model-grouping";
+import { sameModelRef } from "../models";
 import { ICON_GAP } from "../../lib/icon-scale";
 
 /** Coalescing window for writing body text to the cache: keystrokes are frequent, so a short batch accumulates before persisting (option changes are still written immediately). */

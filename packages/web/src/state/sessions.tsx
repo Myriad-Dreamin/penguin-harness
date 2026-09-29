@@ -86,7 +86,7 @@ import {
   workspaceGroupMachine,
   workspaceGroupQuery,
 } from "../lib/session-grouping";
-import { noteScheduleEvent } from "../features/schedules/schedule-store";
+import { noteScheduleEvent } from "../features/schedules";
 import { useProject } from "./project";
 
 /** A reload this server answered nothing to is tried again after this, doubling up to the ceiling. */

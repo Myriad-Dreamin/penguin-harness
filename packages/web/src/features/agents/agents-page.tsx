@@ -52,7 +52,7 @@ import { AgentAvatar } from "../../components/ui/agent-avatar";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
 import { UpdatePill } from "../../components/ui/update-dot";
 import { TodoNotice } from "../../components/ui/todo-notice";
-import { SemanticIdField } from "../semantic-id/semantic-id-field";
+import { SemanticIdField } from "../semantic-id";
 import {
   CloseIcon,
   GEAR_ICON,
@@ -62,8 +62,7 @@ import {
   SCHEDULE_ICON,
 } from "../../components/ui/icons";
 import { STAT_ICONS } from "../../lib/stat-icons";
-import { DRAFT_SESSION_ID } from "../chat/chat-page";
-import { prepareNewChatDraft } from "../chat/new-chat";
+import { DRAFT_SESSION_ID, prepareNewChatDraft, WorkspaceSelect } from "../chat";
 import { ActivitySparkline } from "./activity-sparkline";
 import {
   SNAPSHOT_ACCEPT,
@@ -73,10 +72,8 @@ import {
 } from "./snapshot-file";
 import { InstallFromGistDialog } from "./install-dialog";
 import { HiddenFileInput } from "../../components/ui/hidden-file-input";
-import { WorkspaceSelect } from "../chat/workspace-select";
-import { SkillPickList } from "../skills/skill-pick-list";
-import type { PickableItem } from "../skills/skill-pick-list";
-import { addSkillNames, removeSkillNames, toggleSkillName } from "../skills/skill-selection";
+import { SkillPickList, addSkillNames, removeSkillNames, toggleSkillName } from "../skills";
+import type { PickableItem } from "../skills";
 import { ICON_SIZE } from "../../lib/icon-scale";
 import { AiCreateModal, CreateButtons } from "../ai-create";
 import { mergeAgents } from "../../lib/benchmark-merge";

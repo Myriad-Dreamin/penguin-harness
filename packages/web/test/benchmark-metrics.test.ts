@@ -18,9 +18,9 @@ import {
   scoreValues,
   seriesPoints,
   sparklineSeries,
-} from "../src/features/benchmark/benchmark-metrics";
-import type { EvaluationLabelLike } from "../src/features/benchmark/benchmark-metrics";
-import { makeRangeGeom, segmentPath } from "../src/features/usage/chart-geom";
+} from "../src/features/benchmark";
+import type { EvaluationLabelLike } from "../src/features/benchmark";
+import { makeRangeGeom, segmentPath } from "../src/features/usage";
 
 const evaluations = [{ score: 60 }, { score: 75.25 }, { score: 85.5 }];
 

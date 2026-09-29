@@ -59,8 +59,7 @@ import {
   useTerminalChrome,
   type TerminalInfo,
 } from "../terminal";
-import { detachBrowser } from "../browser/browser-detach";
-import { forgetBrowserTab, newBrowserTab } from "../browser/browser-tabs";
+import { detachBrowser, forgetBrowserTab, newBrowserTab } from "../browser";
 import { confirmClose } from "./close-guard";
 import { createShellInDock, detachTerminal, openTerminalInDock } from "./dock-terminal";
 import { DockDragOverlay, dockDropCandidate } from "./dock-drag";
@@ -91,12 +90,7 @@ import {
   type DockView,
   type PanelKind,
 } from "./dock-state";
-import {
-  persistPanelWidth,
-  resetPanelWidth,
-  setPanelWidth,
-  usePanelWidthValue,
-} from "../chat/use-panel-width";
+import { persistPanelWidth, resetPanelWidth, setPanelWidth, usePanelWidthValue } from "../chat";
 import { usePointerDrag } from "./use-pointer-drag";
 
 /** Four corners pushed outward / pulled inward: the touch height toggle (see maximize). */

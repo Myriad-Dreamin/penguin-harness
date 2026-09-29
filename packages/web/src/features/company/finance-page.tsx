@@ -56,7 +56,7 @@ import { InfoPopover } from "../../components/ui/info-popover";
 import { noAutofill } from "../../components/ui/input";
 import { Segmented } from "../../components/ui/segmented";
 import { toastError, toastSuccess } from "../../components/ui/toast";
-import { TrendChart } from "../usage/trend-chart";
+import { TrendChart } from "../usage";
 import { OrgPage, OrgPageSkeleton, useOrg } from "./org-layout";
 import {
   INVALID_ICON,

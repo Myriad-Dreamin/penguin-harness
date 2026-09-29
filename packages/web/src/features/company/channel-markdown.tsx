@@ -24,7 +24,7 @@ import type { ReactNode } from "react";
 import type { Components, Options } from "react-markdown";
 import { S } from "../../lib/strings";
 import { toneSurface } from "../../lib/tone";
-import { Md } from "../chat/md";
+import { Md } from "../chat";
 import {
   mentionIsMe,
   mentionLabel,
@@ -32,11 +32,7 @@ import {
   mentionNote,
   mentionRuns,
 } from "./channel-mentions";
-import {
-  PROPOSAL_VALUE_PREFIX,
-  ProposalCapsule,
-  remarkProposalLinks,
-} from "../proposals/proposal-links";
+import { PROPOSAL_VALUE_PREFIX, ProposalCapsule, remarkProposalLinks } from "../proposals";
 
 /** The mdast shapes this pass touches, declared structurally rather than taking `@types/mdast` on. */
 interface MdNode {

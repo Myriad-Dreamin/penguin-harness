@@ -12,7 +12,7 @@ import { STAT_ICONS } from "../../lib/stat-icons";
 import { splitAttachments } from "../../lib/attachments";
 import type { ChatItem, ReconnectItem } from "../../lib/omni/stream-model";
 import { Md } from "./md";
-import { PROPOSAL_COMPONENTS, PROPOSAL_REMARK_PLUGINS } from "../proposals/proposal-links";
+import { PROPOSAL_COMPONENTS, PROPOSAL_REMARK_PLUGINS } from "../proposals";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
 import { CopyButton } from "../../components/ui/copy-button";
 import { ZoomableImage } from "../../components/ui/image-zoom";

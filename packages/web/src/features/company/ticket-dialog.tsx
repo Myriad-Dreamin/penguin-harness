@@ -54,7 +54,7 @@ import { Modal } from "../../components/ui/modal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { CopyButton, ROW_COPY_CLASS } from "../../components/ui/copy-button";
 import { toastError, toastInfo, toastSuccess } from "../../components/ui/toast";
-import { Md } from "../chat/md";
+import { Md } from "../chat";
 import { OrgSection } from "./org-layout";
 import {
   BlockedBadge,

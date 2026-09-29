@@ -4,13 +4,8 @@
  */
 import { describe, expect, it } from "vitest";
 import type { PortForwardInfo } from "@prismshadow/penguin-server/api";
-import {
-  forwardTone,
-  groupByWorkspace,
-  parsePort,
-  statusLine,
-} from "../src/features/ports/port-forward-facts";
-import { PANEL_KINDS } from "../src/features/dock/dock-state";
+import { forwardTone, groupByWorkspace, parsePort, statusLine } from "../src/features/ports";
+import { PANEL_KINDS } from "../src/features/dock";
 
 const forward = (over: Partial<PortForwardInfo> = {}): PortForwardInfo => ({
   id: "f1",

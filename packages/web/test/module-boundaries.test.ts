@@ -91,20 +91,24 @@ describe("web modules", () => {
     const entry = `${dir}index`;
     const fragment = `${dir}strings`;
 
+    const section = m.section === undefined ? m.name : m.section;
+
     it(`the ${m.name} module has an entry, a dictionary and a test project`, () => {
       expect(existsSync(join(SRC, `${entry}.ts`)), `${entry}.ts`).toBe(true);
-      expect(existsSync(join(SRC, `${fragment}.ts`)), `${fragment}.ts`).toBe(true);
+      expect(existsSync(join(SRC, `${fragment}.ts`)), `${fragment}.ts`).toBe(section !== null);
       expect(existsSync(join(SRC, dir, "test")), `${dir}test/`).toBe(true);
       const projects = (config.test?.projects ?? []) as { test?: { name?: string } }[];
       expect(projects.map((p) => p.test?.name)).toContain(m.name);
     });
 
-    it(`the app dictionaries mount the ${m.name} module's fragments`, () => {
-      const fragments = FRAGMENTS[`../src/${fragment}.ts`];
-      expect(fragments, `${fragment}.ts`).toBeDefined();
-      expect((zh as Record<string, unknown>)[m.name]).toBe(fragments?.[`${m.name}Zh`]);
-      expect((en as Record<string, unknown>)[m.name]).toBe(fragments?.[`${m.name}En`]);
-    });
+    if (section !== null) {
+      it(`the app dictionaries mount the ${m.name} module's fragments`, () => {
+        const fragments = FRAGMENTS[`../src/${fragment}.ts`];
+        expect(fragments, `${fragment}.ts`).toBeDefined();
+        expect((zh as Record<string, unknown>)[section]).toBe(fragments?.[`${section}Zh`]);
+        expect((en as Record<string, unknown>)[section]).toBe(fragments?.[`${section}En`]);
+      });
+    }
 
     it(`the ${m.name} module is reached only through its entry`, () => {
       const violations: string[] = [];

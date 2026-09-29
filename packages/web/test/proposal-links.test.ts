@@ -10,15 +10,9 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Components } from "react-markdown";
-import { Md } from "../src/features/chat/md";
-import {
-  PROPOSAL_COMPONENTS,
-  PROPOSAL_REMARK_PLUGINS,
-} from "../src/features/proposals/proposal-links";
-import {
-  ChannelMessageBody,
-  ChannelReaderProvider,
-} from "../src/features/company/channel-markdown";
+import { Md } from "../src/features/chat";
+import { PROPOSAL_COMPONENTS, PROPOSAL_REMARK_PLUGINS } from "../src/features/proposals";
+import { ChannelMessageBody, ChannelReaderProvider } from "../src/features/company";
 
 /** The `<data>` element as a marker, so the test reads what the pass produced rather than what the capsule drew. */
 const MARKER_COMPONENTS: Components = {

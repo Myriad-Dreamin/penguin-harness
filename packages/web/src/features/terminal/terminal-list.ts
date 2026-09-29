@@ -12,7 +12,7 @@
  *   tab cannot see (a shell exiting on its own, terminals opened from another window).
  */
 import type { TerminalInfo } from "./terminal-view";
-import { pruneTerminalTabs } from "../dock/dock-state";
+import { pruneTerminalTabs } from "../dock";
 import { apiRequest } from "../../api/client";
 import { apiUrl } from "../../lib/server-context";
 import {

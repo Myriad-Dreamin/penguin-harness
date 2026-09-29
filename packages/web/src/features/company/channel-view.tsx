@@ -58,7 +58,7 @@ import { GlyphIcon } from "../../components/ui/glyph-icon";
 import { NAV_ICONS } from "../../components/ui/icons";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
-import { createStreamFollow, stickToBottom } from "../chat/stream-follow";
+import { createStreamFollow, stickToBottom } from "../chat";
 import { useOrg } from "./org-layout";
 import { principalLabel } from "./shared";
 import { orgKey } from "./company-nav";

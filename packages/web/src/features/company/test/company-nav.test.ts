@@ -1,0 +1,362 @@
+/**
+ * company-nav.ts and work-mode.ts unit tests: the company-mode nav manifest (the six pages
+ * in rendered order, each with a zh label, an en label and a glyph — the sidebar, the rail
+ * and the router all derive their rows from it), the `<projectId>/<orgId>` key, the
+ * `/org/:projectId/:orgId/<page>` and `…/channels/:channelId` grammars, where `/org` lands
+ * without an organization, where a freshly created one opens and which key the shell becomes
+ * current at when it does, the switcher's grouping by
+ * Project, and the localStorage mirrors of the mode and the last organization (injectable
+ * storage, forgettable, degrading to the defaults on anything unexpected).
+ */
+import { describe, expect, it } from "vitest";
+import {
+  COMPANY_NAV_KEYS,
+  ORG_PAGE_RENDERERS,
+  groupOrganizationsByProject,
+  orgPageRows,
+  orgPageSegment,
+  orgProposalPath,
+  isOrgRoute,
+  orgChannelPath,
+  orgCreatedPath,
+  orgCreatedTarget,
+  orgKey,
+  orgPagePath,
+  parseOrgKey,
+  resolveOrgLanding,
+} from "../company-nav";
+import { DEFAULT_CHANNEL_ID } from "../channel-list";
+import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../company-nav-icons";
+import {
+  LAST_ORG_KEY,
+  WORK_MODE_KEY,
+  clearLastOrgKey,
+  initialLastOrgKey,
+  initialWorkMode,
+  storeLastOrgKey,
+  storeWorkMode,
+} from "../../../lib/work-mode";
+import type { WorkModeStorage } from "../../../lib/work-mode";
+import { zh } from "../../../lib/strings";
+import { en } from "../../../lib/strings-en";
+
+function memStorage(): WorkModeStorage & { map: Map<string, string> } {
+  const map = new Map<string, string>();
+  return {
+    map,
+    getItem: (k) => map.get(k) ?? null,
+    setItem: (k, v) => void map.set(k, v),
+    removeItem: (k) => void map.delete(k),
+  };
+}
+
+describe("COMPANY_NAV_KEYS", () => {
+  it("lists the six organization pages in the spec's order, channels not among them", () => {
+    expect([...COMPANY_NAV_KEYS]).toEqual([
+      "overview",
+      "chart",
+      "calendar",
+      "tickets",
+      "finance",
+      "handbook",
+    ]);
+    // Channels are the sidebar's own list, the way conversations are in development mode.
+    expect(COMPANY_NAV_KEYS).not.toContain("chat");
+    expect(COMPANY_NAV_KEYS).not.toContain("channels");
+  });
+
+  it("every entry has the spec's zh and en names and a glyph", () => {
+    // The bilingual table of the prototype spec, verbatim.
+    const expected = {
+      overview: ["概览", "Overview"],
+      chart: ["组织图", "Org Chart"],
+      calendar: ["日历", "Calendar"],
+      tickets: ["工单", "Tickets"],
+      finance: ["财务", "Finance"],
+      handbook: ["手册", "Handbook"],
+    } as const;
+    for (const key of COMPANY_NAV_KEYS) {
+      expect(zh.nav.org[key]).toBe(expected[key][0]);
+      expect(en.nav.org[key]).toBe(expected[key][1]);
+      expect(COMPANY_NAV_ICONS[key]).toBeTruthy();
+    }
+  });
+
+  it("the mode switch's two options exist in both languages and differ", () => {
+    for (const dict of [zh, en]) {
+      expect(dict.company.modeDev).toBeTruthy();
+      expect(dict.company.modeCompany).toBeTruthy();
+      expect(dict.company.modeDev).not.toBe(dict.company.modeCompany);
+    }
+  });
+});
+
+describe("org keys and paths", () => {
+  it("round-trips a key through parseOrgKey", () => {
+    expect(orgKey("p1", "acme")).toBe("p1/acme");
+    expect(parseOrgKey("p1/acme")).toEqual({ projectId: "p1", orgId: "acme" });
+  });
+
+  it("rejects anything that is not exactly two non-empty segments", () => {
+    for (const raw of [null, undefined, "", "p1", "/acme", "p1/", "p1/acme/extra"]) {
+      expect(parseOrgKey(raw)).toBeNull();
+    }
+  });
+
+  it("builds page paths under the /org prefix, encoding the ids", () => {
+    expect(orgPagePath("p1", "acme", "tickets")).toBe("/org/p1/acme/tickets");
+    expect(orgPagePath("alice-proj", "a b", "overview")).toBe("/org/alice-proj/a%20b/overview");
+    expect(orgPagePath("p1", "acme", "handbook")).toBe("/org/p1/acme/handbook");
+  });
+
+  it("builds a channel path with the channel as its own segment", () => {
+    expect(orgChannelPath("p1", "acme", DEFAULT_CHANNEL_ID)).toBe(
+      "/org/p1/acme/channels/default_channel",
+    );
+    expect(orgChannelPath("p1", "acme", "site")).toBe("/org/p1/acme/channels/site");
+    expect(orgChannelPath("alice-proj", "a b", "site")).toBe("/org/alice-proj/a%20b/channels/site");
+  });
+
+  // An organization opens on its overview, not on a channel: the switcher's pick, `/org`'s
+  // redirect and the router's index route all land there, and a channel is reached from the
+  // sidebar's own list.
+  it("makes the overview the first page of the six, which is where an organization opens", () => {
+    expect(COMPANY_NAV_KEYS[0]).toBe("overview");
+    expect(orgPagePath("p1", "acme", "overview")).toBe("/org/p1/acme/overview");
+  });
+
+  it("lands a newly created organization in the CEO's desk, else on its overview", () => {
+    expect(orgCreatedPath({ projectId: "p1", orgId: "acme", ceoDeskSessionId: "s-1" })).toBe(
+      "/chat/s-1",
+    );
+    expect(orgCreatedPath({ projectId: "p1", orgId: "acme" })).toBe("/org/p1/acme/overview");
+  });
+
+  // The desk session is NOT one of the organization's own routes, so nothing on the way there
+  // would tell the shell which organization it is now inside: the key travels with the path.
+  it("names the organization the shell becomes current at beside the path it opens", () => {
+    expect(orgCreatedTarget({ projectId: "p1", orgId: "acme", ceoDeskSessionId: "s-1" })).toEqual({
+      key: "p1/acme",
+      path: "/chat/s-1",
+    });
+    expect(orgCreatedTarget({ projectId: "p1", orgId: "acme" })).toEqual({
+      key: "p1/acme",
+      path: "/org/p1/acme/overview",
+    });
+  });
+
+  // The key is the shell's own grammar, not the path's: a Project or an organization whose id
+  // needs escaping in a URL is still keyed by its plain ids, which is what parseOrgKey reads
+  // back and what the organization list is searched by.
+  it("keys the created organization by its plain ids while the path escapes them", () => {
+    const target = orgCreatedTarget({ projectId: "alice proj", orgId: "acme" });
+    expect(target.key).toBe("alice proj/acme");
+    expect(parseOrgKey(target.key)).toEqual({ projectId: "alice proj", orgId: "acme" });
+    expect(target.path).toBe("/org/alice%20proj/acme/overview");
+  });
+
+  it("tells organization routes from the shared chat route", () => {
+    expect(isOrgRoute("/org")).toBe(true);
+    expect(isOrgRoute("/org/p1/acme/overview")).toBe(true);
+    expect(isOrgRoute("/org/p1/acme/channels/site")).toBe(true);
+    expect(isOrgRoute("/organizations")).toBe(false);
+    expect(isOrgRoute("/chat/abc")).toBe(false);
+  });
+});
+
+describe("resolveOrgLanding", () => {
+  const orgs = [
+    { projectId: "p1", orgId: "a" },
+    { projectId: "p2", orgId: "b" },
+    { projectId: "p2", orgId: "c" },
+  ];
+
+  it("returns the organization last opened when it still exists", () => {
+    expect(resolveOrgLanding("p2/c", orgs, "p1")).toEqual({ projectId: "p2", orgId: "c" });
+  });
+
+  it("falls back to the current Project's first organization, then to the first anywhere", () => {
+    expect(resolveOrgLanding("p9/gone", orgs, "p2")).toEqual({ projectId: "p2", orgId: "b" });
+    expect(resolveOrgLanding(null, orgs, "p3")).toEqual({ projectId: "p1", orgId: "a" });
+    expect(resolveOrgLanding(null, orgs, null)).toEqual({ projectId: "p1", orgId: "a" });
+  });
+
+  it("is null with no organization at all — the empty landing's cue", () => {
+    expect(resolveOrgLanding("p1/a", [], "p1")).toBeNull();
+  });
+});
+
+describe("groupOrganizationsByProject", () => {
+  it("groups in the Project list's order and drops Projects with no organization", () => {
+    const orgs = [
+      { projectId: "p2", orgId: "b" },
+      { projectId: "p1", orgId: "a" },
+      { projectId: "p2", orgId: "c" },
+      { projectId: "stale", orgId: "z" },
+    ];
+    expect(groupOrganizationsByProject(orgs, ["p1", "p2", "p3"])).toEqual([
+      { projectId: "p1", organizations: [{ projectId: "p1", orgId: "a" }] },
+      {
+        projectId: "p2",
+        organizations: [
+          { projectId: "p2", orgId: "b" },
+          { projectId: "p2", orgId: "c" },
+        ],
+      },
+    ]);
+  });
+});
+
+describe("work-mode storage mirrors", () => {
+  it("defaults to development with nothing stored, and only an explicit company switches", () => {
+    const s = memStorage();
+    expect(initialWorkMode(s)).toBe("dev");
+    storeWorkMode("company", s);
+    expect(s.map.get(WORK_MODE_KEY)).toBe("company");
+    expect(initialWorkMode(s)).toBe("company");
+    s.map.set(WORK_MODE_KEY, "COMPANY");
+    expect(initialWorkMode(s)).toBe("dev");
+  });
+
+  it("keeps only a well-formed last organization key", () => {
+    const s = memStorage();
+    expect(initialLastOrgKey(s)).toBeNull();
+    storeLastOrgKey("p1/acme", s);
+    expect(s.map.get(LAST_ORG_KEY)).toBe("p1/acme");
+    expect(initialLastOrgKey(s)).toBe("p1/acme");
+    s.map.set(LAST_ORG_KEY, "garbage");
+    expect(initialLastOrgKey(s)).toBeNull();
+  });
+
+  // The organization it named was deleted: the mirror is dropped, not overwritten, so the
+  // next reload starts with no remembered organization at all.
+  it("forgets the last organization key outright", () => {
+    const s = memStorage();
+    storeLastOrgKey("p1/acme", s);
+    clearLastOrgKey(s);
+    expect(s.map.has(LAST_ORG_KEY)).toBe(false);
+    expect(initialLastOrgKey(s)).toBeNull();
+  });
+
+  it("throwing storage degrades to the defaults instead of escaping", () => {
+    const broken: WorkModeStorage = {
+      getItem: () => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+      removeItem: () => {
+        throw new Error("denied");
+      },
+    };
+    expect(() => storeWorkMode("company", broken)).not.toThrow();
+    expect(() => clearLastOrgKey(broken)).not.toThrow();
+    expect(initialWorkMode(broken)).toBe("dev");
+    expect(initialLastOrgKey(broken)).toBeNull();
+  });
+});
+
+describe("contributed company-mode pages", () => {
+  const page = (
+    over: Partial<{
+      key: string;
+      path: string;
+      nav: string;
+      renderer: { builtin: string } | { iframe: unknown };
+    }> = {},
+  ) => ({
+    key: "org-proposals",
+    path: "proposals/:number?",
+    nav: "org",
+    renderer: { builtin: "OrgProposalsPage" as const },
+    ...over,
+  });
+
+  it("has a zh label, an en label and a glyph for every renderer it knows a row for", () => {
+    for (const renderer of Object.keys(ORG_PAGE_RENDERERS) as Array<
+      keyof typeof ORG_PAGE_RENDERERS
+    >) {
+      const label = ORG_PAGE_RENDERERS[renderer].label;
+      expect(typeof zh.nav.org[label]).toBe("string");
+      expect(typeof en.nav.org[label]).toBe("string");
+      expect(ORG_PAGE_ICONS[renderer]).toMatch(/^M/);
+    }
+  });
+
+  it("turns a contributed org page into a row leading to its first segment, disabled without an organization", () => {
+    expect(orgPageSegment("proposals/:number?")).toBe("proposals");
+    expect(orgPageSegment("/reports")).toBe("reports");
+    expect(orgPageRows([page()], { projectId: "p 1", orgId: "acme" })).toEqual([
+      { key: "org-proposals", renderer: "OrgProposalsPage", to: "/org/p%201/acme/proposals" },
+    ]);
+    expect(orgPageRows([page()], null)).toEqual([
+      { key: "org-proposals", renderer: "OrgProposalsPage", to: null },
+    ]);
+  });
+
+  it("skips pages outside the org nav, iframe pages, and renderers this build has no row for", () => {
+    expect(
+      orgPageRows(
+        [
+          page({ nav: "main" }),
+          page({ key: "x", renderer: { iframe: { src: "x" } } }),
+          page({ key: "y", renderer: { builtin: "SomethingElse" } }),
+        ],
+        { projectId: "p", orgId: "o" },
+      ),
+    ).toEqual([]);
+  });
+
+  it("draws a row for the roadmaps page a plugin serves in an iframe — above the proposals — and never lets one kind of page stand for the other", () => {
+    const roadmaps = page({
+      key: "roadmaps",
+      path: "roadmaps/:number?",
+      renderer: { iframe: { src: "/api/company-roadmaps/page", namespace: "company-roadmaps" } },
+    });
+    expect(orgPageRows([page(), roadmaps], { projectId: "p", orgId: "acme" })).toEqual([
+      { key: "roadmaps", renderer: "roadmaps", to: "/org/p/acme/roadmaps" },
+      { key: "org-proposals", renderer: "OrgProposalsPage", to: "/org/p/acme/proposals" },
+    ]);
+    expect(zh.nav.org.roadmaps).toBe("路线图");
+    expect(en.nav.org.roadmaps).toBe("Roadmaps");
+    expect(ORG_PAGE_ICONS.roadmaps).toMatch(/^M/);
+    // A builtin renderer named like the iframe key, or an iframe page keyed like a builtin
+    // renderer, draws nothing.
+    expect(
+      orgPageRows(
+        [
+          page({ key: "z", renderer: { builtin: "roadmaps" } }),
+          page({ key: "OrgProposalsPage", renderer: { iframe: { src: "x" } } }),
+        ],
+        { projectId: "p", orgId: "o" },
+      ),
+    ).toEqual([]);
+  });
+
+  it("orders the rows by this build, not by the order the plugins are listed and loaded in", () => {
+    // Contribution order is the Project's `[plugins]` order: company-proposals listed before
+    // company-roadmaps, or after it. Either way Roadmaps is the row above Proposals.
+    const roadmaps = page({
+      key: "roadmaps",
+      path: "roadmaps/:number?",
+      renderer: { iframe: { src: "/api/company-roadmaps/page", namespace: "company-roadmaps" } },
+    });
+    const org = { projectId: "p", orgId: "acme" };
+    for (const listed of [
+      [page(), roadmaps],
+      [roadmaps, page()],
+    ]) {
+      expect(orgPageRows(listed, org).map((row) => row.key)).toEqual(["roadmaps", "org-proposals"]);
+    }
+    expect(Object.keys(ORG_PAGE_RENDERERS)).toEqual(["roadmaps", "OrgProposalsPage"]);
+    // Two pages with one renderer keep the order they were contributed in.
+    expect(
+      orgPageRows([page({ key: "b" }), roadmaps, page({ key: "a" })], org).map((row) => row.key),
+    ).toEqual(["roadmaps", "b", "a"]);
+  });
+
+  it("addresses one proposal by its number under the proposals page", () => {
+    expect(orgProposalPath("p", "acme", 12)).toBe("/org/p/acme/proposals/12");
+  });
+});

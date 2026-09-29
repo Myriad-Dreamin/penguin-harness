@@ -64,11 +64,15 @@ import { forgetOrgMachines, rememberOrgMachine } from "../lib/org-machines";
 import { machineIdOf } from "../lib/workspace-machines";
 import { S } from "../lib/strings";
 import { toastAttention } from "../components/ui/toast";
-import { markBetaNoticeShown, shouldShowBetaNotice } from "../features/company/beta-badge";
-import { channelBadgeCounts } from "../features/company/channel-list";
-import { orgKey, parseOrgKey } from "../features/company/company-nav";
-import type { WorkMode } from "../features/company/company-nav";
-import { withDeskMessagingChannel } from "../features/company/org-sessions";
+import {
+  markBetaNoticeShown,
+  shouldShowBetaNotice,
+  channelBadgeCounts,
+  orgKey,
+  parseOrgKey,
+  withDeskMessagingChannel,
+} from "../features/company";
+import type { WorkMode } from "../features/company";
 import {
   clearLastOrgKey,
   initialLastOrgKey,

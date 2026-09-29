@@ -15,7 +15,7 @@ import ReactMarkdown from "react-markdown";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { REHYPE_PLUGINS, REMARK_PLUGINS } from "../src/lib/markdown-plugins";
-import { Md } from "../src/features/chat/md";
+import { Md } from "../src/features/chat";
 import { dropNonWoff2FontSources } from "../vite.config.js";
 
 const render = (markdown: string) =>

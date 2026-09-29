@@ -21,7 +21,7 @@ import { apiErrorText } from "../../lib/api-error";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { toastError, toastInfo } from "../../components/ui/toast";
-import { HarnessHistoryOverlay } from "../harness/harness-history-overlay";
+import { HarnessHistoryOverlay } from "../harness";
 import { CommandPalette } from "./command-palette";
 
 const REPO_URL = "https://github.com/Prism-Shadow/penguin-harness";

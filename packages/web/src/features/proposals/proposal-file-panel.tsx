@@ -20,9 +20,8 @@ import { CopyButton } from "../../components/ui/copy-button";
 import { CloseIcon } from "../../components/ui/icons";
 import { popEscLayer, pushEscLayer, isTopEscLayer } from "../../components/ui/modal";
 import { SkeletonList } from "../../components/ui/skeleton";
-import { CodeSurface } from "../chat/code-block";
-import { languageForExtension } from "../chat/code-languages";
-import { usePointerDrag } from "../dock/use-pointer-drag";
+import { CodeSurface, languageForExtension } from "../chat";
+import { usePointerDrag } from "../dock";
 import { matchingLines } from "./proposals-model";
 import type { ProposalFileRef } from "./proposals-model";
 

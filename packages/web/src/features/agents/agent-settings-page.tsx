@@ -49,7 +49,7 @@ import { SchedulesTab } from "./schedules-tab";
 import { McpServersSection } from "./mcp-servers-section";
 import { SNAPSHOT_ACCEPT, SNAPSHOT_BUTTON_CLASS, fileToBase64 } from "./snapshot-file";
 import { PublishAgentDialog } from "./publish-dialog";
-import { thinkingLevelOptionsFor } from "../chat/thinking-level";
+import { thinkingLevelOptionsFor } from "../chat";
 import { InfoPopover } from "../../components/ui/info-popover";
 import { ICON_SIZE } from "../../lib/icon-scale";
 

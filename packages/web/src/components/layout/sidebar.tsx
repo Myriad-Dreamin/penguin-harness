@@ -168,39 +168,41 @@ import { Button } from "../ui/button";
 import { Input, noAutofill } from "../ui/input";
 import { SkeletonList } from "../ui/skeleton";
 import { UpdateDot } from "../ui/update-dot";
-import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
-import { MessagingBindingModal } from "../../features/messaging/messaging-binding-modal";
-import { WorkspaceSelect } from "../../features/chat/workspace-select";
-import { clearDraft, sessionDraftKey } from "../../features/chat/draft-cache";
 import {
+  DRAFT_SESSION_ID,
+  WorkspaceSelect,
+  clearDraft,
+  sessionDraftKey,
   draftSessionTitle,
   removeDraftSession,
   useDraftSessions,
-} from "../../features/chat/draft-sessions";
-import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
-import { prepareNewChatDraft } from "../../features/chat/new-chat";
+  prepareNewChatDraft,
+} from "../../features/chat";
+import { MessagingBindingModal } from "../../features/messaging";
+import type { DraftSessionEntry } from "../../features/chat";
 import { CreateProjectDialog, ProjectSettingsDialog } from "./project-dialogs";
 import { UserMenu } from "./user-menu";
 import { navNoteFor, useUpdateBadges } from "../../lib/use-update-badges";
-import { pendingScheduleSessions } from "../../features/schedules/schedule-panel-state";
-import { useProjectSchedules } from "../../features/schedules/schedule-store";
+import { pendingScheduleSessions, useProjectSchedules } from "../../features/schedules";
 import { ICON_SIZE } from "../../lib/icon-scale";
 import { Segmented } from "../ui/segmented";
 import { useCompany } from "../../state/company";
-import { NoOrganizationsSidebar, OrgSwitcher } from "../../features/company/org-switcher";
-import { BetaBadge } from "../../features/company/beta-badge";
-import { ChannelSidebar } from "../../features/company/channel-sidebar";
-import { OrgSessionGroups } from "../../features/company/org-session-groups";
-import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
 import {
+  NoOrganizationsSidebar,
+  OrgSwitcher,
+  BetaBadge,
+  ChannelSidebar,
+  OrgSessionGroups,
+  COMPANY_NAV_ICONS,
+  ORG_PAGE_ICONS,
   COMPANY_NAV_KEYS,
   ORG_PAGE_RENDERERS,
   isOrgRoute,
   orgPagePath,
   orgPageRows,
   parseOrgKey,
-} from "../../features/company/company-nav";
-import type { WorkMode } from "../../features/company/company-nav";
+} from "../../features/company";
+import type { WorkMode } from "../../features/company";
 import { useContributions } from "../../state/contributions";
 import { toneInk } from "../../lib/tone";
 

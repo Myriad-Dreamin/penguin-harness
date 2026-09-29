@@ -26,7 +26,7 @@ import { UserAvatar } from "../ui/user-avatar";
 import type { DropdownPortal } from "../ui/dropdown";
 import { UpdateRow } from "../account/update-row";
 import { openUpdateModal } from "../../lib/use-update-flow";
-import { SettingsDialog } from "../../features/settings/settings-dialog";
+import { SettingsDialog } from "../../features/settings";
 
 export function UserMenu({
   trigger,

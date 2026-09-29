@@ -50,7 +50,7 @@ import type { SessionRowAction, SessionRowState } from "../../components/ui/sess
 import { SkeletonList } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { Truncated } from "../../components/ui/truncated";
-import { MessagingBindingModal } from "../messaging/messaging-binding-modal";
+import { MessagingBindingModal } from "../messaging";
 import { orgKey } from "./company-nav";
 import { deskRowLabel, deskRows, orgRowActivity } from "./org-sessions";
 import type { OrgDeskRow } from "./org-sessions";

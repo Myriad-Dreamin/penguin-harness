@@ -22,7 +22,7 @@ import {
   subscribeDock,
   toggleDock,
   type DockPosition,
-} from "../dock/dock-state";
+} from "../dock";
 
 export interface PanelsToolbarProps {
   /** A pending approval inside a subagent: amber dot beside the agents tab's dock button. */

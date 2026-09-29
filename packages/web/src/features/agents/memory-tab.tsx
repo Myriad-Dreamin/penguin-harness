@@ -54,7 +54,7 @@ import { Sheet, type SheetSnap } from "../../components/ui/sheet";
 import { ConfirmModal, useSaveConfirm } from "../../components/ui/confirm-modal";
 import { SkeletonList } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
-import { Md } from "../chat/md";
+import { Md } from "../chat";
 import { useAiBridge } from "../ai-create";
 import { buildMemoryAddPrompt, buildMemoryEditPrompt } from "./memory-chat-prompts";
 import {

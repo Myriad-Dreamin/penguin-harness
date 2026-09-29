@@ -3,12 +3,8 @@
  * the text and nothing else, and no empty shells left behind.
  */
 import { describe, expect, it } from "vitest";
-import {
-  channelDraftKey,
-  loadChannelDraft,
-  storeChannelDraft,
-} from "../src/features/company/channel-draft";
-import type { DraftStorage } from "../src/features/chat/draft-cache";
+import { channelDraftKey, loadChannelDraft, storeChannelDraft } from "../src/features/company";
+import type { DraftStorage } from "../src/features/chat";
 
 /** In-memory storage (vitest runs in a Node environment, no localStorage). */
 function memStorage(): DraftStorage & { map: Map<string, string> } {

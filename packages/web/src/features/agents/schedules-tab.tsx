@@ -36,9 +36,7 @@ import { SettingsEmpty } from "../../components/ui/empty-state";
 import { SkeletonList } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { AiCreateModal, CreateButtons } from "../ai-create";
-import { ScheduleFormModal } from "../schedules/schedule-form-modal";
-import { ScheduleSuggestions, scheduleExamples } from "../schedules/schedule-suggestions";
-import { toggleBody } from "../schedules/schedule-upsert";
+import { ScheduleFormModal, ScheduleSuggestions, scheduleExamples, toggleBody } from "../schedules";
 import { usePromptInjection } from "./prompt-injection-controls";
 import { HelpFold } from "../../components/ui/help-fold";
 

@@ -23,7 +23,7 @@ import { useInRouterContext, useNavigate } from "react-router";
 import { S } from "../../lib/strings";
 import { toneSurface } from "../../lib/tone";
 import { useCompanyOptional } from "../../state/company";
-import { orgProposalPath, parseOrgKey } from "../company/company-nav";
+import { orgProposalPath, parseOrgKey } from "../company";
 import {
   PROPOSAL_REF_RE,
   parseProposalRef,

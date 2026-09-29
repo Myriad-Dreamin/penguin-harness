@@ -29,7 +29,7 @@ import { UploadsSection } from "./uploads-section";
 import { CompanySection } from "./company-section";
 import { SharingSection } from "./sharing-section";
 import { PluginsSection } from "./plugins-section";
-import { AdminUsersSection } from "../admin/admin-users-page";
+import { AdminUsersSection } from "../admin";
 
 /** Rail glyphs, on the shared 24x24 stroke grid (see NAV_ICONS' conventions). */
 const SECTION_ICONS: Record<SettingsSectionKey, string> = {

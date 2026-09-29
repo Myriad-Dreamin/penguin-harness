@@ -85,7 +85,7 @@ import {
 import { formatPercent, humanizeTokens } from "../../lib/format";
 import { S } from "../../lib/strings";
 import { toneInk } from "../../lib/tone";
-import { usePointerDrag } from "../dock/use-pointer-drag";
+import { usePointerDrag } from "../dock";
 import { contextComposition } from "./context-parts";
 import type { ContextPartKey } from "./context-parts";
 

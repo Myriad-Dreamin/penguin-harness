@@ -129,7 +129,7 @@ import {
   saveExpandedProviders,
   toggleExpandedProvider,
 } from "./model-group-expansion";
-import { clearDraftModelRef } from "../chat/draft-cache";
+import { clearDraftModelRef } from "../chat";
 import { syncRowsWithCatalog } from "./catalog-sync";
 import { useUpdateBadges } from "../../lib/use-update-badges";
 import { dismissTodo } from "../../lib/todo-dismissals";

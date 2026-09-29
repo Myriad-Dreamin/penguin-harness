@@ -47,7 +47,7 @@ import {
   overflowMenuGlyph,
   overflowMenuRowClass,
 } from "../../components/ui/session-row-menu";
-import { usePointerDrag } from "../dock/use-pointer-drag";
+import { usePointerDrag } from "../dock";
 import { OrgPage, OrgPageSkeleton, useOrg } from "./org-layout";
 import { orgKey } from "./company-nav";
 import { liveEmployeeStates } from "./org-sessions";

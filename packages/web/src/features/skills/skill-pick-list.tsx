@@ -22,7 +22,7 @@ import { S } from "../../lib/strings";
 import { useLocale } from "../../state/locale";
 import { ICON_SIZE } from "../../lib/icon-scale";
 import { menuSearchClass, noAutofill } from "../../components/ui/input";
-import { filterSkills, localizedShortText } from "../chat/skill-use";
+import { filterSkills, localizedShortText } from "../chat";
 import { SkillIcon } from "./skill-icon-view";
 
 /** A bulk-row action: a plain text button, sized to sit inside the panel's chrome without competing with the rows. */

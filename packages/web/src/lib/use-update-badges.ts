@@ -34,7 +34,7 @@ import {
 import type { Todo, TodoKey } from "./todo-badges";
 import { useTodoDismissals } from "./todo-dismissals";
 import { useProjectTodos } from "./use-project-todos";
-import { catalogDelta } from "../features/models/catalog-sync";
+import { catalogDelta } from "../features/models";
 import { useProject } from "../state/project";
 
 /** The nav routes that can carry a dot, and what each one's dot leads to. */

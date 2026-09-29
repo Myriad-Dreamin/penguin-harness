@@ -5,35 +5,34 @@
  */
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { useAuth } from "./state/auth";
-import { useRuntimeLanguages } from "./features/chat/use-runtime-languages";
+import { useRuntimeLanguages, ChatRoute } from "./features/chat";
 import { ProjectProvider } from "./state/project";
 import { SessionsProvider } from "./state/sessions";
 import { CompanyProvider } from "./state/company";
 import { AppLayout } from "./components/layout/app-layout";
 import { LoginPage } from "./pages/login";
-import { ChatRoute } from "./features/chat/chat-route";
-import { AgentsPage } from "./features/agents/agents-page";
-import { AgentSettingsPage } from "./features/agents/agent-settings-page";
-import { PluginsPage } from "./features/plugins/plugins-page";
-import { ModelsPage } from "./features/models/models-page";
-import { PluginDetailPage } from "./features/plugins/plugin-detail-page";
-import { UsagePage } from "./features/usage/usage-page";
-import { BenchmarkPage } from "./features/benchmark/benchmark-page";
-import { BenchmarkDetailPage } from "./features/benchmark/benchmark-detail-page";
+import { AgentsPage, AgentSettingsPage } from "./features/agents";
+import { PluginsPage, PluginDetailPage } from "./features/plugins";
+import { ModelsPage } from "./features/models";
+import { UsagePage } from "./features/usage";
+import { BenchmarkPage, BenchmarkDetailPage } from "./features/benchmark";
 import { TerminalPage } from "./features/terminal";
-import { OrgIndexRedirect, OrgLayout } from "./features/company/org-layout";
-import { OverviewPage } from "./features/company/overview-page";
-import { OrgChartPage } from "./features/company/org-chart-page";
-import { CalendarPage } from "./features/company/calendar-page";
-import { TicketsPage } from "./features/company/tickets-page";
-import { FinancePage } from "./features/company/finance-page";
-import { ChannelView } from "./features/company/channel-view";
-import { HandbookPage } from "./features/company/handbook-page";
-import { MachinesPage } from "./features/machines/machines-page";
-import { MachinePortsPage } from "./features/ports/machine-ports-page";
-import { DashboardPage } from "./features/dashboard/dashboard-page";
-import { WorkflowAppPage } from "./features/workflows/workflow-app-page";
-import { OrgProposalsPage } from "./features/proposals/proposals-page";
+import {
+  OrgIndexRedirect,
+  OrgLayout,
+  OverviewPage,
+  OrgChartPage,
+  CalendarPage,
+  TicketsPage,
+  FinancePage,
+  ChannelView,
+  HandbookPage,
+} from "./features/company";
+import { MachinesPage } from "./features/machines";
+import { MachinePortsPage } from "./features/ports";
+import { DashboardPage } from "./features/dashboard";
+import { WorkflowAppPage } from "./features/workflows";
+import { OrgProposalsPage } from "./features/proposals";
 import { orgPagesOf } from "./lib/pages";
 import type { PageEntry } from "./lib/pages";
 import { ContributionsProvider, useContributions } from "./state/contributions";

@@ -36,7 +36,7 @@ import { Modal } from "../../components/ui/modal";
 import { Skeleton } from "../../components/ui/skeleton";
 import type { TreeToggle } from "../../components/ui/file-tree";
 import { toastError, toastSuccess } from "../../components/ui/toast";
-import { Md } from "../chat/md";
+import { Md } from "../chat";
 import { OrgEmptyLine, OrgPage, OrgSection, useOrg } from "./org-layout";
 import { ErrorLine } from "./shared";
 import { COLLAPSE_ALL_ICON, HandbookExplorer } from "./handbook-explorer";

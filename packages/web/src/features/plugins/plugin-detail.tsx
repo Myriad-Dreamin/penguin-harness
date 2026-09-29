@@ -22,8 +22,8 @@ import { baseName } from "../../lib/workspace-tree";
 import { useLocale } from "../../state/locale";
 import { getPluginFiles } from "../../api/endpoints";
 import type { PluginItem } from "@prismshadow/penguin-server/api";
-import { SkillTile } from "../skills/skill-icon-view";
-import { localizedText } from "../chat/skill-use";
+import { SkillTile } from "../skills";
+import { localizedText } from "../chat";
 
 /** One collapsible group of the tree: a skill's directory, or the hook package's scripts. */
 interface FileGroup {

@@ -22,27 +22,27 @@ import { UpdateDot } from "../ui/update-dot";
 import { UserAvatar } from "../ui/user-avatar";
 import { COMPANY_MODE_ICON, CloseIcon, NAV_ICONS } from "../ui/icons";
 import { useCompany } from "../../state/company";
-import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
-import { ChannelRailRows } from "../../features/company/channel-sidebar";
-import { DeskRailRows } from "../../features/company/org-session-groups";
 import {
+  COMPANY_NAV_ICONS,
+  ORG_PAGE_ICONS,
+  ChannelRailRows,
+  DeskRailRows,
   COMPANY_NAV_KEYS,
   ORG_PAGE_RENDERERS,
   isOrgRoute,
   orgPagePath,
   orgPageRows,
   parseOrgKey,
-} from "../../features/company/company-nav";
+} from "../../features/company";
 import { useContributions } from "../../state/contributions";
 import { NEW_CHAT_ICON, Sidebar } from "./sidebar";
 import { UserMenu } from "./user-menu";
-import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
-import { prepareNewChatDraft } from "../../features/chat/new-chat";
+import { DRAFT_SESSION_ID, prepareNewChatDraft } from "../../features/chat";
 import { ChangePasswordDialog } from "../account/change-password-dialog";
 import { UpdateModal } from "../account/update-modal";
 import { TerminalDockRuntime } from "../../features/terminal";
-import { setDockScope } from "../../features/dock/dock-state";
-import { AppPalette } from "../../features/palette/app-palette";
+import { setDockScope } from "../../features/dock";
+import { AppPalette } from "../../features/palette";
 import { toneStrip } from "../../lib/tone";
 
 /**

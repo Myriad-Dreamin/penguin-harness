@@ -61,7 +61,7 @@ import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { agentDisplayName, useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
-import { MachinePicker, type MachineChoice } from "../machines/machine-picker";
+import { MachinePicker, type MachineChoice } from "../machines";
 import { AgentAvatar } from "../../components/ui/agent-avatar";
 import { Button } from "../../components/ui/button";
 import { Chevron } from "../../components/ui/chevron";
@@ -75,15 +75,20 @@ import { UpdateDot } from "../../components/ui/update-dot";
 import { ConfirmModal } from "../../components/ui/confirm-modal";
 import { Skeleton, SkeletonCard } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
-import { DRAFT_SESSION_ID } from "../chat/chat-page";
+import {
+  DRAFT_SESSION_ID,
+  draftKey,
+  loadDraft,
+  saveDraft,
+  prepareNewChatDraft,
+  localizedShortText,
+  localizedText,
+} from "../chat";
 import { useContributions } from "../../state/contributions";
-import { draftKey, loadDraft, saveDraft } from "../chat/draft-cache";
-import { prepareNewChatDraft } from "../chat/new-chat";
-import { localizedShortText, localizedText } from "../chat/skill-use";
 import { PluginDetailModal } from "./plugin-detail";
-import { SettingsDialog } from "../settings/settings-dialog";
+import { SettingsDialog } from "../settings";
 import { formatRelativeDate } from "../../lib/format";
-import { SkillTile } from "../skills/skill-icon-view";
+import { SkillTile } from "../skills";
 import { InfoPopover } from "../../components/ui/info-popover";
 import { ICON_SIZE } from "../../lib/icon-scale";
 import { toneInk, toneStrip, toneSurface } from "../../lib/tone";

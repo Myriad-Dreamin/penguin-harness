@@ -15,7 +15,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ServerEvent, SessionInfo, SessionsResponse } from "@prismshadow/penguin-server/api";
 
-vi.mock("../src/api/endpoints", () => ({ listSessions: vi.fn() }));
+// Partial: the store reaches feature code through module entries, and an entry evaluates
+// every file of its module, some of which name other endpoints at the top level.
+vi.mock("../src/api/endpoints", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listSessions: vi.fn(),
+}));
 
 import * as api from "../src/api/endpoints";
 import { applyUserEvent, createSessionsStore, liveSessionStatuses } from "../src/state/sessions";

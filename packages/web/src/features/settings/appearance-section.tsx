@@ -21,7 +21,7 @@ import {
   readLauncherHidden,
   subscribeLauncherHidden,
   writeLauncherHidden,
-} from "../dock/dock-launcher-state";
+} from "../dock";
 import { useAuth } from "../../state/auth";
 import { useTheme } from "../../state/theme";
 import type { FontScale, TerminalThemeMode, ThemeMode } from "../../state/theme";

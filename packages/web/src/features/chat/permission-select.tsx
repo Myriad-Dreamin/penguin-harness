@@ -23,7 +23,7 @@ import {
   permissionLevel,
 } from "../../lib/permission-level";
 import { useAuth } from "../../state/auth";
-import { SettingsDialog } from "../settings/settings-dialog";
+import { SettingsDialog } from "../settings";
 
 const APPROVAL_MODES: ApprovalMode[] = ["always-ask", "read-only", "allow-all", "deny-all"];
 const FS_MODES: SessionSandbox["mode"][] = ["read-only", "workspace-write", "danger-full-access"];

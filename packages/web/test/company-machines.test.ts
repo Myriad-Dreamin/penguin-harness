@@ -8,7 +8,10 @@ import type { OrganizationSummary } from "@prismshadow/penguin-server/api";
 
 const listOrganizations = vi.fn();
 const getMachines = vi.fn();
-vi.mock("../src/api/endpoints", () => ({
+// Partial: the store reaches feature code through module entries, and an entry evaluates
+// every file of its module, some of which name other endpoints at the top level.
+vi.mock("../src/api/endpoints", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   listOrganizations: (...args: unknown[]) => listOrganizations(...args),
   getMachines: (...args: unknown[]) => getMachines(...args),
 }));

@@ -31,7 +31,7 @@ import {
 } from "../../lib/workflow-tabs";
 import { useLocale } from "../../state/locale";
 import { useTheme } from "../../state/theme";
-import { localizedText } from "../chat/skill-use";
+import { localizedText } from "../chat";
 
 /** The Agent's workflow tabs, kept fresh by the server's `workflow_updated` events. */
 export function useWorkflowTabs(

@@ -25,7 +25,7 @@ import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
 import { useLocale } from "../../state/locale";
-import { localizedText } from "../chat/skill-use";
+import { localizedText } from "../chat";
 import { apiErrorText } from "../../lib/api-error";
 import { Button } from "../../components/ui/button";
 import { Input, Textarea } from "../../components/ui/input";
@@ -36,7 +36,7 @@ import { toastError, toastInfo, toastSuccess } from "../../components/ui/toast";
 import { toneInk, toneStrip } from "../../lib/tone";
 import { SectionShell } from "./section-shell";
 import { useSessions } from "../../state/sessions";
-import { MachinePicker } from "../machines/machine-picker";
+import { MachinePicker } from "../machines";
 
 /** The picker's value for this server; a machine id is never this short. */
 const THIS_SERVER = "*";
