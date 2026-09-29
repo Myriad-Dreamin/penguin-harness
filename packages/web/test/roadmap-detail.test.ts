@@ -28,7 +28,6 @@ const roadmap = (over: Partial<OrgRoadmapDetail> = {}): OrgRoadmapDetail => ({
   number: 3,
   name: "Company Proposal & Roadmap",
   status: "established",
-  archived: true,
   channelId: "roadmap_3",
   createdAt: "2026-09-29T02:59:46.000Z",
   moderator: "acme_ceo",
@@ -103,7 +102,7 @@ describe("the column's rows", () => {
   });
 
   it("calls every item a draft while the roadmap is discussed, and offers no approval", () => {
-    const rows = roadmapRows(roadmap({ status: "discussing", archived: false }));
+    const rows = roadmapRows(roadmap({ status: "discussing" }));
     expect(rows.every((row) => row.stage === "draft" && row.approvals === null)).toBe(true);
     expect(rows.some(personMayApprove)).toBe(false);
   });

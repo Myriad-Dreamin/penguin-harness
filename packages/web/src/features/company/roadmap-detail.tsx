@@ -47,9 +47,8 @@ const STAGE_TONE: Record<RoadmapRowStage, BadgeTone> = {
   delegated: "gray",
 };
 
-/** The roadmap's own status as a pill: waiting for a room is unfinished, a shelved discussion recedes. */
+/** The roadmap's own status as a pill: waiting for a room is unfinished. */
 function statusTone(r: OrgRoadmapDetail): BadgeTone {
-  if (r.archived && r.status !== "established") return "gray";
   return r.status === "awaiting_room" ? "amber" : "green";
 }
 
@@ -192,7 +191,6 @@ export function RoadmapDetailView({
           </h2>
           <Badge tone={statusTone(r)}>
             {t.status[r.status] ?? r.status}
-            {r.archived && r.status !== "established" ? ` · ${t.archived}` : ""}
           </Badge>
         </div>
         {r.moderator !== null && (
