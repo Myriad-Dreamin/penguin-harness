@@ -343,7 +343,7 @@ describe("contributed company-mode pages", () => {
     ]) {
       expect(orgPageRows(listed, org).map((row) => row.key)).toEqual(["org-proposals"]);
     }
-    expect(Object.keys(ORG_PAGE_RENDERERS)).toEqual(["OrgProposalsPage"]);
+    expect(Object.keys(ORG_PAGE_RENDERERS)).toEqual(["OrgProposalsPage", "claude-code"]);
     expect("roadmaps" in zh.nav.org).toBe(false);
     expect("roadmaps" in en.nav.org).toBe(false);
     // An iframe page keyed like a builtin renderer still draws nothing.
@@ -354,6 +354,28 @@ describe("contributed company-mode pages", () => {
     expect(
       orgPageRows([page({ key: "b" }), roadmaps, page({ key: "a" })], org).map((row) => row.key),
     ).toEqual(["b", "a"]);
+  });
+
+  it("draws the Claude Code console, an iframe page, as a row after Proposals whatever order the plugins load in", () => {
+    const consolePage = page({
+      key: "claude-code",
+      path: "claude-code",
+      renderer: { iframe: { src: "/api/claude-code/page", namespace: "claude-code" } },
+    });
+    const org = { projectId: "p", orgId: "acme" };
+    for (const listed of [
+      [page(), consolePage],
+      [consolePage, page()],
+    ]) {
+      expect(orgPageRows(listed, org)).toEqual([
+        { key: "org-proposals", renderer: "OrgProposalsPage", to: "/org/p/acme/proposals" },
+        { key: "claude-code", renderer: "claude-code", to: "/org/p/acme/claude-code" },
+      ]);
+    }
+    // A builtin renderer named like the iframe key draws nothing.
+    expect(orgPageRows([page({ key: "x", renderer: { builtin: "claude-code" } })], org)).toEqual(
+      [],
+    );
   });
 
   it("addresses one proposal by its number under the proposals page", () => {
