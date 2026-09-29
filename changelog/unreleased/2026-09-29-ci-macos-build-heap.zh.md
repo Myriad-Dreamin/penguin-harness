@@ -6,10 +6,10 @@
 
 [English](2026-09-29-ci-macos-build-heap.md)
 
-各 CI job 共用的构建步骤现在以 4 GB 堆运行 Node。7 GB 的 `macos-latest` runner 上默认堆约 2 GB，而 server
+各 CI job 共用的构建步骤现在以 4 GB 堆运行 Node。`macos-latest` 上默认堆上限是 2240 MB，而 server
 的类型声明构建需要的比这更多，于是 `test-macos (server)`、`test-macos (rest)` 与
 `runtime (macos-latest, --mac)` 都在任何测试开跑之前以 `ERR_WORKER_OUT_OF_MEMORY` 失败。ubuntu 与 windows
-runner 的默认堆本就是 4 GB，它们的构建所见上限与此前相同。
+runner 的默认上限本就是 4288 MB，也就是现在每个 runner 得到的上限，它们的构建没有变化。
 
 ## 细节
 
