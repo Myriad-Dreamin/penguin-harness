@@ -21,6 +21,7 @@
  * them fails THIS load — reported fail-closed by the service — instead of failing the
  * whole platform bundle's import.
  */
+import { statSync } from "node:fs";
 import path from "node:path";
 import { Bind, Component } from "@prismshadow/penguin-core/plugin";
 import type {
@@ -115,6 +116,61 @@ export function assertAclRunnerCanStart(
   );
 }
 
+/** What `aclRunnerArgv` reads of the running process; injectable for tests. */
+export interface AclRunnerHost {
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  isFile?: (file: string) => boolean;
+}
+
+const isFile = (file: string): boolean => {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * `argv` with a bare program name replaced by the file the harness's PATH names. The ACL
+ * runner starts its command with CreateProcessAsUserW and no application name, and for a bare
+ * name Windows then searches, in order: the directory of the runner's own executable (the
+ * harness's node, or the desktop app's Electron), the runner's current directory — the
+ * session's working directory, so the Workspace or a directory inside it — System32, the
+ * 16-bit system directory, the Windows directory, and PATH last. A `pwsh.exe` written into
+ * the Workspace, by the Agent or by a cloned repository, would therefore start in place of
+ * PowerShell (still under the restricted token), and a name System32 also carries shadows
+ * PATH: a bare `bash` reached the WSL launcher (fork CI run 36579953129). An absolute path
+ * leaves the runner nothing to search. The lookup is Windows' own for a name without a
+ * directory — `.exe` appended when it has no extension — over PATH's absolute entries only,
+ * so neither the current directory nor a relative entry such as `.` takes part; a name PATH
+ * does not carry is refused, never handed back to the runner's search. The path the runner
+ * gets is also the one its spawn error names ("command: …"). A program given with a
+ * directory, relative or absolute, is passed on as it is.
+ */
+export function aclRunnerArgv(argv: readonly string[], host: AclRunnerHost = {}): string[] {
+  const [program, ...rest] = argv;
+  const platform = host.platform ?? process.platform;
+  if (platform !== "win32" || program === undefined || /[\\/:]/.test(program)) return [...argv];
+  const env = host.env ?? process.env;
+  const exists = host.isFile ?? isFile;
+  // Windows spells the variable `Path`; whichever key the environment has is the one read.
+  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH");
+  const file = path.win32.extname(program) === "" ? `${program}.exe` : program;
+  for (const entry of (key === undefined ? "" : (env[key] ?? "")).split(";")) {
+    const dir = entry.trim().replace(/^"(.*)"$/, "$1");
+    if (!path.win32.isAbsolute(dir)) continue;
+    const candidate = path.win32.join(dir, file);
+    if (exists(candidate)) return [candidate, ...rest];
+  }
+  throw new Error(
+    `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on the ` +
+      "harness's PATH, and its ACL runner would otherwise search the Workspace for it; name " +
+      "the program by its absolute path, or put its directory on PATH; refusing to run the " +
+      "command unconfined.",
+  );
+}
+
 /**
  * The host's plugin contract, named by a variable so this package's bundle leaves the import to
  * run time: tsup inlines `@prismshadow/penguin-core/plugin` for the decorators (a literal
@@ -178,7 +234,7 @@ export async function loadDshAdaptor(host: DshLoadHost = {}): Promise<SandboxPro
         throw new Error("dsh-local does not implement full filesystem access with confinement");
       }
       assertAclRunnerCanStart(argv, platform, shell);
-      const confined = dsh.confine(argv, {
+      const confined = dsh.confine(aclRunnerArgv(argv), {
         mode: policy.mode,
         workspaceRoot: policy.workspaceRoot,
       });

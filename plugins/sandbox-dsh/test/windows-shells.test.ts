@@ -6,12 +6,13 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { CommandSessionManager } from "@prismshadow/penguin-core";
 import type { SandboxProvider } from "@prismshadow/penguin-core/plugin";
 import {
+  aclRunnerArgv,
   assertAclRunnerCanStart,
   assertSessionShellConfinable,
   hostSessionShell,
@@ -128,6 +129,54 @@ describe("the session shell check", () => {
   });
 });
 
+describe("aclRunnerArgv", () => {
+  const PS = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0";
+  const PWSH = "C:\\Program Files\\PowerShell\\7";
+  const on = (files: string[], Path: string) => ({
+    platform: "win32" as const,
+    env: { Path },
+    isFile: (file: string) => files.includes(file),
+  });
+
+  it("names the file of the first PATH entry that holds it, .exe appended", () => {
+    const host = on([`${PS}\\powershell.exe`, `${PWSH}\\pwsh.exe`], `${PS};"${PWSH}"`);
+    expect(aclRunnerArgv(["pwsh", "-Command", "'hi'"], host)).toEqual([
+      `${PWSH}\\pwsh.exe`,
+      "-Command",
+      "'hi'",
+    ]);
+    expect(aclRunnerArgv(["powershell"], host)).toEqual([`${PS}\\powershell.exe`]);
+  });
+
+  it("never takes the current directory: a relative PATH entry is skipped", () => {
+    const host = on(["pwsh.exe", ".\\pwsh.exe", `${PWSH}\\pwsh.exe`], `.;;${PWSH}`);
+    expect(aclRunnerArgv(["pwsh"], host)).toEqual([`${PWSH}\\pwsh.exe`]);
+  });
+
+  it("looks a name with an extension up as it is", () => {
+    const host = on([`${PWSH}\\pwsh.exe`, `${PWSH}\\pwsh.exe.exe`], PWSH);
+    expect(aclRunnerArgv(["pwsh.exe"], host)).toEqual([`${PWSH}\\pwsh.exe`]);
+  });
+
+  it("refuses a name no PATH entry carries rather than leave it to the runner's search", () => {
+    expect(() => aclRunnerArgv(["pwsh"], on([], PS))).toThrow(
+      /cannot confine "pwsh" on Windows: no pwsh\.exe .* PATH/,
+    );
+    expect(() => aclRunnerArgv(["pwsh"], { platform: "win32", env: {} })).toThrow(/no pwsh\.exe/);
+  });
+
+  it("passes a program given with a directory, and every other platform, as it is", () => {
+    const host = on([], PS);
+    expect(aclRunnerArgv([`${PWSH}\\pwsh.exe`, "-c"], host)).toEqual([`${PWSH}\\pwsh.exe`, "-c"]);
+    expect(aclRunnerArgv([".\\tool.exe"], host)).toEqual([".\\tool.exe"]);
+    expect(aclRunnerArgv(["bash", "-lc", "true"], { platform: "linux" })).toEqual([
+      "bash",
+      "-lc",
+      "true",
+    ]);
+  });
+});
+
 const win32 = process.platform === "win32";
 const ws = mkdtempSync(path.join(tmpdir(), "penguin-dsh-shells-"));
 // Loaded as on a host core without the session shell: the load check is skipped, so the suite
@@ -210,5 +259,30 @@ describe.skipIf(!usable)("the real ACL runner (Windows, host-gated)", () => {
     } finally {
       rmSync(outside, { force: true });
     }
+  });
+
+  // The runner's search puts its current directory — here the Workspace — before PATH. A
+  // `powershell.exe` planted there (a copy of hostname.exe, which prints no marker) must not
+  // be the program the confined command starts.
+  it("a same-named exe in the Workspace is not the program that starts", () => {
+    const dir = mkdtempSync(path.join(ws, "planted-"));
+    const systemRoot = process.env.SystemRoot ?? "C:\\Windows";
+    copyFileSync(
+      path.join(systemRoot, "System32", "HOSTNAME.EXE"),
+      path.join(dir, "powershell.exe"),
+    );
+    const confined = provider!.confine(
+      ["powershell", "-NoLogo", "-NoProfile", "-Command", "Write-Output 'started-from-PATH'"],
+      { mode: "workspace-write", workspaceRoot: ws },
+    );
+    const r = spawnSync(confined.argv[0]!, confined.argv.slice(1), {
+      cwd: dir,
+      env: { ...process.env, ...confined.env },
+      encoding: "utf8",
+      timeout: 60_000,
+      windowsHide: true,
+    });
+    expect(r.stdout).toContain("started-from-PATH");
+    expect(r.status).toBe(0);
   });
 });
