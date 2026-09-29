@@ -21,7 +21,7 @@ harness 只有一套插件系统，其中装着两类 npm 包，都是仓库 `pl
 | --- | --- | --- |
 | 携带 | Skill 和/或钩子包——Agent 读取并运行的内容 | 带装饰器的模块——服务器启动的代码 |
 | 清单 | `plugin.json`，旁边有 `icon.svg` | 无；`package.json` 旁生成的 `ifaces.json` 就是模块载荷 |
-| npm 包 | `@penguinharness/<name>` | 任意包名，例如 `@prismshadow/penguin-plugin-sandbox-bwrap` |
+| npm 包 | `@penguinharness/<name>` | 任意包名，例如 `@penguinharness/sandbox-bwrap` |
 | 由谁声明 | 宿主包的依赖列表——即内置插件库 | Project 的 `[plugins]` 表，位于 `.project_config.toml` |
 | 装在哪里 | 某个 Agent 的 `agent_state/skills/` 和 `agent_state/hooks/` | 服务器进程，通过加载这个包 |
 | 在哪里运行 | Agent 的 Session 中，作为指令和钩子脚本 | 服务器中，作为模块树的节点 |
@@ -83,7 +83,7 @@ export default { modules: [MyBackend], replaces: [] } satisfies Plugin;
 
 ```toml
 [plugins]
-"@prismshadow/penguin-plugin-sandbox-bwrap" = "*"
+"@penguinharness/sandbox-bwrap" = "*"
 "@scope/name" = "1.2.3"
 ```
 
@@ -121,10 +121,10 @@ export default { modules: [MyBackend], replaces: [] } satisfies Plugin;
 
 | 包 | 平台 | `fs-write` | `network` | `network-local` | `mask-paths` |
 | --- | --- | --- | --- | --- | --- |
-| `@prismshadow/penguin-plugin-sandbox-bwrap` | Linux | 有 | 有 | — | 有 |
-| `@prismshadow/penguin-plugin-sandbox-seatbelt` | macOS | 有 | 有 | 有 | 有 |
-| `@prismshadow/penguin-plugin-sandbox-wsl` | Windows | 有 | 有 | — | 有 |
-| `@prismshadow/penguin-plugin-sandbox-dsh` | 三个平台 | 有 | — | — | — |
+| `@penguinharness/sandbox-bwrap` | Linux | 有 | 有 | — | 有 |
+| `@penguinharness/sandbox-seatbelt` | macOS | 有 | 有 | 有 | 有 |
+| `@penguinharness/sandbox-wsl` | Windows | 有 | 有 | — | 有 |
+| `@penguinharness/sandbox-dsh` | 三个平台 | 有 | — | — | — |
 
 维度有 `fs-write`、`network`、`network-local` 和 `mask-paths`，后端声明自己实现其中的哪些；什么都不声明就等于只有 `fs-write`。路由按能力而非注册顺序：只要求文件效果层面的策略会交给第一个覆盖它的后端——DSH 适配器，它自己的链条按宿主分别选用 bubblewrap、Landlock、Seatbelt 或 Windows ACL 运行器——而还要求网络或屏蔽路径的策略会交给第一个实现这些维度的后端；注册顺序只在两个后端都能覆盖时用于打破平局。什么都覆盖不了的请求会**失败关闭**，并列出各后端分别覆盖什么，而不会让命令不受封禁地跑起来，也不会悄悄丢掉被要求的某个维度。
 

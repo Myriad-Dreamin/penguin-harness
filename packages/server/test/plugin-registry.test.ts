@@ -75,10 +75,10 @@ describe("builtinPluginRegistry", () => {
     expect(registry.source).toBe(BUILTIN_REGISTRY_SOURCE);
     const entries = await registry.index();
     expect(entries.map((e) => e.name)).toEqual([
-      "@prismshadow/penguin-plugin-sandbox-bwrap",
-      "@prismshadow/penguin-plugin-sandbox-seatbelt",
-      "@prismshadow/penguin-plugin-sandbox-wsl",
-      "@prismshadow/penguin-plugin-sandbox-dsh",
+      "@penguinharness/sandbox-bwrap",
+      "@penguinharness/sandbox-seatbelt",
+      "@penguinharness/sandbox-wsl",
+      "@penguinharness/sandbox-dsh",
       "@prismshadow/penguin-plugin-languages",
     ]);
     for (const entry of entries) {
@@ -171,7 +171,13 @@ describe("GET /api/plugins/registry", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as PluginIndexResponse;
     expect(body.plugins).toHaveLength(5);
-    expect(body.plugins.every((p) => p.name.startsWith("@prismshadow/penguin-plugin-"))).toBe(true);
+    const sandboxes = body.plugins.filter((p) => p.categories?.includes("sandbox"));
+    expect(sandboxes.map((p) => p.name).sort()).toEqual([
+      "@penguinharness/sandbox-bwrap",
+      "@penguinharness/sandbox-dsh",
+      "@penguinharness/sandbox-seatbelt",
+      "@penguinharness/sandbox-wsl",
+    ]);
   });
 });
 
@@ -264,6 +270,20 @@ describe("plugin readmes", () => {
 });
 
 describe("the builtin catalogue and the packages it lists", () => {
+  /**
+   * The sandbox backends follow the rule the Agent plugins do: `plugins/<dir>` is the npm
+   * package `@penguinharness/<dir>`. The release publishes by that name and a Project's
+   * `[plugins]` table names it, so a package that drifts from its directory is one nobody can
+   * find by either.
+   */
+  it("names every sandbox backend @penguinharness/<its directory>", () => {
+    const sandboxes = [...packages].filter(([, { dir }]) => dir.startsWith("sandbox-"));
+    expect(sandboxes).toHaveLength(4);
+    for (const [name, { dir }] of sandboxes) {
+      expect(name, `plugins/${dir}`).toBe(`@penguinharness/${dir}`);
+    }
+  });
+
   it("names each package as that package names itself", async () => {
     for (const entry of await builtinPluginRegistry().index()) {
       const pkg = packages.get(entry.name);
@@ -303,7 +323,7 @@ describe("GET /api/plugins/registry/readme", () => {
   });
 
   it("requires auth, then serves a listed entry's readme from the package on this machine", async () => {
-    const name = "@prismshadow/penguin-plugin-sandbox-bwrap";
+    const name = "@penguinharness/sandbox-bwrap";
     const url = `/api/plugins/registry/readme?name=${encodeURIComponent(name)}`;
     expect((await t.app.request(url)).status).toBe(401);
 
@@ -518,7 +538,8 @@ describe("the route's own merge", () => {
     const routes = pluginRegistryRoutes({ indexUrl: null });
     const res = await routes.request("/");
     const body = (await res.json()) as PluginIndexResponse;
-    expect(body.plugins.every((e) => e.name.startsWith("@prismshadow/"))).toBe(true);
+    const builtin = await builtinPluginRegistry().index();
+    expect(body.plugins.map((e) => e.name)).toEqual(builtin.map((e) => e.name));
     expect(body.failures).toEqual([]);
   });
 });
