@@ -3,6 +3,7 @@
 - **Date:** 2026-09-29
 - **Type:** fix
 - **Scope:** `plugins`, `docs`
+- **PR:** [Myriad-Dreamin/penguin-harness#102](https://github.com/Myriad-Dreamin/penguin-harness/pull/102)
 
 [中文版](2026-09-29-sandbox-ubuntu-userns.zh.md)
 
