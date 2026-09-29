@@ -27,6 +27,15 @@ import plugin, {
   claudeArgv,
   claudeBinary,
   claudeSearchedIn,
+  ClaudeCodeQueueModule,
+  DEFAULT_CAPACITY,
+  DEFAULT_IDLE_MINUTES,
+  PAGE_PREFIX,
+  PAGE_ROUTES_ID,
+  PAGE_SRC,
+  QUEUE_CONFIG_GROUP,
+  QUEUE_PREFIX,
+  QUEUE_ROUTES_ID,
 } from "../src/index.js";
 
 /** The generated table (the package's `test` script regenerates it before vitest runs). */
@@ -107,8 +116,41 @@ describe("the generated manifest and the plugin agree", () => {
       kind: "claude-code",
       renderer: { builtin: "TerminalSurface" },
     });
-    expect(table.plugin).toEqual({ modules: ["ClaudeCode"], replaces: [] });
-    expect(plugin.modules).toEqual([ClaudeCode]);
+    expect(table.plugin).toEqual({
+      modules: ["ClaudeCode", "ClaudeCodeQueueModule"],
+      replaces: [],
+    });
+    expect(plugin.modules).toEqual([ClaudeCode, ClaudeCodeQueueModule]);
+  });
+
+  it("declares the queue's routes, its console page and its settings with the code's own values", () => {
+    const module = table.modules.ClaudeCodeQueueModule as unknown as {
+      requires: Record<string, { iface: string; from?: string }>;
+      contributes: Record<string, Array<Record<string, unknown>>>;
+    };
+    expect(module.requires.surfaces).toMatchObject({
+      iface: "@prismshadow/penguin-server#SessionSurfaces",
+      from: "SessionRuntimeModule",
+    });
+    expect(module.requires.gateway).toMatchObject({ from: "CompanyModule" });
+    const routes = module.contributes["HttpModule.routes"]!;
+    expect(routes.map((r) => [r.id, r.prefix])).toEqual([
+      [QUEUE_ROUTES_ID, QUEUE_PREFIX],
+      [PAGE_ROUTES_ID, PAGE_PREFIX],
+    ]);
+    expect(module.contributes["WebModule.pages"]).toEqual([
+      expect.objectContaining({
+        key: "claude-code",
+        path: "claude-code",
+        nav: "org",
+        renderer: { iframe: { src: PAGE_SRC, namespace: "claude-code" } },
+      }),
+    ]);
+    const [group] = module.contributes["PluginConfigProvider.groups"]!;
+    const properties = group!.properties as Record<string, { default: unknown }>;
+    expect(group!.id).toBe(QUEUE_CONFIG_GROUP);
+    expect(properties.capacity!.default).toBe(DEFAULT_CAPACITY);
+    expect(properties.idleMinutes!.default).toBe(DEFAULT_IDLE_MINUTES);
   });
 });
 

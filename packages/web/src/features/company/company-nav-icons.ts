@@ -18,4 +18,5 @@ export const COMPANY_NAV_ICONS: Record<CompanyNavKey, string> = {
 /** The glyph of each contributed company-mode page, by what its contribution names (ORG_PAGE_RENDERERS). */
 export const ORG_PAGE_ICONS: Record<OrgPageRenderer, string> = {
   OrgProposalsPage: NAV_ICONS.orgProposals,
+  "claude-code": NAV_ICONS.terminal,
 };
