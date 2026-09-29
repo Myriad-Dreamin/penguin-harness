@@ -15,6 +15,7 @@ import { ProjectProvider } from "./state/project";
 import { SessionsProvider } from "./state/sessions";
 import { CompanyProvider, useCompany } from "./state/company";
 import { AppLayout } from "./components/layout/app-layout";
+import { BootPending } from "./components/ui/boot-pending";
 import { LoginPage } from "./pages/login";
 import { ChatPage } from "./features/chat/chat-page";
 import { AgentsPage } from "./features/agents/agents-page";
@@ -76,14 +77,14 @@ function renderPage(page: PageEntry): React.ReactNode {
   return Component === undefined ? <Navigate to="/chat" replace /> : <Component />;
 }
 
-/** Route guard: shows blank while initializing, redirects to /login when not authenticated. */
+/** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
   const { user } = useAuth();
   // Extension-contributed grammars, adopted once for the signed-in tree (see the hook). Called
   // before the early returns, because a hook cannot be conditional; it fetches nothing until
   // the effect runs, which is only after this component actually renders its tree.
   useRuntimeLanguages();
-  if (user === undefined) return null; // GET /api/me is still initializing
+  if (user === undefined) return <BootPending />; // GET /api/me is still initializing
   if (user === null) return <Navigate to="/login" replace />;
   return (
     <ProjectProvider>
@@ -103,7 +104,7 @@ function RequireAuth() {
  */
 function RequireAuthBare({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  if (user === undefined) return null;
+  if (user === undefined) return <BootPending />;
   if (user === null) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
