@@ -40,6 +40,11 @@ shell is set, a confined command is refused before it spawns, with an error nami
 settings. `cmd` also starts under the runner; it is not measured beyond that. Nothing here
 changes on Linux or macOS, where bash runs confined as usual.
 
+A shell named without a directory (`pwsh`, `powershell`) is handed to the runner as the file the
+harness's `PATH` names. Left to itself, the runner looks in its current directory — the session's
+working directory, inside the Workspace — and in System32 before `PATH`, so an `.exe` of the same
+name written into the Workspace would start instead. A name no `PATH` directory holds is refused.
+
 ## Requirements
 
 - The DSH dependencies (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-sandbox`,
