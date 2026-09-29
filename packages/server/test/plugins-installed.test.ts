@@ -21,9 +21,9 @@ describe("installed plugins", () => {
 
   /**
    * Ships a package the way the build does: under the installation's `plugins/` prefix,
-   * named in that prefix's manifest. The installation is what `process.argv[1]` points
-   * into (plugin/loader.ts pluginBases), so the test app's program entry is pointed at a
-   * directory of the temp root for the file's duration.
+   * named in that prefix's manifest — a source of the plugin store. The installation is what
+   * `process.argv[1]` points into (plugin/store.ts storeSources), so the test app's program
+   * entry is pointed at a directory of the temp root for the file's duration.
    */
   const ship = async (pkg: ClassPackage) => {
     const prefix = path.join(t.root, "install", "plugins");
@@ -270,6 +270,8 @@ describe("installed plugins", () => {
         })
       ).status,
     ).toBe(200);
+    const current = () => fs.readFile(path.join(t.root, "plugins", "current"), "utf8");
+    const before = await current();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const res = await admin.post("/api/projects/default_project/plugins/installed", {
@@ -280,6 +282,12 @@ describe("installed plugins", () => {
       // Undone: the list is as it was, and what runs is what ran.
       expect(body.plugins.map((p) => [p.specifier, p.active])).toEqual([["@acme/fine", true]]);
       expect(await fs.readFile(listFile(), "utf8")).not.toContain("bad-boot");
+      // The pointer is back on the generation that ran, and the one that failed stays on disk.
+      expect(await current()).toBe(before);
+      const gens = (await fs.readdir(path.join(t.root, "plugins"))).filter((d) =>
+        /^[0-9a-f]{16}$/.test(d),
+      );
+      expect(gens.length).toBeGreaterThanOrEqual(2);
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/deliberately fails to boot/));
     } finally {
       warn.mockRestore();
