@@ -3,6 +3,7 @@
 - **Date:** 2026-09-29
 - **Type:** fix
 - **Scope:** `server`
+- **PR:** [Myriad-Dreamin/penguin-harness#56](https://github.com/Myriad-Dreamin/penguin-harness/pull/56)
 
 [中文版](2026-09-29-org-desk-mentions.zh.md)
 
@@ -14,7 +15,7 @@ had already moved past the messages, so they were never delivered.
 
 ## Details
 
-- Mentions now wait in a new company-mode table, `org_desk_mentions` (migration 22,
+- Mentions now wait in a new company-mode table, `org_desk_mentions` (migration 20,
   `company-mode-desk-mentions`, swap-safe), written in the same pass that moves the channel's
   scan offset and deduplicated by (employee, channel, message). The desk's session follow-up
   queue no longer holds them.
