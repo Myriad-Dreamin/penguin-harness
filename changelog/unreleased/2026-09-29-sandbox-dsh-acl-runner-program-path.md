@@ -3,6 +3,7 @@
 - **Date:** 2026-09-29
 - **Type:** fix
 - **Scope:** `plugins`
+- **PR:** [Myriad-Dreamin/penguin-harness#106](https://github.com/Myriad-Dreamin/penguin-harness/pull/106)
 
 [中文版](2026-09-29-sandbox-dsh-acl-runner-program-path.zh.md)
 
