@@ -3381,6 +3381,9 @@ describe("messaging binding routes and bridge", () => {
     const stillborn = restartBridge({
       statusOf: () => "idle",
       startTask: () => Promise.reject(new Error("the Session went away")),
+      steer: () => {
+        throw new Error("the Session went away");
+      },
     });
     try {
       await stillborn.start();
