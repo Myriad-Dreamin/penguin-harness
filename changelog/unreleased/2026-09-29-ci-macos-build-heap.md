@@ -6,11 +6,11 @@
 
 [中文版](2026-09-29-ci-macos-build-heap.zh.md)
 
-The build step every CI job shares now runs Node with a 4 GB heap. On the 7 GB `macos-latest`
-runner the default heap is about 2 GB, and the server's declaration build needs more than that, so
+The build step every CI job shares now runs Node with a 4 GB heap. On `macos-latest` the default
+heap limit is 2240 MB, and the server's declaration build needs more than that, so
 `test-macos (server)`, `test-macos (rest)` and `runtime (macos-latest, --mac)` failed at
-`ERR_WORKER_OUT_OF_MEMORY` before any test ran. The ubuntu and windows runners already had a 4 GB
-default, so their builds see the same limit as before.
+`ERR_WORKER_OUT_OF_MEMORY` before any test ran. The ubuntu and windows runners already had a
+4288 MB default, which is the limit every runner now gets, so their builds see no change.
 
 ## Details
 
