@@ -3237,6 +3237,8 @@ export type ServerEvent =
    * a schedule, an agent spawning a child — so the list learns about rows it did not make;
    * and on the parent Session's channel for a subagent, so a tab watching the parent run
    * refreshes in place. `source` is what the new Session's meta records.
+   * `client` is `"org"` when the organization runtime opened it (a desk or ticket session),
+   * as it is on the row: a list of the user's own rows (`excludeOrg`) has nothing to fetch.
    */
   | {
       type: "session_created";
@@ -3244,6 +3246,7 @@ export type ServerEvent =
       agentId: string;
       sessionId: string;
       source: SessionSource;
+      client?: "org";
     }
   | ScheduleServerEvent
   | GoalServerEvent
