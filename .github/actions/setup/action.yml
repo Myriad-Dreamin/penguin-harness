@@ -59,15 +59,25 @@ runs:
     # reads `inputs` silently evaluated false here, so every job skipped its build and only
     # the shards that never import a built package stayed green -- a failure that looks like
     # a broken test, not a broken workflow. The echo makes the decision visible in the log.
+    #
+    # The heap is pinned because V8 sizes its default from the machine's memory: about 4 GB
+    # on the 16 GB ubuntu and windows runners, about 2 GB on the 7 GB macos-latest runner.
+    # The server's declaration build (tsup's DTS worker) needs more than 2 GB, so every
+    # macOS job died at ERR_WORKER_OUT_OF_MEMORY while the other runners passed. 4096 is the
+    # ceiling the larger runners already had; the flag reaches the worker threads too.
     - name: Build (tsup)
       shell: bash
       env:
         BUILD_FILTERS: ${{ inputs.build }}
+        NODE_OPTIONS: --max-old-space-size=4096
       run: |
         if [ -z "$BUILD_FILTERS" ]; then
           echo "No build requested for this job."
           exit 0
         fi
+        heap='Math.round(require("v8").getHeapStatistics().heap_size_limit / 2 ** 20)'
+        echo "runner memory $(node -p 'Math.round(require("os").totalmem() / 2 ** 20)') MB;" \
+          "heap limit $(NODE_OPTIONS= node -p "$heap") MB by default, $(node -p "$heap") MB here"
         args=""
         IFS=','
         for f in $BUILD_FILTERS; do
