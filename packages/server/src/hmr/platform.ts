@@ -80,6 +80,7 @@ import type { Interfaces, MembersOf, ReassemblyChange } from "./capabilities.js"
 import { PLUGINS_RESOURCE_ID, pluginHostFrom } from "../plugin/host.js";
 import type { PluginHost } from "../plugin/host.js";
 import { loadPluginHost } from "../plugin/loader.js";
+import { storeSources, syncPluginStore } from "../plugin/store.js";
 import { bootWithoutUnsatisfied } from "../plugin/unsatisfied.js";
 import { usePushedPluginLibrary, userText } from "@prismshadow/penguin-core";
 import { pushedLibraryDir } from "./asset-archives.js";
@@ -424,6 +425,12 @@ async function createInner(
   // it: a machine installed before a plugin existed otherwise never offers it, and a feature
   // that seeds an Agent with it (company mode's CEO, `agent-company`) fails on every attempt.
   if (caps !== null) usePushedPluginLibrary(pushedLibraryDir(caps.hmr.assetsDir()));
+
+  // What the push carried and what the installation ships go into the plugin store, each
+  // checked by hash and copied when missing. In the background: nothing loads from the store.
+  if (caps !== null) {
+    void syncPluginStore(caps.config.root, storeSources(caps.hmr.assetsDir()));
+  }
 
   // Plugins are modules (see ../plugin/), and WHICH ones this App runs is configuration it
   // reads for ITSELF: the closure over the root's Projects, loaded here rather than handed
