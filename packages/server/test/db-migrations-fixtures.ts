@@ -91,6 +91,8 @@ export function dropPortForwardsAndLater(db: DatabaseSync): void {
   db.exec("DROP TABLE IF EXISTS browser_sites;");
   // And the machine definitions, newer still.
   db.exec("DROP TABLE IF EXISTS machine_definitions;");
+  // And the desk-mention queue, newer again.
+  db.exec("DROP TABLE IF EXISTS org_desk_mentions;");
 }
 
 /** Takes user-profile's two columns off a database built from the current declaration. */
