@@ -43,7 +43,7 @@ import type {
   HookItem,
   InstalledPluginsResponse,
   PluginGroupItem,
-  PluginIndexEntry,
+  PluginCatalogueEntry,
   PluginItem,
   SkillMetadataItem,
 } from "@prismshadow/penguin-server/api";
@@ -226,7 +226,7 @@ export function PluginsPage() {
   /** What this Project asks for of the module plugins, and which of those the process runs. */
   const [deployment, setDeployment] = useState<InstalledPluginsResponse | null>(null);
   /** The registry: every module plugin this deployment could ask for. */
-  const [index, setIndex] = useState<PluginIndexEntry[] | null>(null);
+  const [index, setIndex] = useState<PluginCatalogueEntry[] | null>(null);
   /**
    * Sources that answered with nothing. A published index that is down shortens the list
    * instead of emptying it (the server merges tolerantly), so the page has to say so — a
@@ -859,7 +859,7 @@ type PluginRow = { kind: "library"; plugin: PluginItem; category: string } | Mod
 interface ModulePluginRow {
   kind: "module";
   specifier: string;
-  entry: PluginIndexEntry | undefined;
+  entry: PluginCatalogueEntry | undefined;
   state: ModuleState;
   /** Why the process could not load it, when `state` is `failed`. */
   error?: string;
@@ -933,7 +933,7 @@ export function installedPluginRows(
   groups: readonly PluginGroupItem[],
   locale: Parameters<typeof localizedText>[0],
   deployment: InstalledPluginsResponse | null,
-  index: readonly PluginIndexEntry[],
+  index: readonly PluginCatalogueEntry[],
   view: PluginView = ALL_MACHINES,
 ): PluginRow[] {
   const rows: PluginRow[] = [];
@@ -948,7 +948,7 @@ export function installedPluginRows(
     rows.push({
       kind: "module",
       specifier: listed.specifier,
-      entry: index.find((e) => e.name === listed.specifier),
+      entry: catalogueEntryOf(index, listed.specifier),
       ...stateIn(listed, view, deployment?.machineId),
       shipped:
         listed.builtin || (view.remote ?? deployment)?.shipped.includes(listed.specifier) === true,
@@ -963,13 +963,24 @@ export function installedPluginRows(
 }
 
 /**
- * What could be asked for: the registry's entries this Project does not list yet, and what
- * the build ships that the registry does not know (offered with no description — the build
+ * The catalogue row a name is shown by: one this machine can install before one it cannot,
+ * then the catalogue's own order (the build's index first).
+ */
+export function catalogueEntryOf(
+  index: readonly PluginCatalogueEntry[],
+  name: string,
+): PluginCatalogueEntry | undefined {
+  return index.find((e) => e.name === name && e.installable) ?? index.find((e) => e.name === name);
+}
+
+/**
+ * What could be asked for: the catalogue's entries this Project does not list yet, and what
+ * the build ships that the catalogue does not know (offered with no description — the build
  * has it, so it is installable without a download).
  */
 export function availablePluginRows(
   deployment: InstalledPluginsResponse | null,
-  index: readonly PluginIndexEntry[],
+  index: readonly PluginCatalogueEntry[],
   view: PluginView = ALL_MACHINES,
 ): ModulePluginRow[] {
   // What the machine in view does not run yet: in the all-machines view, anything the shared
@@ -983,9 +994,10 @@ export function availablePluginRows(
   const shippedList = (view.remote ?? deployment)?.shipped ?? [];
   const seen = new Set<string>();
   const rows: ModulePluginRow[] = [];
-  for (const entry of index) {
-    if (listed.has(entry.name) || seen.has(entry.name)) continue;
-    seen.add(entry.name);
+  for (const { name } of index) {
+    if (listed.has(name) || seen.has(name)) continue;
+    seen.add(name);
+    const entry = catalogueEntryOf(index, name)!;
     rows.push({
       kind: "module",
       specifier: entry.name,
@@ -1589,7 +1601,7 @@ function ModuleRow({
   onRemove,
 }: {
   specifier: string;
-  entry: PluginIndexEntry | undefined;
+  entry: PluginCatalogueEntry | undefined;
   state: ModuleState;
   /** Why it failed to load, when it did. */
   error?: string;
@@ -1627,6 +1639,12 @@ function ModuleRow({
   const meta = [entry === undefined ? null : `v${entry.version}`, updated]
     .filter((v): v is string => v !== null)
     .join(" · ");
+  // A catalogue row that names no integrity: listed, but neither the build nor this machine's
+  // store has it, and a download could not be checked — Install says so instead of failing.
+  const cannotInstall =
+    state === "none" && !shipped && entry !== undefined && !entry.installable
+      ? S.plugins.cannotInstallHere
+      : null;
   const body = (
     <>
       <div className="flex items-center gap-3">
@@ -1679,12 +1697,23 @@ function ModuleRow({
           {error}
         </p>
       )}
+      {cannotInstall !== null && (
+        <p className={`mt-1 text-xs ${toneInk.attention}`}>
+          {cannotInstall}
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
         {(entry?.categories ?? []).map((category) => (
           <Tag key={category}>{category}</Tag>
         ))}
         {onlyOn !== undefined && <Tag>{S.plugins.onlyOn(onlyOn.join(", "))}</Tag>}
         {shipped && <Tag title={S.plugins.builtinHint}>{S.plugins.builtin}</Tag>}
+        {entry?.sources.includes("store") === true && (
+          <Tag title={S.plugins.sourceStoreHint}>{S.plugins.sourceStore}</Tag>
+        )}
+        {entry?.sources.includes("index") === true && (
+          <Tag title={S.plugins.sourceIndexHint}>{S.plugins.sourceIndex}</Tag>
+        )}
         {(entry?.keywords ?? []).map((keyword) => (
           <Tag key={keyword} mono>
             {keyword}
@@ -1712,8 +1741,8 @@ function ModuleRow({
                 className="h-8 w-8 shrink-0 justify-center p-0"
                 aria-label={`${busy ? S.plugins.installing : S.plugins.install} ${specifier}`}
                 aria-busy={busy}
-                title={busy ? S.plugins.installing : S.plugins.install}
-                disabled={busy || blocked}
+                title={cannotInstall ?? (busy ? S.plugins.installing : S.plugins.install)}
+                disabled={busy || blocked || cannotInstall !== null}
                 onClick={onInstall}
               >
                 {busy ? (
