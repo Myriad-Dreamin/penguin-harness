@@ -53,7 +53,7 @@ import {
   NIGHTLY_INDEX_URL,
 } from "../../plugin/registry.js";
 import type { CachedRegistry, IndexSnapshot, PluginRegistry } from "../../plugin/registry.js";
-import { pluginBases } from "../../plugin/loader.js";
+import { pluginBases, shippedBases } from "../../plugin/loader.js";
 import type { PluginBase } from "../../plugin/loader.js";
 
 /** What these route groups reach — bound by their component below. */
@@ -186,7 +186,7 @@ export interface PluginRoutesOptions {
    * Undefined = unset, which reads the index repository's published document.
    */
   indexUrl?: string | null;
-  /** Where the builtin packages are on this machine, for their readmes (plugin/loader.ts's pluginBases). */
+  /** Where the packages are on this machine, for their readmes (plugin/loader.ts's pluginBases and shippedBases). */
   bases?: () => readonly PluginBase[];
   /** Overrides the resolved source list entirely; tests pass registries directly. */
   registries?: readonly PluginRegistry[];
@@ -277,8 +277,9 @@ export class PluginRegistryRoutes {
     const parked = (context as { index?: IndexSnapshot } | null)?.index;
     this.routes = pluginRegistryRoutes({
       indexUrl: this.config.pluginIndexUrl,
-      // Read per request: a push moves the shipped prefix to a new assets directory.
-      bases: () => pluginBases(this.config.root, this.hmr.assetsDir()),
+      // Read per request: a push moves the shipped prefix to a new assets directory, and an
+      // activation moves the current generation. The generation first: it is what runs.
+      bases: () => [...pluginBases(this.config.root), ...shippedBases(this.hmr.assetsDir())],
       seed: parked ?? null,
       onCache: (cache) => {
         this.cache = cache;

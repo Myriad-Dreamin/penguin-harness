@@ -79,7 +79,7 @@ import type { Interfaces, MembersOf, ReassemblyChange } from "./capabilities.js"
 import { PLUGINS_RESOURCE_ID, pluginHostFrom } from "../plugin/host.js";
 import type { PluginHost } from "../plugin/host.js";
 import { loadPluginHost } from "../plugin/loader.js";
-import { storeSources, syncPluginStore } from "../plugin/store.js";
+import { currentGeneration, pointCurrent } from "../plugin/activation.js";
 import { bootWithoutUnsatisfied } from "../plugin/unsatisfied.js";
 import { usePushedPluginLibrary, userText } from "@prismshadow/penguin-core";
 import { pushedLibraryDir } from "./asset-archives.js";
@@ -409,16 +409,26 @@ async function createInner(
   // that seeds an Agent with it (company mode's CEO, `agent-company`) fails on every attempt.
   if (caps !== null) usePushedPluginLibrary(pushedLibraryDir(caps.hmr.assetsDir()));
 
-  // What the push carried and what the installation ships go into the plugin store, each
-  // checked by hash and copied when missing. In the background: nothing loads from the store.
-  if (caps !== null) {
-    void syncPluginStore(caps.config.root, storeSources(caps.hmr.assetsDir()));
-  }
-
   // Plugins are modules (see ../plugin/), and WHICH ones this App runs is configuration it
   // reads for ITSELF: the closure over the root's Projects, loaded here rather than handed
   // over by the runtime, so the rule for reading it ships by push like every other policy.
+  // Loading ACTIVATES first: what the push carried and what the installation ships go into
+  // the plugin store, the closure is resolved against it, and `<root>/plugins/current` is
+  // pointed at that generation (plugin/activation.ts). This boot is the re-assembly's when a
+  // plugin change asked for one, so it runs on that one queue. The generation current before
+  // it is kept, to point back at when the rest of this boot fails.
   // A bare kernel has no root to read and keeps whatever was already imported.
+  const generationBefore = caps === null ? null : currentGeneration(caps.config.root);
+  const restoreGeneration = async (err: unknown): Promise<never> => {
+    if (caps !== null && currentGeneration(caps.config.root) !== generationBefore) {
+      await pointCurrent(caps.config.root, generationBefore).catch((undo: unknown) => {
+        console.warn(
+          `[plugins] could not point back at the previous generation: ${undo instanceof Error ? undo.message : String(undo)}`,
+        );
+      });
+    }
+    throw err;
+  };
   const plugins =
     caps === null
       ? pluginHostFrom(ctx.resources)
@@ -429,7 +439,7 @@ async function createInner(
           // A Project may list a plugin for one machine only (`[plugins.<machineId>]`); this
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
-        );
+        ).catch(restoreGeneration);
   // Plus whatever a test stood up in process, which no closure could name (see the id).
   const injected = ctx.resources.claim<PluginHost | null>(HMR_TEST_PLUGINS_RESOURCE_ID);
   if (injected != null && typeof injected.entries === "function") {
@@ -458,6 +468,8 @@ async function createInner(
       }),
     ));
   } else {
+    // A tree that fails to boot on this generation points `current` back before the throw
+    // reaches the re-assembly (or the upgrade) that restores the previous App.
     // THE MODULE TREE (see ../platform.ts): every business service, every route
     // group and the terminal manager are modules wired by their manifests — checked as
     // data before any create() runs, created in dependency order. Sandbox backends the
@@ -480,7 +492,7 @@ async function createInner(
           parked: parkedModules(context),
         },
       ),
-    ));
+    ).catch(restoreGeneration));
     business = tree;
     terminals = tree.api<TerminalManager>("TerminalModule", "terminals");
   }
