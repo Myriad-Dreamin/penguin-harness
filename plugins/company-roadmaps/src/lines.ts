@@ -91,6 +91,7 @@ export function cloneBrief(args: {
         "You moderate. Keep the draft as the discussion moves — your record of it, the body (the discussion written as a paper, in `## ` sections) and the items it leads to, each only a brief:",
         '  write draft.json: {"sessionId": "$PENGUIN_SESSION_ID", "agentId": "$PENGUIN_AGENT_ID", "record": "...", "body": "...", "items": [{"key": "a", "kind": "proposal", "title": "...", "brief": "...", "owner": "<agent id>", "cites": ["<body section heading>"]}, {"key": "b", "kind": "roadmap", "title": "...", "brief": "...", "employees": ["<agent id>"], "cites": ["..."]}]}',
         "  (substitute the two variables' values; any of record/body/items may be left out; a proposal item is stacked on the previous one unless it says `stackedOn`)",
+        "  The body is shown as Markdown beside the room: cite a proposal as `proposal:<n>` (it becomes a link to that proposal), and add a note as a footnote (`…[^1]` in the text, `[^1]: the note` below).",
         `  ${curlFileOf("PUT", routeOf(orgId, r.number, "/draft"), "draft.json")}`,
         "Nothing is created while the room discusses. When the room agrees, establish it — the roadmap is archived and every roadmap item derives its own roadmap at once, but a proposal item stays a brief: nothing is created for it, and its owner is not told, until a person and you (the moderator) have both approved it:",
         `  ${curlOf("POST", routeOf(orgId, r.number, "/establish"))}`,
