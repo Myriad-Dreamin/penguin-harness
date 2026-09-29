@@ -3,6 +3,7 @@
 - **Date:** 2026-09-29
 - **Type:** feat
 - **Scope:** `plugins`, `web`, `cli`
+- **PR:** [Myriad-Dreamin/penguin-harness#99](https://github.com/Myriad-Dreamin/penguin-harness/pull/99)
 
 [English](2026-09-29-claude-code-queue-and-console.md)
 
