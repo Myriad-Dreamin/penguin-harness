@@ -3,8 +3,8 @@
  *
  *   GET    /                      this Project's list, joined with what the process runs,
  *                                 plus which plugins the build ships (any member)
- *   POST   / { specifier,         npm-install the package if this server runs it and the build
- *            machineId? }         does not ship it, add it to this Project's shared table — or
+ *   POST   / { specifier,         fetch the package into the plugin store if this server runs it
+ *            machineId? }         and the build does not ship it, add it to this Project's shared table — or
  *                                 to that machine's own table — and apply (admin)
  *   PUT    / { plugins }          rewrite this Project's shared table, and apply (admin)
  *   DELETE /?specifier=…          drop it from every table of this Project — or, with
@@ -24,7 +24,8 @@
  * asked for it" joined with "the process has it", which are two different facts.
  *
  * APPLYING. A write asks the App to re-assemble itself (the platform's own `Reassembly`,
- * hmr/platform.ts): the new create() reads the closure and imports what it names — no
+ * hmr/platform.ts): the new create() reads the closure, activates the generation it resolves
+ * to (plugin/activation.ts) and imports what it names — no
  * process restart, ptys and connections delivered across it exactly as a push delivers
  * them. What a push does not deliver, this does not either: agent runs in flight are
  * stopped and pending approvals denied, in EVERY Project, because there is one tree. The
@@ -51,20 +52,14 @@ import {
 } from "@prismshadow/penguin-core";
 import type { Config, Db, Hmr, Reassembly, ReassemblyChange } from "../../hmr/capabilities.js";
 import {
-  discoverBuiltinPlugins,
   PACKAGE_NAME,
-  loadPlugins,
   PLUGINS_FILE,
   pluginBases,
-  readPluginClosure,
   readPluginDeclaration,
+  shippedPlugins,
 } from "../../plugin/loader.js";
-import {
-  installPluginPackage,
-  PluginInstallError,
-  removePluginPackage,
-} from "../../plugin/install.js";
-import { fetchIntoStore, PluginStoreError } from "../../plugin/store.js";
+import { PluginInstallError } from "../../plugin/install.js";
+import { fetchIntoStore, PluginStoreError, readStore } from "../../plugin/store.js";
 import { PluginHost, pluginHostFrom, PLUGINS_RESOURCE_ID } from "../../plugin/host.js";
 import { Access, ProjectConfigStore } from "../../mechanisms/projects.js";
 import type { Machines } from "../../machines/service.js";
@@ -134,7 +129,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       ]),
     ];
     const { loaded, skipped, unsatisfied } = deps.running();
-    const bases = pluginBases(deps.root, deps.assetsDir());
+    const bases = pluginBases(deps.root);
     // `builtin` on a row is where the package CAME FROM, a tag, not a second way of being
     // asked for. What the package declares is read from its files; whether the process holds
     // it, and why not, is the host's — a load that failed says so, rather than passing as a
@@ -184,7 +179,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       plugins,
       // What the build ships, asked for or not: the catalogue marks these rows "built in",
       // and asking for one is a list edit rather than a download.
-      shipped: await discoverBuiltinPlugins(bases),
+      shipped: await shippedPlugins(deps.assetsDir()),
       file: PLUGINS_FILE,
       machineId: deps.machineId,
       // A plugin this server is asked to run that neither runs nor failed is waiting for a
@@ -224,16 +219,18 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
 
   /**
    * A name a list REWRITE adds must already be on this machine — shipped with the build or
-   * installed under the data root by POST, which is the verb that runs npm. Otherwise PUT
+   * fetched into the plugin store by POST, which is the verb that runs npm. Otherwise PUT
    * would be the way to list a package that is not on disk, exactly the state these routes
    * exist to avoid.
    */
   const requireOnMachine = async (names: readonly string[]) => {
     if (names.length === 0) return;
-    const bases = pluginBases(deps.root, deps.assetsDir());
+    const onMachine = new Set([
+      ...(await shippedPlugins(deps.assetsDir())),
+      ...(await readStore(deps.root)).map((e) => e.name),
+    ]);
     for (const name of names) {
-      const declared = await readPluginDeclaration(name, bases);
-      if ("error" in declared) {
+      if (!onMachine.has(name)) {
         throw new HttpError(
           400,
           "plugin_not_installed",
@@ -283,13 +280,12 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     // and npm failing must leave the deployment unchanged. A plugin asked of another machine
     // only is downloaded THERE, by that machine, when the list reaches it.
     const runsHere = machineId === null || machineId === deps.machineId;
-    const shipped = await discoverBuiltinPlugins(pluginBases(deps.root, deps.assetsDir()));
+    const shipped = await shippedPlugins(deps.assetsDir());
     if (runsHere && !shipped.includes(specifier)) {
       try {
-        // Into the plugin store first (plugin/store.ts), then into the prefix the loader
-        // resolves from — the store is not a lookup location.
+        // Into the plugin store (plugin/store.ts), and nowhere else: the re-assembly the list
+        // edit asks for activates a generation that links the stored entry.
         await fetchIntoStore(deps.root, specifier);
-        await installPluginPackage(deps.root, specifier);
       } catch (err) {
         if (err instanceof PluginInstallError) {
           throw new HttpError(400, "plugin_install_failed", `npm: ${err.message}`);
@@ -344,19 +340,8 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
             machines: { ...tables.machines, [machineId]: without(tables.machines[machineId]) },
           },
     );
-    // The package goes too — but only once no Project asks THIS server for it. The prefix is
-    // the harness's to keep tidy; removing it while another Project still lists it would
-    // break that Project at the next load.
-    if (!(await readPluginClosure(deps.root, deps.machineId)).includes(specifier)) {
-      try {
-        await removePluginPackage(deps.root, specifier);
-      } catch (err) {
-        if (err instanceof PluginInstallError) {
-          throw new HttpError(500, "plugin_remove_failed", `npm: ${err.message}`);
-        }
-        throw err;
-      }
-    }
+    // Nothing is uninstalled: the re-assembly activates a generation without the package once
+    // no Project asks THIS server for it, and its store entry stays for the next that does.
     deps.syncFleet(projectId);
     return c.json(await view(projectId));
   });
