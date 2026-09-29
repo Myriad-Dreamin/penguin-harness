@@ -21,7 +21,7 @@ The repository ships 23 plugin directories: 14 library plugins and 9 code packag
 | --- | --- | --- |
 | Carries | Skills and/or a hook package — content an agent reads and runs | Decorated modules — code the server boots |
 | Manifest | `plugin.json`, with an `icon.svg` beside it | none; the generated `ifaces.json` beside `package.json` is the module payload |
-| npm package | `@penguinharness/<name>` | any package name, as in `@prismshadow/penguin-plugin-sandbox-bwrap` |
+| npm package | `@penguinharness/<name>` | any package name, as in `@penguinharness/sandbox-bwrap` |
 | Declared by | the host package's dependency list — the built-in library | a Project's `[plugins]` table in `.project_config.toml` |
 | Installed on | one agent, into `agent_state/skills/` and `agent_state/hooks/` | the server process, by loading the package |
 | Runs where | in an agent's Session, as instructions and hook scripts | in the server, as nodes of its module tree |
@@ -83,7 +83,7 @@ Which code packages a deployment runs is configuration, not a capability baked i
 
 ```toml
 [plugins]
-"@prismshadow/penguin-plugin-sandbox-bwrap" = "*"
+"@penguinharness/sandbox-bwrap" = "*"
 "@scope/name" = "1.2.3"
 ```
 
@@ -121,10 +121,10 @@ The sandbox is the plugin system's largest user, and the clearest example of a c
 
 | Package | Platform | `fs-write` | `network` | `network-local` | `mask-paths` |
 | --- | --- | --- | --- | --- | --- |
-| `@prismshadow/penguin-plugin-sandbox-bwrap` | Linux | yes | yes | — | yes |
-| `@prismshadow/penguin-plugin-sandbox-seatbelt` | macOS | yes | yes | yes | yes |
-| `@prismshadow/penguin-plugin-sandbox-wsl` | Windows | yes | yes | — | yes |
-| `@prismshadow/penguin-plugin-sandbox-dsh` | all three | yes | — | — | — |
+| `@penguinharness/sandbox-bwrap` | Linux | yes | yes | — | yes |
+| `@penguinharness/sandbox-seatbelt` | macOS | yes | yes | yes | yes |
+| `@penguinharness/sandbox-wsl` | Windows | yes | yes | — | yes |
+| `@penguinharness/sandbox-dsh` | all three | yes | — | — | — |
 
 The dimensions are `fs-write`, `network`, `network-local` and `mask-paths`, and a provider declares the subset it implements; saying nothing means `fs-write` alone. Routing is by capability rather than registration order: a policy needing only file effects goes to the first backend that covers it — the DSH adaptor, whose own chain picks bubblewrap, Landlock, Seatbelt or the Windows ACL runner per host — while a policy that also requires the network or masked paths goes to the first backend implementing those. Registration order only breaks ties between backends that both cover the request. A request nothing covers **fails closed**, naming what each backend covers, rather than letting a command run unconfined or quietly dropping a dimension it was asked for.
 
