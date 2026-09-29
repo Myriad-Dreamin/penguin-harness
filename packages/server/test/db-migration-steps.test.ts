@@ -597,3 +597,53 @@ describe("model-tables-adoption → current: machine-definitions", () => {
     }
   });
 });
+
+describe("machine-definitions → current: company-mode-desk-mentions", () => {
+  /** A root through machine-definitions: everything the current declaration has but the desk-mention queue. */
+  function openPreMentions(): DatabaseSync {
+    const db = openFresh();
+    db.exec("DROP TABLE IF EXISTS org_desk_mentions");
+    stampThrough(db, "machine-definitions");
+    return db;
+  }
+  const insert = (db: DatabaseSync, messageId: string) =>
+    db
+      .prepare(
+        "INSERT OR IGNORE INTO org_desk_mentions (project_id, org_id, agent_id, channel_id, date, message_id, hop) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("p1", "acme", "acme_hr", "default_channel", "2026-09-29", messageId, 0);
+
+  it("adds the queue on the swap path, and a mention is queued once however often it is scanned", () => {
+    const db = openPreMentions();
+    const fresh = openFresh();
+    try {
+      expect(migrate(db, { swapPath: true }).applied).toEqual(namesAfter("machine-definitions"));
+      expect(shape(db)).toBe(shape(fresh));
+      insert(db, "msg-2026-09-29-04-26-21-00000000");
+      insert(db, "msg-2026-09-29-04-26-21-00000000");
+      insert(db, "msg-2026-09-29-04-26-26-00000000");
+      expect(db.prepare("SELECT message_id FROM org_desk_mentions ORDER BY seq").all()).toEqual([
+        { message_id: "msg-2026-09-29-04-26-21-00000000" },
+        { message_id: "msg-2026-09-29-04-26-26-00000000" },
+      ]);
+    } finally {
+      db.close();
+      fresh.close();
+    }
+  });
+
+  it("down drops the queue with the mentions not delivered yet", () => {
+    const db = openPreMentions();
+    const before = openPreMentions();
+    try {
+      migrate(db);
+      insert(db, "msg-2026-09-29-04-26-21-00000000");
+      rollbackTo(db, "machine-definitions");
+      expect(appliedMigrations(db).at(-1)).toBe("machine-definitions");
+      expect(shape(db)).toBe(shape(before));
+    } finally {
+      db.close();
+      before.close();
+    }
+  });
+});
