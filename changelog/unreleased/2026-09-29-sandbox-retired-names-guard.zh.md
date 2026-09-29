@@ -3,6 +3,7 @@
 - **Date:** 2026-09-29
 - **Type:** process
 - **Scope:** `server`, `plugins`
+- **PR:** [Myriad-Dreamin/penguin-harness#93](https://github.com/Myriad-Dreamin/penguin-harness/pull/93)
 
 [English](2026-09-29-sandbox-retired-names-guard.md)
 
