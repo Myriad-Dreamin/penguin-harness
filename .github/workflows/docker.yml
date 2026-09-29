@@ -2,8 +2,8 @@
 #
 # Four entry points, two jobs:
 # - pull_request touching the image's own files: `smoke` builds for amd64 and actually runs the
-#   container — readiness, sign-in, the healthcheck, the unprivileged user, a graceful stop and a
-#   restart onto the same data root. It builds the PR's own checkout, so it proves the Dockerfile
+#   container — readiness, sign-in, the healthcheck, the unprivileged user, the sandbox matrix's
+#   Docker cell, a graceful stop and a restart onto the same data root. It builds the PR's own checkout, so it proves the Dockerfile
 #   against the code the PR carries.
 # - push to main: `publish` builds that commit and moves `latest`. Every push, no path filter —
 #   `latest` follows main, and it is the only tag a push moves.
@@ -46,6 +46,7 @@ on:
       - .dockerignore
       - docker/**
       - .github/workflows/docker.yml
+      - scripts/sandbox-matrix.mjs
 
 concurrency:
   group: docker-${{ github.event_name }}-${{ github.ref }}
@@ -89,9 +90,12 @@ jobs:
           echo "entrypoint ran the command as uid $uid"
           [ "$uid" = "1000" ]
 
+      # host.docker.internal is how the sandbox matrix cell below reaches the scripted model it
+      # serves on the runner.
       - name: Start the container
         run: |
           docker run -d --name penguin -p 127.0.0.1:7364:7364 \
+            --add-host host.docker.internal:host-gateway \
             -e PENGUIN_SEED_ADMIN_PASSWORD=ci-password-123 \
             -v penguin-data:/data \
             penguin-harness:pr
@@ -144,6 +148,25 @@ jobs:
           echo "error: healthcheck ended in '$status'" >&2
           docker inspect -f '{{json .State.Health}}' penguin >&2
           exit 1
+
+      # The Docker cell of the sandbox matrix (see sandbox-matrix.yml): enable the bwrap backend
+      # in the running container, read a new Session's sandbox flags, and run one write outside
+      # the workspace and one inside it. The container runs with Docker's defaults, which is what
+      # the cell measures; the result is uploaded beside the other cells' in the same shape.
+      - name: Sandbox matrix cell (Docker, linux-x64)
+        run: |
+          node scripts/sandbox-matrix.mjs --base-url http://localhost:7364 \
+            --password ci-password-123 --mock-host host.docker.internal \
+            --backend @penguinharness/sandbox-bwrap --channel docker --platform linux-x64 \
+            --known-gap "the image carries no builtin plugin tree yet (roadmap #6, sandbox-starts-on-every-channel)" \
+            --out /tmp/sandbox-matrix-docker.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sandbox-matrix-docker-linux-x64
+          path: /tmp/sandbox-matrix-docker.json
+          if-no-files-found: warn
 
       # tini forwards SIGTERM to `penguin server`, which forwards it to the service child; the
       # service interrupts running Tasks, waits for them to wrap up and closes the database.

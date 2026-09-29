@@ -1,0 +1,173 @@
+# Sandbox matrix, Linux column: for each way of installing PenguinHarness that a Linux runner can
+# produce from this checkout, install it fresh, enable the bwrap backend, and have
+# scripts/sandbox-matrix.mjs read the Session's sandbox flags and run one command that writes
+# outside the workspace and one that writes inside it. Each cell's JSON is the job's artifact and
+# its verdicts are the job summary.
+#
+# The cells, per architecture (x64 on ubuntu-latest, arm64 on ubuntu-24.04-arm):
+# - cli-bundle: the payload assembled the way release.yml assembles it (lib/ with lib/plugins/,
+#   web/, bin/, the pinned Node runtime), installed by the repository's install.sh from beside
+#   it — the offline path of the published bundle.
+# - one-line-installer: the same installer read from stdin (`sh -s --`), which is how
+#   `curl … | sh` runs it. With the `tag` input it is the real one-liner instead: the installer
+#   of that published Release, downloading that Release's bundle.
+# - npm-global: core, server and cli packed the way the npm-packaging job packs them, installed
+#   with `npm install -g` into a fresh prefix.
+#
+# The Docker cell is a step of docker.yml's smoke job, which already builds and runs the image.
+# The desktop, hot-push and Machines cells, and the macOS and Windows columns, are QA recipes
+# rather than jobs: they need a desktop session, a running target or an SSH host.
+#
+# Triggers: dispatched by hand before a release (or with `tag` after one), and on a push that
+# changes the matrix itself, so an edit to it runs it once wherever it is pushed.
+name: Sandbox matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "A published release tag (e.g. v0.2.14): also run the one-line installer from that Release"
+        required: false
+        default: ""
+        type: string
+  push:
+    paths:
+      - scripts/sandbox-matrix.mjs
+      - .github/workflows/sandbox-matrix.yml
+
+concurrency:
+  group: sandbox-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: linux-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      ARCH: ${{ matrix.arch }}
+      TAG: ${{ inputs.tag }}
+      BACKEND: "@penguinharness/sandbox-bwrap"
+      # A cell whose failure is already on record, and where. Its failure reads "known-gap" and
+      # keeps the job green; a pass says the gap no longer reproduces.
+      NPM_GAP: "an npm global install carries no sandbox backend until the cli declares them (roadmap #6, sandbox-starts-on-every-channel)"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup
+
+      - name: Build, as the release does
+        run: pnpm build
+
+      # release.yml's "Assemble penguin/" and "Package platform payloads" steps for this one
+      # target. The Node runtime version is read from release.yml, so the two cannot drift.
+      - name: Assemble the linux-${{ matrix.arch }} payload
+        id: assemble
+        run: |
+          O="$RUNNER_TEMP/out"
+          pnpm --config.node-linker=hoisted --filter @prismshadow/penguin-cli --prod deploy "$O/penguin/lib"
+          cp -r packages/web/dist "$O/penguin/web"
+          install -D -m 755 scripts/launchers/penguin "$O/penguin/bin/penguin"
+          node scripts/build-plugins.mjs --out "$O/penguin/lib/plugins"
+          test -f "$O/penguin/lib/plugins/node_modules/$BACKEND/package.json"
+          v="$(sed -n 's/^  NODE_RUNTIME_VERSION: //p' .github/workflows/release.yml)"
+          name="node-$v-linux-$ARCH"
+          curl -fsSL "https://nodejs.org/dist/$v/$name.tar.xz" -o "$RUNNER_TEMP/$name.tar.xz"
+          tar -xJf "$RUNNER_TEMP/$name.tar.xz" -C "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/$name" "$O/penguin/node"
+          rm -rf "$O/penguin/node/share/doc" "$O/penguin/node/share/man"
+          printf '{"schemaVersion":1,"target":"linux-%s"}\n' "$ARCH" > "$O/penguin/package-manifest.json"
+          mkdir -p "$O/bundle"
+          tar -czf "$O/bundle/payload.tar.gz" -C "$O" penguin
+          (cd "$O/bundle" && sha256sum payload.tar.gz > payload.tar.gz.sha256)
+          cp install.sh "$O/bundle/install.sh"
+          mkdir -p "$RUNNER_TEMP/results"
+
+      # Ubuntu 24.04 lets only AppArmor-profiled programs create user namespaces, and bwrap
+      # needs one. This is the host prerequisite the backend's own error names; it is lifted
+      # the same way ci.yml lifts it for the live suites, and printed so the log says so.
+      - name: Let bwrap open (unprivileged user namespaces)
+        run: |
+          knob=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [ -e "$knob" ]; then
+            echo "apparmor_restrict_unprivileged_userns was $(cat "$knob")"
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Cell — CLI install bundle
+        if: always() && steps.assemble.outcome == 'success'
+        run: |
+          C="$RUNNER_TEMP/cli-bundle"; mkdir -p "$C/home"
+          HOME="$C/home" PENGUIN_INSTALL_DIR="$C/install" \
+            sh "$RUNNER_TEMP/out/bundle/install.sh" --no-modify-path
+          node scripts/sandbox-matrix.mjs --serve "$C/install/bin/penguin" --home "$C/home" --port 17491 \
+            --backend "$BACKEND" --channel cli-bundle --platform "linux-$ARCH" \
+            --out "$RUNNER_TEMP/results/cli-bundle.json"
+
+      - name: Cell — one-line installer
+        if: always() && steps.assemble.outcome == 'success'
+        run: |
+          C="$RUNNER_TEMP/one-line"; mkdir -p "$C/home"
+          if [ -n "$TAG" ]; then
+            curl -fsSL "https://github.com/Prism-Shadow/penguin-harness/releases/download/$TAG/install.sh" \
+              | HOME="$C/home" PENGUIN_INSTALL_DIR="$C/install" sh -s -- --no-modify-path
+          else
+            HOME="$C/home" PENGUIN_INSTALL_DIR="$C/install" \
+              PENGUIN_ARCHIVE="$RUNNER_TEMP/out/bundle/payload.tar.gz" \
+              sh -s -- --no-modify-path < install.sh
+          fi
+          node scripts/sandbox-matrix.mjs --serve "$C/install/bin/penguin" --home "$C/home" --port 17492 \
+            --backend "$BACKEND" --channel one-line-installer --platform "linux-$ARCH" \
+            --out "$RUNNER_TEMP/results/one-line-installer.json"
+
+      # What the release publishes, packed instead: the staging it does (LICENSE, web-dist/),
+      # then `pnpm pack` — which rewrites workspace:* the way `pnpm publish` does — for every
+      # package that is not private, so the install sees this checkout and not the registry.
+      # The sandbox backends are private today and are not among them, as on npm.
+      - name: Cell — npm global install
+        if: always() && steps.assemble.outcome == 'success'
+        run: |
+          C="$RUNNER_TEMP/npm-global"; mkdir -p "$C/home" "$C/tgz"
+          for p in core server cli; do cp LICENSE "packages/$p/LICENSE"; done
+          rm -rf packages/server/web-dist
+          cp -r packages/web/dist packages/server/web-dist
+          for d in packages/core packages/server packages/cli plugins/*; do
+            [ -f "$d/package.json" ] || continue
+            [ "$(node -p "require('./$d/package.json').private === true")" = "true" ] && continue
+            (cd "$d" && pnpm pack --pack-destination "$C/tgz" >/dev/null)
+          done
+          ls "$C/tgz"
+          npm install -g --prefix "$C/prefix" "$C"/tgz/*.tgz
+          node scripts/sandbox-matrix.mjs --serve "$C/prefix/bin/penguin" --home "$C/home" --port 17493 \
+            --backend "$BACKEND" --channel npm-global --platform "linux-$ARCH" \
+            --known-gap "$NPM_GAP" --out "$RUNNER_TEMP/results/npm-global.json"
+
+      - name: Summary
+        if: always()
+        run: |
+          node -e '
+            const fs = require("fs"), dir = process.argv[1];
+            const rows = fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => JSON.parse(fs.readFileSync(dir + "/" + f, "utf8"))) : [];
+            const cell = (v) => (v === undefined || v === null ? "—" : String(v));
+            let md = "| channel | platform | verdict | confinementSupported | noNetworkSupported | outside write | inside write | reason / note |\n|---|---|---|---|---|---|---|---|\n";
+            for (const r of rows) md += `| ${r.channel} | ${r.platform} | **${r.verdict}** | ${cell(r.sandbox?.confinementSupported)} | ${cell(r.sandbox?.noNetworkSupported)} | ${r.outside ? (r.outside.wrote ? "written" : "refused") : "—"} | ${r.inside ? (r.inside.wrote ? "written" : "refused") : "—"} | ${[r.reason, r.note].filter(Boolean).join(" · ").replace(/\|/g, "\\|")} |\n`;
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md);
+            console.log(md);
+          ' "$RUNNER_TEMP/results"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sandbox-matrix-linux-${{ matrix.arch }}
+          path: ${{ runner.temp }}/results
+          if-no-files-found: warn
