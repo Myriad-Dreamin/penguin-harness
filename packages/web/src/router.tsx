@@ -5,17 +5,12 @@
  */
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { useAuth } from "./state/auth";
-import { useRuntimeLanguages, ChatRoute } from "./features/chat";
+import { useRuntimeLanguages } from "./features/chat";
 import { ProjectProvider } from "./state/project";
 import { SessionsProvider } from "./state/sessions";
 import { CompanyProvider } from "./state/company";
 import { AppLayout } from "./components/layout/app-layout";
 import { LoginPage } from "./pages/login";
-import { AgentsPage, AgentSettingsPage } from "./features/agents";
-import { PluginsPage, PluginDetailPage } from "./features/plugins";
-import { ModelsPage } from "./features/models";
-import { UsagePage } from "./features/usage";
-import { BenchmarkPage, BenchmarkDetailPage } from "./features/benchmark";
 import { TerminalPage } from "./features/terminal";
 import {
   OrgIndexRedirect,
@@ -28,46 +23,36 @@ import {
   ChannelView,
   HandbookPage,
 } from "./features/company";
-import { MachinesPage } from "./features/machines";
-import { MachinePortsPage } from "./features/ports";
-import { DashboardPage } from "./features/dashboard";
 import { WorkflowAppPage } from "./features/workflows";
-import { OrgProposalsPage } from "./features/proposals";
 import { orgPagesOf } from "./lib/pages";
 import type { PageEntry } from "./lib/pages";
+import { S } from "./lib/strings";
+import { PAGE_RENDERERS, SURFACE_RENDERERS } from "./renderers.gen";
 import { ContributionsProvider, useContributions } from "./state/contributions";
 
 /**
- * The renderers the manifest may name. A page is a module.json entry plus one line here;
- * a server-contributed page renders only when its `builtin` is in this registry.
+ * A page's element. A `builtin` renderer is looked up in this build's registry (src/module.json
+ * `renderers.pages`, generated into renderers.gen.ts); a name it lacks — a page a newer plugin
+ * or platform contributes — says so at its URL rather than sending the user to /chat.
  */
-const BUILTIN_PAGES: Record<string, React.ComponentType> = {
-  // The chat route: a surface Session renders its surface's page, the rest the conversation.
-  ChatPage: ChatRoute,
-  AgentsPage,
-  AgentSettingsPage,
-  PluginsPage,
-  ModelsPage,
-  PluginDetailPage,
-  MachinesPage,
-  MachinePortsPage,
-  UsagePage,
-  BenchmarkPage,
-  BenchmarkDetailPage,
-  DashboardPage,
-  // Company-mode pages a plugin contributes (`nav: "org"`): mounted under the organization
-  // layout, never at the root, so the company sidebar stays around them.
-  OrgProposalsPage,
-};
-
 function renderPage(page: PageEntry): React.ReactNode {
   if ("iframe" in page.renderer) {
     return (
       <iframe title={page.key} src={page.renderer.iframe.src} className="h-full w-full border-0" />
     );
   }
-  const Component = BUILTIN_PAGES[page.renderer.builtin];
-  return Component === undefined ? <Navigate to="/chat" replace /> : <Component />;
+  const name = page.renderer.builtin;
+  const Component = Object.hasOwn(PAGE_RENDERERS, name)
+    ? PAGE_RENDERERS[name as keyof typeof PAGE_RENDERERS]
+    : undefined;
+  if (Component === undefined) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <p className="text-sm text-gray-500 dark:text-gray-400">{S.common.pageNoRenderer(name)}</p>
+      </div>
+    );
+  }
+  return <Component />;
 }
 
 /** Route guard: shows blank while initializing, redirects to /login when not authenticated. */
@@ -109,13 +94,10 @@ function LoginRoute() {
   return <LoginPage />;
 }
 
-/** The renderer names a contributed page may point at; pages naming another are not mounted. */
-const BUILTIN_PAGE_NAMES: ReadonlySet<string> = new Set(Object.keys(BUILTIN_PAGES));
-
 export function AppRouter() {
   return (
     <BrowserRouter>
-      <ContributionsProvider builtinRenderers={BUILTIN_PAGE_NAMES}>
+      <ContributionsProvider surfaceRenderers={SURFACE_RENDERERS}>
         <RouteTree />
       </ContributionsProvider>
     </BrowserRouter>
@@ -183,7 +165,7 @@ function RouteTree() {
             <Route path="channels/:channelId" element={<ChannelView />} />
             {/* The company-mode pages a plugin contributes, after the organization's own:
                 their paths are relative to this layout, and the nav row beside them is the
-                sidebar's (features/company/company-nav.ts ORG_PAGE_RENDERERS). */}
+                sidebar's (src/module.json renderers.orgNav). */}
             {orgPagesOf(pages).map((page) => (
               <Route key={page.id} path={page.path} element={renderPage(page)} />
             ))}

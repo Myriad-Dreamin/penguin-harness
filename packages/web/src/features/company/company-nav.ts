@@ -9,6 +9,8 @@
  * range is pinned here (and in the unit tests) rather than duplicated.
  */
 
+import { ORG_PAGE_RENDERERS } from "../../lib/renderers.gen";
+
 /** The two work modes of the shell: development (the default) or company. */
 export type WorkMode = "dev" | "company";
 
@@ -72,12 +74,10 @@ export function orgPagePath(projectId: string, orgId: string, page: CompanyNavKe
  * The entries' order is the rows' order: the roadmaps a discussion settles into come before the
  * proposals they delegate. Contribution order cannot say it — it is the Project's `[plugins]`
  * order, the order the plugins happen to be listed and loaded in — so the build does, as it
- * does the label and the glyph.
+ * does the label and the glyph. The rows are declared in src/module.json (`renderers.orgNav`),
+ * beside the page renderers a builtin row must name; lib/renderers.gen.ts is generated from it.
  */
-export const ORG_PAGE_RENDERERS = {
-  roadmaps: { label: "roadmaps", segment: "roadmaps", kind: "iframe" },
-  OrgProposalsPage: { label: "proposals", segment: "proposals", kind: "builtin" },
-} as const;
+export { ORG_PAGE_RENDERERS };
 export type OrgPageRenderer = keyof typeof ORG_PAGE_RENDERERS;
 
 /** Whether a contributed page's renderer is one the company layout knows a row for. */

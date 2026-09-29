@@ -37,22 +37,16 @@ describe("the page manifest", () => {
 });
 
 describe("mergePages", () => {
-  const known = new Set(["AgentsPage", "UsagePage"]);
-
   it("adds a server page whose renderer this build carries, after the local ones", () => {
-    const merged = mergePages(
-      PAGES,
-      [
-        {
-          id: "x.reports",
-          key: "reports",
-          path: "/reports",
-          nav: "main",
-          renderer: { builtin: "UsagePage" },
-        },
-      ],
-      known,
-    );
+    const merged = mergePages(PAGES, [
+      {
+        id: "x.reports",
+        key: "reports",
+        path: "/reports",
+        nav: "main",
+        renderer: { builtin: "UsagePage" },
+      },
+    ]);
     expect(merged.at(-1)).toMatchObject({
       key: "reports",
       path: "/reports",
@@ -63,18 +57,14 @@ describe("mergePages", () => {
   });
 
   it("keeps a company-mode page's nav value, which the router mounts under the organization layout", () => {
-    const merged = mergePages(
-      PAGES,
-      [
-        {
-          key: "org-proposals",
-          path: "proposals/:number?",
-          nav: "org",
-          renderer: { builtin: "OrgProposalsPage" },
-        },
-      ],
-      new Set(["OrgProposalsPage"]),
-    );
+    const merged = mergePages(PAGES, [
+      {
+        key: "org-proposals",
+        path: "proposals/:number?",
+        nav: "org",
+        renderer: { builtin: "OrgProposalsPage" },
+      },
+    ]);
     expect(orgPagesOf(merged)).toMatchObject([
       { key: "org-proposals", path: "proposals/:number?" },
     ]);
@@ -82,16 +72,13 @@ describe("mergePages", () => {
     expect(navPagesFor(true).map((p) => p.key)).not.toContain("org-proposals");
   });
 
-  it("skips a page with an unknown builtin renderer, and keeps a local page over a same-key remote one", () => {
-    const merged = mergePages(
-      PAGES,
-      [
-        { key: "later", path: "/later", renderer: { builtin: "NotBuiltHere" } },
-        { key: "agents", path: "/elsewhere", renderer: { builtin: "AgentsPage" } },
-      ],
-      known,
-    );
-    expect(merged.map((p) => p.key)).toEqual(PAGES.map((p) => p.key));
+  it("keeps a page with an unknown builtin renderer (routed, to say so), and a local page over a same-key remote one", () => {
+    const merged = mergePages(PAGES, [
+      { key: "later", path: "/later", renderer: { builtin: "NotBuiltHere" } },
+      { key: "agents", path: "/elsewhere", renderer: { builtin: "AgentsPage" } },
+    ]);
+    expect(merged.map((p) => p.key)).toEqual([...PAGES.map((p) => p.key), "later"]);
+    expect(merged.find((p) => p.key === "agents")?.path).toBe("/agents");
   });
 
   it("an iframe renderer needs no registry entry", () => {
@@ -104,7 +91,6 @@ describe("mergePages", () => {
           renderer: { iframe: { src: "/workflow/a/wf/", namespace: "wf" } },
         },
       ],
-      known,
     );
     expect(merged).toHaveLength(1);
   });

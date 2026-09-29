@@ -32,6 +32,7 @@ export { modelLabel, ModelSelect, PickerList } from "./model-select";
 export { prepareNewChatDraft } from "./new-chat";
 export { BOOK_ICON, filterSkills, localizedShortText, localizedText } from "./skill-use";
 export { createStreamFollow, stickToBottom } from "./stream-follow";
+export { TerminalSurface } from "./session-surface-view";
 export { SELECTABLE_THINKING_LEVELS, thinkingLevelOptionsFor } from "./thinking-level";
 export {
   panelWidth,

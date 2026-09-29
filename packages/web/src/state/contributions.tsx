@@ -4,8 +4,8 @@
  *
  * Two things come out of it. `pages` is the local manifest with the server's page
  * contributions folded in (lib/pages.ts `mergePages`) — the router mounts the result, so a
- * page a pushed platform or a plugin contributes opens as long as this build carries its
- * renderer. `surfaces` is the list of session surfaces (see the chat page's
+ * page a pushed platform or a plugin contributes opens, and one whose renderer this build does
+ * not carry says so at its URL. `surfaces` is the list of session surfaces (see the chat page's
  * session-surface-view.tsx): what "New chat" offers beyond the conversation, and what a
  * Session of that kind is drawn with. `quickStarts` are module plugins' demos, which the
  * Plugins page pre-fills into a draft; `refresh` re-reads everything after a plugin change.
@@ -20,17 +20,33 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ComponentType,
   type ReactNode,
 } from "react";
-import type { ContributionsResponse, SessionSurfaceSummary } from "@prismshadow/penguin-server/api";
+import type {
+  ContributionsResponse,
+  SessionInfo,
+  SessionSurfaceSummary,
+} from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
 import { PAGES, mergePages, type PageEntry } from "../lib/pages";
 import { useAuth } from "./auth";
 import type { Locale } from "./locale";
 
+/** What a session surface renderer is drawn with: the routed Session and the surface it carries. */
+export interface SurfaceRendererProps {
+  session: SessionInfo;
+  surface: SessionSurfaceSummary;
+}
+
+/** The surface renderers this build carries, by name (src/renderers.gen.ts). */
+export type SurfaceRenderers = Readonly<Record<string, ComponentType<SurfaceRendererProps>>>;
+
 interface ContributionsValue {
   pages: readonly PageEntry[];
   surfaces: readonly SessionSurfaceSummary[];
+  /** The renderers a surface's `builtin` may name; a name missing here renders as unavailable. */
+  surfaceRenderers: SurfaceRenderers;
   quickStarts: ContributionsResponse["quickStarts"];
   /** Whether the server has answered (false = local manifest only, so far). */
   loaded: boolean;
@@ -41,6 +57,7 @@ interface ContributionsValue {
 const LOCAL: ContributionsValue = {
   pages: PAGES,
   surfaces: [],
+  surfaceRenderers: {},
   quickStarts: [],
   loaded: false,
   refresh: async () => null,
@@ -49,11 +66,10 @@ const LOCAL: ContributionsValue = {
 const ContributionsContext = createContext<ContributionsValue>(LOCAL);
 
 export function ContributionsProvider({
-  builtinRenderers,
+  surfaceRenderers,
   children,
 }: {
-  /** The page renderers this build carries (the router's registry); a contributed page naming another is skipped. */
-  builtinRenderers: ReadonlySet<string>;
+  surfaceRenderers: SurfaceRenderers;
   children: ReactNode;
 }) {
   const userId = useAuth().user?.userId ?? null;
@@ -88,15 +104,16 @@ export function ContributionsProvider({
   const value = useMemo<ContributionsValue>(
     () =>
       remote === null
-        ? { ...LOCAL, refresh }
+        ? { ...LOCAL, surfaceRenderers, refresh }
         : {
-            pages: mergePages(PAGES, remote.pages, builtinRenderers),
+            pages: mergePages(PAGES, remote.pages),
             surfaces: remote.sessionSurfaces ?? [],
+            surfaceRenderers,
             quickStarts: remote.quickStarts ?? [],
             loaded: true,
             refresh,
           },
-    [remote, builtinRenderers, refresh],
+    [remote, surfaceRenderers, refresh],
   );
   return <ContributionsContext.Provider value={value}>{children}</ContributionsContext.Provider>;
 }

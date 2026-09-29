@@ -138,5 +138,32 @@
         }
       }
     ]
+  },
+  "renderers": {
+    "pages": [
+      { "name": "ChatPage", "module": "chat", "export": "ChatRoute" },
+      { "name": "AgentsPage", "module": "agents" },
+      { "name": "AgentSettingsPage", "module": "agents" },
+      { "name": "PluginsPage", "module": "plugins" },
+      { "name": "ModelsPage", "module": "models" },
+      { "name": "PluginDetailPage", "module": "plugins" },
+      { "name": "MachinesPage", "module": "machines" },
+      { "name": "MachinePortsPage", "module": "ports" },
+      { "name": "UsagePage", "module": "usage" },
+      { "name": "BenchmarkPage", "module": "benchmark" },
+      { "name": "BenchmarkDetailPage", "module": "benchmark" },
+      { "name": "DashboardPage", "module": "dashboard" },
+      { "name": "OrgProposalsPage", "module": "proposals" }
+    ],
+    "surfaces": [{ "name": "TerminalSurface", "module": "chat" }],
+    "orgNav": [
+      { "key": "roadmaps", "kind": "iframe", "label": "roadmaps", "segment": "roadmaps" },
+      {
+        "key": "OrgProposalsPage",
+        "kind": "builtin",
+        "label": "proposals",
+        "segment": "proposals"
+      }
+    ]
   }
 }

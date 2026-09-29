@@ -4,8 +4,9 @@
  *
  * The conversation page's whole content area — message stream, composer, panels — is what
  * a surface replaces; the row stays a Session in the sidebar, with the same status glyph.
- * The surface itself is drawn by a renderer: a name from the registry below (`builtin`),
- * or the plugin's own page in an iframe. No plugin code runs here — `TerminalSurface`
+ * The surface itself is drawn by a renderer: a name from this build's registry (`builtin`,
+ * declared in src/module.json and handed down by ContributionsProvider), or the plugin's own
+ * page in an iframe. No plugin code runs here — `TerminalSurface`
  * is this build's, attaching the same terminal view the dock uses to the pty the surface
  * opened server-side.
  */
@@ -18,28 +19,16 @@ import { toastError } from "../../components/ui/toast";
 import { apiErrorText } from "../../lib/api-error";
 import { sessionActivity } from "../../lib/session-activity";
 import { S } from "../../lib/strings";
-import { surfaceLabel, useContributions } from "../../state/contributions";
+import {
+  surfaceLabel,
+  useContributions,
+  type SurfaceRendererProps,
+} from "../../state/contributions";
 import { machineForSession } from "../../lib/session-machines";
 import { rememberTerminalMachine } from "../../lib/terminal-machines";
 import { useLocale } from "../../state/locale";
 import { useSessions } from "../../state/sessions";
 import { TerminalView, probeJson, type TerminalInfo, type TerminalStatus } from "../terminal";
-
-interface SurfaceRendererProps {
-  session: SessionInfo;
-  surface: SessionSurfaceSummary;
-}
-
-/**
- * The surface renderers this build carries. A contributed surface names one of these; a
- * name this table lacks renders as unavailable, never as a blank area.
- */
-const SURFACE_RENDERERS: Record<string, React.ComponentType<SurfaceRendererProps>> = {
-  TerminalSurface,
-};
-
-/** The names a server-contributed surface may point at (exported for tests). */
-export const SURFACE_RENDERER_NAMES: ReadonlySet<string> = new Set(Object.keys(SURFACE_RENDERERS));
 
 function Unavailable({ text }: { text: string }) {
   return (
@@ -51,7 +40,7 @@ function Unavailable({ text }: { text: string }) {
 
 /** The routed Session's surface, drawn by its renderer. */
 export function SessionSurfaceView({ session }: { session: SessionInfo }) {
-  const { surfaces } = useContributions();
+  const { surfaces, surfaceRenderers } = useContributions();
   const surface = surfaces.find((s) => s.kind === session.surface);
   if (surface === undefined) return <Unavailable text={S.chat.surface.unavailable} />;
   if ("iframe" in surface.renderer) {
@@ -61,7 +50,7 @@ export function SessionSurfaceView({ session }: { session: SessionInfo }) {
     );
     return <iframe title={surface.kind} src={src} className="h-full w-full border-0" />;
   }
-  const Renderer = SURFACE_RENDERERS[surface.renderer.builtin];
+  const Renderer = surfaceRenderers[surface.renderer.builtin];
   if (Renderer === undefined) return <Unavailable text={S.chat.surface.noRenderer} />;
   return <Renderer session={session} surface={surface} />;
 }
@@ -78,7 +67,7 @@ export function SessionSurfaceView({ session }: { session: SessionInfo }) {
  * makes every later call about it, the byte stream included, address that machine rather
  * than this server (lib/terminal-machines.ts).
  */
-function TerminalSurface({ session }: SurfaceRendererProps) {
+export function TerminalSurface({ session }: SurfaceRendererProps) {
   const [status, setStatus] = useState<TerminalStatus>("connecting");
   const [detail, setDetail] = useState("");
   // Bumped to open the surface again: the terminal view remounts and `ensure` runs anew.
@@ -142,7 +131,7 @@ function TerminalSurface({ session }: SurfaceRendererProps) {
  * the thing the dock would offer.
  */
 export function SurfaceSessionPage({ session }: { session: SessionInfo }) {
-  const { surfaces } = useContributions();
+  const { surfaces, surfaceRenderers } = useContributions();
   const { locale } = useLocale();
   const { reload } = useSessions();
   const surface = surfaces.find((s) => s.kind === session.surface);

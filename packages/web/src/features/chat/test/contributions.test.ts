@@ -1,11 +1,10 @@
 /**
  * Session surfaces on the client: the label a "New chat" entry shows follows the interface
- * language, and the renderer names a server-contributed surface may point at are the ones
- * the chat page's registry actually carries.
+ * language. (The renderer names a surface may point at are the manifest's registry, pinned
+ * in test/renderers.test.ts.)
  */
 import { describe, expect, it } from "vitest";
 import { surfaceLabel } from "../../../state/contributions";
-import { SURFACE_RENDERER_NAMES } from "../session-surface-view";
 
 const summary = {
   id: "x.surface",
@@ -21,11 +20,5 @@ describe("surfaceLabel", () => {
     expect(surfaceLabel(summary, "zh")).toBe("Claude Code");
     expect(surfaceLabel({ ...summary, labelZh: "代码助手" }, "zh")).toBe("代码助手");
     expect(surfaceLabel({ ...summary, labelZh: "代码助手" }, "en")).toBe("Claude Code");
-  });
-});
-
-describe("the surface renderer registry", () => {
-  it("carries TerminalSurface, the renderer a pty-backed surface names", () => {
-    expect(SURFACE_RENDERER_NAMES.has("TerminalSurface")).toBe(true);
   });
 });

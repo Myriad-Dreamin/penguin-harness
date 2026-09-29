@@ -276,6 +276,8 @@ export const zh = {
     created: "创建时间",
     cost: "成本",
     time: "时间",
+    /** A page whose `builtin` renderer this build does not carry (a newer plugin's or platform's page), shown at its URL. */
+    pageNoRenderer: (renderer: string) => `这个构建没有绘制此页面的渲染器（${renderer}）。`,
   },
 
   /**

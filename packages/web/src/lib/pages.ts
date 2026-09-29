@@ -5,8 +5,9 @@
  * nav, whether the server refuses it to non-admins, and which renderer draws it.
  *
  * The same shape arrives from the server (GET /api/contributions) for pages a pushed
- * platform or a plugin contributes; `mergePages` folds those in — a page whose
- * renderer this build does not carry is skipped, since there is nothing to draw it with.
+ * platform or a plugin contributes; `mergePages` folds those in. The renderer names a
+ * `builtin` may use are this build's registry (lib/renderers.gen.ts, from the same manifest);
+ * a page naming another is still routed, and says at its URL that this build cannot draw it.
  */
 import manifest from "../module.json";
 
@@ -48,13 +49,12 @@ export function orgPagesOf(pages: readonly PageEntry[]): PageEntry[] {
 }
 
 /**
- * Local pages plus server-contributed ones this build can render. A server entry whose
- * key a local page already owns is ignored — the local manifest wins for its own pages.
+ * Local pages plus server-contributed ones. A server entry whose key a local page already
+ * owns is ignored — the local manifest wins for its own pages.
  */
 export function mergePages(
   local: readonly PageEntry[],
   remote: ReadonlyArray<Record<string, unknown>>,
-  builtinRenderers: ReadonlySet<string>,
 ): PageEntry[] {
   const keys = new Set(local.map((p) => p.key));
   const out = [...local];
@@ -64,7 +64,6 @@ export function mergePages(
       continue;
     const renderer = page.renderer;
     if (renderer === undefined) continue;
-    if ("builtin" in renderer && !builtinRenderers.has(renderer.builtin)) continue;
     out.push({
       id: typeof page.id === "string" ? page.id : `remote.${page.key}`,
       key: page.key,

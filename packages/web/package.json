@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "test:e2e": "bash e2e/run.sh"
+    "test:e2e": "bash e2e/run.sh",
+    "gen:renderers": "node scripts/gen-renderers.ts"
   },
   "dependencies": {
     "@prismshadow/penguin-core": "workspace:*",

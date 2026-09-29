@@ -248,6 +248,7 @@ export const WEB_MODULES: readonly WebModule[] = [
       "lib/format",
       "lib/icon-scale",
       "lib/org-machines",
+      "lib/renderers.gen",
       "lib/semantic-id",
       "lib/session-activity",
       "lib/session-grouping",

@@ -278,6 +278,8 @@ export const en: Strings = {
     created: "Created",
     cost: "Cost",
     time: "Time",
+    /** A page whose `builtin` renderer this build does not carry (a newer plugin's or platform's page), shown at its URL. */
+    pageNoRenderer: (renderer: string) => `This build has no renderer for this page (${renderer}).`,
   },
 
   /**
