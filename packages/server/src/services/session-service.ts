@@ -691,6 +691,7 @@ export class SessionService {
       agentId: args.agentId,
       sessionId: row.sessionId,
       ...(source ? { source } : {}),
+      ...(row.client === "org" ? { client: "org" as const } : {}),
     });
     return this.toInfo(row, false);
   }
@@ -753,6 +754,7 @@ export class SessionService {
       projectId: args.projectId,
       agentId: args.agentId,
       sessionId: row.sessionId,
+      ...(row.client === "org" ? { client: "org" as const } : {}),
     });
     return this.toInfo(row, false);
   }
