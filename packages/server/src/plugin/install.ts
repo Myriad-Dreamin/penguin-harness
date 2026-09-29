@@ -122,7 +122,7 @@ async function readInstalledVersion(prefix: string, specifier: string): Promise<
  * reason is the first `npm error` line that is not that pointer, not a bare code, and not the
  * empty continuation lines npm pads the block with.
  */
-function npmReason(stderr: string | undefined, err: Error): string {
+export function npmReason(stderr: string | undefined, err: Error): string {
   const lines = (stderr ?? "")
     .split("\n")
     .map((l) => l.replace(/^npm (error|ERR!)\s*/, "").trim())
@@ -132,6 +132,6 @@ function npmReason(stderr: string | undefined, err: Error): string {
 }
 
 /** Windows resolves `npm` through npm.cmd; everywhere else the plain name is on PATH. */
-function npmCommand(): string {
+export function npmCommand(): string {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
