@@ -24,8 +24,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A newer push or pull-request commit makes the older run's answer moot, so those cancel the run
+# they supersede. A dispatch is different: someone asked for this run on purpose, and two people
+# dispatching the same ref each want their own result — keyed by ref, the second dispatch
+# cancelled the first, whose gate then read as a failure. So each dispatch is its own group (its
+# run id). The actor would not separate them: every desk dispatches through the same account.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -407,6 +412,16 @@ jobs:
         run: |
           results='${{ join(needs.*.result, ' ') }}'
           echo "upstream results: $results"
+          # A cancelled run still fails here (a skipped required check would pass), but it says
+          # so: a superseded run is not a test failure, and its jobs' logs hold no finding. A real
+          # failure anywhere in the run takes precedence over this reading.
+          case " $results " in
+            *" failure "*) ;;
+            *" cancelled "*)
+              echo "::error::this run was cancelled (superseded by a newer run of the same ref, or by hand) -- not a test failure; read the run that superseded it"
+              exit 1
+              ;;
+          esac
           for r in $results; do
             if [ "$r" != "success" ]; then
               echo "::error::a CI job did not succeed ($results)"
