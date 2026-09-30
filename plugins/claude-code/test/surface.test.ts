@@ -36,6 +36,8 @@ import plugin, {
   QUEUE_CONFIG_GROUP,
   QUEUE_PREFIX,
   QUEUE_ROUTES_ID,
+  sessionControlEnv,
+  type SessionControl,
 } from "../src/index.js";
 
 /** The generated table (the package's `test` script regenerates it before vitest runs). */
@@ -105,11 +107,15 @@ const ref: SurfaceSessionRef = {
 };
 
 describe("the generated manifest and the plugin agree", () => {
-  it("binds the one surface the class declares, and requires only Terminals", () => {
+  it("binds the one surface the class declares, and requires Terminals and the Sessions' SessionEnv", () => {
     const module = table.modules.ClaudeCode;
     expect(module!.name).toBe("ClaudeCode");
-    expect(Object.keys(module!.requires)).toEqual(["terminals"]);
+    expect(Object.keys(module!.requires)).toEqual(["terminals", "sessionEnv"]);
     expect(module!.requires.terminals!.iface).toBe("@prismshadow/penguin-server#Terminals");
+    expect(module!.requires.sessionEnv).toMatchObject({
+      iface: "@prismshadow/penguin-server#SessionEnv",
+      from: "SessionRuntimeModule",
+    });
     const [contribution] = module!.contributes["SessionSurfacesModule.surfaces"]!;
     expect(contribution).toMatchObject({
       id: "claude-code.surface",
@@ -477,6 +483,64 @@ describe("the surface", () => {
     expect(surface.status("s1")).toBe("idle");
     expect(surface.view("s1")).toEqual({ alive: false, view: { terminalId: "t1" } });
     expect(states).toEqual(["running", "idle"]);
+  });
+
+  it("hands the program the Session's own credential and coordinates, with the harness's penguin first on PATH", async () => {
+    const { terminals, created } = fakeTerminals();
+    const asked: unknown[] = [];
+    const control: SessionControl = {
+      controlEnv: (ctx) => {
+        asked.push(ctx);
+        return {
+          PENGUIN_API_URL: "http://localhost:7364",
+          PENGUIN_API_TOKEN: `pst1.${ctx.agentId}.${ctx.sessionId}`,
+          PENGUIN_PROJECT_ID: ctx.projectId,
+          PENGUIN_AGENT_ID: ctx.agentId,
+          PENGUIN_SESSION_ID: ctx.sessionId,
+        };
+      },
+      pathPrepend: () => ["/root/bin"],
+    };
+    const env = { PENGUIN_CLAUDE_BIN: "fake", PATH: "/usr/bin:/bin" };
+    const surface = new ClaudeCodeSurface(terminals, env, SCREEN_SETTLE_MS, 4000, control);
+    await surface.open(ref, { prompt: "hello" }, () => {});
+    // Evaluated with THIS Session's coordinates: the credential speaks for its Agent only.
+    expect(asked).toEqual([{ projectId: "p", agentId: "a", sessionId: "s1" }]);
+    expect(created[0]!.request.env).toEqual({
+      PENGUIN_API_URL: "http://localhost:7364",
+      PENGUIN_API_TOKEN: "pst1.a.s1",
+      PENGUIN_PROJECT_ID: "p",
+      PENGUIN_AGENT_ID: "a",
+      PENGUIN_SESSION_ID: "s1",
+      PATH: ["/root/bin", "/usr/bin:/bin"].join(path.delimiter),
+    });
+    // The session markers are still scrubbed alongside.
+    expect(created[0]!.request.unsetEnv).toEqual(INHERITED_SESSION_MARKERS);
+  });
+
+  it("keeps PATH under the name the server's environment gives it, and leaves it alone with nothing to prepend", () => {
+    const control = (prepend: string[]): SessionControl => ({
+      controlEnv: () => ({ PENGUIN_SESSION_ID: "s1" }),
+      pathPrepend: () => prepend,
+    });
+    expect(sessionControlEnv(control(["C:\\root\\bin"]), ref, { Path: "C:\\Windows" })).toEqual({
+      PENGUIN_SESSION_ID: "s1",
+      Path: ["C:\\root\\bin", "C:\\Windows"].join(path.delimiter),
+    });
+    expect(sessionControlEnv(control(["/root/bin"]), ref, {})).toEqual({
+      PENGUIN_SESSION_ID: "s1",
+      PATH: "/root/bin",
+    });
+    expect(sessionControlEnv(control([]), ref, { PATH: "/usr/bin" })).toEqual({
+      PENGUIN_SESSION_ID: "s1",
+    });
+  });
+
+  it("without the Sessions' policies, the program gets the server's environment alone", async () => {
+    const { terminals, created } = fakeTerminals();
+    const surface = new ClaudeCodeSurface(terminals, { PENGUIN_CLAUDE_BIN: "fake" });
+    await surface.open(ref, {}, () => {});
+    expect(created[0]!.request).not.toHaveProperty("env");
   });
 
   it("opening again reuses a live pty and replaces a dead one", async () => {
