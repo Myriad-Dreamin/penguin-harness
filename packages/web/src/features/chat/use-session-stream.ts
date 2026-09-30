@@ -15,7 +15,7 @@
  * 5. The pending-approval table is keyed by `origin + toolCallId` (approvalKey); on reconnect the
  *    server re-sends still-pending requests.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   GoalServerEvent,
   PendingFollowUpInfo,
@@ -27,6 +27,8 @@ import { getGoal, getMe, getMessages } from "../../api/endpoints";
 import { apiSocket } from "../../api/socket";
 import { openSessionStream } from "../../api/sse";
 import { machineForSession } from "../../lib/session-machines";
+import { perfOn, perfStream } from "../../lib/perf/switch";
+import type { StreamProbe } from "../../lib/perf/switch";
 import { createStreamController } from "../../lib/omni/stream-controller";
 import type {
   FrontierLoadOptions,
@@ -185,6 +187,8 @@ export function useSessionStream(
   const rafRef = useRef<number | null>(null);
   const throttleRef = useRef<number | null>(null);
   const lastBumpAtRef = useRef(0);
+  /** Telemetry's view of this session's frames and commits (lib/perf); null while it is off. */
+  const probeRef = useRef<StreamProbe | null>(null);
 
   // Coalesce high-frequency deltas: multiple pushes within one frame trigger only a single
   // re-render, and commits are additionally spaced ≥BUMP_MIN_INTERVAL_MS apart. Every commit
@@ -197,6 +201,7 @@ export function useSessionStream(
     if (rafRef.current !== null || throttleRef.current !== null) return;
     const commit = () => {
       lastBumpAtRef.current = Date.now();
+      probeRef.current?.commit();
       setVersion((v) => v + 1);
     };
     const wait = lastBumpAtRef.current + BUMP_MIN_INTERVAL_MS - Date.now();
@@ -264,12 +269,41 @@ export function useSessionStream(
         .catch(() => undefined);
     };
 
+    // Telemetry: the open is timed from here; the probe arrives once the collector has loaded,
+    // and until then (or while telemetry is off) every hook below is one null check.
+    let probeStale = false;
+    if (perfOn()) {
+      void perfStream(sessionId, performance.now()).then((probe) => {
+        if (probeStale || probe === null) return;
+        // The collector came after the history: that open went untimed, the turns will not.
+        if (!loadingRef.current) probe.skipOpen();
+        probeRef.current = probe;
+      });
+    }
+    const timedFrame =
+      <A extends unknown[]>(handle: (...args: A) => void) =>
+      (...args: A) => {
+        const probe = probeRef.current;
+        if (probe === null) return handle(...args);
+        const start = performance.now();
+        handle(...args);
+        probe.frame(start, performance.now());
+      };
+
     const controller = createStreamController({
       // The whole response rides through: `live` (in-progress stream tail) lets the
       // controller seed the currently streaming message after a reload, and `page` (the
       // windowed-history envelope) drives tail-first loading (see stream-controller).
-      loadMessages: (page) => getMessages(sessionId, page),
-      onTaskState: setTaskState,
+      loadMessages: (page) => {
+        const probe = probeRef.current;
+        if (probe === null) return getMessages(sessionId, page);
+        const start = performance.now();
+        return getMessages(sessionId, page).finally(() => probe.fetched(performance.now() - start));
+      },
+      onTaskState: (state) => {
+        probeRef.current?.taskState(state);
+        setTaskState(state);
+      },
       onQueuedFollowUps: setQueuedFollowUps,
       onPendingSteering: setPendingSteering,
       onReturnedSteering: setReturnedSteering,
@@ -277,6 +311,7 @@ export function useSessionStream(
       onSubagents: setSubagents,
       onLoading: (value) => {
         loadingRef.current = value;
+        if (!value) probeRef.current?.loaded();
         setLoading(value);
       },
       onError: setError,
@@ -299,8 +334,8 @@ export function useSessionStream(
 
     // Connect-first: subscribe to the stream before fetching history.
     const conn = openSessionStream(sessionId, {
-      onOmniMessage: controller.handleOmni,
-      onServerEvent: controller.handleServer,
+      onOmniMessage: timedFrame(controller.handleOmni),
+      onServerEvent: timedFrame(controller.handleServer),
       // Hydrate the goal banner only once the subscription is live (fires on first connect and
       // every reconnect); the prev/active guards keep it from clobbering a live banner.
       onOpen: hydrateGoal,
@@ -316,6 +351,8 @@ export function useSessionStream(
 
     return () => {
       goalFetchStale = true;
+      probeStale = true;
+      probeRef.current = null;
       window.clearTimeout(slow);
       controller.dispose();
       conn.close();
@@ -332,6 +369,11 @@ export function useSessionStream(
     // on parent re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // The render segment ends here: React has committed this version to the DOM.
+  useLayoutEffect(() => {
+    probeRef.current?.rendered();
+  }, [version]);
 
   const markLocalDecision = useCallback((toolCallId: string) => {
     controllerRef.current?.markLocalDecision(toolCallId);

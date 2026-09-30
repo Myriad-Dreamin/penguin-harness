@@ -63,7 +63,23 @@ const BUILTIN_PAGES: Record<string, React.ComponentType> = {
   OrgProposalsPage,
 };
 
+/**
+ * An admin-only page (`admin: true` in the manifest) for a member: back to the shell's home.
+ * The server refuses such a page's reads anyway; without this a typed URL rendered the page
+ * around nothing but 403s.
+ */
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (user?.isAdmin !== true) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
 function renderPage(page: PageEntry): React.ReactNode {
+  const element = renderPageElement(page);
+  return page.admin ? <AdminOnly>{element}</AdminOnly> : element;
+}
+
+function renderPageElement(page: PageEntry): React.ReactNode {
   if ("iframe" in page.renderer) {
     return (
       <iframe title={page.key} src={page.renderer.iframe.src} className="h-full w-full border-0" />
@@ -173,8 +189,8 @@ function RouteTree() {
         <Route element={<RequireAuth />}>
           <Route index element={<HomeRedirect />} />
           {/* Every page is a module.json entry (lib/pages.ts). Admin-only ones are refused
-              server-side (403); the sidebar hides their row, so a member only ever reaches
-              one by typing the URL. */}
+              server-side (403); the sidebar hides their row, and a member who types the URL
+              is sent home (AdminOnly). */}
           {pages
             .filter((page) => page.nav !== "org")
             .map((page) => (
