@@ -153,10 +153,13 @@ jobs:
       # in the running container, read a new Session's sandbox flags, and run one write outside
       # the workspace and one inside it. The container runs with Docker's defaults, which is what
       # the cell measures; the result is uploaded beside the other cells' in the same shape.
+      # The container was started for this job, so re-assembling it is harmless: that is what
+      # --enable-backend allows. A cell that was not run (exit 3) fails the step — on a container
+      # started here, an unreachable model endpoint is this step's own misconfiguration.
       - name: Sandbox matrix cell (Docker, linux-x64)
         run: |
           node scripts/sandbox-matrix.mjs --base-url http://localhost:7364 \
-            --password ci-password-123 --mock-host host.docker.internal \
+            --password ci-password-123 --mock-host host.docker.internal --enable-backend \
             --backend @penguinharness/sandbox-bwrap --channel docker --platform linux-x64 \
             --known-gap "the image carries no builtin plugin tree yet (roadmap #6, sandbox-starts-on-every-channel)" \
             --out /tmp/sandbox-matrix-docker.json

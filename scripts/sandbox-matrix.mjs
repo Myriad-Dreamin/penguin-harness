@@ -1,13 +1,20 @@
 #!/usr/bin/env node
-// One cell of the sandbox channel matrix: against a freshly installed, running PenguinHarness,
-// enable this platform's sandbox backend, read the flags a new Session reports, and run one
-// command that writes outside the workspace and one that writes inside it — through the real
-// agent loop, so the commands take the same exec_command path a model's would.
+// One cell of the sandbox channel matrix: against a running PenguinHarness, read the flags a new
+// Session reports at the strictest sandbox level, and run one command that writes outside the
+// workspace and one that writes inside it — through the real agent loop, so the commands take
+// the same exec_command path a model's would.
 //
 // No model credential is involved. The script serves a scripted Anthropic Messages endpoint
-// itself and registers it as the Project's model: each command is one task whose first model
-// turn is a tool_use(exec_command) and whose second turn, once the tool_result is back, ends
-// the task. The tool_result the server sends back is the evidence.
+// itself and registers it as the model of a Project it creates for the run: each command is one
+// task whose first model turn is a tool_use(exec_command) and whose second turn, once the
+// tool_result is back, ends the task. The tool_result the server sends back is the evidence.
+//
+// Every write lands in that Project (`sandbox_matrix_<nonce>`), which is deleted afterwards:
+// no existing Project's models are touched, and the server's sandbox settings are neither read
+// nor written — the level is picked on the run's own Session. Enabling a backend is different:
+// plugins load per process, so adding one to any Project re-assembles the whole App and stops
+// the runs in flight in every Project. The script does that only with --enable-backend (implied
+// by --serve), and drops the backend from its Project again before deleting it.
 //
 // Two ways to point it at the install under test:
 //
@@ -15,29 +22,44 @@
 //   node scripts/sandbox-matrix.mjs --serve <install>/bin/penguin --home <empty dir> --port 17491 \
 //     --backend @penguinharness/sandbox-bwrap --channel cli-bundle --platform linux-x64
 //
-//   # or it drives a server that is already running (a container, a remote machine)
+//   # or it drives a server that is already running — a fresh container, a fresh remote
+//   # install, or an instance people are using. Without --enable-backend it measures the
+//   # backends the server already runs; pass it only for a target that may be re-assembled
+//   # (a container started for the cell, an install made for it).
 //   node scripts/sandbox-matrix.mjs --base-url http://localhost:7364 \
 //     (--token <api-token> | --password <admin password>) --backend … --channel … --platform … \
-//     [--mock-host host.docker.internal]
+//     [--enable-backend] [--mock-host host.docker.internal] [--mock-port <n>]
+//
+// The server must reach this script's model endpoint. Without --mock-host it listens on
+// loopback only, which serves a server on this machine; with it, it listens on every interface
+// and registers http://<mock-host>:<port>. For a server on another machine, run the script
+// there, or fix --mock-port and carry it with `ssh -R` (`ssh -L` alone does not reach back).
+// Before any command runs, the server is asked to test that model itself.
 //
 // Common options: --out <file> (the result JSON) and --known-gap "<why>" (below).
 //
-// The result is one JSON object (printed, and written to --out): the flags, both commands'
-// outputs and a verdict with its reason. When the script started the server it also checks the
-// out-of-bounds path on the host itself, so a write that lands but reads as denied still counts
-// as an escape. Exit status: 0 when the cell passes, 1 when it fails, 2 on a usage error. A
-// failure is a finding, not a crash — every step records why it stopped.
+// The result is one JSON object (printed, and written to --out): the flags, the backends in
+// use, both commands' outputs, the cleanup and a verdict with its reason. When the script
+// started the server it also checks the out-of-bounds path on the host itself, so a write that
+// lands but reads as denied still counts as an escape. On any other server that write is a
+// marker file under the server's $HOME which the API cannot remove: its path is in the outside
+// command's output. Exit status: 0 when the cell passes, 1 when it fails, 2 on a usage error,
+// 3 when it was not run — the server cannot reach the model endpoint, does not take a sandbox
+// level per Session, or runs no backend and --enable-backend was not given. A failure is a
+// finding, not a crash — every step records why it stopped. A Project the script could not
+// delete is a failure.
 //
 // --known-gap marks a cell whose failure is already on record (the text says where): a failure
 // is reported with verdict "known-gap" and exit 0, and a pass is reported as a pass with a note
-// that the gap no longer reproduces — the cue to drop the flag.
+// that the gap no longer reproduces — the cue to drop the flag. It does not apply to a cell that
+// was not run, nor to a cleanup that failed.
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
-const args = parseArgs(process.argv.slice(2));
+const args = parseArgs(process.argv.slice(2), ["enable-backend"]);
 const serving = args.serve !== undefined;
 if (
   !args.backend ||
@@ -46,14 +68,20 @@ if (
   (serving ? !args.home || !args.port : !args["base-url"])
 ) {
   console.error(
-    "usage: sandbox-matrix.mjs (--serve <penguin> --home <dir> --port <n> | --base-url <url> (--token <t> | --password <p>)) --backend <specifier> --channel <name> --platform <os-arch> [--user admin] [--mock-host <host>] [--known-gap <why>] [--out <file>]",
+    "usage: sandbox-matrix.mjs (--serve <penguin> --home <dir> --port <n> | --base-url <url> (--token <t> | --password <p>) [--enable-backend]) --backend <specifier> --channel <name> --platform <os-arch> [--user admin] [--mock-host <host>] [--mock-port <n>] [--known-gap <why>] [--out <file>]",
   );
   process.exit(2);
 }
 const BASE = serving ? `http://localhost:${args.port}` : args["base-url"].replace(/\/$/, "");
+// A server started here exists for this cell alone, so re-assembling it harms nobody.
+const MAY_ENABLE = serving || args["enable-backend"] === true;
 // The id picks the wire protocol: this one speaks Anthropic Messages, which the mock answers.
 const MODEL_ID = "claude-4-8";
 const NONCE = randomBytes(4).toString("hex");
+// An admin's Project id: lowercase, digits and underscores (a hyphen is the user namespace's).
+const PROJECT_ID = `sandbox_matrix_${NONCE}`;
+// The strictest level a backend confines to, picked on the run's own Session.
+const LEVEL = { mode: "workspace-write", network: "none" };
 const OUTSIDE_MARK = `MATRIX_OUTSIDE_WROTE_${NONCE}`;
 const INSIDE_MARK = `MATRIX_INSIDE_WROTE_${NONCE}`;
 // $HOME is outside every workspace a fresh install creates (they live under the data root),
@@ -74,33 +102,58 @@ const result = {
   baseUrl: BASE,
   at: new Date().toISOString(),
   version: null,
+  projectId: PROJECT_ID,
+  modelEndpoint: null,
+  endpointReached: null,
+  mayEnableBackend: MAY_ENABLE,
+  // true: enabled by this run; "already-running": a backend was running before it.
   backendEnabled: false,
   backendError: null,
+  backendsInUse: null,
+  backendFailures: null,
   sandbox: null,
   outside: null,
   inside: null,
+  cleanup: null,
   verdict: "fail",
   reason: null,
   note: null,
 };
 
+/** A precondition that does not hold: the cell was not run, which is not a failure. */
+class NotRun extends Error {}
+
 const mock = await startMock();
+result.modelEndpoint = mock.url;
 const server = serving ? startServer() : null;
 let exitCode = 1;
+/** What the run created on the target, for the cleanup to undo. */
+const created = { project: false, backend: false };
+let api = null;
 try {
   if (server) await server.ready;
-  await run();
+  api = await authenticate();
+  await run(api);
 } catch (err) {
-  result.reason ??= String(err instanceof Error ? err.message : err);
+  if (err instanceof NotRun) {
+    result.verdict = "not-run";
+    result.reason = err.message;
+  } else {
+    result.reason ??= String(err instanceof Error ? err.message : err);
+  }
 } finally {
+  const leftover = api ? await cleanup(api) : [];
   const gap = args["known-gap"];
-  if (gap && result.verdict === "fail") {
+  if (leftover.length > 0) {
+    result.verdict = "fail";
+    result.reason = [result.reason, `cleanup: ${leftover.join("; ")}`].filter(Boolean).join("; ");
+  } else if (gap && result.verdict === "fail") {
     result.verdict = "known-gap";
     result.note = gap;
-  } else if (gap) {
+  } else if (gap && result.verdict === "pass") {
     result.note = `recorded as a known gap (${gap}), but it no longer reproduces`;
   }
-  exitCode = result.verdict === "fail" ? 1 : 0;
+  exitCode = { pass: 0, "known-gap": 0, "not-run": 3 }[result.verdict] ?? 1;
   mock.server.close();
   if (server) await server.stop();
   const text = JSON.stringify(result, null, 2);
@@ -109,21 +162,32 @@ try {
   process.exit(exitCode);
 }
 
-async function run() {
-  const api = await authenticate();
+async function run(api) {
   result.version = (await api("GET", "/api/version")).body?.version ?? null;
 
-  // A first boot seeds its default Project a moment after the server starts answering.
-  let projects;
-  let projectId;
-  for (let i = 0; i < 30 && !projectId; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 1000));
-    projects = await api("GET", "/api/projects");
-    projectId = projects.body?.projects?.[0]?.projectId;
+  if (serving) {
+    // A first boot seeds its default Project a moment after the server starts answering;
+    // wait for it, so the run's own Project is not created in the middle of that.
+    let projects;
+    for (let i = 0; i < 30; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 1000));
+      projects = await api("GET", "/api/projects");
+      if (projects.body?.projects?.length) break;
+    }
+    if (!projects.body?.projects?.length) {
+      throw new Error(`no Project on a fresh install: ${describeError(projects)}`);
+    }
   }
-  if (!projectId) throw new Error(`no Project on a fresh install: ${describeError(projects)}`);
 
-  const models = await api("PUT", `/api/projects/${projectId}/models`, {
+  const project = await api("POST", "/api/projects", {
+    projectId: PROJECT_ID,
+    name: `Sandbox matrix ${NONCE}`,
+  });
+  if (!project.ok) throw new Error(`creating the run's Project answered ${describeError(project)}`);
+  created.project = true;
+  const P = `/api/projects/${PROJECT_ID}`;
+
+  const models = await api("PUT", `${P}/models`, {
     defaultModel: { provider: "custom", modelId: MODEL_ID },
     models: [
       {
@@ -137,40 +201,107 @@ async function run() {
   });
   if (!models.ok) throw new Error(`registering the scripted model answered ${models.status}`);
 
-  // The strictest level a backend confines to: writes only inside the workspace, no network.
-  const settings = await api("PUT", "/api/admin/plugin-config", {
-    name: "sandbox",
-    values: { mode: "workspace-write", network: "none" },
-  });
-  if (!settings.ok) throw new Error(`sandbox settings answered ${settings.status}`);
-
-  // Enabling a shipped backend is a list edit; one that is not shipped goes through npm, and
-  // the refusal it comes back with is this cell's reason.
-  const enabled = await api("POST", `/api/projects/${projectId}/plugins/installed`, {
-    specifier: args.backend,
-  });
-  const bare = args.backend.replace(/(.)@.*$/, "$1");
-  const row = enabled.body?.plugins?.find?.((p) => p.specifier === bare);
-  if (!enabled.ok) {
-    result.backendError = describeError(enabled);
-  } else if (!row?.active) {
-    result.backendError = row?.error ?? "listed but not active after the edit";
-  } else {
-    result.backendEnabled = true;
+  // The server calls the endpoint back, not this script: ask it to try once before any task.
+  const probe = await api("POST", `${P}/models/test`, { provider: "custom", modelId: MODEL_ID });
+  result.endpointReached = probe.ok && probe.body?.ok === true;
+  if (!result.endpointReached) {
+    const why = probe.ok ? (probe.body?.message ?? "no reason given") : describeError(probe);
+    throw new NotRun(`the target cannot reach the model endpoint at ${mock.url}: ${why}`);
   }
 
-  const created = await api("POST", `/api/projects/${projectId}/agents/default_agent/sessions`, {
+  // Enabling a shipped backend is a list edit; one that is not shipped goes through npm, and
+  // the refusal it comes back with is this cell's reason. Either way it re-assembles the App.
+  if (MAY_ENABLE) {
+    const enabled = await api("POST", `${P}/plugins/installed`, { specifier: args.backend });
+    const bare = args.backend.replace(/(.)@.*$/, "$1");
+    const row = enabled.body?.plugins?.find?.((p) => p.specifier === bare);
+    if (enabled.ok) created.backend = bare;
+    if (!enabled.ok) {
+      result.backendError = describeError(enabled);
+    } else if (!row?.active) {
+      result.backendError = row?.error ?? "listed but not active after the edit";
+    } else {
+      result.backendEnabled = true;
+    }
+  }
+
+  const session = await api("POST", `${P}/agents/default_agent/sessions`, {
     provider: "custom",
     modelId: MODEL_ID,
     approvalMode: "allow-all",
+    sandbox: LEVEL,
   });
-  if (!created.ok) throw new Error(`creating a Session answered ${describeError(created)}`);
-  const sessionId = created.body.session.sessionId;
-  result.sandbox = created.body.session.sandbox ?? null;
+  if (!session.ok) throw new Error(`creating a Session answered ${describeError(session)}`);
+  const sessionId = session.body.session.sessionId;
+  result.sandbox = session.body.session.sandbox ?? null;
+  // A server that does not take a level per Session answers with its own settings; falling
+  // back to writing those settings is exactly what this script must not do.
+  if (result.sandbox?.mode !== LEVEL.mode || result.sandbox?.network !== LEVEL.network) {
+    throw new NotRun(
+      `the target does not take a sandbox level per Session: asked ${LEVEL.mode}/${LEVEL.network}, the Session has ${result.sandbox?.mode}/${result.sandbox?.network}`,
+    );
+  }
+
+  readBackends(await api("GET", "/api/admin/plugin-config"));
+  if (!MAY_ENABLE) {
+    const running = result.backendsInUse?.length > 0 || result.sandbox.confinementSupported;
+    if (!running) {
+      throw new NotRun(
+        `no sandbox backend is running on the target, and enabling ${args.backend} re-assembles the whole App (every Project) — pass --enable-backend only for a target that may be re-assembled`,
+      );
+    }
+    result.backendEnabled = "already-running";
+  }
 
   result.outside = await command(api, sessionId, OUTSIDE_CMD, OUTSIDE_MARK);
   result.inside = await command(api, sessionId, INSIDE_CMD, INSIDE_MARK);
   judge();
+}
+
+/**
+ * The backends in use, read from the Sandbox card's status: "Backends: <name> (<dimensions>) ·
+ * …", and "<name> is not in use: <reason>" for each that failed to load. Read-only, and the
+ * card's values are not looked at.
+ */
+function readBackends(res) {
+  const group = res.body?.plugins?.find?.((g) => g.name === "sandbox");
+  if (!group) return;
+  const notices = (group.notices ?? []).map((n) => n.text);
+  const listed = notices.find((t) => t.startsWith("Backends: "));
+  result.backendsInUse = listed
+    ? listed
+        .slice("Backends: ".length)
+        .split(" · ")
+        .map((b) => b.match(/^(.*) \((.*)\)$/))
+        .filter(Boolean)
+        .map(([, name, dims]) => ({ name, dimensions: dims ? dims.split(", ") : [] }))
+    : [];
+  result.backendFailures = notices.filter((t) => / is not in use: /.test(t));
+}
+
+/**
+ * Undoes what the run created: the backend leaves the run's Project first — deleting a Project
+ * does not unload what the process runs, the re-assembly this removal asks for does — then the
+ * Project goes, and with it the workspace the inside write landed in. Returns what is left.
+ */
+async function cleanup(api) {
+  const left = [];
+  result.cleanup = {};
+  const P = `/api/projects/${PROJECT_ID}`;
+  if (created.backend) {
+    const res = await api(
+      "DELETE",
+      `${P}/plugins/installed?specifier=${encodeURIComponent(created.backend)}`,
+    );
+    result.cleanup.backendRemoved = res.ok ? res.status : describeError(res);
+    if (!res.ok) left.push(`${created.backend} is still listed in ${PROJECT_ID}`);
+  }
+  if (created.project) {
+    const res = await api("DELETE", P);
+    result.cleanup.projectDeleted = res.ok ? res.status : describeError(res);
+    if (!res.ok) left.push(`Project ${PROJECT_ID} was not deleted`);
+  }
+  return left;
 }
 
 /** Runs one command as one task and returns what its tool_result said. */
@@ -193,7 +324,7 @@ async function command(api, sessionId, cmd, mark) {
 function judge() {
   const s = result.sandbox ?? {};
   const reasons = [];
-  if (!result.backendEnabled) reasons.push(`backend not enabled: ${result.backendError}`);
+  if (!result.backendEnabled) reasons.push(`backend not running: ${result.backendError}`);
   if (s.confinementSupported !== true)
     reasons.push(`confinementSupported=${s.confinementSupported}`);
   if (s.noNetworkSupported !== true) reasons.push(`noNetworkSupported=${s.noNetworkSupported}`);
@@ -362,7 +493,9 @@ async function startMock() {
       return reply(res, [{ type: "text", text: "Sandbox matrix" }], "end_turn");
     });
   });
-  await new Promise((r) => server.listen(Number(args["mock-port"] ?? 0), "0.0.0.0", r));
+  // Loopback unless the server has to come from elsewhere, which --mock-host says.
+  const bind = args["mock-host"] ? "0.0.0.0" : "127.0.0.1";
+  await new Promise((r) => server.listen(Number(args["mock-port"] ?? 0), bind, r));
   const port = server.address().port;
   return {
     server,
@@ -428,10 +561,14 @@ function reply(res, blocks, stopReason) {
   res.end();
 }
 
-function parseArgs(argv) {
+function parseArgs(argv, flags) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, "");
+    if (flags.includes(key)) {
+      out[key] = true;
+      continue;
+    }
     out[key] = argv[i + 1];
     i++;
   }
