@@ -4,7 +4,7 @@
  *   GET    /                      this Project's list, joined with what the process runs,
  *                                 plus which plugins the build ships (any member)
  *   POST   / { specifier,         fetch the package into the plugin store if this server runs it
- *            machineId?,          and it is not on the machine — the catalogue entry the ask
+ *            machineId?,          and it is not on the machine — the index entry the ask
  *            integrity? }         resolves to, checked against that entry's integrity — add it
  *                                 to this Project's shared table (pinned to `integrity` when
  *                                 given) — or to that machine's own table — and apply (admin)
@@ -42,7 +42,7 @@ import type { AppEnv } from "../../auth/middleware.js";
 import type {
   InstalledPlugin,
   InstalledPluginsResponse,
-  PluginCatalogueEntry,
+  PluginIndexEntry,
   UnsatisfiedPlugin,
 } from "../../api/types.js";
 import { HttpError } from "../errors.js";
@@ -70,7 +70,7 @@ import {
   PluginStoreError,
   readStore,
 } from "../../plugin/store.js";
-import { INTEGRITY, mergeIndexes, pickCatalogueEntry } from "../../plugin/registry.js";
+import { INTEGRITY, mergeIndexes, pickIndexEntry } from "../../plugin/registry.js";
 import { resolveRegistries } from "./plugins.js";
 import { PluginHost, pluginHostFrom, PLUGINS_RESOURCE_ID } from "../../plugin/host.js";
 import { Access, ProjectConfigStore } from "../../mechanisms/projects.js";
@@ -83,8 +83,8 @@ export interface InstalledPluginsDeps {
   machineId: string;
   /** The current version's assets, where the builtin plugins a push carried live. */
   assetsDir: () => string | null;
-  /** The plugin catalogue (plugin/registry.ts mergeIndexes): what a download is chosen from. */
-  catalogue: () => Promise<PluginCatalogueEntry[]>;
+  /** The merged plugin index (plugin/registry.ts mergeIndexes): what a download is chosen from. */
+  index: () => Promise<PluginIndexEntry[]>;
   /** What the process's plugin host holds, by specifier, and what it could not load, with why. */
   running: () => {
     loaded: ReadonlySet<string>;
@@ -194,7 +194,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     }
     return {
       plugins,
-      // What the build ships, asked for or not: the catalogue marks these rows "built in",
+      // What the build ships, asked for or not: the Plugins page marks these rows "built in",
       // and asking for one is a list edit rather than a download.
       shipped: await shippedPlugins(deps.assetsDir()),
       file: PLUGINS_FILE,
@@ -321,10 +321,10 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
           (integrity === undefined || e.integrity === integrity),
       );
     if (runsHere && !onMachine) {
-      // A download is always of a catalogue entry that names its content: the highest
+      // A download is always of an index entry that names its content: the highest
       // version the ask admits (or the pinned content), fetched as that exact version and
       // compared with the entry's integrity before it enters the store.
-      const pick = pickCatalogueEntry(await deps.catalogue(), name, { version, integrity });
+      const pick = pickIndexEntry(await deps.index(), name, { version, integrity });
       if ("refused" in pick) throw new HttpError(400, "plugin_not_installable", pick.refused);
       try {
         // Into the plugin store (plugin/store.ts), and nowhere else: the re-assembly the list
@@ -436,7 +436,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
         id: "InstalledPluginRoutes.routes",
         prefix: "/api/projects/:projectId/plugins/installed",
         auth: "user",
-        // Ahead of the catalogue group, whose "/" would otherwise answer here.
+        // Ahead of the registry group, whose "/" would otherwise answer here.
         order: 60,
       },
     ],
@@ -465,7 +465,7 @@ export class InstalledPluginRoutes {
       root,
       machineId: new MachinesRepo(this.db as unknown as DatabaseSync).ownId(),
       assetsDir: () => hmr.assetsDir(),
-      catalogue: async () => (await mergeIndexes(registries)).entries,
+      index: () => mergeIndexes(registries),
       // Claimed per call rather than captured: the host belongs to the process, and a hot
       // swap hands the same one to the next platform.
       running: () => {

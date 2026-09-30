@@ -43,7 +43,7 @@ import type {
   HookItem,
   InstalledPluginsResponse,
   PluginGroupItem,
-  PluginCatalogueEntry,
+  PluginIndexEntry,
   PluginItem,
   QuickStartItem,
   SkillMetadataItem,
@@ -95,7 +95,7 @@ import { usePluginRepair } from "./plugin-repair";
 import { SettingsDialog } from "../settings/settings-dialog";
 import { formatRelativeDate } from "../../lib/format";
 import { SkillTile } from "../skills/skill-icon-view";
-import { toneInk, toneSurface } from "../../lib/tone";
+import { toneInk } from "../../lib/tone";
 
 /**
  * What one Agent has installed, by name → the installed copy's version (`YYYY.MM.DD.N`, or ""
@@ -247,13 +247,12 @@ export function PluginsPage() {
   /** What this Project asks for of the module plugins, and which of those the process runs. */
   const [deployment, setDeployment] = useState<InstalledPluginsResponse | null>(null);
   /** The registry: every module plugin this deployment could ask for. */
-  const [index, setIndex] = useState<PluginCatalogueEntry[] | null>(null);
+  const [index, setIndex] = useState<PluginIndexEntry[] | null>(null);
   /**
    * Sources that answered with nothing. A published index that is down shortens the list
    * instead of emptying it (the server merges tolerantly), so the page has to say so — a
    * silently shorter list reads as "that plugin does not exist".
    */
-  const [indexFailures, setIndexFailures] = useState<{ source: string; error: string }[]>([]);
   /** The specifier whose install or removal is running: the list is written one verb at a time. */
   const [pendingSpecifier, setPendingSpecifier] = useState<string | null>(null);
   const isAdmin = user?.isAdmin === true;
@@ -329,8 +328,7 @@ export function PluginsPage() {
     api.getPluginIndex().then(
       (res) => {
         if (cancelled) return;
-        setIndex(res.plugins);
-        setIndexFailures(res.failures ?? []);
+        setIndex(res);
       },
       () => {
         if (!cancelled) setIndex([]);
@@ -751,11 +749,6 @@ export function PluginsPage() {
               onDismiss={() => dismissTodo(projectId, "plugins", todo.signature)}
             />
           )}
-          {indexFailures.length > 0 && (
-            <Notice tone="attention" className="mt-4">
-              {S.pluginRegistry.sourceUnavailable(indexFailures.length)}
-            </Notice>
-          )}
           {remote !== null && "error" in remote && remote.machineId === viewMachine && (
             <Notice tone="attention" className="mt-4">
               {S.plugins.machineUnreadable(nameOf(remote.machineId), remote.error)}
@@ -1019,7 +1012,7 @@ type PluginRow = { kind: "library"; plugin: PluginItem; category: string } | Mod
 interface ModulePluginRow {
   kind: "module";
   specifier: string;
-  entry: PluginCatalogueEntry | undefined;
+  entry: PluginIndexEntry | undefined;
   state: ModuleState;
   /** Why the process could not load it, when `state` is `failed`. */
   error?: string;
@@ -1154,7 +1147,7 @@ export function installedPluginRows(
   groups: readonly PluginGroupItem[],
   locale: Parameters<typeof localizedText>[0],
   deployment: InstalledPluginsResponse | null,
-  index: readonly PluginCatalogueEntry[],
+  index: readonly PluginIndexEntry[],
   view: PluginView = ALL_MACHINES,
 ): PluginRow[] {
   const rows: PluginRow[] = [];
@@ -1169,7 +1162,7 @@ export function installedPluginRows(
     rows.push({
       kind: "module",
       specifier: listed.specifier,
-      entry: catalogueEntryOf(index, listed.specifier),
+      entry: indexEntryOf(index, listed.specifier),
       ...stateIn(listed, view, deployment?.machineId),
       shipped:
         listed.builtin || (view.remote ?? deployment)?.shipped.includes(listed.specifier) === true,
@@ -1184,24 +1177,27 @@ export function installedPluginRows(
 }
 
 /**
- * The catalogue row a name is shown by: one this machine can install before one it cannot,
- * then the catalogue's own order (the build's index first).
+ * The index entry a name is shown by: one that names its integrity (so it can be installed)
+ * before one that does not, then the index's own order (the build's entries first).
  */
-export function catalogueEntryOf(
-  index: readonly PluginCatalogueEntry[],
+export function indexEntryOf(
+  index: readonly PluginIndexEntry[],
   name: string,
-): PluginCatalogueEntry | undefined {
-  return index.find((e) => e.name === name && e.installable) ?? index.find((e) => e.name === name);
+): PluginIndexEntry | undefined {
+  return (
+    index.find((e) => e.name === name && e.integrity !== undefined) ??
+    index.find((e) => e.name === name)
+  );
 }
 
 /**
- * What could be asked for: the catalogue's entries this Project does not list yet, and what
- * the build ships that the catalogue does not know (offered with no description — the build
+ * What could be asked for: the index's entries this Project does not list yet, and what
+ * the build ships that the index does not know (offered with no description — the build
  * has it, so it is installable without a download).
  */
 export function availablePluginRows(
   deployment: InstalledPluginsResponse | null,
-  index: readonly PluginCatalogueEntry[],
+  index: readonly PluginIndexEntry[],
   view: PluginView = ALL_MACHINES,
 ): ModulePluginRow[] {
   // What the machine in view does not run yet: in the all-machines view, anything the shared
@@ -1218,7 +1214,7 @@ export function availablePluginRows(
   for (const { name } of index) {
     if (listed.has(name) || seen.has(name)) continue;
     seen.add(name);
-    const entry = catalogueEntryOf(index, name)!;
+    const entry = indexEntryOf(index, name)!;
     rows.push({
       kind: "module",
       specifier: entry.name,
@@ -1823,7 +1819,7 @@ export function ModuleRow({
   onRepair = null,
 }: {
   specifier: string;
-  entry: PluginCatalogueEntry | undefined;
+  entry: PluginIndexEntry | undefined;
   state: ModuleState;
   /** Why it failed to load, when it did. */
   error?: string;
@@ -1869,10 +1865,10 @@ export function ModuleRow({
   const meta = [entry === undefined ? null : `v${entry.version}`, updated]
     .filter((v): v is string => v !== null)
     .join(" · ");
-  // A catalogue row that names no integrity: listed, but neither the build nor this machine's
+  // An index entry that names no integrity: listed, but neither the build nor this machine's
   // store has it, and a download could not be checked — Install says so instead of failing.
   const cannotInstall =
-    state === "none" && !shipped && entry !== undefined && !entry.installable
+    state === "none" && !shipped && entry !== undefined && entry.integrity === undefined
       ? S.plugins.cannotInstallHere
       : null;
   const body = (
@@ -1947,12 +1943,6 @@ export function ModuleRow({
         ))}
         {onlyOn !== undefined && <Tag>{S.plugins.onlyOn(onlyOn.join(", "))}</Tag>}
         {shipped && <Tag title={S.plugins.builtinHint}>{S.plugins.builtin}</Tag>}
-        {entry?.sources.includes("store") === true && (
-          <Tag title={S.plugins.sourceStoreHint}>{S.plugins.sourceStore}</Tag>
-        )}
-        {entry?.sources.includes("index") === true && (
-          <Tag title={S.plugins.sourceIndexHint}>{S.plugins.sourceIndex}</Tag>
-        )}
         {(entry?.keywords ?? []).map((keyword) => (
           <Tag key={keyword} quiet>
             {keyword}
