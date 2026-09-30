@@ -265,9 +265,10 @@ function actorFields(): { sessionId?: string; agentId?: string } {
 
 /**
  * A `?`-prefixed query string over the entries that have a value; empty when none has.
- * `sessionId` and `agentId` ride here on the channel reads and the member DELETE, which have
- * no body to carry the identity {@link actorFields} puts in one — without them the server
- * answers an employee as the signed-in person, and `channel ls` shows it every channel.
+ * `sessionId` and `agentId` ride here on the reads and the body-less writes (the DELETEs, a
+ * desk renewal), which have no body to carry the identity {@link actorFields} puts in one —
+ * without them the server answers an employee as the signed-in person (`channel ls` shows it
+ * every channel), and refuses the write outright under a session's own credential.
  */
 function query(entries: Array<[string, string | undefined]>): string {
   const parts = entries
@@ -283,6 +284,19 @@ function actorQuery(): Array<[string, string | undefined]> {
     ["sessionId", fields.sessionId],
     ["agentId", fields.agentId],
   ];
+}
+
+/**
+ * The caller's identity for a write whose `agentId` names someone else — the Agent a hire
+ * takes on, whose calendar an event goes into: the calling session, and the calling employee
+ * as `callerAgentId`, which is where the server reads the caller on those routes.
+ */
+function callerFields(): { sessionId?: string; callerAgentId?: string } {
+  const { sessionId, agentId } = actorFields();
+  return {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(agentId !== undefined ? { callerAgentId: agentId } : {}),
+  };
 }
 
 /** `--channel`, trimmed; the all-hands channel when the flag is absent or empty. */
@@ -1062,6 +1076,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       ...(opts.workspace !== undefined ? { workspace: String(opts.workspace) } : {}),
       ...(budget !== undefined ? { budget } : {}),
       ...(opts.duties !== undefined ? { duties: String(opts.duties) } : {}),
+      ...callerFields(),
     });
     if (opts.json === true) printJson(item);
     else printLine(t.org.hired(item.agentId, item.title, item.reportsTo));
@@ -1112,7 +1127,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const item = await scope.client.request<OrgEmployeeItem>(
       "PATCH",
       `${scope.base}/employees/${enc(agentId)}`,
-      body,
+      { ...body, ...actorFields() },
     );
     if (opts.json === true) printJson(item);
     else printLine(t.org.employeeUpdated(item.agentId));
@@ -1180,7 +1195,10 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       if (refuseDotSegments(agentId, t)) return;
       const scope = await orgScope(opts, t);
       if (scope === null) return;
-      await scope.client.request("DELETE", `${scope.base}/employees/${enc(agentId)}`);
+      await scope.client.request(
+        "DELETE",
+        `${scope.base}/employees/${enc(agentId)}${query(actorQuery())}`,
+      );
       if (opts.json === true) printJson({ agentId });
       else printLine(t.org.left(agentId));
     },
@@ -1213,7 +1231,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       const agentId = resolveAgentId(agentArg);
       const res = await scope.client.request<OrgDeskResponse>(
         "POST",
-        `${scope.base}/employees/${enc(agentId)}/desk`,
+        `${scope.base}/employees/${enc(agentId)}/desk${query(actorQuery())}`,
       );
       if (opts.json === true) printJson(res);
       else printLine(t.org.deskRenewed(res.agentId, res.sessionId));
@@ -1311,6 +1329,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
         startAt: resolveStartAt(String(opts.startAt)),
         ...(opts.period !== undefined ? { period: String(opts.period) } : {}),
         ...(opts.endAt !== undefined ? { endAt: String(opts.endAt) } : {}),
+        ...callerFields(),
       },
     );
     if (opts.json === true) printJson(item);
@@ -1352,7 +1371,10 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (period !== undefined) body.period = period;
     const endAt = opts.endAt !== undefined ? String(opts.endAt) : stored.endAt;
     if (endAt !== undefined) body.endAt = endAt;
-    const item = await scope.client.request<OrgCalendarWriteResponse>("PUT", target, body);
+    const item = await scope.client.request<OrgCalendarWriteResponse>("PUT", target, {
+      ...body,
+      ...actorFields(),
+    });
     if (opts.json === true) printJson(item);
     else printCalendarWrite(t, item);
   });
@@ -1367,7 +1389,10 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const agentId = resolveAgentId(opts.agentId);
-    await scope.client.request("DELETE", `${scope.base}/calendar/${enc(agentId)}/${enc(name)}`);
+    await scope.client.request(
+      "DELETE",
+      `${scope.base}/calendar/${enc(agentId)}/${enc(name)}${query(actorQuery())}`,
+    );
     if (opts.json === true) printJson({ agentId, name });
     else printLine(t.org.calendarRemoved(agentId, name));
   });
@@ -1952,7 +1977,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const res = await scope.client.request<OrgHandbookFileResponse>(
       "PUT",
       `${scope.base}/handbook/files/${encPath(rel)}`,
-      { content },
+      { content, ...actorFields() },
     );
     if (opts.json === true) printJson(res);
     else printLine(t.org.handbookWritten(res.path));
@@ -1965,7 +1990,10 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (refuseDotSegments(rel, t)) return;
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    await scope.client.request("DELETE", `${scope.base}/handbook/files/${encPath(rel)}`);
+    await scope.client.request(
+      "DELETE",
+      `${scope.base}/handbook/files/${encPath(rel)}${query(actorQuery())}`,
+    );
     if (opts.json === true) printJson({ ok: true, path: rel });
     else printLine(t.org.handbookRemoved(rel));
   });
