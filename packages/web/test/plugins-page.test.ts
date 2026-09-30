@@ -25,7 +25,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type {
   InstalledPluginsResponse,
   PluginGroupItem,
-  PluginCatalogueEntry,
+  PluginIndexEntry,
   PluginItem,
 } from "@prismshadow/penguin-server/api";
 import {
@@ -117,10 +117,8 @@ describe("server modules per machine", () => {
   });
 
   it("offers what the index lists and the build ships that the Project does not ask for", () => {
-    const entry = (name: string): PluginCatalogueEntry => ({
+    const entry = (name: string): PluginIndexEntry => ({
       name,
-      sources: ["index"],
-      installable: true,
       version: "0.2.3",
       description: name,
       authors: [],
@@ -172,10 +170,8 @@ const GROUPS: PluginGroupItem[] = [
   { id: "other", title: "Other", titleZh: "其他", plugins: [plugin("mystery")] },
 ];
 
-const sandbox = (name: string, categories: string[]): PluginCatalogueEntry => ({
+const sandbox = (name: string, categories: string[]): PluginIndexEntry => ({
   name,
-  sources: ["builtin"],
-  installable: true,
   version: "0.2.3",
   description: `${name} backend`,
   descriptionZh: `${name} 后端`,

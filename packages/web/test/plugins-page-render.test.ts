@@ -53,7 +53,7 @@ import {
 } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { PluginCatalogueEntry, PluginItem } from "@prismshadow/penguin-server/api";
+import type { PluginIndexEntry, PluginItem } from "@prismshadow/penguin-server/api";
 import {
   InstallRow,
   ModuleApplyBody,
@@ -154,10 +154,8 @@ describe("the plugins page header", () => {
   });
 });
 
-const BWRAP: PluginCatalogueEntry = {
+const BWRAP: PluginIndexEntry = {
   name: "@penguinharness/sandbox-bwrap",
-  sources: ["builtin"],
-  installable: true,
   version: "0.2.3",
   description: "Bubblewrap sandbox backend.",
   descriptionZh: "Bubblewrap 沙箱后端。",
