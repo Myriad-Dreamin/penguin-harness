@@ -65,9 +65,9 @@ jobs:
   # The two steps below add no build and no install, so this job stays the cheap one it is.
   # The skills step reads the content those versions gate — the SKILL.md files themselves,
   # which nothing else here opens. The suites step runs the tree's own plugins/<name>/test/**
-  # files, which nothing else does: `pnpm -r test` reaches only the four sandbox packages (a
-  # library plugin has no `scripts`) and the vitest configs live under `packages/*`, so one
-  # used to be run by nothing at all. It is a bare node script for the same reason as the
+  # files, which nothing else does: `pnpm -r test` reaches only the plugin packages that
+  # declare a `test` script, and a library plugin has no `scripts`, so a suite under a library
+  # plugin used to be run by nothing at all. It is a bare node script for the same reason as the
   # version check — no setup action, no pnpm and no install in this job — and it enumerates
   # the files itself, because the glob form is vacuously green:
   # `node --test plugins/<name>/test/*.test.mjs` with no match exits 1 on Node 18 but 0 with
