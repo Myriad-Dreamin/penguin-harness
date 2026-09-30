@@ -70,6 +70,8 @@ A session credential reaches only what an agent's own commands call, and refuses
 
 Admin routes, hot updates, other Projects and every other route are refused.
 
+The Claude Code plugin gives the `claude` it runs in a session's terminal the same variables, with that session's credential. A `penguin` command Claude Code runs there is signed as the session's agent, so a run an employee queues writes under that employee's name.
+
 - SSE endpoints accept the header like any other route. Consume them with `fetch`, not `EventSource`, which cannot send headers.
 - The JSON-only Content-Type check on writes applies to Bearer requests too.
 

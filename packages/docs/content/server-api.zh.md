@@ -70,6 +70,8 @@ curl -c cookies.txt -H "Content-Type: application/json" \
 
 管理员路由、热更新、其他 Project 以及其余所有路由都被拒绝。
 
+Claude Code 插件在会话终端里运行 `claude` 时，给它同样的环境变量，凭据是该会话自己的。Claude Code 在那里运行的 `penguin` 命令因此以该会话的 Agent 署名：员工排队的 run 写入的内容落在该员工名下。
+
 - SSE 端点和其他路由一样接受这个请求头。消费它们要用 `fetch`，不要用 `EventSource`——后者无法发送请求头。
 - 写请求只接受 JSON 的 Content-Type 检查，对 Bearer 请求同样生效。
 
