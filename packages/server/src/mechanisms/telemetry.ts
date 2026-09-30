@@ -33,6 +33,8 @@ export abstract class Telemetry extends Interface<{
    * add to the returned sample's `bytes` — a streamed response is counted as it is written.
    */
   record(sample: TelemetrySampleInput): TelemetrySample | null;
+  /** The keys of the enclosing scope (the request's id among them), or undefined outside one or while off. */
+  keys(): TelemetryKeys | undefined;
   /** Runs `run` with `keys` added to the scope every sample recorded inside it inherits; while off, just runs it. */
   within(keys: TelemetryKeys, run: () => Promise<unknown>): Promise<unknown>;
   /** The buffered samples matching the query, oldest first. */

@@ -240,4 +240,58 @@ describe("penguin telemetry", () => {
     expect(await cli(["telemetry", "--samples", "--limit", "0"])).toBe(1);
     expect(stderr.join("")).toContain(t.telemetry.limitInvalid("0"));
   });
+  it("errors: the always-on table, this session's by default, with task, request and stack frame", async () => {
+    server.telemetry.enabled = false;
+    server.errors = {
+      items: [
+        {
+          ts: "2026-09-30T08:00:01.000Z",
+          source: "session",
+          code: "session_run_failed",
+          kind: "unexpected",
+          message: "boom",
+          agentId: "a1",
+          sessionId: SESSION,
+          taskId: "2026-09-30T07:59:58.000Z",
+          requestId: "fedcba9876543210",
+          status: null,
+          stack: "Error: boom\n    at drive (session-manager.ts:10:5)\n    at next (x.ts:1:1)",
+        },
+      ],
+      total: 1,
+      suppressed: [{ source: "session", code: "session_run_failed", sessionId: SESSION, count: 3 }],
+    };
+    process.env.PENGUIN_SESSION_ID = SESSION;
+    try {
+      expect(await cli(["telemetry", "errors"])).toBe(0);
+    } finally {
+      delete process.env.PENGUIN_SESSION_ID;
+    }
+    const req = server.requests.filter((r) => r.path.endsWith("/usage/errors")).at(-1)!;
+    expect(req.path).toBe("/api/projects/default_project/usage/errors");
+    const q = new URLSearchParams(req.search);
+    expect(q.get("sessionId")).toBe(SESSION);
+    expect(q.get("limit")).toBe("20");
+    expect(out()).toContain(t.telemetry.scopedTo(SESSION));
+    expect(out()).toContain("session_run_failed");
+    expect(out()).toContain("2026-09-30T07:59:58.000Z");
+    expect(out()).toContain("fedcba98");
+    expect(out()).toContain("[at drive (session-manager.ts:10:5)]");
+    expect(out()).toContain(t.telemetry.suppressed(3));
+    // The error table is always on: the telemetry switch being off does not stop the read.
+    expect(out()).not.toContain(t.telemetry.off());
+
+    expect(
+      await cli(["telemetry", "errors", "--all", "--request", "abc", "--kind", "expected"]),
+    ).toBe(0);
+    const q2 = new URLSearchParams(
+      server.requests.filter((r) => r.path.endsWith("/usage/errors")).at(-1)!.search,
+    );
+    expect(q2.has("sessionId")).toBe(false);
+    expect(q2.get("requestId")).toBe("abc");
+    expect(q2.get("kind")).toBe("expected");
+
+    expect(await cli(["telemetry", "errors", "--kind", "bogus"])).toBe(1);
+    expect(stderr.join("")).toContain("bogus");
+  });
 });

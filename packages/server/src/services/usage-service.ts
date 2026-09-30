@@ -52,7 +52,7 @@ import {
 import { badRequest } from "../http/validate.js";
 import { Component, Use } from "@prismshadow/penguin-core/kernel";
 import type { Clock } from "../hmr/capabilities.js";
-import type { ErrorLog, UsageQueries, UsageStore } from "../mechanisms/observability.js";
+import type { ErrorLog, Errors, UsageQueries, UsageStore } from "../mechanisms/observability.js";
 import type { ProjectConfigStore } from "../mechanisms/projects.js";
 
 /**
@@ -124,6 +124,10 @@ export interface UsageErrorsQuery {
   agentId?: string;
   /** Narrow to one category — `unexpected` (500s / runtime exceptions) or `expected`; absent counts both. */
   kind?: string;
+  /** One Session's errors — what an Agent reads about itself. */
+  sessionId?: string;
+  /** One request's errors (telemetry's request key). */
+  requestId?: string;
   /** Admin only: include errors with no Project attribution (see the ErrorsRepo file header). */
   includeGlobalErrors?: boolean;
 }
@@ -192,6 +196,8 @@ function refKey(provider: string, modelId: string): string {
 export class UsageService implements UsageQueries {
   @Use() private readonly usage!: UsageStore;
   @Use() private readonly errors!: ErrorLog;
+  /** The recorder, for what its dedup dropped (counted in memory); absent in a tree that stands one in without it. */
+  @Use() private readonly recorder?: Errors;
   @Use() private readonly projectConfig!: ProjectConfigStore;
   @Use() private readonly clock!: Clock;
   private lookupPricing: PricingLookup = (projectId, provider, modelId) =>
@@ -438,11 +444,21 @@ export class UsageService implements UsageQueries {
       ...(q.fromTs !== undefined ? { fromTs: q.fromTs } : {}),
       ...(q.toTs !== undefined ? { toTs: q.toTs } : {}),
       ...(q.kind !== undefined ? { kind: q.kind } : {}),
+      ...(q.sessionId !== undefined ? { sessionId: q.sessionId } : {}),
+      ...(q.requestId !== undefined ? { requestId: q.requestId } : {}),
       ...(q.includeGlobalErrors === true ? { includeGlobal: true } : {}),
     };
+    const suppressed = (
+      this.recorder?.suppressed({
+        projectId,
+        ...(q.includeGlobalErrors === true ? { includeGlobal: true } : {}),
+        ...(q.sessionId !== undefined ? { sessionId: q.sessionId } : {}),
+      }) ?? []
+    ).map(({ source, code, sessionId, count }) => ({ source, code, sessionId, count }));
     return {
       items: this.errors.recent(projectId, f, q.limit, q.offset),
       total: this.errors.summary(projectId, f).total,
+      suppressed,
     };
   }
 

@@ -585,14 +585,21 @@ describe("session-manager", () => {
       async *compact(): AsyncGenerator<OmniMessage> {},
     };
     const manager = makeManager(loaderOf(failing), { record: (args) => captured.push(args) });
-    await manager.startTask("session-1", [userText("run")]);
+    const prompt = userText("run");
+    await manager.startTask("session-1", [prompt]);
     await waitFor(() => manager.statusOf("session-1") === "idle" && captured.length >= 2);
 
     expect(captured.map((a) => [a.source, a.code, a.kind])).toEqual([
       ["environment", "tool_fatal:write_file", "expected"], // error fed back to the model; the Agent adjusts on its own
       ["llm", "llm_failed", "unexpected"], // nothing followed it: the retries did not recover it, so a human is needed
     ]);
-    expect(captured[0]!.ctx).toEqual({ projectId: "p1", agentId: "a1", sessionId: "session-1" });
+    // The Task key is the prompt's own timestamp: what the Trace holds for that input.
+    expect(captured[0]!.ctx).toEqual({
+      projectId: "p1",
+      agentId: "a1",
+      sessionId: "session-1",
+      taskId: prompt.timestamp,
+    });
     expect(String(captured[0]!.err)).toContain("[tool error] exit code 2");
     expect(String(captured[1]!.err)).toBe("llm request failed after 5 retries: 500 upstream");
   });

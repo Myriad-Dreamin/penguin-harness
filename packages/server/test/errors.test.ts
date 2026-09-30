@@ -35,6 +35,8 @@ import {
   DEDUP_WINDOW_MS,
   ErrorRecorder,
   MESSAGE_MAX,
+  STACK_MAX,
+  STACK_MAX_LINES,
 } from "../src/runtime/error-recorder.js";
 import { messagingErrorKind } from "../src/runtime/messaging/error-kind.js";
 import { MessagingConnectionClosedError } from "../src/runtime/messaging/qq-api.js";
@@ -420,6 +422,72 @@ describe("error-recorder", () => {
     boom("tail");
     boom("tail");
     expect(count()).toBe(before + 1);
+  });
+  it("an unexpected error keeps a truncated stack; an expected one keeps none", () => {
+    const rec = wire(ErrorRecorder, { errors: repo, clock: { now: now } });
+    const err = new Error("boom");
+    err.stack = [
+      "Error: boom",
+      ...Array.from({ length: 40 }, (_, i) => `    at f${i} (x.ts:${i}:1)`),
+    ].join("\n");
+    rec.record({ source: "process", err, code: "c1", kind: "unexpected" });
+    rec.record({ source: "http", err: new HttpError(404, "not_found", "Not found."), code: "c2" });
+    const rows = db.prepare("SELECT code, stack FROM error_records ORDER BY id").all() as {
+      code: string;
+      stack: string | null;
+    }[];
+    expect(rows[0]!.stack!.split("\n")).toHaveLength(STACK_MAX_LINES);
+    expect(rows[0]!.stack!.startsWith("Error: boom\n    at f0")).toBe(true);
+    expect(rows[1]!.stack).toBeNull();
+    const long = "x".repeat(STACK_MAX * 2);
+    rec.record({ source: "process", err: "e", code: "c3", kind: "unexpected", stack: long });
+    const third = db.prepare("SELECT stack FROM error_records WHERE code = 'c3'").get() as {
+      stack: string;
+    };
+    expect(third.stack).toHaveLength(STACK_MAX);
+  });
+
+  it("dedup is per Session, and what it drops is counted in memory by key", () => {
+    const rec = wire(ErrorRecorder, { errors: repo, clock: { now: now } }); // one window
+    const err = new Error("boom");
+    const inSession = (sessionId: string) =>
+      rec.record({ source: "session", err, ctx: { projectId: "p1", sessionId }, code: "run" });
+    inSession("s1");
+    inSession("s1");
+    inSession("s1");
+    inSession("s2"); // another Session's first occurrence is not hidden by s1's storm
+    expect(count()).toBe(2);
+    expect(rec.suppressed({ projectId: "p1" })).toEqual([
+      { source: "session", code: "run", projectId: "p1", sessionId: "s1", count: 2 },
+    ]);
+    expect(rec.suppressed({ projectId: "p1", sessionId: "s2" })).toEqual([]);
+    expect(rec.suppressed({ projectId: "p2" })).toEqual([]);
+  });
+
+  it("task and request keys: the task from the context, the request from telemetry's scope", () => {
+    let scope: { request?: string } | undefined = { request: "req-1" };
+    const telemetry = { keys: () => scope };
+    const rec = wire(ErrorRecorder, { errors: repo, clock: { now: now }, telemetry });
+    rec.record({
+      source: "session",
+      err: "a",
+      code: "c1",
+      ctx: { projectId: "p1", sessionId: "s1", taskId: "2026-07-06T09:59:00.000Z" },
+    });
+    scope = undefined; // telemetry off: no request key
+    rec.record({ source: "session", err: "b", code: "c2", ctx: { projectId: "p1" } });
+    const rows = db
+      .prepare("SELECT code, task_id, request_id FROM error_records ORDER BY id")
+      .all() as { code: string; task_id: string | null; request_id: string | null }[];
+    expect(rows).toEqual([
+      { code: "c1", task_id: "2026-07-06T09:59:00.000Z", request_id: "req-1" },
+      { code: "c2", task_id: null, request_id: null },
+    ]);
+    // The read filters on both, and hands them back.
+    const items = repo.recent("p1", { requestId: "req-1" });
+    expect(items.map((i) => i.code)).toEqual(["c1"]);
+    expect(items[0]).toMatchObject({ sessionId: "s1", taskId: "2026-07-06T09:59:00.000Z" });
+    expect(repo.recent("p1", { sessionId: "s1" }).map((i) => i.code)).toEqual(["c1"]);
   });
 });
 
