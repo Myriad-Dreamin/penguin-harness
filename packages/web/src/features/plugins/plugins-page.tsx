@@ -49,6 +49,7 @@ import type {
   QuickStartItem,
   SkillMetadataItem,
 } from "@prismshadow/penguin-server/api";
+import { pickIndexEntry } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
@@ -1098,17 +1099,17 @@ export function installedPluginRows(
 }
 
 /**
- * The index entry a name is shown by: one that names its integrity (so it can be installed)
- * before one that does not, then the index's own order (the build's entries first).
+ * The index entry a name's one row is shown by: the entry an install of it takes — the
+ * server's own rule (`pickIndexEntry`: the highest version with an integrity, the build's
+ * first within one version) — or, when no entry can be installed, the first one listed. Every
+ * other content under the name is on its detail page.
  */
 export function indexEntryOf(
   index: readonly PluginIndexEntry[],
   name: string,
 ): PluginIndexEntry | undefined {
-  return (
-    index.find((e) => e.name === name && e.integrity !== undefined) ??
-    index.find((e) => e.name === name)
-  );
+  const pick = pickIndexEntry(index, name, {});
+  return "refused" in pick ? index.find((e) => e.name === name) : pick;
 }
 
 /**
