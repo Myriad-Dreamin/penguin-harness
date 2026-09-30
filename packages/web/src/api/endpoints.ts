@@ -9,6 +9,7 @@ import type {
   ActionRunResponse,
   ActionRunsResponse,
   ActionsResponse,
+  TelemetryResponse,
   AdminPasswordResetRequest,
   AdminUserCreateRequest,
   AdminUserCreateResponse,
@@ -1276,6 +1277,15 @@ const viewerUtcOffsetMinutes = (): string => String(-new Date().getTimezoneOffse
  * whole aggregate. Takes the dashboard's date/agent filter (and its trailing window, when one
  * is on) only — the model filter never applied to errors.
  */
+/**
+ * The telemetry buffer (PRFC-0008), admin only: `probes` summarizes per probe, `sessions` per
+ * Session; `session` narrows either to one Session. Whole-server, not per Project.
+ */
+export const getTelemetry = (params: { view: "probes" | "sessions"; session?: string }) =>
+  apiFetch<TelemetryResponse>("/api/telemetry", {
+    query: { view: params.view, session: params.session },
+  });
+
 export const getUsageErrors = (
   projectId: string,
   params: {
