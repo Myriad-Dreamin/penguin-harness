@@ -197,12 +197,7 @@ export function proposalRoutes(service: ProposalService): Hono {
     const body = await jsonBody(c);
     const req = { name: String(body.name ?? ""), url: String(body.url ?? "") };
     return c.json(
-      await service.registerServer(
-        param(c, "projectId"),
-        param(c, "orgId"),
-        req,
-        actorOf(c, body),
-      ),
+      await service.registerServer(param(c, "projectId"), param(c, "orgId"), req, actorOf(c, body)),
     );
   });
 
