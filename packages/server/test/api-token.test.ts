@@ -1,27 +1,32 @@
 /**
- * Local API token: minted per boot, persisted at <root>/api-token (0600), and accepted
- * by authMiddleware as `Authorization: Bearer` — authenticating as the built-in admin on
- * every protected route, SSE endpoints included (the CLI consumes SSE via fetch with
- * headers, so header auth must reach them).
+ * Bearer credentials. The boot's local API token is minted per boot and held in memory only:
+ * it signs session credentials (session-credential.test.ts) and is no credential itself, and
+ * no `<root>/api-token` is written — one an older build left is removed. A person's sign-in
+ * token (`penguin auth login` / `penguin auth token`) is the Bearer a command line holds; it
+ * authenticates on every protected route, SSE endpoints included (the CLI consumes SSE via
+ * fetch with headers, so header auth must reach them).
  */
 import fs from "node:fs";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MeResponse, SessionCreateResponse } from "../src/api/types.js";
-import { apiTokenPath, readApiToken, storeApiToken, tokensEqual } from "../src/auth/api-token.js";
+import { apiTokenPath, tokensEqual } from "../src/auth/api-token.js";
 import { bearerToken } from "../src/auth/middleware.js";
-import { createTestApp } from "./helpers.js";
+import { adminBearerToken, createTestApp, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
-describe("local API token", () => {
+describe("Bearer credentials", () => {
   let t: TestApp;
   let token: string;
 
   beforeEach(async () => {
-    t = await createTestApp();
-    const stored = readApiToken(t.root);
-    expect(stored).not.toBeNull();
-    token = stored!;
+    t = await createTestApp({
+      // A token file an older build wrote at its boot: the admin's authority for any reader.
+      beforeSeed: async (root) => {
+        fs.mkdirSync(root, { recursive: true });
+        fs.writeFileSync(apiTokenPath(root), "older-boot-token\n");
+      },
+    });
+    token = await adminBearerToken(t.app);
   });
   afterEach(async () => {
     await t.cleanup();
@@ -37,21 +42,32 @@ describe("local API token", () => {
       },
     });
 
-  it("boot persists the token at <root>/api-token with owner-only permissions", () => {
-    expect(t.deps.authService.localApiToken()).toBe(token);
-    if (process.platform !== "win32") {
-      const mode = fs.statSync(apiTokenPath(t.root)).mode & 0o777;
-      expect(mode).toBe(0o600);
-    }
+  it("boot holds the token in memory: no <root>/api-token, and an older build's is removed", () => {
+    expect(t.deps.authService.localApiToken()).not.toBeNull();
+    expect(fs.existsSync(apiTokenPath(t.root))).toBe(false);
   });
 
-  it("a valid Bearer authenticates as the admin (sessionVia 'token'), with no cookie at all", async () => {
+  it("the boot token and an older build's file value are no credential (401)", async () => {
+    expect((await bearer(t.deps.authService.localApiToken()!)).status).toBe(401);
+    expect((await bearer("older-boot-token")).status).toBe(401);
+  });
+
+  it("the admin's sign-in token authenticates as the admin (sessionVia 'token'), with no cookie", async () => {
     const res = await bearer(token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as MeResponse;
     expect(body.user.userId).toBe("admin");
     expect(body.user.isAdmin).toBe(true);
     expect(body.sessionVia).toBe("token");
+  });
+
+  it("a member's sign-in token is that member, and speaks as a person", async () => {
+    const { cookie } = await provisionUser(t.app, "olivia");
+    const res = await bearer(cookie.slice(cookie.indexOf("=") + 1));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MeResponse;
+    expect(body.user.userId).toBe("olivia");
+    expect(body.sessionVia).toBe("password");
   });
 
   it("a wrong Bearer is 401 — even alongside a valid cookie (no silent fallback)", async () => {
@@ -114,25 +130,12 @@ describe("local API token", () => {
     await sse.body?.cancel();
   });
 
-  it("hot-update APIs accept the Bearer token as the admin credential", async () => {
-    // /api/hmr/status goes through the same middleware plus the admin check; the local
-    // token IS admin authority, so it must pass the gate (the malformed body then 404s
-    // or answers, but never 401/403).
+  it("hot-update APIs accept the admin's sign-in token", async () => {
+    // /api/hmr/status goes through the same middleware plus the admin check: it must pass the
+    // gate (the malformed body then 404s or answers, but never 401/403).
     const res = await bearer(token, {}, "/api/hmr/status");
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
-  });
-
-  it("storeApiToken overwrites the previous boot's file (per-boot rotation)", () => {
-    storeApiToken(t.root, "next-boot-token");
-    expect(readApiToken(t.root)).toBe("next-boot-token");
-    if (process.platform !== "win32") {
-      const mode = fs.statSync(apiTokenPath(t.root)).mode & 0o777;
-      expect(mode).toBe(0o600);
-    }
-    // No tmp file left behind by the atomic write.
-    const leftovers = fs.readdirSync(t.root).filter((f) => f.startsWith("api-token."));
-    expect(leftovers).toEqual([]);
   });
 
   it("tokensEqual: constant-time compare semantics (equal / different / different length)", () => {
@@ -149,11 +152,5 @@ describe("local API token", () => {
     expect(bearerToken("Basic dXNlcjpwYXNz")).toBeNull();
     expect(bearerToken(undefined)).toBeNull();
     expect(bearerToken("Bearer")).toBeNull();
-  });
-
-  it("readApiToken: absent or empty file reads as null", () => {
-    expect(readApiToken(path.join(t.root, "no-such-subdir"))).toBeNull();
-    fs.writeFileSync(apiTokenPath(t.root), "\n");
-    expect(readApiToken(t.root)).toBeNull();
   });
 });
