@@ -32,7 +32,7 @@ import type { OmniMessage } from "@prismshadow/penguin-core/omnimessage";
 import { apiSocketPath } from "@prismshadow/penguin-server/api";
 import type { ServerEvent } from "@prismshadow/penguin-server/api";
 import type { StreamConnection, StreamHandlers } from "./sse";
-import { perfOn, perfSample } from "../lib/perf/switch";
+import { perfOn, perfSample, setPerfSwitch } from "../lib/perf/switch";
 
 /** Reconnect backoff, the ssh reconnect's shape: doubling from the floor to the ceiling. */
 const RECONNECT_MIN_MS = 1_000;
