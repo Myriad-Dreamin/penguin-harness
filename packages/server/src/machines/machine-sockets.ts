@@ -22,6 +22,7 @@ import type { MachineSocketFact } from "../api/types.js";
 import type { EventFrame, ServerFrame } from "../socket/frames.js";
 import { apiSocketPath } from "../socket/ref.js";
 import { HEARTBEAT_MS } from "../socket/serve.js";
+import type { Errors } from "../mechanisms/observability.js";
 
 /** The machine answered the handshake with a status: it is up, and has no socket to offer (or refused this server). */
 export class HandshakeRefused extends Error {
@@ -197,6 +198,25 @@ interface CachedSocket {
  * own `socket` fact (api/types.ts MachineInfo.socket) — so a stuck stream has a place to be
  * seen that is not the browser console.
  */
+/**
+ * Files a relay failure into the error table beside its log line: the machine, a code
+ * (`machine_socket_failed`, `machine_stream_not_opened`, …) and what was thrown or said.
+ * Optional everywhere it is taken — a relay without one only logs, as before.
+ */
+export type MachineFault = (fault: { machineId: string; code: string; err: unknown }) => void;
+
+/** A MachineFault that records into the error table: source `machine`, unexpected, the machine named in the message. */
+export function machineFaultInto(errors: Errors): MachineFault {
+  return ({ machineId, code, err }) =>
+    errors.record({
+      source: "machine",
+      err: `${machineId}: ${err instanceof Error ? err.message : String(err)}`,
+      code,
+      kind: "unexpected",
+      ...(err instanceof Error && err.stack !== undefined ? { stack: err.stack } : {}),
+    });
+}
+
 export class MachineSockets {
   readonly #sockets = new Map<string, CachedSocket>();
   readonly #refusedUntil = new Map<string, { until: number; status: number }>();
@@ -204,12 +224,14 @@ export class MachineSockets {
   /** The failure each machine's dials have been repeating since its last good one. */
   readonly #failing = new Map<string, string>();
   readonly #dialTimeoutMs: number;
+  readonly #fault: MachineFault | undefined;
 
   constructor(
     private readonly log: (line: string) => void,
-    options: { dialTimeoutMs?: number } = {},
+    options: { dialTimeoutMs?: number; fault?: MachineFault } = {},
   ) {
     this.#dialTimeoutMs = options.dialTimeoutMs ?? SOCKET_DIAL_TIMEOUT_MS;
+    this.#fault = options.fault;
   }
 
   /** What the socket to one machine is doing, or null when none has been asked for yet. */
@@ -288,6 +310,7 @@ export class MachineSockets {
             this.log(
               `[machines] no socket on ${machineId} (${err.message}); its streams are refused until it is updated`,
             );
+            this.#fault?.({ machineId, code: "machine_socket_refused", err });
           } else {
             const detail = err instanceof Error ? err.message : String(err);
             this.#state(machineId, "failed", detail);
@@ -297,6 +320,7 @@ export class MachineSockets {
             if (this.#failing.get(machineId) === detail) return;
             this.#failing.set(machineId, detail);
             this.log(`[machines] socket to ${machineId} failed: ${detail}`);
+            this.#fault?.({ machineId, code: "machine_socket_failed", err });
           }
         },
       );

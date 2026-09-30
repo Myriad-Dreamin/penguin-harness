@@ -91,9 +91,10 @@ import { machinesProxy } from "./proxy.js";
 import { machinesOAuthCallbackRoutes } from "./oauth-callback-route.js";
 import { ConnectClock } from "./connect-stages.js";
 import { MachineEventHub } from "./event-hub.js";
-import { MachineSockets } from "./machine-sockets.js";
+import { MachineSockets, machineFaultInto, type MachineFault } from "./machine-sockets.js";
 import { HttpError } from "../http/errors.js";
 import type { Access } from "../mechanisms/projects.js";
+import type { Errors } from "../mechanisms/observability.js";
 import { Hono } from "hono";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -1724,6 +1725,7 @@ export class MachinesModule {
   /** Whether the predecessor's delivered sessions may be claimed (hmr/platform.ts judged their contract). */
   @Use() private readonly resourceGroups!: ResourceGroups;
   @Use() private readonly config!: Config;
+  @Use() private readonly errors?: Errors;
   /** Absent in a test App without it: the connection probes then stay off, as they are while it is off. */
   @Use() private readonly telemetry?: Telemetry;
   @Provide() machines!: Machines;
@@ -1742,8 +1744,14 @@ export class MachinesModule {
     // The generation's one socket cache and the event hub over it (PRFC-0011): the proxy's
     // streams and the machines' aggregate event stream share both, so the hub holds ONE
     // subscription per machine however many tabs read it.
-    const sockets = new MachineSockets((line) => console.log(line));
-    const events = new MachineEventHub(sockets, (line) => console.log(line));
+    // What goes wrong on them goes into the error table as well as the log (source `machine`).
+    const fault = this.errors !== undefined ? machineFaultInto(this.errors) : undefined;
+    const sockets = new MachineSockets((line) => console.log(line), {
+      ...(fault !== undefined ? { fault } : {}),
+    });
+    const events = new MachineEventHub(sockets, (line) => console.log(line), {
+      ...(fault !== undefined ? { fault } : {}),
+    });
     const machines = new MachinesService(
       this.paths.root,
       repo.ownId(),
@@ -1754,7 +1762,12 @@ export class MachinesModule {
     this.machines = machines;
     this.routes = machinesRoutes({ machines, access: this.access, events });
     const trustProxy = this.config.trustProxy;
-    this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events, trustProxy });
+    this.serverProxyRoutes = machinesServerProxyRoutes(machines, {
+      sockets,
+      events,
+      trustProxy,
+      ...(fault !== undefined ? { fault } : {}),
+    });
     this.oauthCallbackRoutes = machinesOAuthCallbackRoutes(machines, {
       sockets,
       events,
@@ -1777,7 +1790,12 @@ export class MachinesModule {
  */
 export function machinesServerProxyRoutes(
   machines: MachinesService,
-  shared: { sockets?: MachineSockets; events?: MachineEventHub; trustProxy?: boolean } = {},
+  shared: {
+    sockets?: MachineSockets;
+    events?: MachineEventHub;
+    trustProxy?: boolean;
+    fault?: MachineFault;
+  } = {},
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const proxy = machinesProxy(

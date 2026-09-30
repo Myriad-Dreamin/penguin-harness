@@ -17,6 +17,7 @@ import { S } from "../lib/strings";
 import { apiUrl } from "../lib/server-context";
 import { machineForOrgPath, orgInPath, rememberSessionsIn } from "../lib/org-machines";
 import { machineForPath } from "../lib/session-machines";
+import { reportBrowserError } from "../lib/error-report";
 import { SocketTimeoutError, apiSocket, identityOf } from "./socket";
 
 /** Unified API error: carries the HTTP status code and server error code (server error body {error:{code,message}}). */
@@ -243,17 +244,32 @@ async function callOverSocket(
     // repeated — it may have landed.
     if (err instanceof SocketTimeoutError) {
       if (retriesOverHttp(err, method, target !== null)) return null;
-      if (isReadMethod(method)) throw new ApiError(0, "machine_no_answer", S.errors.networkError);
+      if (isReadMethod(method)) throw networkFailure("machine_no_answer", method, url, err);
     }
     // The socket closed under the call. A lost answer is a lost answer whichever transport
     // lost it, so this is not retried blindly: the HTTP fallback is only for calls that never
     // left (the socket rejects before sending when it is not open), which is the isOpen()
     // check above. Here the frame may have been delivered — report it as a network error.
-    throw new ApiError(0, "network_error", S.errors.networkError);
+    throw networkFailure("network_error", method, url, err);
   }
 }
 
 const isReadMethod = (method: string): boolean => method === "GET" || method === "HEAD";
+
+/**
+ * A call that reached no one (status 0): the one ApiError the server never saw, so it is
+ * reported to the error table (while the browser-side switch is on) before it is thrown.
+ * The path goes without its query; the reason is the transport's own.
+ */
+function networkFailure(code: string, method: string, url: string, cause: unknown): ApiError {
+  const reason = cause instanceof Error ? cause.message : "no answer";
+  reportBrowserError({
+    kind: "network",
+    code,
+    message: `${method} ${url.split("?")[0]}: ${reason}`,
+  });
+  return new ApiError(0, code, S.errors.networkError);
+}
 
 async function callOverHttp(method: string, url: string, body: unknown): Promise<Answer> {
   let response: Response;
@@ -265,8 +281,8 @@ async function callOverHttp(method: string, url: string, body: unknown): Promise
         ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
         : {}),
     });
-  } catch {
-    throw new ApiError(0, "network_error", S.errors.networkError);
+  } catch (err) {
+    throw networkFailure("network_error", method, url, err);
   }
   const date = response.headers.get("date");
   const retryAfterSeconds = retryAfterOf(response.headers.get("retry-after"));

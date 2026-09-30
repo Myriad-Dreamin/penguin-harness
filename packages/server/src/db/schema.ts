@@ -121,13 +121,17 @@ CREATE TABLE IF NOT EXISTS error_records (     -- server-side error capture (the
   project_id TEXT,                     -- nullable: sign-in/registration and process-level errors have no Project context
   agent_id   TEXT,
   session_id TEXT,
-  source     TEXT NOT NULL,            -- http | session | usage | title | subagent | process | llm | environment | compaction | schedule | messaging | organization | id_suggest | plugin
+  source     TEXT NOT NULL,            -- http | session | usage | title | subagent | process | llm | environment | compaction | schedule | messaging | socket | machine | plugin | browser | ...
   kind       TEXT NOT NULL,            -- expected (HttpError, business 4xx) | unexpected (500/runtime)
   code       TEXT NOT NULL,            -- HttpError.code / internal / session_run_failed / ...
   status     INTEGER,                  -- HTTP status code; NULL for non-HTTP sources
-  message    TEXT NOT NULL             -- truncated to 500 chars (no stack stored: stacks go to logs only)
+  message    TEXT NOT NULL,            -- truncated to 500 chars
+  stack      TEXT,                     -- unexpected errors only: the first 20 lines / 4000 chars of the stack
+  task_id    TEXT,                     -- the Task: the timestamp of its input message (the prompt's Trace timestamp)
+  request_id TEXT                      -- the request (x-penguin-request-id): set only while telemetry is on
 );
 CREATE INDEX IF NOT EXISTS idx_error_project_date ON error_records(project_id, date);
+CREATE INDEX IF NOT EXISTS idx_error_session ON error_records(session_id);
 CREATE TABLE IF NOT EXISTS schedule_state (    -- schedule runtime state (files are declarative intent; the system never writes back)
   project_id      TEXT NOT NULL,
   agent_id        TEXT NOT NULL,

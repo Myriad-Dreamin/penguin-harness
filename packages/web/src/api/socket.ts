@@ -33,6 +33,7 @@ import { apiSocketPath } from "@prismshadow/penguin-server/api";
 import type { ServerEvent } from "@prismshadow/penguin-server/api";
 import type { StreamConnection, StreamHandlers } from "./sse";
 import { perfOn, perfSample, setPerfSwitch } from "../lib/perf/switch";
+import { reportBrowserError } from "../lib/error-report";
 
 /** Reconnect backoff, the ssh reconnect's shape: doubling from the floor to the ceiling. */
 const RECONNECT_MIN_MS = 1_000;
@@ -136,6 +137,17 @@ export interface SocketReport {
   pendingCalls: string[];
   /** Streams issued on the socket, by path. */
   streams: string[];
+}
+
+/**
+ * A socket fault the server cannot see — a timeout, a silence, a handshake that never opened:
+ * the console line it always was, and a report to the error table while the browser-side
+ * switch is on (lib/error-report.ts).
+ */
+function fault(code: string, line: string, level: "warn" | "error" = "warn"): void {
+  if (level === "error") console.error(line);
+  else console.warn(line);
+  reportBrowserError({ kind: "socket", code, message: line });
 }
 
 /** Answers the socket cannot make useful: the endpoint refused, and will keep refusing. */
@@ -292,7 +304,8 @@ export class ApiSocket {
     if (this.#watchdog !== null) clearTimeout(this.#watchdog);
     this.#watchdog = setTimeout(() => {
       this.#watchdog = null;
-      console.warn(
+      fault(
+        "socket_silent",
         `[api-socket] no frame for ${2 * HEARTBEAT_MS} ms: closing the silent socket to reconnect`,
       );
       this.#closeOnPurpose();
@@ -319,7 +332,8 @@ export class ApiSocket {
         if (this.#calls.get(id)?.reject !== reject) return;
         this.#calls.delete(id);
         const live = this.#state === "open" && this.#framesSeen > framesAtSend;
-        console.warn(
+        fault(
+          "socket_call_no_answer",
           `[api-socket] ${method} ${path}: no answer in ${ANSWER_TIMEOUT_MS} ms over a socket that is ${this.#describeLiveness()}; ` +
             (live
               ? "the socket carried frames meanwhile, so it is the endpoint that is silent"
@@ -426,7 +440,10 @@ export class ApiSocket {
       // opened (onclose below), so a server that keeps doing this is given up on like one
       // that keeps refusing — with the reason on record.
       this.#lastClose = `the handshake neither opened nor failed in ${HANDSHAKE_TIMEOUT_MS} ms`;
-      console.warn(`[api-socket] ${this.#lastClose}; closing it to try again — ${url}`);
+      fault(
+        "socket_handshake_timeout",
+        `[api-socket] ${this.#lastClose}; closing it to try again — ${url}`,
+      );
       ws.close();
     }, HANDSHAKE_TIMEOUT_MS);
     ws.onopen = () => {
@@ -481,7 +498,8 @@ export class ApiSocket {
         // down must not read as a server without a socket.
         if (this.#freshProbe) {
           this.#neverOpened += 1;
-          console.warn(
+          fault(
+            "socket_handshake_failed",
             `[api-socket] the handshake did not open (${this.#neverOpened}/${GIVE_UP_AFTER} against a server that answered /api/me): ${this.#lastClose} — ${url}`,
           );
         } else {
@@ -513,7 +531,8 @@ export class ApiSocket {
       entry.openDeadline = null;
       if (entry.id !== id || this.#streams.get(id) !== entry) return;
       const delay = this.#streamBackoff(entry);
-      console.warn(
+      fault(
+        "socket_stream_not_opened",
         `[api-socket] stream ${entry.path}: not opened in ${STREAM_OPEN_TIMEOUT_MS} ms over a socket that is ${this.#describeLiveness()}; issuing it again in ${delay} ms`,
       );
       if (this.#ws !== null && this.#state === "open") {
@@ -543,7 +562,8 @@ export class ApiSocket {
     entry.streamDeadline = setTimeout(() => {
       entry.streamDeadline = null;
       if (entry.closed) return; // close() cleared this timer; an entry can outlive a frame, never a close
-      console.warn(
+      fault(
+        "socket_stream_silent",
         `[api-socket] stream ${entry.path}: no frame for ${2 * beatMs} ms (two beats at ${beatMs} ms) — ending it and re-subscribing from its last event id`,
       );
       if (entry.id !== null && this.#ws !== null && this.#state === "open") {
@@ -635,7 +655,10 @@ export class ApiSocket {
         // Answered without streaming: the endpoint refused (fatal) or is not ready (retry).
         const status = frame.status as number;
         if (fatal(status)) {
-          console.warn(`[api-socket] stream ${stream.path} refused with ${status}; not retried`);
+          fault(
+            "socket_stream_refused",
+            `[api-socket] stream ${stream.path} refused with ${status}; not retried`,
+          );
           this.#streams.delete(id);
           stream.id = null;
           stream.handlers.onError?.(true);
@@ -686,10 +709,12 @@ export class ApiSocket {
 
     if (this.#neverOpened >= GIVE_UP_AFTER) {
       this.#state = "unavailable";
-      console.error(
+      fault(
+        "socket_given_up",
         `[api-socket] giving up on the API socket: ${GIVE_UP_AFTER} handshakes never opened (last: ${this.#lastClose}). ` +
           `Every stream now runs as its own EventSource and every call as a fetch until this page reloads — ` +
           `a browser holds about six such connections per origin, so requests may queue behind the streams.`,
+        "error",
       );
       for (const entry of this.#waiting) {
         if (entry.closed) continue;

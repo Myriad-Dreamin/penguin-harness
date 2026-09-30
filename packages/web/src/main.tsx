@@ -26,6 +26,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { hasEscLayers } from "@prismshadow/penguin-ui";
 import { App } from "./app";
+import { ErrorBoundary } from "./components/error-boundary";
+import { installErrorListeners } from "./lib/error-report";
 import { bootInstallScope, watchInstallScope } from "./lib/install-scope";
 import { prefetchMe } from "./state/auth";
 import { watchStaleBuild } from "./lib/stale-build";
@@ -48,7 +50,9 @@ if (!container) throw new Error("#root mount point not found");
 function mount(): void {
   createRoot(container!).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   );
 }
@@ -57,6 +61,10 @@ function mount(): void {
 // such failure reloads it onto the current build (lib/stale-build.ts). This module's own URL
 // is the entry chunk's, which names the build.
 watchStaleBuild(import.meta.url);
+
+// Window errors and unhandled rejections, reported only while the browser-side switch is on
+// (lib/error-report.ts); installed before anything can throw.
+installErrorListeners();
 
 // A second tab can recognise a replaced root while this one is open, leaving everything on
 // screen here pointing at a data root that is gone.

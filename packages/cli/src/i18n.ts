@@ -243,6 +243,19 @@ export interface Messages {
     colDuration(): string;
     colStatus(): string;
     colDetail(): string;
+    /** `penguin telemetry errors`: the always-on error table, not the telemetry buffer. */
+    errorsDesc: string;
+    errorsRequest: string;
+    errorsKind: string;
+    kindInvalid(value: string): string;
+    errorsEmpty(): string;
+    /** How many repeats the server's dedup dropped for what was listed (in memory, since its start). */
+    suppressed(count: number): string;
+    colSource(): string;
+    colCode(): string;
+    colTask(): string;
+    colRequest(): string;
+    colMessage(): string;
   };
   /** `penguin schedule`: scheduled-task listing and management (a validated writer over the schedules API; the TOML file stays the single source of truth). */
   schedule: {
@@ -1554,6 +1567,19 @@ const en: Messages = {
     colDuration: () => "DURATION",
     colStatus: () => "STATUS",
     colDetail: () => "DETAIL",
+    errorsDesc:
+      "List the project's recorded errors (always on, not the telemetry buffer); inside a session, that session's",
+    errorsRequest: "Only errors of this request (telemetry's request id)",
+    errorsKind: "Only unexpected or expected errors",
+    kindInvalid: (value) => `Invalid --kind value "${value}": expected unexpected or expected.`,
+    errorsEmpty: () => "No errors recorded.",
+    suppressed: (count) =>
+      `${count} repeat${count === 1 ? "" : "s"} dropped by the server's dedup (counted since it started).`,
+    colSource: () => "SOURCE",
+    colCode: () => "CODE",
+    colTask: () => "TASK",
+    colRequest: () => "REQUEST",
+    colMessage: () => "MESSAGE",
   },
   schedule: {
     desc: "Manage scheduled tasks",
@@ -2893,6 +2919,17 @@ const zh: Messages = {
     colDuration: () => "用时",
     colStatus: () => "状态",
     colDetail: () => "详情",
+    errorsDesc: "列出 Project 记录下的错误（常开，不是遥测缓冲）；在会话里运行时只列本会话",
+    errorsRequest: "只看这个请求的错误（遥测的请求 id）",
+    errorsKind: "只看非预期（unexpected）或预期（expected）的错误",
+    kindInvalid: (value) => `无效的 --kind 值 "${value}"：应为 unexpected 或 expected。`,
+    errorsEmpty: () => "没有记录到错误。",
+    suppressed: (count) => `服务端去重压掉了 ${count} 条重复（自它启动以来的计数）。`,
+    colSource: () => "来源",
+    colCode: () => "代码",
+    colTask: () => "Task",
+    colRequest: () => "请求",
+    colMessage: () => "消息",
   },
   schedule: {
     desc: "管理定时任务",

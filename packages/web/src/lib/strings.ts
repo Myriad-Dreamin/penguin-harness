@@ -5954,6 +5954,10 @@ Benchmark：
   },
   errors: {
     networkError: "网络错误，请检查连接",
+    /** The error boundary's fallback: the page failed to render. */
+    renderFailed: "页面渲染出错了。",
+    renderFailedHint: "重新加载通常能恢复；反复出现时，错误详情在浏览器的开发者工具里。",
+    reload: "重新加载",
     modelCredentialMissing: (modelId: string) =>
       `模型 ${modelId} 还没有可用的 API key，请先在「模型」页为它配置`,
     noDefaultModel: "该 Project 还没有默认模型，请先在「模型」页添加模型并设为默认",

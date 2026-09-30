@@ -5906,6 +5906,11 @@ Scenarios:
   },
   errors: {
     networkError: "Network error, please check your connection",
+    /** The error boundary's fallback: the page failed to render. */
+    renderFailed: "This page failed to render.",
+    renderFailedHint:
+      "Reloading usually recovers it; if it keeps happening, the details are in the browser's developer tools.",
+    reload: "Reload",
     modelCredentialMissing: (modelId: string) =>
       `Model ${modelId} has no API key yet — configure it on the Models page first`,
     noDefaultModel: "This project has no default model yet — add one on the Models page first",

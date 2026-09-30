@@ -25,7 +25,7 @@ import http from "node:http";
 import { Readable } from "node:stream";
 import type { MachineEventHub } from "./event-hub.js";
 import { MachineSocketRelay } from "./socket-relay.js";
-import type { MachineSockets } from "./machine-sockets.js";
+import type { MachineFault, MachineSockets } from "./machine-sockets.js";
 import { clientOrigin, forwardedHeaders, forwardedPrefix } from "../http/forwarded.js";
 
 /** Path prefix of the proxy: `/server/<id>/api/…`. */
@@ -260,10 +260,16 @@ export function machinesProxy(
   log: (line: string) => void = () => undefined,
   /**
    * The shared socket cache and event hub, so this generation's routes read the facts the relay
-   * writes; and whether this server trusts its own reverse proxy's forwarded headers
-   * (PENGUIN_TRUST_PROXY), which decides what it tells the machine about the browser.
+   * writes; whether this server trusts its own reverse proxy's forwarded headers
+   * (PENGUIN_TRUST_PROXY), which decides what it tells the machine about the browser; and where
+   * relay failures are filed.
    */
-  shared: { sockets?: MachineSockets; events?: MachineEventHub; trustProxy?: boolean } = {},
+  shared: {
+    sockets?: MachineSockets;
+    events?: MachineEventHub;
+    trustProxy?: boolean;
+    fault?: MachineFault;
+  } = {},
   /** Test hook: how long a forwarded read may wait for its answer (FORWARD_ANSWER_TIMEOUT_MS). */
   options: { answerTimeoutMs?: number } = {},
 ): (request: Request) => Promise<Response | null> {
