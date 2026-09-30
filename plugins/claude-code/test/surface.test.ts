@@ -178,6 +178,36 @@ describe("the running marker", () => {
     ).toBe(false);
     expect(readsAsRunning(["✻ Working…", "", "", "", "", "", "", ""])).toBe(true);
   });
+
+  it("is also the footer's interrupt hint, which a tip under the spinner cannot push away", () => {
+    // A real screen (a queued run, 2026-09-30): the two-row tip puts the spinner seventh from
+    // the bottom, outside the rows read, while the turn is plainly still going.
+    const input = [
+      "  ────────────────────────────────────────",
+      "  ❯ ",
+      "  ────────────────────────────────────────",
+    ];
+    const working = [
+      "  ● Capturing run 6 screen as evidence",
+      "  * Transmuting… (1m 43s · ↓ 6.6k tokens)",
+      "    ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's",
+      "       current work",
+      ...input,
+      "    ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← for agents",
+    ];
+    expect(working.filter((l) => l.trim() !== "").slice(-MARKER_ROWS)).not.toContain(working[1]);
+    expect(readsAsRunning(working)).toBe(true);
+    // The same screen once the turn ended: the footer drops the hint, and the tip's
+    // "interrupting" is not it.
+    const waiting = [
+      "  ✻ Transmuted for 4m 2s",
+      "    ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's",
+      "       current work",
+      ...input,
+      "    ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+    ];
+    expect(readsAsRunning(waiting)).toBe(false);
+  });
 });
 
 describe("the title", () => {
