@@ -10,7 +10,11 @@ import type {
   ErrorRecordInsert,
   ErrorSummary,
 } from "../db/repos/errors.js";
-import type { ErrorRecordArgs } from "../runtime/error-recorder.js";
+import type {
+  ErrorRecordArgs,
+  SuppressedCount,
+  SuppressedFilter,
+} from "../runtime/error-recorder.js";
 import type {
   UsageAgentBucketCount,
   UsageFilter,
@@ -75,6 +79,8 @@ export abstract class ErrorLog extends Interface<{
 /** Errors: the mechanism ErrorRecorder implements. */
 export abstract class Errors extends Interface<{
   record(args: ErrorRecordArgs): void;
+  /** What the short-window dedup dropped, counted in memory per key (never persisted; a restart zeroes it). */
+  suppressed(f: SuppressedFilter): SuppressedCount[];
 }>() {}
 
 /** UsageStore: the mechanism UsageRepo implements. */

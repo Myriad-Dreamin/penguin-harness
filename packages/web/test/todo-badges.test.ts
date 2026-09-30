@@ -35,7 +35,14 @@ function errorPage(total: number, ...timestamps: string[]): UsageErrorsPage {
       code: "boom",
       kind: "unexpected",
       message: "boom",
+      agentId: null,
+      sessionId: null,
+      taskId: null,
+      requestId: null,
+      status: null,
+      stack: null,
     })),
+    suppressed: [],
   };
 }
 
