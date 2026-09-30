@@ -152,7 +152,7 @@ export function ProfileSection() {
             <UserAvatar
               userId={user.userId}
               {...(user.displayName !== undefined ? { displayName: user.displayName } : {})}
-              {...(user.avatar !== undefined ? { avatar: user.avatar } : {})}
+              {...(user.avatarRev !== undefined ? { avatarRev: user.avatarRev } : {})}
               size={USER_AVATAR_SIZE.preview}
             />
             {/* A label rather than a Button: the hidden file input has to be labelled for a
