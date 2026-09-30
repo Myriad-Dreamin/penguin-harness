@@ -23,6 +23,7 @@ import type {
   ProposalStatus,
 } from "@prismshadow/penguin-server/api";
 import { ghRunner, parsePullUrl, STATUS_TTL_MS, type RunGh } from "./pr-status.js";
+import { placeServer, type ServerReading } from "./servers.js";
 
 /** `owner/repo#n`, lower-cased owner and repo: how two URLs of one PR are recognised as one. */
 export function pullKey(url: string): string | null {
@@ -65,6 +66,8 @@ export interface GraphInput {
   /** A comparison read earlier; undefined when it was not (or could not be) read. */
   compare: (from: string, to: string) => Comparison | undefined;
   proposals: GraphProposal[];
+  /** The registered servers as read just now (servers.ts), placed on the layers by their commit. */
+  servers: ServerReading[];
   errors: string[];
   checkedAt: string;
 }
@@ -162,7 +165,15 @@ export function buildGraph(input: GraphInput): ProposalGraphResponse {
     unplaced,
     errors: input.errors,
     checkedAt: input.checkedAt,
+    servers: input.servers.map((server) =>
+      placeServer(server, layersOf(input.base.head, [...order, ...offChain].map((n) => nodes.get(n)!)), input.compare),
+    ),
   };
+}
+
+/** The layers a server may sit on: the base branch (0) first, then every node in graph order. */
+function layersOf(baseHead: string | null, nodes: Array<{ number: number; head: string }>) {
+  return [{ number: 0, head: baseHead }, ...nodes.map((n) => ({ number: n.number, head: n.head }))];
 }
 
 /** Each origin's open PR on the node's branch, with its head against the node's. */
@@ -237,8 +248,10 @@ export class PrGraphReader {
     base: string;
     origins: Array<{ name: string; repo: string }>;
     proposals: GraphProposal[];
+    servers?: ServerReading[];
     errors?: string[];
   }): Promise<ProposalGraphResponse> {
+    const servers = config.servers ?? [];
     const errors: string[] = [...(config.errors ?? [])];
     if (config.repo === "") {
       return buildGraph({
@@ -248,6 +261,7 @@ export class PrGraphReader {
         origins: config.origins.map((o) => ({ ...o, pulls: null })),
         compare: () => undefined,
         proposals: config.proposals,
+        servers,
         errors,
         checkedAt: new Date(this.now()).toISOString(),
       });
@@ -278,6 +292,25 @@ export class PrGraphReader {
     }
     await this.compareAll(config.repo, pairs, errors);
 
+    // And each server's commit against every layer's head, unless it is one of them. A commit
+    // GitHub does not have fails every comparison the same way: one line per server says so.
+    const heads = [head, ...list.map((p) => p.head)].filter((h): h is string => h !== null);
+    for (const server of servers) {
+      const commit = server.commit?.toLowerCase();
+      if (commit === undefined || heads.some((h) => h.toLowerCase().startsWith(commit))) continue;
+      const failed: string[] = [];
+      await this.compareAll(
+        config.repo,
+        heads.map((h) => [h, commit]),
+        failed,
+      );
+      if (heads.length > 0 && failed.length === heads.length) {
+        errors.push(
+          `server ${server.name}: commit ${commit} not compared with any layer: ${failed[0]!.split(" not compared: ")[1] ?? failed[0]}`,
+        );
+      }
+    }
+
     return buildGraph({
       repo: config.repo,
       base: { branch: config.base, head },
@@ -285,6 +318,7 @@ export class PrGraphReader {
       origins,
       compare: (from, to) => this.comparisons.get(`${from}...${to}`),
       proposals: config.proposals,
+      servers,
       errors,
       checkedAt: new Date(this.now()).toISOString(),
     });
