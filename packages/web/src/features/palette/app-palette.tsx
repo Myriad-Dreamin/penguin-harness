@@ -12,6 +12,7 @@ import { onCommand } from "../../lib/shortcuts/dispatcher";
 import { useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { S } from "../../lib/strings";
 import { HarnessHistoryOverlay } from "../harness/harness-history-overlay";
+import { useAuth } from "../../state/auth";
 
 /** A mount point with nothing to add shares one empty list, so the action memo stays put. */
 const NO_EXTRA: readonly PaletteAction[] = [];
@@ -23,6 +24,8 @@ const NO_EXTRA: readonly PaletteAction[] = [];
 export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteAction[] }) {
   const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === true;
 
   // The chord is the keymap's (lib/shortcuts): the window dispatcher matches it, calls this
   // handler and prevents the browser default once it is handled. A functional update reads
@@ -39,14 +42,19 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
   const actions = useMemo<PaletteAction[]>(
     () => [
       ...extra,
-      {
-        id: "harness-history",
-        label: S.commandPalette.harnessHistory,
-        keywords: ["harness history", "version", "hmr", "ifaces"],
-        run: () => setHistoryOpen(true),
-      },
+      // The version history and its rollback are the server's own: an admin's view.
+      ...(isAdmin
+        ? [
+            {
+              id: "harness-history",
+              label: S.commandPalette.harnessHistory,
+              keywords: ["harness history", "version", "hmr", "ifaces"],
+              run: () => setHistoryOpen(true),
+            },
+          ]
+        : []),
     ],
-    [extra],
+    [extra, isAdmin],
   );
   return (
     <>
@@ -59,7 +67,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         emptyText={S.commandPalette.noResults}
         hint={S.commandPalette.hint(toggleShortcut)}
       />
-      <HarnessHistoryOverlay open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <HarnessHistoryOverlay open={historyOpen && isAdmin} onClose={() => setHistoryOpen(false)} />
     </>
   );
 }
