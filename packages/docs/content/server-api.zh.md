@@ -459,6 +459,7 @@ flow id 指向的流程不存在时返回 `404 platform_auth_flow_not_found`。`
 | --- | --- | --- |
 | GET | `/api/plugins/registry` | 合并后的插件索引：`PluginIndexEntry[]` |
 | GET | `/api/plugins/registry/readme?name=…` | 索引中一个条目的说明文档：`{name, readme}` |
+| GET | `/api/plugins/registry/contents?name=…` | 一个名字下列出的全部内容，高版本在前，每份带是否在本机仓、当前这一代是否链接：`{name, contents: [{version, integrity?, stored, linked}]}` |
 | GET | `/api/projects/:projectId/plugins/installed` | 该 Project 要求的插件，连同进程的实际运行情况：`{plugins, shipped, file, restartPending}` |
 | POST | `/api/projects/:projectId/plugins/installed` | 仅管理员。添加一个插件，本机没有时先现取：`{specifier, integrity?, machineId?}` |
 | PUT | `/api/projects/:projectId/plugins/installed` | 仅管理员。替换整个列表：`{plugins}` |
