@@ -166,7 +166,14 @@ export function buildGraph(input: GraphInput): ProposalGraphResponse {
     errors: input.errors,
     checkedAt: input.checkedAt,
     servers: input.servers.map((server) =>
-      placeServer(server, layersOf(input.base.head, [...order, ...offChain].map((n) => nodes.get(n)!)), input.compare),
+      placeServer(
+        server,
+        layersOf(
+          input.base.head,
+          [...order, ...offChain].map((n) => nodes.get(n)!),
+        ),
+        input.compare,
+      ),
     ),
   };
 }

@@ -4901,7 +4901,12 @@ Benchmark：
         serversOff: "不在图上的 server",
         serversOffHint:
           "读不到它此刻跑的 commit，或这个 commit 与图上任何一层都比不出来（例如只在某台机器本地部署线上的提交）。",
-        serverTitle: (name: string, commit: string, describe: string | null, ahead: number | null): string =>
+        serverTitle: (
+          name: string,
+          commit: string,
+          describe: string | null,
+          ahead: number | null,
+        ): string =>
           `server ${name} 跑在 ${describe ?? commit}${ahead !== null && ahead > 0 ? `，比这一层多 ${ahead} 个提交` : ""}`,
         serverUnread: "读不到 commit",
         unplacedHint: "登记了 impl PR，但它不是交付仓库上的 open PR（已关、已合并，或开在别处）。",
