@@ -63,7 +63,6 @@ const ALLOWLIST: DeslopAllowlist = {
   "features/chat/agent-topology-view.tsx": { 12: [1, "W6"], 13: [3, "W6"] },
   "features/chat/chat-input.tsx": { 7: [1, "W6"], 12: [7, "W6"], 13: [5, "W6"] },
   "features/chat/chat-page.tsx": { 12: [2, "W6"], 13: [3, "W6"] },
-  "features/chat/context-gauge.tsx": { 12: [5, "W8"] },
   "features/chat/conversation-outline.tsx": { 12: [1, "W6"] },
   "features/chat/draft-view.tsx": { 12: [1, "W6"], 13: [1, "W6"] },
   "features/chat/drop-zone.tsx": { 18: [1, "W7"] },
@@ -88,8 +87,6 @@ const ALLOWLIST: DeslopAllowlist = {
   "features/company/channel-composer.tsx": { 13: [2, "W6"] },
   "features/company/channel-header.tsx": { 13: [3, "W6"] },
   "features/company/channel-view.tsx": { 12: [1, "W6"], 13: [6, "W6"] },
-  "features/company/chart-card.tsx": { 12: [1, "W8"], 13: [5, "W8"] },
-  "features/company/finance-gauge.tsx": { 13: [1, "W8"] },
   "features/dock/dock-drag.tsx": { 3: [1, "W7"], 12: [1, "W7"] },
   "features/dock/dock-launcher.tsx": { 13: [1, "W7"], 18: [3, "W7"], 19: [4, "W7"] },
   "features/dock/dock-panel.tsx": { 1: [2, "W7"], 12: [2, "W7"] },
@@ -97,9 +94,6 @@ const ALLOWLIST: DeslopAllowlist = {
   "features/settings/shortcuts-section.tsx": { 13: [1, "W10"] },
   "features/terminal/terminal-appearance.ts": { 9: [1, "W10"] },
   "features/terminal/terminal-keybar.tsx": { 12: [1, "W10"] },
-  "features/traces/timeline-chart.tsx": { 6: [2, "W8"], 13: [10, "W8"] },
-  "features/usage/usage-charts.tsx": { 13: [3, "W8"] },
-  "features/usage/usage-page.tsx": { 12: [1, "W8"] },
 };
 
 const WAVES = /^W(?:1a?|1b|10|[2-9])(?:\+W(?:1a?|1b|10|[2-9]))*$/;

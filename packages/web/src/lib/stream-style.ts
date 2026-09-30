@@ -8,11 +8,11 @@
  * - `--ui-stream-rate`: characters per second of a paced reveal (`fade` paces its words at this
  *   rate too). Missing, zero or not a number → no pacing.
  *
- * Read the way lib/chart-style.ts reads the chart tokens: one MutationObserver on <html> drops
- * the cached record when the theme, mode or accent changes, a subscriber gets the same object
- * while nothing it reads changed, and nothing here ever writes. The record also carries the
- * gallery's reduced-motion switch (`data-motion="reduced"` on <html>), the second of the two
- * signals the theme CSS honours beside the media query.
+ * Read the way the UI package's useChartStyle reads the chart tokens: one MutationObserver on
+ * <html> drops the cached record when the theme, mode or accent changes, a subscriber gets the
+ * same object while nothing it reads changed, and nothing here ever writes. The record also
+ * carries the gallery's reduced-motion switch (`data-motion="reduced"` on <html>), the second of
+ * the two signals the theme CSS honours beside the media query.
  */
 import { useSyncExternalStore } from "react";
 
