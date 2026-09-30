@@ -1424,6 +1424,8 @@ export class ProposalService {
           `${url} is the server answering this request ("${SELF_NAME}"); it is registered already.`,
         );
       }
+      // Name and address first: a repeat of either is refused without asking the address.
+      requireUnregistered(ledger.servers(), { installId: null }, { name, url, installId: null });
       let identity;
       try {
         identity = await this.probe()(url);
