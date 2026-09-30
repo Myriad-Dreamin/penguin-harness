@@ -155,6 +155,13 @@ export interface MeResponse {
    * user's own preference (`UiPrefs.companyMode`) only hides the switch for that user.
    */
   companyMode: boolean;
+  /**
+   * The browser half of the telemetry switch (`ServerSettings.telemetry`, PRFC-0008): true
+   * tells the page to load its collector and send shape-only samples to
+   * `POST /api/telemetry/samples`; false (the default) means the page loads, observes and
+   * sends nothing. Read per request, so a reload picks up a change.
+   */
+  telemetry: boolean;
 }
 
 /**
@@ -451,6 +458,28 @@ export interface TelemetryMachineView {
     liveBytes: number;
     subscribers: number;
   } | null;
+}
+
+/**
+ * `POST /api/telemetry/samples` — the browser's samples into the same buffer the server's
+ * probes fill (any signed-in user; 409 `telemetry_off` while the switch is off). Only `web.*`
+ * probes, numbers and short strings: the route drops what is not a shape.
+ */
+export interface TelemetryBrowserSamplesRequest {
+  samples: Array<{
+    probe: string;
+    durMs?: number;
+    bytes?: number;
+    n?: number;
+    status?: string;
+    session?: string;
+    attrs?: Record<string, string | number | boolean>;
+  }>;
+}
+
+export interface TelemetryBrowserSamplesResponse {
+  /** How many of the sent samples were stored. */
+  accepted: number;
 }
 
 /**

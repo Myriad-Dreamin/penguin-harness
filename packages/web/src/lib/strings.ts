@@ -3470,6 +3470,17 @@ Benchmark：
       `将删除本 Project 中 Agent「${agentId}」${range}的 ${count} 条错误记录，其他 Agent 与其余时间段的记录保留。`,
     errorsClearIrreversible: "此操作不可恢复。",
     errorsClearDone: (count: number): string => `已删除 ${count} 条错误记录`,
+    /** The performance panel (the telemetry buffer, admin only). */
+    performance: "性能",
+    perfColProbe: "采集点",
+    perfColCount: "次数",
+    perfColMax: "最大",
+    perfSessionFilter: "按 Session 筛选",
+    perfAllSessions: "全部 Session",
+    perfRefresh: "刷新",
+    perfBuffered: (n: number): string => `缓冲中 ${n} 条样本`,
+    perfOff: "遥测未开启。用 penguin telemetry on 打开后，这里按采集点列出服务端与浏览器的耗时。",
+    perfEmpty: "还没有样本",
   },
 
   /** The Trace panel's own view of a Trace file (trace-file-view / timeline-chart); the standalone browsing page these once also served is gone. */
