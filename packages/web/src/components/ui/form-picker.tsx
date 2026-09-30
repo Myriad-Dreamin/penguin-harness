@@ -4,11 +4,12 @@
  * chevron) with a portaled dropdown hanging under its left edge. It is the single source of the
  * "form-variant" look shared by the model picker, the workspace picker and the schedule's
  * session picker, so the three read identically and none re-hand-rolls the trigger. The model
- * picker opens a dialog instead of a menu, so it takes the trigger alone (FormPickerTrigger).
+ * and workspace pickers open a dialog instead of a menu, so they take the trigger alone
+ * (FormPickerTrigger).
  *
  * It owns only the trigger + Dropdown wiring; the menu body is the caller's `children`
- * (a searchable list, a directory browser, …), and open/close state stays with the caller
- * (the pickers drive it and close on pick).
+ * (a searchable list, …), and open/close state stays with the caller (the pickers drive it
+ * and close on pick).
  */
 import type { ReactNode } from "react";
 import { Dropdown } from "./dropdown";
@@ -40,8 +41,8 @@ export interface FormPickerTriggerProps {
 
 /**
  * The form-variant trigger on its own, for a picker that opens a dialog rather than a hanging
- * menu (the model picker): the same button FormPicker draws, so both kinds of picker read
- * identically in a form.
+ * menu (the model picker, the workspace finder): the same button FormPicker draws, so both
+ * kinds of picker read identically in a form.
  */
 export function FormPickerTrigger({
   leading,

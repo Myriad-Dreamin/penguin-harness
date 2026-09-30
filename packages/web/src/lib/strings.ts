@@ -2207,19 +2207,70 @@ export const zh = {
     thinkingSwitchApplied: (to: string): string => `上下文已压缩，思考等级已切换为「${to}」。`,
     /** Compaction ended without completing — the switch still applies, so say both. */
     thinkingSwitchCompactFailed: "压缩未成功完成，思考等级已照常切换。",
-    /** The machine a workspace lives on; the row only shows when more than one is reachable. */
-    workspaceMachine: "机器",
     workspaceHere: "本机",
     /** Why a listed machine cannot be picked — shown ON its row, where the question is asked. */
     workspaceMachineWhy: {
       "no-identity": "待识别",
     },
-    workspaceUseThis: "使用此目录",
-    workspaceUp: "上级目录",
-    workspaceNoSubdirs: "无子目录",
     workspaceAuto: "临时工作区",
     workspaceClear: "改用临时工作区",
     workspaceDirInvalid: "目录不存在或无法访问，已回退",
+    /** The Workspace finder: the modal the Workspace pickers open (workspace-finder.tsx). */
+    finder: {
+      choose: "选择",
+      back: "后退",
+      forward: "前进",
+      /** Toolbar: the parent folder. */
+      up: "上一级",
+      refresh: "刷新",
+      /** The address bar turned into a text field: its accessible name and placeholder. */
+      address: "路径",
+      addressPlaceholder: "输入绝对路径，或以 ~ 开头",
+      /** What clicking the address bar does (also ⌘⇧G / Ctrl+Shift+G). */
+      editPath: "编辑路径",
+      filter: "筛选",
+      showSidebar: "显示侧边栏",
+      hideSidebar: "隐藏侧边栏",
+      quickAccess: "常用",
+      /** Windows only: the section listing the drives. */
+      thisPc: "此电脑",
+      recent: "最近使用",
+      machines: "机器",
+      places: {
+        desktop: "桌面",
+        documents: "文档",
+        downloads: "下载",
+        pictures: "图片",
+      },
+      /** Finder's own name for Documents, used when the browsed machine is a Mac. */
+      documentsMac: "文稿",
+      addToQuickAccess: "添加到常用",
+      removeFromQuickAccess: "从常用中移除",
+      /** The + beside the Quick access heading. */
+      addCurrentToQuickAccess: "将当前文件夹添加到常用",
+      /** Accessible name of a Quick access row's remove button. */
+      removeNamed: (name: string): string => `从常用中移除「${name}」`,
+      open: "打开",
+      /** Accessible name of the enter button at the end of a folder row. */
+      openFolder: (name: string): string => `打开「${name}」`,
+      chooseThis: "选择此文件夹",
+      chooseCurrent: "选择当前文件夹",
+      copyPath: "复制路径",
+      /** Accessible name of the breadcrumb trail. */
+      path: "当前路径",
+      columnName: "名称",
+      columnModified: "修改日期",
+      /** Tooltip on a file row: files are listed for context but cannot be picked. */
+      fileNotSelectable: "只能选择文件夹",
+      empty: "此文件夹为空",
+      noMatch: (q: string): string => `没有名称包含「${q}」的项目`,
+      deniedTitle: "无法读取此文件夹",
+      /** The server runs on macOS and privacy protection refused the folder. */
+      deniedMac:
+        "macOS 阻止了对此文件夹的访问。请在「系统设置 → 隐私与安全性 → 文件与文件夹」中允许访问后重试。",
+      denied: "运行服务的账户没有读取此文件夹的权限。",
+      loadFailed: "无法打开此文件夹",
+    },
     /** Grouping toggle of the sidebar conversation list (workspace grouping is the default) and the workspace groups. */
     groupByWorkspace: "按工作区分组",
     groupByAgent: "按智能体分组",
@@ -4593,6 +4644,7 @@ Benchmark：
       image_too_large: "图片过大，无法随对话发送。",
       dir_not_absolute: "目录必须是绝对路径。",
       dir_not_found: "该目录不存在或不可访问。",
+      dir_permission_denied: "没有读取该目录的权限。",
       not_a_dir: "该路径不是目录。",
       path_not_found: "该路径不存在。",
       reveal_failed: "无法打开文件夹。",
