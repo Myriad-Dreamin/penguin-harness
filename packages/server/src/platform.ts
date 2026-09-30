@@ -88,6 +88,7 @@ import { ErrorsRepo } from "./db/repos/errors.js";
 import { AgentStateStore } from "./runtime/agent-state.js";
 import { SessionSources } from "./runtime/session-sources.js";
 import { ErrorRecorder } from "./runtime/error-recorder.js";
+import { BrowserErrorRoutes } from "./http/routes/browser-errors.js";
 import { UsageRecorder } from "./runtime/usage-recorder.js";
 import { UsageService } from "./services/usage-service.js";
 import { ProjectConfigService } from "./services/project-config-service.js";
@@ -406,7 +407,7 @@ export class SandboxSettingsModule {}
 export class TelemetryModule {}
 
 @Module({
-  children: [ErrorsRepo, ErrorRecorder, UsageRepo, UsageRecorder, UsageService],
+  children: [ErrorsRepo, ErrorRecorder, UsageRepo, UsageRecorder, UsageService, BrowserErrorRoutes],
   exports: [ErrorLog, Errors, UsageStore, UsageRecording, UsageQueries],
 })
 export class ObservabilityModule {}

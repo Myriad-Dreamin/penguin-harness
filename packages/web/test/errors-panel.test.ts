@@ -29,6 +29,12 @@ const item = (code: string): UsageErrorItem => ({
   code,
   kind: "unexpected",
   message: `${code} went wrong`,
+  agentId: null,
+  sessionId: null,
+  taskId: null,
+  requestId: null,
+  status: 500,
+  stack: null,
   count: 1,
   firstTs: "2026-08-27T10:00:00.000Z",
 });

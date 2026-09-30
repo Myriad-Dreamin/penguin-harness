@@ -48,6 +48,12 @@ export interface ErrorRecordInsert {
   code: string;
   status: number | null;
   message: string;
+  /** Unexpected errors only: the truncated stack (see ErrorRecorder's STACK_MAX_LINES / STACK_MAX). */
+  stack?: string | null;
+  /** The Task: the timestamp of its input message, the prompt's own Trace timestamp. */
+  taskId?: string | null;
+  /** The request (telemetry's request key): only while the telemetry switch was on. */
+  requestId?: string | null;
 }
 
 /** Generic filter: date range + agent (errors have no Model dimension, so no model filter). */
@@ -63,6 +69,10 @@ export interface ErrorFilter {
   agentId?: string;
   /** One error category (`unexpected` / `expected`); absent counts both, which is what the panel shows. */
   kind?: string;
+  /** One Session's errors (what an Agent reads about itself). */
+  sessionId?: string;
+  /** One request's errors — the key a telemetry sample carries. */
+  requestId?: string;
   /** Whether to include unattributed errors (`project_id IS NULL`): admins only, defaults to false (see file header). */
   includeGlobal?: boolean;
 }
@@ -96,6 +106,12 @@ export interface ErrorItem {
   count: number;
   /** The earliest of them (equal to `ts` for a single record). */
   firstTs: string;
+  agentId: string | null;
+  sessionId: string | null;
+  taskId: string | null;
+  requestId: string | null;
+  status: number | null;
+  stack: string | null;
 }
 
 /**
@@ -128,8 +144,9 @@ export class ErrorsRepo implements ErrorLog {
     this.db
       .prepare(
         `INSERT INTO error_records
-           (ts, date, project_id, agent_id, session_id, source, kind, code, status, message)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (ts, date, project_id, agent_id, session_id, source, kind, code, status, message,
+            stack, task_id, request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         r.ts,
@@ -142,6 +159,9 @@ export class ErrorsRepo implements ErrorLog {
         r.code,
         r.status,
         r.message,
+        r.stack ?? null,
+        r.taskId ?? null,
+        r.requestId ?? null,
       );
     if (++this.sinceCheck >= this.pruneEvery) {
       this.sinceCheck = 0;
@@ -197,6 +217,14 @@ export class ErrorsRepo implements ErrorLog {
     if (f.kind !== undefined) {
       conds.push("kind = :kind");
       params.kind = f.kind;
+    }
+    if (f.sessionId !== undefined) {
+      conds.push("session_id = :sessionId");
+      params.sessionId = f.sessionId;
+    }
+    if (f.requestId !== undefined) {
+      conds.push("request_id = :requestId");
+      params.requestId = f.requestId;
     }
     return { where: conds.join(" AND "), params };
   }
@@ -256,12 +284,21 @@ export class ErrorsRepo implements ErrorLog {
   ): ErrorItem[] {
     const { where, params } = this.conds(projectId, f);
     const day = dayOf(utcOffsetMinutes);
+    // A folded row carries the attribution and context of its newest record (the one its
+    // `ts` names): the group picks that record's id, and the outer join reads its columns.
     const rows = this.db
       .prepare(
-        `SELECT MAX(ts) AS ts, MIN(ts) AS first_ts, COUNT(*) AS count, source, code, kind, message
-         FROM error_records WHERE ${where}
-         GROUP BY ${day.sql}, source, code, kind, message
-         ORDER BY MAX(id) DESC LIMIT :limit OFFSET :offset`,
+        `SELECT g.ts, g.first_ts, g.count, g.source, g.code, g.kind, g.message,
+                e.agent_id, e.session_id, e.task_id, e.request_id, e.status, e.stack
+         FROM (
+           SELECT MAX(id) AS last_id, MAX(ts) AS ts, MIN(ts) AS first_ts, COUNT(*) AS count,
+                  source, code, kind, message
+           FROM error_records WHERE ${where}
+           GROUP BY ${day.sql}, source, code, kind, message
+           ORDER BY MAX(id) DESC LIMIT :limit OFFSET :offset
+         ) g
+         JOIN error_records e ON e.id = g.last_id
+         ORDER BY g.last_id DESC`,
       )
       .all({ ...params, ...day.params, limit, offset });
     return rows.map((r) => ({
@@ -272,6 +309,12 @@ export class ErrorsRepo implements ErrorLog {
       message: r.message as string,
       count: r.count as number,
       firstTs: r.first_ts as string,
+      agentId: (r.agent_id as string | null) ?? null,
+      sessionId: (r.session_id as string | null) ?? null,
+      taskId: (r.task_id as string | null) ?? null,
+      requestId: (r.request_id as string | null) ?? null,
+      status: (r.status as number | null) ?? null,
+      stack: (r.stack as string | null) ?? null,
     }));
   }
 

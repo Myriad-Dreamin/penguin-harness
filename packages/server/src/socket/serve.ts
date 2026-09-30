@@ -58,6 +58,12 @@ export interface ApiSocketDeps {
   /** The origin in-process requests are addressed to (the canonical App host, as HTTP requests carry it). */
   origin: string;
   log: (line: string) => void;
+  /**
+   * Files what went wrong on the socket into the error table, beside the log line: a call
+   * that threw inside the platform (`socket_call_failed`) and the socket's own error
+   * (`socket_error`). Absent, the log line is all there is.
+   */
+  fault?: (code: "socket_call_failed" | "socket_error", err: unknown) => void;
 }
 
 function nowHeaders(): Record<string, string> {
@@ -128,7 +134,10 @@ export function serveApiSocket(ws: WebSocket, deps: ApiSocketDeps): void {
     for (const controller of inflight.values()) controller.abort();
     inflight.clear();
   });
-  ws.on("error", (err) => deps.log(`[socket] ${err.message}`));
+  ws.on("error", (err) => {
+    deps.log(`[socket] ${err.message}`);
+    deps.fault?.("socket_error", err);
+  });
 
   async function dispatch(frame: CallFrame, controller: AbortController): Promise<void> {
     const { id, call } = frame;
@@ -172,6 +181,7 @@ export function serveApiSocket(ws: WebSocket, deps: ApiSocketDeps): void {
     } catch (err) {
       if (controller.signal.aborted) return;
       deps.log(`[socket] ${call.method} ${call.path}: ${err instanceof Error ? err.message : err}`);
+      deps.fault?.("socket_call_failed", err);
       send({
         id,
         status: 500,

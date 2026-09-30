@@ -90,6 +90,7 @@ import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
 import { BootTimings, timeAdmission } from "../telemetry/boot.js";
+import type { Errors } from "../mechanisms/observability.js";
 
 /**
  * This server's hot host: the mechanism (@prismshadow/penguin-hmr) with the api ITS platforms
@@ -634,6 +635,18 @@ async function createInner(
   const telemetry = business?.api<Telemetry>("TelemetryModule", "Telemetry") ?? null;
   boot.flush(telemetry);
   const http = timeAdmission(served, telemetry);
+  // The plugins this generation's load skipped, into the error table as well as the log: one
+  // record per generation naming them all (the dedup would keep only the first of several).
+  // The runtime's own first load happens before any App and is not seen here.
+  const skipped = [...plugins.skipped()];
+  if (skipped.length > 0) {
+    errorsOf(business)?.record({
+      source: "plugin",
+      err: skipped.map(([specifier, reason]) => `${specifier}: ${reason}`).join("; "),
+      code: "plugin_skipped",
+      kind: "unexpected",
+    });
+  }
 
   return {
     log: (line) => (logNode !== null ? logNode.line(line) : console.log(line)),
@@ -855,6 +868,14 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
           },
           origin: `${url.protocol}//${url.host}`,
           log,
+          // Into the error table of the App of the moment, like the calls themselves.
+          fault: (code, err) =>
+            errorsOf(inner.api.business())?.record({
+              source: "socket",
+              err,
+              code,
+              kind: "unexpected",
+            }),
         });
       },
       business: () => inner.api.business(),
@@ -863,6 +884,20 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     };
   },
 };
+
+/**
+ * The App's error recorder, or undefined: a bare kernel has no business tree, and a tree a
+ * plugin rearranged may not carry the observability group under its name. A capture site
+ * outside the tree must never fail for want of it.
+ */
+function errorsOf(tree: ModuleTree | null | undefined): Errors | undefined {
+  if (tree == null || !tree.has("ObservabilityModule")) return undefined;
+  try {
+    return tree.api<Errors>("ObservabilityModule", "Errors");
+  } catch {
+    return undefined;
+  }
+}
 
 /** A bare kernel's tree: the sandbox floor and whatever contributes to it, nothing that needs a capability. */
 function bareTree(
