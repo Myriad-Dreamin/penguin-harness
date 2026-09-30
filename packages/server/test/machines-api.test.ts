@@ -943,7 +943,11 @@ describe("machines API", () => {
       machinesRepo.patch("ssh:nas", { remotePort: 7364 });
       await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
       await waitFor(() => t.deps.machines.job()?.running === false);
-      expect(t.deps.machines.job()?.result).toEqual({ ok: true, connected: true });
+      expect(t.deps.machines.job()?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
       expect(starts).toEqual([7364]);
       expect(t.deps.machines.job()?.log.join(" ")).toContain("Starting its server");
     });
@@ -992,7 +996,11 @@ describe("machines API", () => {
       installed("9.9.9");
       await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
       await waitFor(() => t.deps.machines.job()?.running === false);
-      expect(t.deps.machines.job()?.result).toEqual({ ok: true, connected: true });
+      expect(t.deps.machines.job()?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
       expect(starts).toEqual([7371]);
       expect(machinesRepo.get("ssh:nas")?.remotePort).toBe(7371);
     });
@@ -1014,7 +1022,11 @@ describe("machines API", () => {
       installed("9.9.9");
       await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
       await waitFor(() => t.deps.machines.job()?.running === false);
-      expect(t.deps.machines.job()?.result).toEqual({ ok: true, connected: true });
+      expect(t.deps.machines.job()?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
       expect(machinesRepo.get("ssh:nas")?.remotePort).toBe(7376);
     });
 
@@ -1038,7 +1050,11 @@ describe("machines API", () => {
       machinesRepo.patch("ssh:nas", { remotePort: 7364 });
       await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
       await waitFor(() => t.deps.machines.job()?.running === false);
-      expect(t.deps.machines.job()?.result).toEqual({ ok: true, connected: true });
+      expect(t.deps.machines.job()?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
       expect(starts).toEqual([]);
       expect(holds).toBe(1);
       expect(machinesRepo.get("ssh:nas")?.sessionPid).toBe(process.pid);
@@ -1062,7 +1078,11 @@ describe("machines API", () => {
       installed("9.9.9");
       await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
       await waitFor(() => t.deps.machines.job()?.running === false);
-      expect(t.deps.machines.job()?.result).toEqual({ ok: true, connected: true });
+      expect(t.deps.machines.job()?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
       const nas = (
         (await (await admin.get(`/api/projects/${PROJECT}/machines`)).json()) as MachinesResponse
       ).machines.find((m) => m.id === "ssh:nas");
@@ -1532,7 +1552,7 @@ describe("machines API", () => {
       expect([...installs].sort()).toEqual(["build-box", "nas"]);
       for (const job of jobsOf()) {
         expect(job.kind).toBe("use");
-        expect(job.result).toEqual({ ok: true, connected: true });
+        expect(job.result).toEqual({ ok: true, connected: true, connectedAt: expect.any(String) });
       }
       expect(connected).toEqual(new Set(["ssh:build-box", "ssh:nas"]));
       expect(Object.keys(recordsInStore()).sort()).toEqual(["ssh:build-box", "ssh:nas"]);
@@ -1554,7 +1574,11 @@ describe("machines API", () => {
       await waitFor(settled);
       expect(asked).toBe(1);
       expect(jobsOf()[0]?.log.join(" ")).toContain("Already on 9.9.9.");
-      expect(jobsOf()[0]?.result).toEqual({ ok: true, connected: true });
+      expect(jobsOf()[0]?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
     });
 
     it("a machine recorded at this build but carrying another is brought forward: the record is not trusted", async () => {
@@ -1579,7 +1603,11 @@ describe("machines API", () => {
       await waitFor(settled);
       expect(handedOver).toBe(1);
       expect(jobsOf()[0]?.log.join(" ")).not.toContain("Already on");
-      expect(jobsOf()[0]?.result).toEqual({ ok: true, connected: true });
+      expect(jobsOf()[0]?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
     });
 
     it("a machine behind this build is brought forward first, then connected", async () => {
@@ -1595,7 +1623,11 @@ describe("machines API", () => {
       await useBody(["ssh:nas"]);
       await waitFor(settled);
       expect(installs).toBe(1);
-      expect(jobsOf()[0]?.result).toEqual({ ok: true, connected: true });
+      expect(jobsOf()[0]?.result).toEqual({
+        ok: true,
+        connected: true,
+        connectedAt: expect.any(String),
+      });
       expect(recordsInStore()["ssh:nas"]?.version).toBe("9.9.9");
     });
 
@@ -1615,7 +1647,7 @@ describe("machines API", () => {
         message: "Permission denied (publickey).",
         canReplaceProgram: true,
       });
-      expect(nas?.result).toEqual({ ok: true, connected: true });
+      expect(nas?.result).toEqual({ ok: true, connected: true, connectedAt: expect.any(String) });
       expect(connected).toEqual(new Set(["ssh:nas"]));
     });
 
