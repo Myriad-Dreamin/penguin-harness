@@ -160,6 +160,18 @@ describe.skipIf(process.platform === "win32")("the claude-code plugin on a real 
     });
     await waitFor(info, (r) => r.session.status === "idle", { what: "idle again" });
 
+    // The program speaks for this Session's Agent: its own credential, not the admin's, which
+    // reaches the Session's own record and is refused an admin route.
+    await terminal.keys("whoami\n", true);
+    const who = await waitFor(
+      terminal.capture,
+      (lines) => lines.some((l) => l.startsWith("token=")),
+      { what: "the whoami line" },
+    );
+    expect(who.find((l) => l.startsWith("token="))!.trim()).toBe(
+      `token=pst1 agent=default_agent session=${session.sessionId.slice(-8)} own=200 admin=403`,
+    );
+
     // Opening again is the same terminal, not a second program.
     const again = await api.post<SurfaceState>(`/api/sessions/${session.sessionId}/surface`, {});
     expect(again.view?.terminalId).toBe(terminalId);
