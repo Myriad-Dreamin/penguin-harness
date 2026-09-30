@@ -101,6 +101,8 @@ export interface FakeOrgState {
   unpriced: boolean;
   /** The company-proposals plugin's ledger, keyed by number; absent (undefined) = the plugin is not installed, every proposals route is a plain 404. */
   proposals?: Map<number, Json>;
+  /** What `GET …/proposals/graph` answers (ProposalGraphResponse); absent = 409 graph_not_configured. */
+  proposalGraph?: Json;
 }
 
 /** Who a fake request is attributed to, or the error response that settles it. */
@@ -1189,6 +1191,11 @@ export class FakeServer {
       }
       return this.json({ proposals: list() });
     }
+    if (b === "graph" && method === "GET") {
+      return org.proposalGraph === undefined
+        ? this.error(409, "graph_not_configured", "The PR graph has no delivery repository.")
+        : this.json(org.proposalGraph);
+    }
     if (b === "test-groups" && method === "GET") {
       return this.json({
         groups: [
@@ -1237,6 +1244,14 @@ export class FakeServer {
         Object.assign(proposal, { revision, sections, ...(title !== undefined ? { title } : {}) });
         return this.json(bump("revised", { revision }));
       }
+    }
+    if (method === "PUT" && c === "impl" && d === undefined) {
+      if (!isNonEmptyString(body?.url)) return this.badRequest("url is required.");
+      const m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(body.url);
+      if (m === null) return this.badRequest(`Not a GitHub pull request URL: ${body.url}`);
+      const label = `${m[1]}/${m[2]}#${m[3]}`;
+      proposal.implPr = { url: body.url, label, by: "user:admin", at: ORG_NOW };
+      return this.json(bump("material_added", { text: `impl ${label}` }));
     }
     if (method === "PUT" && c === "brief" && d === undefined) {
       if (!isNonEmptyString(body?.brief)) return this.badRequest("brief is required.");
