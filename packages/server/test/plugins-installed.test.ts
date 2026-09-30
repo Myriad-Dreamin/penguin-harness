@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { parse as parseToml } from "smol-toml";
 import type { InstalledPluginsResponse } from "../src/api/types.js";
 import { decorators, lower, writeClassPackage } from "./plugin-fixtures.js";
 import type { ClassPackage } from "./plugin-fixtures.js";
@@ -21,9 +22,9 @@ describe("installed plugins", () => {
 
   /**
    * Ships a package the way the build does: under the installation's `plugins/` prefix,
-   * named in that prefix's manifest. The installation is what `process.argv[1]` points
-   * into (plugin/loader.ts pluginBases), so the test app's program entry is pointed at a
-   * directory of the temp root for the file's duration.
+   * named in that prefix's manifest — a source of the plugin store. The installation is what
+   * `process.argv[1]` points into (plugin/store.ts storeSources), so the test app's program
+   * entry is pointed at a directory of the temp root for the file's duration.
    */
   const ship = async (pkg: ClassPackage) => {
     const prefix = path.join(t.root, "install", "plugins");
@@ -152,6 +153,65 @@ describe("installed plugins", () => {
     expect(await view()).toMatchObject({ plugins: [] });
   });
 
+  it("downloads only what the catalogue lists with an integrity, and writes nothing when it cannot", async () => {
+    // The test app reads no published index and ships nothing: a package that is not on the
+    // machine has no catalogue entry to be checked against, so npm is never asked for it.
+    const res = await admin.post("/api/projects/default_project/plugins/installed", {
+      specifier: "@acme/unlisted@^1",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: {
+        code: "plugin_not_installable",
+        message: expect.stringMatching(/none of the plugin catalogue's sources/),
+      },
+    });
+    expect(await view()).toMatchObject({ plugins: [] });
+    const bad = await admin.post("/api/projects/default_project/plugins/installed", {
+      specifier: "@acme/unlisted",
+      integrity: "sha256-nothex",
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ error: { code: "bad_request" } });
+  });
+
+  it("pins a content: the table names its integrity, and activation takes that entry or none", async () => {
+    await ship({ name: "@acme/pinned", module: "Pinned" });
+    // Let a boot import the shipped package into the store, then read its key there.
+    await admin.put("/api/projects/default_project/plugins/installed", {
+      plugins: ["@acme/pinned"],
+    });
+    const stored = JSON.parse(
+      await fs.readFile(path.join(t.root, "plugin-store", "index.json"), "utf8"),
+    ) as { name: string; integrity: string }[];
+    const integrity = stored.find((e) => e.name === "@acme/pinned")!.integrity;
+    const res = await admin.post("/api/projects/default_project/plugins/installed", {
+      specifier: "@acme/pinned",
+      integrity,
+    });
+    expect(res.status).toBe(200);
+    const written = parseToml(await fs.readFile(listFile(), "utf8")) as {
+      plugins: Record<string, unknown>;
+    };
+    expect(written.plugins["@acme/pinned"]).toEqual({ integrity });
+    expect((await view()).plugins[0]).toMatchObject({ specifier: "@acme/pinned", active: true });
+
+    // A pin no stored entry has is not quietly run as whatever version fits. (Another name
+    // joins the list so the rewrite re-assembles, which is when activation reads the pin.)
+    const other = `sha256-${"0".repeat(64)}`;
+    await ship({ name: "@acme/beside", module: "Beside" });
+    await fs.writeFile(
+      listFile(),
+      `models = []\n[plugins]\n"@acme/pinned" = { integrity = "${other}" }\n`,
+    );
+    await admin.put("/api/projects/default_project/plugins/installed", {
+      plugins: ["@acme/pinned", "@acme/beside"],
+    });
+    const after = (await view()).plugins.find((p) => p.specifier === "@acme/pinned")!;
+    expect(after.active).toBe(false);
+    expect(after.error).toMatch(/no stored '@acme\/pinned' satisfies sha256-0/);
+  });
+
   it("drops a specifier from the list on delete", async () => {
     await ship({ name: "@acme/one", module: "One" });
     await ship({ name: "@acme/two", module: "Two" });
@@ -270,6 +330,8 @@ describe("installed plugins", () => {
         })
       ).status,
     ).toBe(200);
+    const current = () => fs.readFile(path.join(t.root, "plugins", "current"), "utf8");
+    const before = await current();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const res = await admin.post("/api/projects/default_project/plugins/installed", {
@@ -280,6 +342,12 @@ describe("installed plugins", () => {
       // Undone: the list is as it was, and what runs is what ran.
       expect(body.plugins.map((p) => [p.specifier, p.active])).toEqual([["@acme/fine", true]]);
       expect(await fs.readFile(listFile(), "utf8")).not.toContain("bad-boot");
+      // The pointer is back on the generation that ran, and the one that failed stays on disk.
+      expect(await current()).toBe(before);
+      const gens = (await fs.readdir(path.join(t.root, "plugins"))).filter((d) =>
+        /^[0-9a-f]{16}$/.test(d),
+      );
+      expect(gens.length).toBeGreaterThanOrEqual(2);
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/deliberately fails to boot/));
     } finally {
       warn.mockRestore();
