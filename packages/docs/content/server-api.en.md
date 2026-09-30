@@ -452,6 +452,7 @@ The plugins in this section are server-side packages: modules the server loads i
 | --- | --- | --- |
 | GET | `/api/plugins/registry` | The merged plugin index: `PluginIndexEntry[]` |
 | GET | `/api/plugins/registry/readme?name=…` | One listed entry's readme: `{name, readme}` |
+| GET | `/api/plugins/registry/contents?name=…` | Every content listed under one name, highest version first, each with whether this machine's store holds it and the current generation links it: `{name, contents: [{version, integrity?, stored, linked}]}` |
 | GET | `/api/projects/:projectId/plugins/installed` | The plugins this Project asks for, joined with what the process runs: `{plugins, shipped, file, restartPending}` |
 | POST | `/api/projects/:projectId/plugins/installed` | Admin only. Adds a plugin, fetching it first when it is not on this machine: `{specifier, integrity?, machineId?}` |
 | PUT | `/api/projects/:projectId/plugins/installed` | Admin only. Replaces the list: `{plugins}` |
