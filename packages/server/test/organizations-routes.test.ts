@@ -592,6 +592,27 @@ describe("organization routes", () => {
       { userId: "mallory" },
     ]);
   });
+
+  it("attach over a token: the caller is `callerSessionId` and `agentId`, never the attached Session", async () => {
+    const base = `/api/projects/${ownerProject}/organizations/acme`;
+    const grant = await owner.post(`/api/projects/${ownerProject}/members`, { userId: "admin" });
+    expect([200, 201]).toContain(grant.status);
+    const res = await fromSession(t, `${base}/tickets/2026-09-01-site/attach`, {
+      sessionId: "session-colleague",
+      callerSessionId: "session-dev-desk",
+      agentId: "acme_dev",
+    });
+    expect(res.status).toBe(200);
+    expect(calls.at(-1)?.args.slice(3)).toEqual([
+      "session-colleague",
+      { userId: "admin", sessionId: "session-dev-desk", agentId: "acme_dev" },
+    ]);
+    // Without a caller session the attached one is still not read as the caller.
+    await fromSession(t, `${base}/tickets/2026-09-01-site/attach`, {
+      sessionId: "session-colleague",
+    });
+    expect(calls.at(-1)?.args.at(-1)).toEqual({ userId: "admin" });
+  });
 });
 
 const ACME_PROJECT = "olivia-default_project";
