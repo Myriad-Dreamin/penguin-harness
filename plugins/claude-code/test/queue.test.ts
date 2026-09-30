@@ -449,6 +449,15 @@ describe("the routes", () => {
     expect(fill(PAGE_STRINGS.zh.position, { n: 3 })).toBe("第 3 位");
     expect(script).toContain('"/organizations/" + m[2] + "/claude-code"');
     expect(script).toContain('base + "/runs"');
+    // Open names the machine the organization runs on: the app never fetched these runs, so
+    // without it the chat page asks its own server for the Session and falls back to home.
+    const pathLine = /^const sessionPath = .*$/m.exec(script)![0];
+    const sessionPath = (machine: string | null) =>
+      new Function("machine", `${pathLine} return sessionPath;`)(machine) as (id: string) => string;
+    expect(sessionPath("dev box")("s 1")).toBe("/chat/s%201?machine=dev%20box");
+    expect(sessionPath(null)("s1")).toBe("/chat/s1");
+    expect(script).toContain("go(sessionPath(");
+    expect(script).toContain("esc(sessionPath(r.sessionId))");
   });
 });
 

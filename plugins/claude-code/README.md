@@ -48,7 +48,7 @@ The terminal belongs to the person whose request queued the run. For an employee
 
 ## How the state is read
 
-A terminal cannot say whether the program in it is thinking. This plugin reads output as activity: output within the last moment means *running*, silence past it means *idle*, exit means *idle*. Claude Code redraws continuously while it works and not at all while it waits, which is why the rule holds.
+A terminal cannot say whether the program in it is thinking, but Claude Code says so on its own screen, and that is what this plugin reads. A run is *working* while the last few rows show the spinner line (`✻ Working… (3s)`: a symbol, one word, an ellipsis) or the footer's `esc to interrupt`. It is *waiting for input* otherwise, and once its program exits. The footer counts because a tip or a task list printed under the spinner can push the spinner out of those rows while the turn is still going.
 
 ## Development
 
