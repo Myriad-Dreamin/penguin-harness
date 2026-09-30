@@ -55,7 +55,7 @@ export function PluginDetailPage() {
       .getPluginIndex()
       .then((res) => {
         if (cancelled) return;
-        setEntry(res.plugins.find((p) => p.name === name) ?? null);
+        setEntry(res.find((p) => p.name === name) ?? null);
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(apiErrorText(e));
