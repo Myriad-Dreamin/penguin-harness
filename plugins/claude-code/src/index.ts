@@ -27,7 +27,9 @@
  * different question with a similar answer: it called a redraw work (a resize, a paste
  * echoing) and it called a long tool call idle the moment the spinner paused. The marker is
  * the program's own statement, so it is what this reads — from the LAST rows only
- * ({@link MARKER_ROWS}), since a transcript above can say anything.
+ * ({@link MARKER_ROWS}), since a transcript above can say anything. The footer's
+ * `esc to interrupt` ({@link INTERRUPT_HINT}) says the same, and stays in those rows when
+ * a tip or a task list under the spinner pushes the spinner out of them.
  *
  * ## The title
  *
@@ -140,8 +142,20 @@ export const MARKER_ROWS = 6;
 export const RUNNING_LINE = /^\s*[^\p{L}\p{N}\s]\s+\p{L}[\p{L}'’-]*(?:…|\.\.\.)/u;
 
 /**
- * Whether the screen says a turn is in flight: the spinner line, among the last rows that
- * carry anything.
+ * The hint Claude Code puts in its footer, the last row of the screen, for as long as a turn
+ * can be interrupted:
+ *
+ *     ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← for agents
+ *
+ * The spinner line alone is not enough: whatever the program prints under it — a two-row
+ * `⎿ Tip: …`, a task list — sits between it and the input box, and pushes it out of the last
+ * {@link MARKER_ROWS} rows while the turn is still going. The footer stays at the bottom.
+ */
+export const INTERRUPT_HINT = /\besc to interrupt\b/i;
+
+/**
+ * Whether the screen says a turn is in flight: the spinner line or the footer's interrupt
+ * hint, among the last rows that carry anything.
  *
  * Blank rows are dropped before the tail is taken — a capture is the whole buffer including
  * the empty rows below the cursor, so counting from the bottom without this reads six blanks
@@ -149,7 +163,9 @@ export const RUNNING_LINE = /^\s*[^\p{L}\p{N}\s]\s+\p{L}[\p{L}'’-]*(?:…|\.\.
  */
 export function readsAsRunning(lines: readonly string[]): boolean {
   const written = lines.filter((line) => line.trim() !== "");
-  return written.slice(-MARKER_ROWS).some((line) => RUNNING_LINE.test(line));
+  return written
+    .slice(-MARKER_ROWS)
+    .some((line) => RUNNING_LINE.test(line) || INTERRUPT_HINT.test(line));
 }
 
 /**
