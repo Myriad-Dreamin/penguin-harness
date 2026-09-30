@@ -160,6 +160,22 @@ export const zh = {
     adminOnly: "只有管理员可以管理机器。",
   },
 
+  /** Keyboard shortcuts: the registry's command and group labels (lib/shortcuts/registry.ts). */
+  shortcuts: {
+    commands: {
+      "palette.toggle": "命令面板",
+      "terminal.toggle": "显示或隐藏终端",
+      "terminal.close": "关闭当前终端",
+      "editor.save": "保存",
+    },
+    groups: {
+      general: "通用",
+      panels: "面板",
+      terminal: "终端",
+      editor: "编辑器",
+    },
+  },
+
   /** Server-side terminal (the in-app dock and the standalone /terminal page). */
   terminal: {
     title: "终端",
@@ -492,7 +508,9 @@ export const zh = {
     title: "命令面板",
     placeholder: "输入以筛选命令…",
     noResults: "没有匹配的命令",
-    hint: "Ctrl+P / Ctrl+Shift+P（⌘P）切换 · ↑↓ 选择 · Enter 执行",
+    /** Footer of the palette; `toggle` is the formatted palette.toggle chord, null while unbound. */
+    hint: (toggle: string | null): string =>
+      toggle === null ? "↑↓ 选择 · Enter 执行" : `${toggle} 切换 · ↑↓ 选择 · Enter 执行`,
     harnessHistory: "Harness 历史",
   },
   modelPicker: {
@@ -523,9 +541,14 @@ export const zh = {
     restore: "恢复",
     remove: "移除",
     fillApp: "占满应用",
-    fillAppHint: "让这个页面占满整个应用；Ctrl+P / Ctrl+Shift+P 打开命令面板可退出",
+    /** `palette` is the formatted palette.toggle chord, null while unbound. */
+    fillAppHint: (palette: string | null): string =>
+      palette === null
+        ? "让这个页面占满整个应用；打开命令面板可退出"
+        : `让这个页面占满整个应用；${palette} 打开命令面板可退出`,
     exitFullPage: "退出全页模式（回到聊天）",
-    exitHint: "按 Ctrl+P 或 Ctrl+Shift+P 打开命令面板可回到聊天。",
+    exitHint: (palette: string | null): string =>
+      palette === null ? "打开命令面板可回到聊天。" : `按 ${palette} 打开命令面板可回到聊天。`,
     noSuchPage: "这个 workflow 不存在或没有页面。",
     removeConfirm: "删除这个工作流及其全部已记录版本？",
     removeYes: "确认移除",
@@ -3360,7 +3383,6 @@ Benchmark：
     /** Soft-wrap toggle, shared by the source view and the editor: off means long lines scroll sideways. */
     wrapLines: "自动换行",
     unsaved: "有未保存的修改",
-    saveTitle: "保存（Ctrl+S / ⌘S）",
     saveConfirmTitle: "保存文件",
     saveConfirm: (name: string): string => `保存对 ${name} 的修改？Workspace 中的该文件将被覆盖。`,
     editTooLarge: (kb: number): string => `文件超过 ${kb}KB，无法在此编辑，请下载后编辑`,
@@ -4591,8 +4613,9 @@ Benchmark：
       documentLoadFailed: "文档加载失败",
       /** A row's tooltip: when the file was last written, and its size. */
       updatedAt: (time: string, size: string): string => `更新于 ${time} · ${size}`,
-      /** Beside the editor's buttons: what the text is, and the shortcut. */
-      editorHint: "Markdown · Ctrl/⌘+S 保存",
+      /** Beside the editor's buttons: what the text is, and the save shortcut (null while unbound). */
+      editorHint: (shortcut: string | null): string =>
+        shortcut === null ? "Markdown" : `Markdown · ${shortcut} 保存`,
     },
   },
   errors: {

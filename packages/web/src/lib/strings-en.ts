@@ -138,6 +138,22 @@ export const en: Strings = {
     adminOnly: "Only an admin can manage machines.",
   },
 
+  /** Keyboard shortcuts: the registry's command and group labels (lib/shortcuts/registry.ts). */
+  shortcuts: {
+    commands: {
+      "palette.toggle": "Command palette",
+      "terminal.toggle": "Show or hide the terminal",
+      "terminal.close": "Close the focused terminal",
+      "editor.save": "Save",
+    },
+    groups: {
+      general: "General",
+      panels: "Panels",
+      terminal: "Terminal",
+      editor: "Editor",
+    },
+  },
+
   /** Server-side terminal (the in-app dock and the standalone /terminal page). */
   terminal: {
     title: "Terminal",
@@ -436,7 +452,11 @@ export const en: Strings = {
     title: "Command Palette",
     placeholder: "Type to filter commands…",
     noResults: "No matching commands",
-    hint: "Ctrl+P / Ctrl+Shift+P (⌘P) to toggle · ↑↓ to select · Enter to run",
+    /** Footer of the palette; `toggle` is the formatted palette.toggle chord, null while unbound. */
+    hint: (toggle: string | null): string =>
+      toggle === null
+        ? "↑↓ to select · Enter to run"
+        : `${toggle} to toggle · ↑↓ to select · Enter to run`,
     harnessHistory: "Harness history",
   },
   modelPicker: {
@@ -460,10 +480,16 @@ export const en: Strings = {
     restore: "Restore",
     remove: "Remove",
     fillApp: "Fill the app",
-    fillAppHint:
-      "Show this page as the whole app; Ctrl+P / Ctrl+Shift+P opens the command palette to leave",
+    /** `palette` is the formatted palette.toggle chord, null while unbound. */
+    fillAppHint: (palette: string | null): string =>
+      palette === null
+        ? "Show this page as the whole app; the command palette is the way to leave"
+        : `Show this page as the whole app; ${palette} opens the command palette to leave`,
     exitFullPage: "Exit full page (back to chat)",
-    exitHint: "Press Ctrl+P or Ctrl+Shift+P for the command palette to get back to the chat.",
+    exitHint: (palette: string | null): string =>
+      palette === null
+        ? "Open the command palette to get back to the chat."
+        : `Press ${palette} for the command palette to get back to the chat.`,
     noSuchPage: "This workflow does not exist or has no page.",
     removeConfirm: "Delete this workflow and all its recorded versions?",
     removeYes: "Remove",
@@ -3321,7 +3347,6 @@ Scenarios:
     /** Soft-wrap toggle, shared by the source view and the editor: off means long lines scroll sideways. */
     wrapLines: "Wrap",
     unsaved: "Unsaved changes",
-    saveTitle: "Save (Ctrl+S / ⌘S)",
     saveConfirmTitle: "Save file",
     saveConfirm: (name: string): string =>
       `Save changes to ${name}? The file in the Workspace will be overwritten.`,
@@ -4577,8 +4602,9 @@ Scenarios:
       documentLoadFailed: "Could not load the document",
       /** A row's tooltip: when the file was last written, and its size. */
       updatedAt: (time: string, size: string): string => `Updated ${time} · ${size}`,
-      /** Beside the editor's buttons: what the text is, and the shortcut. */
-      editorHint: "Markdown · Ctrl/⌘+S to save",
+      /** Beside the editor's buttons: what the text is, and the save shortcut (null while unbound). */
+      editorHint: (shortcut: string | null): string =>
+        shortcut === null ? "Markdown" : `Markdown · ${shortcut} to save`,
     },
   },
   errors: {
