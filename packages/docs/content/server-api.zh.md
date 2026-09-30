@@ -52,18 +52,29 @@ curl -c cookies.txt -H "Content-Type: application/json" \
   http://localhost:7364/api/auth/login
 ```
 
-### 本地 API token（Bearer）
+### Bearer 凭据
 
-所有受保护的路由也接受携带**本地 API token** 的 `Authorization: Bearer <token>`。CLI，以及通过 CLI 驱动 harness 的 Agent，都用这个本机凭证代替登录。
+所有受保护的路由也接受 `Authorization: Bearer <token>`，接受两种 token：
 
-- 服务器每次启动都生成一个新 token，写入 `<root>/api-token`，文件权限仅限所有者（`0600`）。新 token 一经生成，上一次启动的 token 立即失效。
-- 有效的 Bearer token 以内置 `admin` 的身份通过认证。这是有意设计的授权模型：在本机文件系统上能访问数据根目录，本身就等于管理员权限，因为能读 `api-token` 的人也能读它旁边的 `web.db`。`penguin server reset-admin-password` 依赖的正是这条规则。
-- 服务器驱动的会话会把当前 token 注入每个工具子进程的环境变量 `PENGUIN_API_TOKEN`，同时注入 `PENGUIN_API_URL`、`PENGUIN_PROJECT_ID`、`PENGUIN_AGENT_ID` 和 `PENGUIN_SESSION_ID`。Agent 自己的 `penguin` 命令和 API 调用正是靠这些变量获得授权，才能连上运行自己的服务器。
+- **登录 token。** `penguin auth login` 或 `penguin auth token` 签发的 token 以该用户的身份通过认证，与会话 cookie 等价。在拥有数据根目录的机器上，`penguin auth token` 不需要密码：它直接把会话行写进 `web.db`。脚本和人自己的 CLI 用的就是它。
+- **会话凭据。** 服务器驱动的会话会把自己的凭据注入每个工具子进程的环境变量 `PENGUIN_API_TOKEN`，同时注入 `PENGUIN_API_URL`、`PENGUIN_PROJECT_ID`、`PENGUIN_AGENT_ID` 和 `PENGUIN_SESSION_ID`。它由服务器保存在内存里的密钥签名，下次重启即失效。
+
+### 会话凭据
+
+会话凭据只够得到 Agent 自己的命令要调用的路由，其余一律以 `403 session_scope` 拒绝：
+
+- 本 Agent 自己的会话（以及它用 `penguin run` 创建的会话）：任务、事件流、消息、引导；会话列表只保留这些；
+- 本 Project 的组织（desk 或工单会话只到自己的组织），请求里声明的 `sessionId` / `agentId` 必须是凭据自己的；
+- 本 Project 的 Agent 列表、创建 Agent、自己的定时任务、本 Project 的用量；
+- 遥测，须用 `session=` 指名自己的一个会话。
+
+管理员路由、热更新、其他 Project 以及其余所有路由都被拒绝。
+
 - SSE 端点和其他路由一样接受这个请求头。消费它们要用 `fetch`，不要用 `EventSource`——后者无法发送请求头。
 - 写请求只接受 JSON 的 Content-Type 检查，对 Bearer 请求同样生效。
 
 ```bash
-curl -H "Authorization: Bearer $(cat ~/.penguin/data/api-token)" \
+curl -H "Authorization: Bearer $(penguin auth token)" \
   http://127.0.0.1:7364/api/me
 ```
 
