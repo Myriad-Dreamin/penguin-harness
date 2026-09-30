@@ -24,6 +24,7 @@ const settings = (companyMode: boolean): ServerSettings => ({
   attachmentTotalMb: 500,
   companyMode,
   githubTokenSet: false,
+  telemetry: false,
 });
 
 /** Records what the switch sent and answers with the server's stored settings. */
