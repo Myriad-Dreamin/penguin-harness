@@ -32,6 +32,7 @@ import type { OmniMessage } from "@prismshadow/penguin-core/omnimessage";
 import { apiSocketPath } from "@prismshadow/penguin-server/api";
 import type { ServerEvent } from "@prismshadow/penguin-server/api";
 import type { StreamConnection, StreamHandlers } from "./sse";
+import { perfOn, perfSample } from "../lib/perf/switch";
 
 /** Reconnect backoff, the ssh reconnect's shape: doubling from the floor to the ceiling. */
 const RECONNECT_MIN_MS = 1_000;
@@ -405,6 +406,10 @@ export class ApiSocket {
       return;
     }
     this.#state = "connecting";
+    // Telemetry: handshake to first reply, timed only while the switch is on (lib/perf).
+    const connectAt = perfOn() ? performance.now() : null;
+    let openMs: number | null = null;
+    let replied = false;
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
@@ -432,6 +437,7 @@ export class ApiSocket {
       this.#attempts = 0;
       this.#neverOpened = 0;
       this.#lastFrameAt = performance.now();
+      if (connectAt !== null) openMs = this.#lastFrameAt - connectAt;
       this.#armWatchdog();
       this.#settleReady(true);
       for (const entry of [...this.#waiting]) this.#issue(entry);
@@ -440,6 +446,14 @@ export class ApiSocket {
       if (this.#ws !== ws) return;
       this.#lastFrameAt = performance.now();
       this.#framesSeen += 1;
+      if (connectAt !== null && openMs !== null && !replied) {
+        replied = true;
+        perfSample({
+          probe: "web.socket.connect",
+          durMs: Math.round((this.#lastFrameAt - connectAt) * 10) / 10,
+          attrs: { openMs: Math.round(openMs * 10) / 10 },
+        });
+      }
       this.#armWatchdog();
       this.#frame(e.data);
     };
@@ -736,7 +750,10 @@ export function identityOf(status: number, body: unknown): string | null {
 /** Who the page is signed in as, asked of the server over HTTP; null when nobody. Rejects when it cannot tell. */
 async function whoAmI(): Promise<string | null> {
   const res = await fetch("/api/me", { credentials: "same-origin" });
-  return identityOf(res.status, res.ok ? await res.json() : null);
+  const body = res.ok ? ((await res.json()) as { telemetry?: boolean } | null) : null;
+  // The socket asks before it opens, so the switch is known by the time the handshake is timed.
+  if (res.ok) setPerfSwitch(body?.telemetry === true);
+  return identityOf(res.status, body);
 }
 
 /** The page's socket: to this origin, same cookie the page holds, on the signed-in user's reserved id. */

@@ -12,8 +12,8 @@
  * right 0–100% axis), then Token buckets (stacked bars + a dashed
  * cache-hit-rate curve in front) and cost (line + points + area). Charts
  * always fit their card — nothing scrolls; below them is a full-width
- * "errors" panel (stats + a paged errors table). Currency follows the user's
- * settings.
+ * "errors" panel (stats + a paged errors table) and, for an admin, a full-width
+ * "performance" panel (the telemetry buffer per probe). Currency follows the user's settings.
  *
  * Every chart draws the same buckets: compactSeries runs **once**, here, and
  * all four are fed its result, so the grid keeps one shared x axis. It drops
@@ -56,6 +56,8 @@ import {
   type RangePreset,
 } from "./usage-controls";
 import { ErrorsPanel } from "./errors-panel";
+import { PerformancePanel } from "./performance-panel";
+import { useAuth } from "../../state/auth";
 
 /** A summary card's stat row: name on the left, value on the right — each item on its own row, so a narrow card no longer crams them into one wrapping line. */
 function SummaryRow({
@@ -148,6 +150,7 @@ export function UsagePage() {
   useDocumentTitle(S.usage.title);
   const { currency } = useTheme();
   const { currentProject } = useProject();
+  const { user } = useAuth();
   /** The Cost Center trail's raised badge, or undefined — the errors panel's notice clears it. */
   const todo = useUpdateBadges().todos.errors;
   const projectId = currentProject?.projectId ?? null;
@@ -464,6 +467,14 @@ export function UsagePage() {
                 void load();
               }}
             />
+          </ChartCard>
+        )}
+
+        {/* Performance (full width, beside the errors panel): the telemetry buffer, whole-server
+            and admin only — a member is not shown a panel whose read can only answer 403. */}
+        {user?.isAdmin === true && (
+          <ChartCard title={S.usage.performance}>
+            <PerformancePanel />
           </ChartCard>
         )}
 
