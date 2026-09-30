@@ -176,7 +176,12 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
             },
           ]
         : []),
-      ...(open ? standingPaletteActions(() => setHistoryOpen(true)) : []),
+      // The version history and its rollback are the server's own: an admin's view.
+      ...(open
+        ? standingPaletteActions(() => setHistoryOpen(true)).filter(
+            (action) => isAdmin || action.id !== "harness-history",
+          )
+        : []),
       ...hostCommandActions(offers, locale).map(({ command, action }): PaletteAction => {
         return {
           id: `host-${command}`,
@@ -201,7 +206,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         },
       },
     ],
-    [extra, offers, locale, newWindow, open],
+    [extra, offers, locale, isAdmin, newWindow, open],
   );
 
   return (
@@ -215,7 +220,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         emptyText={S.commandPalette.noResults}
         hint={S.commandPalette.hint(toggleShortcut)}
       />
-      <HarnessHistoryOverlay open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <HarnessHistoryOverlay open={historyOpen && isAdmin} onClose={() => setHistoryOpen(false)} />
     </>
   );
 }
