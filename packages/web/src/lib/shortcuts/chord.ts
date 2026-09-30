@@ -118,13 +118,18 @@ export function chordOf(e: KeyLike, platform: Platform): Chord | null {
   return { code, mod: e.ctrlKey, ctrl: false, alt: e.altKey, shift: e.shiftKey };
 }
 
-/** True when the chord can be a user binding: it carries a modifier, or its key is a function key. */
-export function hasModifierOrFKey(chord: Chord): boolean {
+/**
+ * True when the chord can be a binding without stealing typing from an input: it holds Mod or
+ * literal Control, or Alt off a Mac (⌥+letter types characters on macOS — ⌥E is the accent key,
+ * `@` is ⌥L on a German Mac), or its key is a function key. Shift on its own does not qualify —
+ * Shift+B is a capital B, Shift+Enter a newline in the composer — and only counts alongside one
+ * of the others.
+ */
+export function isBindableChord(chord: Chord, platform: Platform): boolean {
   return (
     chord.mod ||
     chord.ctrl ||
-    chord.alt ||
-    chord.shift ||
+    (chord.alt && platform !== "mac") ||
     /^F([1-9]|1[0-9]|2[0-4])$/.test(chord.code)
   );
 }

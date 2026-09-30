@@ -6,7 +6,7 @@
  * every id passes the server's grammar.
  */
 import { describe, expect, it } from "vitest";
-import { hasModifierOrFKey, parseChord } from "../src/lib/shortcuts/chord";
+import { isBindableChord, parseChord } from "../src/lib/shortcuts/chord";
 import { findConflicts } from "../src/lib/shortcuts/conflicts";
 import {
   SHORTCUT_COMMANDS,
@@ -37,11 +37,12 @@ describe("registry defaults", () => {
     }
   });
 
-  it("no default is a bare key: a modifier or an F key, so nothing steals typing from an input", () => {
+  it("every default is bindable: a real modifier or an F key, so nothing steals typing from an input", () => {
     for (const cmd of SHORTCUT_COMMANDS) {
       for (const platform of PLATFORMS) {
         const chord = defaultChord(cmd, platform);
-        if (chord !== null) expect(hasModifierOrFKey(chord), `${cmd.id} on ${platform}`).toBe(true);
+        if (chord !== null)
+          expect(isBindableChord(chord, platform), `${cmd.id} on ${platform}`).toBe(true);
       }
     }
   });
