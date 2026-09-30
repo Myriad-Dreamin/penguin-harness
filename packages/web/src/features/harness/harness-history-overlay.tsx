@@ -29,6 +29,7 @@ import { formatDateTime } from "../../lib/format";
 import { S } from "../../lib/strings";
 import { toneStrip } from "../../lib/tone";
 import { ModuleTreeView } from "./module-tree-view";
+import { useAuth } from "../../state/auth";
 
 /** The last path segment without its extension: `store/platform/1a2b….mjs` → `1a2b…`. */
 function shortSha(pointer: string | null): string {
@@ -125,6 +126,8 @@ type DiffLoad =
 
 export function HarnessHistoryOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = S.harnessHistory;
+  // Rollback is admin-only on the server; its controls are offered to an admin alone.
+  const isAdmin = useAuth().user?.isAdmin === true;
   const [history, setHistory] = useState<VersionHistoryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
@@ -334,7 +337,7 @@ export function HarnessHistoryOverlay({ open, onClose }: { open: boolean; onClos
                       </dd>
                     </dl>
 
-                    {!isCurrent(entry, history.current) ? (
+                    {isAdmin && !isCurrent(entry, history.current) ? (
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
                         {!entry.rollbackable ? (
                           <span className="text-gray-500 dark:text-gray-400">{t.notKept}</span>
