@@ -113,6 +113,7 @@ describe("session credential", () => {
       ["GET", `/api/projects/${PROJECT}/agents/default_agent/config`],
       ["GET", `/api/projects/other_project/agents`],
       ["GET", "/api/hmr/status"],
+      ["DELETE", "/api/telemetry"],
     ] as const) {
       const res = await as(credential, apiPath, { method });
       expect(res.status, `${method} ${apiPath}`).toBe(403);
@@ -122,6 +123,12 @@ describe("session credential", () => {
       body: { telemetry: true },
     });
     expect(put.status).toBe(403);
+  });
+
+  it("telemetry reads only with one of its own sessions named", async () => {
+    expect((await as(credential, "/api/telemetry")).status).toBe(403);
+    expect((await as(credential, `/api/telemetry?session=${own}`)).status).toBe(200);
+    expect((await as(credential, `/api/telemetry?session=${colleague}`)).status).toBe(403);
   });
 
   it("the identity an organization request claims is held to the credential", async () => {
