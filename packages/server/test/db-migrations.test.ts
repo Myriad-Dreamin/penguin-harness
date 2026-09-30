@@ -436,6 +436,41 @@ describe("the swap path refuses what a rollback could not survive", () => {
       db.close();
     }
   });
+  /**
+   * error_records' stack, task and request columns, the same way: every error a pushed
+   * platform records names them, and the recorder swallows its own failures — so without the
+   * migration a live deployment would lose every error silently rather than fail loudly.
+   */
+  it("grows the error context columns on the swap path, and a root that has them migrates the same", () => {
+    const db = new sqlite.DatabaseSync(":memory:");
+    try {
+      db.exec(SCHEMA_SQL);
+      db.exec("DROP INDEX idx_error_session");
+      for (const col of ["stack", "task_id", "request_id"]) {
+        db.exec(`ALTER TABLE error_records DROP COLUMN ${col}`);
+      }
+      db.exec("PRAGMA user_version = 19");
+      const insert = () =>
+        db
+          .prepare(
+            `INSERT INTO error_records (ts, date, source, kind, code, message, stack, task_id, request_id)
+             VALUES ('t', 'd', 'session', 'unexpected', 'c', 'm', 's', 'task', 'req')`,
+          )
+          .run();
+      expect(insert).toThrow(/no column named stack/);
+
+      expect(migrate(db, { swapPath: true }).applied).toEqual(["error-records-context"]);
+      expect(insert).not.toThrow();
+      const indexes = db.prepare("PRAGMA index_list(error_records)").all() as { name: string }[];
+      expect(indexes.map((i) => i.name)).toContain("idx_error_session");
+
+      // Again on a root that already had them (the declarative track got there first).
+      db.exec("PRAGMA user_version = 19");
+      expect(migrate(db, { swapPath: true }).applied).toEqual(["error-records-context"]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("0.2.9 → current: drop-goal-state", () => {
