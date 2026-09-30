@@ -52,18 +52,29 @@ curl -c cookies.txt -H "Content-Type: application/json" \
   http://localhost:7364/api/auth/login
 ```
 
-### Local API token (Bearer)
+### Bearer credentials
 
-Every protected route also accepts `Authorization: Bearer <token>` with the **local API token**. The CLI, and agents that drive the harness through it, use this machine-local credential instead of a login.
+Every protected route also accepts `Authorization: Bearer <token>`. Two kinds of token are accepted:
 
-- The server mints a fresh token at every boot and writes it to `<root>/api-token` with owner-only permissions (`0600`). The previous boot's token stops working as soon as the new one is minted.
-- A valid Bearer token authenticates as the built-in `admin`. This is the authorization model by design: local filesystem access to the data root already is admin authority, since whoever can read `api-token` can also read `web.db` next to it. `penguin server reset-admin-password` relies on the same rule.
-- Server-driven sessions inject the current token into every tool subprocess as `PENGUIN_API_TOKEN`, together with `PENGUIN_API_URL`, `PENGUIN_PROJECT_ID`, `PENGUIN_AGENT_ID` and `PENGUIN_SESSION_ID`. That is what authorizes an agent's own `penguin` and API calls to reach the server that runs them.
+- **A sign-in token.** The token `penguin auth login` or `penguin auth token` issues authenticates as that user, the same as the session cookie would. `penguin auth token` needs no password on the machine that owns the data root: it writes the session row into `web.db` directly. This is what a script or a person's CLI holds.
+- **A session credential.** Server-driven sessions inject a credential of their own into every tool subprocess as `PENGUIN_API_TOKEN`, together with `PENGUIN_API_URL`, `PENGUIN_PROJECT_ID`, `PENGUIN_AGENT_ID` and `PENGUIN_SESSION_ID`. It is signed by a key the server holds in memory and dies at the next restart.
+
+### Session credential
+
+A session credential reaches only what an agent's own commands call, and refuses everything else with `403 session_scope`:
+
+- the agent's own sessions (and the ones it created with `penguin run`): tasks, stream, messages, steering; a session list keeps only these;
+- the Project's organizations, or only its own one for a desk or ticket session, with the `sessionId` / `agentId` a request claims held to the credential's own;
+- the Project's agent list, agent creation, its own schedules, and the Project's usage;
+- telemetry, read with `session=` naming one of its own sessions.
+
+Admin routes, hot updates, other Projects and every other route are refused.
+
 - SSE endpoints accept the header like any other route. Consume them with `fetch`, not `EventSource`, which cannot send headers.
 - The JSON-only Content-Type check on writes applies to Bearer requests too.
 
 ```bash
-curl -H "Authorization: Bearer $(cat ~/.penguin/data/api-token)" \
+curl -H "Authorization: Bearer $(penguin auth token)" \
   http://127.0.0.1:7364/api/me
 ```
 

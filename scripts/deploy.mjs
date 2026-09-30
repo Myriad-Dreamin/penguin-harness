@@ -83,7 +83,7 @@ function usage(problem) {
   console.error(
     `${problem}\n\n` +
       "Usage: PENGUIN_ADMIN_PASSWORD=… node scripts/deploy.mjs <port|url> [--skip-web-build] [--force]\n" +
-      "       PENGUIN_API_TOKEN=$(cat <root>/api-token) node scripts/deploy.mjs <port|url>\n" +
+      "       PENGUIN_API_TOKEN=$(penguin auth token) node scripts/deploy.mjs <port|url>\n" +
       "  <port>  a port on this machine (an ssh -L tunnel to the target runtime, or a local server)\n" +
       "  <url>   a full origin, when the target is not reached over loopback\n" +
       "  --force push even when the target has plugins this build cannot run; it runs without them\n",
@@ -97,14 +97,15 @@ const skipWebBuild = args.includes("--skip-web-build");
 const force = args.includes("--force");
 const target = args.find((a) => !a.startsWith("--"));
 if (target === undefined) usage("[deploy] no target given.");
-// Two credentials, either one: the admin password (exchanged for a cookie), or the
-// runtime's own local API token (`<root>/api-token`, admin-equivalent — see
-// server/src/auth/api-token.ts), sent as a Bearer. A local push needs no password.
+// Two credentials, either one: the admin password (exchanged for a cookie), or a sign-in token
+// minted on the target's machine (`penguin auth token`, run against the target's data root),
+// sent as a Bearer. A local push needs no password. A target older than the session
+// credential still writes `<root>/api-token` and takes that value the same way.
 const ADMIN_PASSWORD = process.env.PENGUIN_ADMIN_PASSWORD;
 const API_TOKEN = process.env.PENGUIN_API_TOKEN;
 if (!ADMIN_PASSWORD && !API_TOKEN)
   usage(
-    "[deploy] set PENGUIN_ADMIN_PASSWORD or PENGUIN_API_TOKEN (the runtime's <root>/api-token).",
+    "[deploy] set PENGUIN_ADMIN_PASSWORD or PENGUIN_API_TOKEN (`penguin auth token` on the target's machine).",
   );
 
 /** A bare port means this machine's loopback (typically an ssh -L tunnel to the real target). */

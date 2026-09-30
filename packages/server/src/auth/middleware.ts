@@ -1,11 +1,12 @@
 /**
- * Auth middleware: `Authorization: Bearer <local API token>` -> the built-in admin, or
- * session cookie -> auth_sessions row -> user; either way the user is injected into c.var.
+ * Auth middleware: `Authorization: Bearer <credential>` or session cookie -> user; either way
+ * the user is injected into c.var.
  *
- * The Bearer path authenticates the boot's local API token (`<root>/api-token`, see
- * auth/api-token.ts) as the admin — the CLI's and agents' machine-local credential; it
- * applies to every route behind this middleware, SSE endpoints included (the CLI
- * consumes SSE via fetch with headers). A Bearer header that does not match fails the
+ * The Bearer path takes a Session's credential (auth/session-token.ts: the admin, narrowed
+ * by the HTTP layer to the route table in auth/session-scope.ts) or a person's sign-in token
+ * (`penguin auth login` / `penguin auth token`). It applies to every route behind this
+ * middleware, SSE endpoints included (the CLI consumes SSE via fetch with headers). A
+ * Bearer header that does not match fails the
  * request rather than falling back to the cookie: silently downgrading a wrong explicit
  * credential would mask misconfiguration.
  *
@@ -18,6 +19,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { HttpError } from "../http/errors.js";
 import type { UserRow } from "../db/repos/users.js";
 import type { SessionVia } from "./service.js";
+import type { SessionClaims } from "./session-token.js";
 import type { Auth } from "../mechanisms/identity.js";
 
 /**
@@ -131,6 +133,11 @@ export type AppEnv = {
      * machines/remote-token.ts). Absent on every other path, the API socket included.
      */
     cliSession?: boolean;
+    /**
+     * Set when the request carries a session credential (session-token.ts): the Session it
+     * speaks for. The HTTP layer narrows the request to the route table (session-scope.ts).
+     */
+    sessionScope?: SessionClaims;
   };
 };
 
@@ -151,6 +158,7 @@ export function authMiddleware(auth: Auth, trustProxy: boolean): MiddlewareHandl
       }
       c.set("user", viaToken.user);
       c.set("sessionVia", viaToken.via);
+      if (viaToken.scope !== undefined) c.set("sessionScope", viaToken.scope);
       await next();
       return;
     }
