@@ -4,8 +4,10 @@
  *   GET    /                      this Project's list, joined with what the process runs,
  *                                 plus which plugins the build ships (any member)
  *   POST   / { specifier,         fetch the package into the plugin store if this server runs it
- *            machineId? }         and the build does not ship it, add it to this Project's shared table — or
- *                                 to that machine's own table — and apply (admin)
+ *            machineId?,          and it is not on the machine — the catalogue entry the ask
+ *            integrity? }         resolves to, checked against that entry's integrity — add it
+ *                                 to this Project's shared table (pinned to `integrity` when
+ *                                 given) — or to that machine's own table — and apply (admin)
  *   PUT    / { plugins }          rewrite this Project's shared table, and apply (admin)
  *   DELETE /?specifier=…          drop it from every table of this Project — or, with
  *          [&machineId=…]         `machineId`, from that machine's own table — and apply (admin)
@@ -40,6 +42,7 @@ import type { AppEnv } from "../../auth/middleware.js";
 import type {
   InstalledPlugin,
   InstalledPluginsResponse,
+  PluginCatalogueEntry,
   UnsatisfiedPlugin,
 } from "../../api/types.js";
 import { HttpError } from "../errors.js";
@@ -56,10 +59,19 @@ import {
   PLUGINS_FILE,
   pluginBases,
   readPluginDeclaration,
+  shippedBases,
   shippedPlugins,
 } from "../../plugin/loader.js";
 import { PluginInstallError } from "../../plugin/install.js";
-import { fetchIntoStore, PluginStoreError, readStore } from "../../plugin/store.js";
+import { satisfies } from "../../plugin/activation.js";
+import {
+  fetchIntoStore,
+  PluginIntegrityMismatch,
+  PluginStoreError,
+  readStore,
+} from "../../plugin/store.js";
+import { INTEGRITY, mergeIndexes, pickCatalogueEntry } from "../../plugin/registry.js";
+import { resolveRegistries } from "./plugins.js";
 import { PluginHost, pluginHostFrom, PLUGINS_RESOURCE_ID } from "../../plugin/host.js";
 import { Access, ProjectConfigStore } from "../../mechanisms/projects.js";
 import type { Machines } from "../../machines/service.js";
@@ -71,6 +83,8 @@ export interface InstalledPluginsDeps {
   machineId: string;
   /** The current version's assets, where the builtin plugins a push carried live. */
   assetsDir: () => string | null;
+  /** The plugin catalogue (plugin/registry.ts mergeIndexes): what a download is chosen from. */
+  catalogue: () => Promise<PluginCatalogueEntry[]>;
   /** What the process's plugin host holds, by specifier, and what it could not load, with why. */
   running: () => {
     loaded: ReadonlySet<string>;
@@ -146,13 +160,16 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       };
       const declared = await readPluginDeclaration(specifier, bases);
       if ("error" in declared) {
+        // The loader's own reason first: a name activation could not place (a pin no stored
+        // entry has) is not in the generation either, and "not installed" would hide why.
+        const reason = skipped.get(specifier) ?? declared.error;
         plugins.push({
           specifier,
           active: false,
           builtin: false,
           modules: [],
           replaces: [],
-          ...(where.here ? { error: declared.error } : {}),
+          ...(where.here ? { error: reason } : {}),
           ...where,
         });
         continue;
@@ -206,6 +223,15 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       throw new HttpError(400, "bad_request", "specifier must be an npm package name.");
     }
     return s;
+  };
+
+  /** A pinned content, `sha256-<64 hex digits>`, or undefined when none is asked. */
+  const integrityOf = (value: unknown): string | undefined => {
+    if (value === undefined || value === null || value === "") return undefined;
+    if (typeof value !== "string" || !INTEGRITY.test(value)) {
+      throw new HttpError(400, "bad_request", "integrity must be sha256- and 64 hex digits.");
+    }
+    return value;
   };
 
   /** The machine a verb is scoped to — its own table — or null for the shared table. */
@@ -279,16 +305,39 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     // a listed plugin that is not on disk is exactly the state this route exists to avoid,
     // and npm failing must leave the deployment unchanged. A plugin asked of another machine
     // only is downloaded THERE, by that machine, when the list reaches it.
+    const integrity = integrityOf(body.integrity);
     const runsHere = machineId === null || machineId === deps.machineId;
-    const shipped = await shippedPlugins(deps.assetsDir());
-    if (runsHere && !shipped.includes(specifier)) {
+    // `pkg@1.2.3` installs that version, and the table records it as what this Project asks
+    // of the package; the key is the bare name, which is what the loader resolves.
+    const at = specifier.lastIndexOf("@");
+    const name = at > 0 ? specifier.slice(0, at) : specifier;
+    const version = at > 0 ? specifier.slice(at + 1) : undefined;
+    const onMachine =
+      (await shippedPlugins(deps.assetsDir())).includes(name) ||
+      (await readStore(deps.root)).some(
+        (e) =>
+          e.name === name &&
+          satisfies(e.version, version) &&
+          (integrity === undefined || e.integrity === integrity),
+      );
+    if (runsHere && !onMachine) {
+      // A download is always of a catalogue entry that names its content: the highest
+      // version the ask admits (or the pinned content), fetched as that exact version and
+      // compared with the entry's integrity before it enters the store.
+      const pick = pickCatalogueEntry(await deps.catalogue(), name, { version, integrity });
+      if ("refused" in pick) throw new HttpError(400, "plugin_not_installable", pick.refused);
       try {
         // Into the plugin store (plugin/store.ts), and nowhere else: the re-assembly the list
         // edit asks for activates a generation that links the stored entry.
-        await fetchIntoStore(deps.root, specifier);
+        await fetchIntoStore(deps.root, `${pick.name}@${pick.version}`, {
+          expected: pick.integrity,
+        });
       } catch (err) {
         if (err instanceof PluginInstallError) {
           throw new HttpError(400, "plugin_install_failed", `npm: ${err.message}`);
+        }
+        if (err instanceof PluginIntegrityMismatch) {
+          throw new HttpError(400, "plugin_integrity_mismatch", err.message);
         }
         if (err instanceof PluginStoreError) {
           throw new HttpError(400, "plugin_store_failed", err.message);
@@ -296,12 +345,11 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
         throw err;
       }
     }
-    // `pkg@1.2.3` installs that version, and the table records it as what this Project asks
-    // of the package; the key is the bare name, which is what the loader resolves.
-    const at = specifier.lastIndexOf("@");
-    const name = at > 0 ? specifier.slice(0, at) : specifier;
-    const version = at > 0 ? specifier.slice(at + 1) : undefined;
-    const requirement = version === undefined ? {} : { version };
+    // A pin names the content itself: activation takes that entry and no other.
+    const requirement = {
+      ...(version !== undefined ? { version } : {}),
+      ...(integrity !== undefined ? { integrity } : {}),
+    };
     await edit(projectId, (tables) =>
       machineId === null
         ? { ...tables, all: { ...tables.all, [name]: requirement } }
@@ -405,10 +453,19 @@ export class InstalledPluginRoutes {
   @Bind("InstalledPluginRoutes.routes") routes!: Hono<AppEnv>;
   setup() {
     const hmr = this.hmr;
+    const root = this.config.root;
+    // Its own cache of the published index: read only when a download is chosen.
+    const registries = resolveRegistries({
+      indexUrl: this.config.pluginIndexUrl,
+      root,
+      assetsDir: () => hmr.assetsDir(),
+      bases: () => [...pluginBases(root), ...shippedBases(hmr.assetsDir())],
+    });
     this.routes = installedPluginRoutes({
-      root: this.config.root,
+      root,
       machineId: new MachinesRepo(this.db as unknown as DatabaseSync).ownId(),
       assetsDir: () => hmr.assetsDir(),
+      catalogue: async () => (await mergeIndexes(registries)).entries,
       // Claimed per call rather than captured: the host belongs to the process, and a hot
       // swap hands the same one to the next platform.
       running: () => {
