@@ -90,7 +90,26 @@ import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
 import type { TelemetrySampleInput } from "../api/types.js";
-import { TELEMETRY_GENERATION_RESOURCE_ID } from "../telemetry/service.js";
+import {
+  TELEMETRY_GENERATION_RESOURCE_ID,
+  TELEMETRY_HANDOVER_RESOURCE_ID,
+} from "../telemetry/service.js";
+import type { GenerationRecord, TelemetryHandover } from "../telemetry/service.js";
+import { HMR_UPGRADE_PATH } from "@prismshadow/penguin-hmr";
+import { createHash } from "node:crypto";
+
+/**
+ * This platform bundle's identity for telemetry's hmr.generation: a short hash of the address
+ * it was imported from, the cache-busting query dropped. A push lands in a content-addressed
+ * store, so the same build pushed twice is the same address imported again.
+ */
+const BUNDLE_ID = createHash("sha256")
+  .update(import.meta.url.split("?")[0]!)
+  .digest("hex")
+  .slice(0, 12);
+
+/** Why an App generation is being created: the process's first, a push, or a plugin change's re-assembly. */
+type CreateCause = "boot" | "push" | "reassemble";
 
 /**
  * This server's hot host: the mechanism (@prismshadow/penguin-hmr) with the api ITS platforms
@@ -332,6 +351,8 @@ async function createInner(
   ctx: CreateCtx,
   context: PlatformCtx,
   reassemble: (change?: ReassemblyChange) => Promise<boolean>,
+  /** True when a re-assembly (not a boot or a push) is creating this App. */
+  reassembling = false,
 ): Promise<PlatformApi> {
   // The claim comes FIRST, before a single registry read is acted on, and "refused" is a
   // throw — what each outcome means and why lives on HmrClaim (capabilities.ts).
@@ -353,9 +374,18 @@ async function createInner(
   // phases below, measured unconditionally (a handful of clock reads per boot) and handed to
   // the Telemetry node once the tree is up, which keeps them only while its switch is on.
   const createdAt = performance.now();
-  const generation =
-    (ctx.resources.claim<{ n: number }>(TELEMETRY_GENERATION_RESOURCE_ID)?.n ?? 0) + 1;
-  ctx.resources.register(TELEMETRY_GENERATION_RESOURCE_ID, { n: generation });
+  const previous = ctx.resources.claim<GenerationRecord>(TELEMETRY_GENERATION_RESOURCE_ID);
+  const generation = (previous?.n ?? 0) + 1;
+  // Creates per bundle, so a build pushed a second time shows as one (hmr.generation).
+  const creates = (previous?.bundles?.[BUNDLE_ID] ?? 0) + 1;
+  const bundles: Record<string, number> = { ...previous?.bundles, [BUNDLE_ID]: creates };
+  const cause: CreateCause = reassembling ? "reassemble" : previous === undefined ? "boot" : "push";
+  ctx.resources.register(TELEMETRY_GENERATION_RESOURCE_ID, {
+    n: generation,
+    bundles,
+  } satisfies GenerationRecord);
+  // What the outgoing App measured of its park and dispose, for this one to record.
+  const handover = ctx.resources.claim<TelemetryHandover>(TELEMETRY_HANDOVER_RESOURCE_ID);
   const bootTimings: TelemetrySampleInput[] = [];
   const timed = <T>(probe: string, run: () => T): T => {
     const start = performance.now();
@@ -463,6 +493,14 @@ async function createInner(
           // A Project may list a plugin for one machine only (`[plugins.<machineId>]`); this
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
+          // Telemetry's plugin.load, per plugin and step — kept like the boot timings.
+          (step, plugin, ms, ok) =>
+            bootTimings.push({
+              probe: "plugin.load",
+              durMs: ms,
+              status: ok ? "ok" : "error",
+              attrs: { step, plugin },
+            }),
         ).catch(restoreGeneration);
   bootTimings.push({ probe: "boot.plugins", durMs: performance.now() - pluginsAt });
   // Plus whatever a test stood up in process, which no closure could name (see the id).
@@ -578,14 +616,19 @@ async function createInner(
   // no asynchronous tail any more — the one it had was waiting for aborted runs to end, and
   // a swap aborts none — so api.drained(), which the KERNEL awaits between dispose and the
   // successor's boot (kernel/upgrade.ts), has nothing to report.
+  /** What this App measures of its own going, left for its successor (see TELEMETRY_HANDOVER_RESOURCE_ID). */
+  const going: TelemetryHandover = { generation };
   ctx.effect(() => {
     // Held machine sessions are DELIVERED, not suspended: the machines module's own dispose
     // effect closes only its transient sessions and leaves the held ones in the registry.
     // Nothing is stopped here: whether the runs go on is the SUCCESSOR's call, made once it
     // is built (see the commit below), so a boot that fails re-adopts a state nobody touched.
+    const start = performance.now();
     manager?.detach();
     tree.dispose();
     if (business === null) terminals.quiesce();
+    going.disposeMs = performance.now() - start;
+    ctx.resources.register(TELEMETRY_HANDOVER_RESOURCE_ID, going);
   });
 
   // COMMIT: from here the App is built and nothing below throws, so the irreversible
@@ -627,18 +670,68 @@ async function createInner(
     fetchAs(userId: string, request: Request): Promise<Response>;
     upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<boolean>;
   }>("HttpModule", "http");
-  const http = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
+  const served = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
   const logNode = business?.api<Log>("RuntimeModule", "Log") ?? null;
   const telemetry = business?.api<Telemetry>("TelemetryModule", "Telemetry") ?? null;
   if (telemetry?.on() === true) {
     for (const sample of bootTimings) telemetry.record(sample);
     telemetry.record({ probe: "boot.create", durMs: performance.now() - createdAt });
+    // The predecessor's going, recorded here because its own buffer went with it — only when
+    // it is the generation this one follows (a create that failed leaves no dispose behind).
+    if (handover !== undefined && handover.generation === previous?.n) {
+      const from = { generation: handover.generation };
+      if (handover.parkMs !== undefined) {
+        telemetry.record({ probe: "hmr.park", durMs: handover.parkMs, keys: from });
+      }
+      if (handover.disposeMs !== undefined) {
+        telemetry.record({ probe: "hmr.dispose", durMs: handover.disposeMs, keys: from });
+      }
+    }
+    telemetry.record({
+      probe: "hmr.generation",
+      n: generation,
+      attrs: { cause, bundle: BUNDLE_ID, creates, repeat: creates > 1 },
+    });
+    const memory = process.memoryUsage();
+    telemetry.record({
+      probe: "process.memory",
+      bytes: memory.rss,
+      attrs: { heapUsed: memory.heapUsed, heapTotal: memory.heapTotal, external: memory.external },
+    });
   }
+  // hmr.admit: a push's admission probe (the runtime's credential-less POST to the upgrade
+  // route) is the first request a new generation is sent, before it is swapped in. Only that
+  // first request is looked at; every later one passes straight through.
+  let firstRequest = true;
+  const http = async (request: Request): Promise<Response | null> => {
+    if (!firstRequest) return served(request);
+    firstRequest = false;
+    if (
+      telemetry === null ||
+      !telemetry.on() ||
+      request.method !== "POST" ||
+      new URL(request.url).pathname !== HMR_UPGRADE_PATH ||
+      request.headers.has("authorization") ||
+      request.headers.has("cookie")
+    ) {
+      return served(request);
+    }
+    const start = performance.now();
+    const response = await served(request);
+    telemetry.record({
+      probe: "hmr.admit",
+      durMs: performance.now() - start,
+      attrs: { code: response?.status ?? 0 },
+    });
+    return response;
+  };
 
   return {
     log: (line) => (logNode !== null ? logNode.line(line) : console.log(line)),
     park: () => {
+      const parkAt = performance.now();
       const modules = tree.park();
+      going.parkMs = performance.now() - parkAt;
       // The top-level fields are written for every platform that reads them: a bare
       // kernel's own ptys, and the two parking modules' state in the form the first
       // platforms parked it — so a rollback to any of them keeps terminals and confinement.
@@ -724,8 +817,11 @@ async function resumeStopped(
  */
 export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
   async create(ctx, context) {
+    /** True while a re-assembly boots the inner App (telemetry's hmr.generation cause). */
+    let reassembling = false;
     const innerImpl: Impl<PlatformApi, PlatformCtx> = {
-      create: (innerCtx, innerContext) => createInner(innerCtx, innerContext, reassemble),
+      create: (innerCtx, innerContext) =>
+        createInner(innerCtx, innerContext, reassemble, reassembling),
     };
     let inner: Instance<PlatformApi>;
     let op: Promise<unknown> = Promise.resolve();
@@ -739,6 +835,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
         // interleave, and each re-assembly reads exactly what was written for it.
         await change?.write();
         swapping = true;
+        reassembling = true;
         try {
           const result = await upgrade({
             current: inner,
@@ -766,6 +863,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
           return false;
         } finally {
           swapping = false;
+          reassembling = false;
         }
       });
       op = run.then(
