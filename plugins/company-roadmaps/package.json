@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Roadmaps for PenguinHarness company mode: employees discuss in an organization channel through sessions cloned for that room, the moderator keeps a draft, and an established roadmap is archived and delegates each of its proposals — brief and owner — through company-proposals.",
   "license": "Apache-2.0",
+  "author": "Prism Shadow",
+  "categories": [
+    "company"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Prism-Shadow/penguin-harness.git",
