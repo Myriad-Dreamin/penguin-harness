@@ -99,9 +99,7 @@ export function PerformancePanel() {
       .then(([probes, bySession]) => {
         if (cancelled) return;
         setData(probes);
-        setSessions(
-          [...(bySession.sessions ?? [])].sort((a, b) => b.lastTs - a.lastTs),
-        );
+        setSessions([...(bySession.sessions ?? [])].sort((a, b) => b.lastTs - a.lastTs));
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(apiErrorText(e));
