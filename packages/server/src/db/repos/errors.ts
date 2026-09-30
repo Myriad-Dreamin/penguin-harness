@@ -48,6 +48,12 @@ export interface ErrorRecordInsert {
   code: string;
   status: number | null;
   message: string;
+  /** Unexpected errors only: the truncated stack (see ErrorRecorder's STACK_MAX_LINES / STACK_MAX). */
+  stack?: string | null;
+  /** The Task: the timestamp of its input message, the prompt's own Trace timestamp. */
+  taskId?: string | null;
+  /** The request (telemetry's request key): only while the telemetry switch was on. */
+  requestId?: string | null;
 }
 
 /** Generic filter: date range + agent (errors have no Model dimension, so no model filter). */
@@ -63,6 +69,10 @@ export interface ErrorFilter {
   agentId?: string;
   /** One error category (`unexpected` / `expected`); absent counts both, which is what the panel shows. */
   kind?: string;
+  /** One Session's errors (what an Agent reads about itself). */
+  sessionId?: string;
+  /** One request's errors — the key a telemetry sample carries. */
+  requestId?: string;
   /** Whether to include unattributed errors (`project_id IS NULL`): admins only, defaults to false (see file header). */
   includeGlobal?: boolean;
 }
@@ -88,6 +98,12 @@ export interface ErrorItem {
   code: string;
   kind: string;
   message: string;
+  agentId: string | null;
+  sessionId: string | null;
+  taskId: string | null;
+  requestId: string | null;
+  status: number | null;
+  stack: string | null;
 }
 
 @Component()
@@ -103,8 +119,9 @@ export class ErrorsRepo implements ErrorLog {
     this.db
       .prepare(
         `INSERT INTO error_records
-           (ts, date, project_id, agent_id, session_id, source, kind, code, status, message)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (ts, date, project_id, agent_id, session_id, source, kind, code, status, message,
+            stack, task_id, request_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         r.ts,
@@ -117,6 +134,9 @@ export class ErrorsRepo implements ErrorLog {
         r.code,
         r.status,
         r.message,
+        r.stack ?? null,
+        r.taskId ?? null,
+        r.requestId ?? null,
       );
     if (++this.sinceCheck >= this.pruneEvery) {
       this.sinceCheck = 0;
@@ -173,6 +193,14 @@ export class ErrorsRepo implements ErrorLog {
       conds.push("kind = :kind");
       params.kind = f.kind;
     }
+    if (f.sessionId !== undefined) {
+      conds.push("session_id = :sessionId");
+      params.sessionId = f.sessionId;
+    }
+    if (f.requestId !== undefined) {
+      conds.push("request_id = :requestId");
+      params.requestId = f.requestId;
+    }
     return { where: conds.join(" AND "), params };
   }
 
@@ -215,7 +243,8 @@ export class ErrorsRepo implements ErrorLog {
     const { where, params } = this.conds(projectId, f);
     const rows = this.db
       .prepare(
-        `SELECT ts, source, code, kind, message
+        `SELECT ts, source, code, kind, message, agent_id, session_id, task_id, request_id,
+                status, stack
          FROM error_records WHERE ${where}
          ORDER BY id DESC LIMIT :limit OFFSET :offset`,
       )
@@ -226,6 +255,12 @@ export class ErrorsRepo implements ErrorLog {
       code: r.code as string,
       kind: r.kind as string,
       message: r.message as string,
+      agentId: (r.agent_id as string | null) ?? null,
+      sessionId: (r.session_id as string | null) ?? null,
+      taskId: (r.task_id as string | null) ?? null,
+      requestId: (r.request_id as string | null) ?? null,
+      status: (r.status as number | null) ?? null,
+      stack: (r.stack as string | null) ?? null,
     }));
   }
 

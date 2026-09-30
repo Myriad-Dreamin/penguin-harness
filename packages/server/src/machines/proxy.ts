@@ -16,7 +16,7 @@ import http from "node:http";
 import { Readable } from "node:stream";
 import type { MachineEventHub } from "./event-hub.js";
 import { MachineSocketRelay } from "./socket-relay.js";
-import type { MachineSockets } from "./machine-sockets.js";
+import type { MachineFault, MachineSockets } from "./machine-sockets.js";
 
 /** Path prefix of the proxy: `/server/<id>/api/…`. */
 export const SERVER_PROXY_PREFIX = "/server/";
@@ -189,8 +189,8 @@ export function machinesProxy(
   ) => Promise<{ agent: http.Agent; port: number; cookie: string; session: number } | null>,
   report?: ProxyReport,
   log: (line: string) => void = () => undefined,
-  /** The shared socket cache and event hub, so this generation's routes read the facts the relay writes. */
-  shared: { sockets?: MachineSockets; events?: MachineEventHub } = {},
+  /** The shared socket cache and event hub, so this generation's routes read the facts the relay writes; and where relay failures are filed. */
+  shared: { sockets?: MachineSockets; events?: MachineEventHub; fault?: MachineFault } = {},
 ): (request: Request) => Promise<Response | null> {
   const relay = new MachineSocketRelay(log, shared);
   return async (request) => {
