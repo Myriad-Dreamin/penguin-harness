@@ -6,6 +6,7 @@ import type { UserRow } from "../db/repos/users.js";
 import type { AuthSessionRow, SessionViaValue } from "../db/repos/auth-sessions.js";
 import type { UserInfo } from "../api/types.js";
 import type { SessionVia } from "../auth/service.js";
+import type { SessionClaims } from "../auth/session-token.js";
 
 /** Users: the mechanism UsersRepo implements. */
 export abstract class Users extends Interface<{
@@ -53,7 +54,9 @@ export abstract class Auth extends Interface<{
   setInitialPassword(userId: string, newPassword: string): Promise<void>;
   logout(token: string): void;
   localApiToken(): string | null;
-  authenticateApiToken(token: string): { user: UserRow; via: SessionVia } | null;
+  authenticateApiToken(
+    token: string,
+  ): { user: UserRow; via: SessionVia; scope?: SessionClaims } | null;
   authenticateWithMeta(token: string): { user: UserRow; via: SessionVia; renewed: boolean } | null;
   isAdmin(userId: string): boolean;
 }>() {}
