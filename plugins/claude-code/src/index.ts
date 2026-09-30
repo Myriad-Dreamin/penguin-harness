@@ -50,6 +50,16 @@
  * one the integration test uses to stand in a fake. A first prompt from the draft page
  * becomes the program's first argument.
  *
+ * ## The Session's credential
+ *
+ * The program runs with the Session's control variables — `PENGUIN_API_URL`, the Session's
+ * own `PENGUIN_API_TOKEN` (a `pst1.` credential, see the server's auth/session-token.ts),
+ * `PENGUIN_PROJECT_ID`, `PENGUIN_AGENT_ID`, `PENGUIN_SESSION_ID` — and the harness's own
+ * `penguin` at the front of PATH: the same environment a harness-driven Session hands every
+ * command it runs ({@link sessionControlEnv}). Without it the program carries no identity, and
+ * a `penguin` it runs falls back to the sign-in stored on the data root, which is a person's
+ * and not this Session's Agent's.
+ *
  * ## Hot swaps
  *
  * Plugin modules are rebuilt per App; the ptys outlive the swap in the runtime's registry.
@@ -77,6 +87,7 @@ import type {
   OrgGateway,
   Paths,
   PluginConfig,
+  SessionEnv,
   SessionIndex,
   SessionServiceIface,
   SessionSurfaces,
@@ -420,6 +431,40 @@ export function pickTranscript(
   return found.find((t) => !takenByOthers.has(t.file) && live(t))?.file ?? null;
 }
 
+/** The two per-Session policies of the harness's SessionEnv this surface reads. */
+export type SessionControl = Pick<SessionEnv, "controlEnv" | "pathPrepend">;
+
+/**
+ * The environment the program gets on top of the server's own: the Session's control
+ * variables, and PATH with the harness's shim directory in front.
+ *
+ * The same two policies the harness applies to every command a Session it drives spawns, and
+ * evaluated with this Session's coordinates, so the credential speaks for this Session's Agent
+ * and nothing wider. PATH is rebuilt from `env` (the server's environment, which the pty
+ * inherits) under the name it already has there — `Path` on Windows.
+ */
+export function sessionControlEnv(
+  control: SessionControl,
+  session: SurfaceSessionRef,
+  env: NodeJS.ProcessEnv,
+): Record<string, string> {
+  const vars = control.controlEnv({
+    projectId: session.projectId,
+    agentId: session.agentId,
+    sessionId: session.sessionId,
+  });
+  const prepend = control.pathPrepend();
+  if (prepend.length === 0) return vars;
+  const key = Object.keys(env).find((name) => name.toUpperCase() === "PATH") ?? "PATH";
+  const current = env[key];
+  const prefix = prepend.join(path.delimiter);
+  return {
+    ...vars,
+    [key]:
+      current === undefined || current === "" ? prefix : `${prefix}${path.delimiter}${current}`,
+  };
+}
+
 /** What the pty manager gives back; the members this surface reads of a terminal. */
 type TerminalHandle = NonNullable<ReturnType<Terminals["get"]>>;
 
@@ -462,6 +507,8 @@ export class ClaudeCodeSurface implements SessionSurface {
     private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly settleMs: number = SCREEN_SETTLE_MS,
     private readonly titlePollMs: number = TITLE_POLL_MS,
+    /** The Session's control variables; null runs the program with the server's environment alone. */
+    private readonly control: SessionControl | null = null,
   ) {}
 
   /** Claims back the terminals a previous App parked; a terminal that is gone is forgotten. */
@@ -509,6 +556,7 @@ export class ClaudeCodeSurface implements SessionSurface {
       ownerUserId: session.ownerUserId,
       name: "claude",
       command: claudeArgv(options.prompt, this.env),
+      ...(this.control !== null ? { env: sessionControlEnv(this.control, session, this.env) } : {}),
       unsetEnv: INHERITED_SESSION_MARKERS,
       ...(options.cols !== undefined ? { cols: options.cols } : {}),
       ...(options.rows !== undefined ? { rows: options.rows } : {}),
@@ -676,8 +724,9 @@ export class ClaudeCodeSurface implements SessionSurface {
 
 /**
  * The plugin's one module: the surface on the SessionSurfacesModule.surfaces slot, with
- * Terminals as its one requirement (its manifest is generated into ifaces.json from here).
- * Rebuilt per App; the Session → terminal map parks and is claimed back at the next setup.
+ * Terminals and the Sessions' SessionEnv as its requirements (its manifest is generated into
+ * ifaces.json from here). Rebuilt per App; the Session → terminal map parks and is claimed
+ * back at the next setup.
  */
 @Component({
   contributes: {
@@ -704,10 +753,17 @@ export class ClaudeCodeSurface implements SessionSurface {
 })
 export class ClaudeCode {
   @Use() private readonly terminals!: Terminals;
+  @Use("SessionRuntimeModule") private readonly sessionEnv!: SessionEnv;
   @Bind("claude-code.surface") surface!: ClaudeCodeSurface;
 
   setup(_ctx: ClassCtx, context: Json) {
-    this.surface = new ClaudeCodeSurface(this.terminals);
+    this.surface = new ClaudeCodeSurface(
+      this.terminals,
+      process.env,
+      SCREEN_SETTLE_MS,
+      TITLE_POLL_MS,
+      this.sessionEnv,
+    );
     this.surface.adopt(context);
     liveSurface.current = this.surface;
   }
