@@ -37,6 +37,8 @@ export interface UiStrings {
   notifications: string;
   /** What pressing a toast does, read after its text: it dismisses it (`Toaster`). */
   dismiss: string;
+  /** The name and tooltip of a code block's copy button (`CodeBlock`). */
+  copyCode: string;
 }
 
 /** The English fallbacks, used wherever no provider is mounted (a test, a stand-alone page). */
@@ -51,6 +53,7 @@ export const DEFAULT_UI_STRINGS: UiStrings = {
   moreInfoAbout: (subject) => `More info: ${subject}`,
   notifications: "Notifications",
   dismiss: "Dismiss",
+  copyCode: "Copy code",
 };
 
 const UiStringsContext = createContext<UiStrings>(DEFAULT_UI_STRINGS);

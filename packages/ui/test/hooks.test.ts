@@ -92,8 +92,10 @@ const HOSTS: Readonly<Record<string, readonly string[]>> = {
     "TooltipLayer",
     "TooltipPanel",
   ],
-  "ui-eyebrow": ["Sidebar", "GroupHeader", "PagedDialog"],
+  // `Text` carries it for its eyebrow role (W5), the one door a group label takes in new code.
+  "ui-eyebrow": ["Sidebar", "GroupHeader", "PagedDialog", "Text"],
   "ui-display": [
+    "Heading",
     "EmptyState",
     "AgentsPage",
     "ModelsPage",

@@ -28,6 +28,7 @@ import {
   ICON_GAP,
   ICON_SIZE,
   Input,
+  Md,
   Modal,
   Skeleton,
   Textarea,
@@ -45,7 +46,6 @@ import { useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { useLocale } from "../../state/locale";
 import type { TreeToggle } from "../../components/ui/file-tree";
-import { Md } from "../chat/md";
 import { OrgEmptyLine, OrgPage, OrgSection, useOrg } from "./org-layout";
 import { ErrorLine } from "./shared";
 import { COLLAPSE_ALL_ICON, HandbookExplorer } from "./handbook-explorer";

@@ -26,6 +26,7 @@ describe("UiStrings", () => {
       "clearSearch",
       "close",
       "copied",
+      "copyCode",
       "dismiss",
       "hidePassword",
       "loading",
@@ -42,6 +43,7 @@ describe("UiStrings", () => {
       hidePassword: "Hide password",
       clearSearch: "Clear search",
       moreInfo: "More info",
+      copyCode: "Copy code",
       notifications: "Notifications",
       dismiss: "Dismiss",
     });

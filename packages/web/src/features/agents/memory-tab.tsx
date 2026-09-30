@@ -43,6 +43,7 @@ import {
   ICONS,
   IconButton,
   InfoPopover,
+  Md,
   Modal,
   NoticeStrip,
   RadioGroup,
@@ -65,7 +66,6 @@ import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { useProject } from "../../state/project";
 import { useSaveConfirm } from "./save-confirm";
-import { Md } from "../chat/md";
 import { useAiBridge } from "../ai-create";
 import { buildMemoryAddPrompt, buildMemoryEditPrompt } from "./memory-chat-prompts";
 import {
