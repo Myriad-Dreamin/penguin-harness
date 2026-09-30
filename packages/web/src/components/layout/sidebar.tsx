@@ -2647,7 +2647,7 @@ export function Sidebar({
               <UserAvatar
                 userId={user?.userId ?? "?"}
                 {...(user?.displayName !== undefined ? { displayName: user.displayName } : {})}
-                {...(user?.avatar !== undefined ? { avatar: user.avatar } : {})}
+                {...(user?.avatarRev !== undefined ? { avatarRev: user.avatarRev } : {})}
               >
                 {/* Update reminder: the menu behind this trigger holds the row that acts on
                     it, and the trigger's tooltip/label above say what it is. */}
