@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { InstalledPluginsResponse } from "../src/api/types.js";
-import { decorators, lower, writeClassPackage } from "./plugin-fixtures.js";
+import { decorators, lower, writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
 import type { ClassPackage } from "./plugin-fixtures.js";
 import { apiClient, createTestApp, loginAdmin, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
@@ -37,6 +37,7 @@ describe("installed plugins", () => {
     await fs.mkdir(prefix, { recursive: true });
     await fs.writeFile(manifestFile, JSON.stringify(manifest));
     await writeClassPackage(path.join(prefix, "node_modules", ...pkg.name.split("/")), pkg);
+    await writeShippedIndex(prefix);
   };
 
   beforeEach(async () => {
@@ -176,7 +177,7 @@ describe("installed plugins", () => {
       plugins: ["@acme/pinned"],
     });
     const stored = JSON.parse(
-      await fs.readFile(path.join(t.root, "plugin-store", "index.json"), "utf8"),
+      await fs.readFile(path.join(t.root, "install", "plugins", "index.json"), "utf8"),
     ) as { name: string; integrity: string }[];
     const integrity = stored.find((e) => e.name === "@acme/pinned")!.integrity;
     const res = await admin.post("/api/projects/default_project/plugins/installed", {
