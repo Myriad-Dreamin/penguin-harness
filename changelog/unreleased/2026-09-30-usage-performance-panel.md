@@ -3,6 +3,7 @@
 - **Date:** 2026-09-30
 - **Type:** feature
 - **Scope:** `web`, `server`
+- **PR:** [Myriad-Dreamin/penguin-harness#120](https://github.com/Myriad-Dreamin/penguin-harness/pull/120)
 
 [中文版](2026-09-30-usage-performance-panel.zh.md)
 
