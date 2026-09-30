@@ -10,6 +10,10 @@
  * ends, and that shape is what the surface reads. So this draws the same two lines in the
  * same place — with a different gerund each time, because the real one does that too and
  * nothing may depend on the word.
+ *
+ * `whoami` reports the credential the program was started with, the way a `penguin` it runs
+ * would use it: the kind of token, the coordinates beside it, and what the server answers to
+ * that token for the Session's own record and for an admin-only route.
  */
 import { createInterface } from "node:readline";
 
@@ -47,6 +51,26 @@ async function work() {
   write("\r\n");
 }
 
+async function whoami() {
+  const { PENGUIN_API_URL: url, PENGUIN_API_TOKEN: token = "" } = process.env;
+  const status = async (route) => {
+    try {
+      const res = await fetch(`${url}${route}`, { headers: { authorization: `Bearer ${token}` } });
+      return res.status;
+    } catch {
+      return "unreachable";
+    }
+  };
+  return [
+    `token=${token.startsWith("pst1.") ? "pst1" : token === "" ? "none" : "other"}`,
+    `agent=${process.env.PENGUIN_AGENT_ID ?? ""}`,
+    // The id's last eight: the whole line stays inside the pty's 80 columns.
+    `session=${(process.env.PENGUIN_SESSION_ID ?? "").slice(-8)}`,
+    `own=${await status(`/api/sessions/${process.env.PENGUIN_SESSION_ID ?? ""}`)}`,
+    `admin=${await status("/api/admin/settings")}`,
+  ].join(" ");
+}
+
 const args = process.argv.slice(2);
 write(`fake claude ${args.join(" ")}\r\n`);
 await work();
@@ -58,6 +82,10 @@ for await (const line of rl) {
   if (text === "exit") {
     write("bye\r\n");
     process.exit(0);
+  }
+  if (text === "whoami") {
+    write(`${await whoami()}\r\n> `);
+    continue;
   }
   await work();
   write(`done: ${text}\r\n> `);
