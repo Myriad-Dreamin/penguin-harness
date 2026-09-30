@@ -3473,6 +3473,18 @@ Scenarios:
     errorsClearIrreversible: "This cannot be undone.",
     errorsClearDone: (count: number): string =>
       `Deleted ${count} error record${count === 1 ? "" : "s"}`,
+    /** The performance panel (the telemetry buffer, admin only). */
+    performance: "Performance",
+    perfColProbe: "Probe",
+    perfColCount: "Count",
+    perfColMax: "Max",
+    perfSessionFilter: "Filter by Session",
+    perfAllSessions: "All Sessions",
+    perfRefresh: "Refresh",
+    perfBuffered: (n: number): string => `${n} sample${n === 1 ? "" : "s"} buffered`,
+    perfOff:
+      "Telemetry is off. Turn it on with penguin telemetry on, and this lists the server's and the browser's timings per probe.",
+    perfEmpty: "No samples yet",
   },
 
   /** The Trace panel's own view of a Trace file (trace-file-view / timeline-chart); the standalone browsing page these once also served is gone. */
