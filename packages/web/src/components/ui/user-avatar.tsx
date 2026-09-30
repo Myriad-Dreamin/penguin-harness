@@ -16,6 +16,7 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 
+import { meAvatarUrl } from "../../api/endpoints";
 import { avatarInitial } from "../../lib/avatar";
 
 /**
@@ -32,7 +33,7 @@ const INITIAL_RATIO = 0.45;
 export function UserAvatar({
   userId,
   displayName,
-  avatar,
+  avatarRev,
   size = USER_AVATAR_SIZE.tile,
   className,
   children,
@@ -41,8 +42,8 @@ export function UserAvatar({
   userId: string;
   /** Nickname, when set: it supplies the initial and the accessible name. */
   displayName?: string;
-  /** Stored avatar as a data URL; absent, the letter tile is drawn. */
-  avatar?: string;
+  /** The stored avatar's revision (`UserInfo.avatarRev`); absent, the letter tile is drawn. */
+  avatarRev?: string;
   /** Edge length in pixels — pass a `USER_AVATAR_SIZE` rung. */
   size?: number;
   className?: string;
@@ -51,13 +52,18 @@ export function UserAvatar({
 }) {
   const who = displayName ?? userId;
   const box: CSSProperties = { width: size, height: size };
-  if (avatar !== undefined) {
+  if (avatarRev !== undefined) {
     return (
       <span className={`relative block shrink-0 ${className ?? ""}`} style={box}>
         {/* object-cover, though a stored avatar is already square: one written by an API client
             rather than by the Profile page's crop must still fill the circle, not stretch into
             it. alt="" for the reason the letter tile is aria-hidden — see below. */}
-        <img src={avatar} alt="" className="h-full w-full rounded-full object-cover" style={box} />
+        <img
+          src={meAvatarUrl(avatarRev)}
+          alt=""
+          className="h-full w-full rounded-full object-cover"
+          style={box}
+        />
         {children}
       </span>
     );
