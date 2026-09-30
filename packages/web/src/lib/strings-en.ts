@@ -5162,7 +5162,8 @@ Scenarios:
       stage: { draft: "draft", brief: "brief", delegated: "delegated" },
       childRoadmap: (n: number) => `Roadmap #${n}`,
       statusUnknown: "status unknown",
-      statusUnknownHint: "The proposals list does not have this proposal yet; its status shows here once it does.",
+      statusUnknownHint:
+        "The proposals list does not have this proposal yet; its status shows here once it does.",
       openProposal: "Open the proposal",
       approvals: "approvals",
       byPerson: "a person",
