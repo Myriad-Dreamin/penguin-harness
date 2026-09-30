@@ -3,7 +3,7 @@
  * Agent has installed.
  *   GET    /api/plugins                                   # the built-in library by category (any logged-in user)
  *   GET    /api/plugins/:plugin/files                     # the files a library plugin ships, for the detail view's browser
- *   GET    /api/plugins/registry                          # the merged plugin index: the builtin entries and the published ones
+ *   GET    /api/plugins/registry                          # the merged plugin index: the build's, the store's and the published entries
  *   GET    /api/plugins/registry/readme?name=…            # one indexed entry's long-form readme
  *   POST   /api/projects/:p/agents/:a/plugins             # install plugins from the library (any member)
  * Installing a plugin writes each of its skills to agent_state/skills/<name>/ and its hook
@@ -15,11 +15,10 @@
  * hooks. The library is what this build carries; the registry is what the deployment can
  * fetch. Both are deployment-global (no Project check); only installing touches an Agent.
  *
- * The registry merges three sources into one catalogue: the index the running build carries,
- * this machine's plugin store, and the one published by the index repository — each row one
- * content, tagged with every source that lists it and whether this machine can install it.
- * The published document is cached, and a failure to reach it is reported alongside the
- * entries rather than emptying the page — see plugin/registry.ts for these rules.
+ * The registry merges three sources into one flat array of index entries: the index the
+ * running build carries, this machine's plugin store, and the one published by the index
+ * repository — one entry per content. The published document is cached, and a source that
+ * cannot be read shortens the listing rather than emptying it — see plugin/registry.ts.
  */
 import { Hono } from "hono";
 import {
@@ -32,7 +31,7 @@ import {
 import type {
   AgentPluginsInstallResponse,
   PluginFilesResponse,
-  PluginIndexResponse,
+  PluginIndexEntry,
   PluginLibraryResponse,
   PluginReadmeResponse,
 } from "../../api/types.js";
@@ -208,8 +207,7 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
   const registries = options.registries ?? resolveRegistries(options);
 
   app.get("/", async (c) => {
-    const { entries, failures } = await mergeIndexes(registries);
-    const body: PluginIndexResponse = { plugins: entries, failures };
+    const body: PluginIndexEntry[] = await mergeIndexes(registries);
     return c.json(body);
   });
   app.get("/readme", async (c) => {
@@ -219,7 +217,7 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
     }
     // Only entries this deployment actually lists: answering for an unlisted name would make
     // the endpoint a probe of what exists.
-    const { entries } = await mergeIndexes(registries);
+    const entries = await mergeIndexes(registries);
     if (!entries.some((e) => e.name === name)) {
       return c.json({ error: { code: "not_found", message: "no such plugin" } }, 404);
     }
@@ -238,7 +236,7 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
   return app;
 }
 
-/** The catalogue's sources, in precedence order: the build, the store, the published index. */
+/** The index's sources, in precedence order: the build, the store, the published index. */
 export function resolveRegistries(options: PluginRoutesOptions): PluginRegistry[] {
   const local = [
     builtinPluginRegistry(options.bases, options.assetsDir),

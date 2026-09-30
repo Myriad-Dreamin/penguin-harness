@@ -2325,13 +2325,7 @@ export const en: Strings = {
     builtin: "built in",
     builtinHint:
       "Ships with this build: installing it downloads nothing, and it loads only once you install it.",
-    /** Catalogue source tags: the build's is "built in" above. */
-    sourceStore: "on this machine",
-    sourceStoreHint: "Already in this machine's plugin store: installing it downloads nothing.",
-    sourceIndex: "published",
-    sourceIndexHint:
-      "Listed in the published plugin index: installing it downloads it and checks it against the index's integrity.",
-    /** A catalogue row this machine cannot install, and why: the channels it is missing from. */
+    /** An index entry this machine cannot install, and why: the channels it is missing from. */
     cannotInstallHere:
       "Can't be installed here: it is not in this build or this machine's plugin store, and its index entry names no integrity to check a download against.",
     installedRestart: "restart to load",
@@ -2492,11 +2486,6 @@ export const en: Strings = {
     readme: "Documentation",
     noReadme: "This plugin has no documentation yet.",
     notFound: "No such plugin.",
-    /** Shown above the list when a source answered with nothing, so a short list is not read as a complete one. */
-    sourceUnavailable: (count: number): string =>
-      count === 1
-        ? "One plugin source could not be reached, so this list may be incomplete."
-        : `${count} plugin sources could not be reached, so this list may be incomplete.`,
     repository: "Repository",
     homepage: "Homepage",
     authors: "Authors",
