@@ -45,6 +45,7 @@ import {
   Button,
   Checkbox,
   Chevron,
+  ConfirmModal,
   EmptyState,
   FieldError,
   FieldLabel,
@@ -54,6 +55,8 @@ import {
   InfoPopover,
   Input,
   Link,
+  Modal,
+  NoticeStrip,
   PasswordInput,
   ProviderLogo,
   Segmented,
@@ -62,6 +65,9 @@ import {
   Spinner,
   Switch,
   buttonClass,
+  toastError,
+  toastInfo,
+  toastSuccess,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
@@ -72,10 +78,7 @@ import { useProject } from "../../state/project";
 import { useAuth } from "../../state/auth";
 import { USD_TO_CNY, useTheme } from "../../state/theme";
 import type { Currency } from "../../state/theme";
-import { Modal } from "../../components/ui/modal";
-import { ConfirmModal } from "../../components/ui/confirm-modal";
 import { AiCreateModal, CreateButtons } from "../ai-create";
-import { toastError, toastInfo, toastSuccess } from "../../components/ui/toast";
 import { formatDateTime, humanizeTokens } from "../../lib/format";
 import {
   MODEL_PROVIDERS,
@@ -144,7 +147,6 @@ import type { SpeedResult, SpeedTone } from "./speed-test";
 import { toneInk } from "../../lib/tone";
 import { KeyAuthDialog } from "./key-auth-dialog";
 import type { KeyAuthTexts } from "./key-auth-dialog";
-import { NoticeStrip } from "../../components/ui/notice-strip";
 
 /**
  * The authorization flows a group's "authorize a key" dialog can run, keyed by the flow named
@@ -1641,6 +1643,8 @@ export function ModelsPage() {
               S.models.groupDeleted(removed.length),
             );
           }}
+          confirmLabel={S.common.confirm}
+          cancelLabel={S.common.cancel}
         >
           <p className="text-sm text-gray-700 dark:text-gray-300">
             {/* Offered on user-defined groups only, whose display info is always synthesized. */}
@@ -1663,6 +1667,7 @@ export function ModelsPage() {
           title={S.todo.modelsConfirmTitle(todo.count)}
           tone="primary"
           confirmLabel={S.models.syncCatalog}
+          cancelLabel={S.common.cancel}
           busy={syncing}
           onClose={() => setSyncConfirmOpen(false)}
           onConfirm={() => {
@@ -3623,6 +3628,8 @@ function ModelDialog({
             setConfirmingFastMode(false);
             set({ fastMode: true });
           }}
+          confirmLabel={S.common.confirm}
+          cancelLabel={S.common.cancel}
         >
           <p className="text-sm text-gray-700 dark:text-gray-300">{S.models.fastModeConfirmBody}</p>
           {fastProtocol === "anthropic" && (
@@ -3645,6 +3652,8 @@ function ModelDialog({
             setConfirming(null);
             void submit(action);
           }}
+          confirmLabel={S.common.confirm}
+          cancelLabel={S.common.cancel}
         >
           <p className="text-sm text-gray-700 dark:text-gray-300">
             {CONFIRM_BODY[confirming](modelLabel)}

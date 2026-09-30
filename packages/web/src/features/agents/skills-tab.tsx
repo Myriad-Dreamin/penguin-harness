@@ -22,6 +22,7 @@ import type { ChangeEvent } from "react";
 import type { SkillMetadataItem } from "@prismshadow/penguin-server/api";
 import {
   Button,
+  ConfirmModal,
   CopiedStatus,
   CopyCheckGlyph,
   DownloadIcon,
@@ -31,10 +32,13 @@ import {
   ICONS,
   IconButton,
   Input,
+  Modal,
   SettingsEmpty,
   SkeletonList,
   Textarea,
   buttonClass,
+  toastError,
+  toastSuccess,
   useCopied,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
@@ -43,9 +47,6 @@ import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { useLocale } from "../../state/locale";
 import { agentDisplayName, useProject } from "../../state/project";
-import { Modal } from "../../components/ui/modal";
-import { ConfirmModal } from "../../components/ui/confirm-modal";
-import { toastError, toastSuccess } from "../../components/ui/toast";
 import { SkillTile } from "../skills/skill-icon-view";
 import { localizedShortText } from "../chat/skill-use";
 import { useAiBridge } from "../ai-create";
@@ -392,6 +393,7 @@ export function SkillsTab({
         open={overwriting !== null}
         title={S.skills.importOverwriteTitle}
         confirmLabel={S.skills.importOverwriteAction}
+        cancelLabel={S.common.cancel}
         busy={uploading}
         onClose={() => setOverwriting(null)}
         onConfirm={() => {
@@ -410,6 +412,8 @@ export function SkillsTab({
         busy={busy}
         onClose={() => setRemoving(null)}
         onConfirm={() => void confirmRemove()}
+        confirmLabel={S.common.confirm}
+        cancelLabel={S.common.cancel}
       >
         <p className="text-sm text-gray-600 dark:text-gray-300">
           {removing !== null ? S.skills.uninstallConfirmBody(removing, agentName) : ""}

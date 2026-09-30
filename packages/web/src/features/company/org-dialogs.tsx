@@ -40,14 +40,18 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import {
   Button,
+  ConfirmModal,
   FieldError,
   FieldHint,
   FieldLabel,
   ICON_GAP,
   InfoPopover,
   Input,
+  Modal,
   Select,
   Textarea,
+  toastError,
+  toastSuccess,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
@@ -58,9 +62,6 @@ import { useAuth } from "../../state/auth";
 import { useCompany } from "../../state/company";
 import { projectDisplayName, useProject } from "../../state/project";
 import { useTheme } from "../../state/theme";
-import { Modal } from "../../components/ui/modal";
-import { ConfirmModal } from "../../components/ui/confirm-modal";
-import { toastError, toastSuccess } from "../../components/ui/toast";
 import { ModelSelect, modelLabel } from "../chat/model-select";
 import { WorkspaceSelect } from "../chat/workspace-select";
 import { sameModelRef } from "../models/model-grouping";
@@ -841,6 +842,8 @@ export function OrganizationSettingsDialog({
         title={S.company.deleteOrg}
         busy={busy}
         confirmDisabled={typedId.trim() !== orgId}
+        confirmLabel={S.common.confirm}
+        cancelLabel={S.common.cancel}
         onClose={() => setConfirmDelete(false)}
         onConfirm={() => void doDelete()}
       >

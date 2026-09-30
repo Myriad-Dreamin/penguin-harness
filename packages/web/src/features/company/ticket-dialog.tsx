@@ -40,15 +40,21 @@ import {
   Button,
   Chevron,
   CloseButton,
+  ConfirmModal,
   CopyButton,
   FieldLabel,
   ICON_GAP,
   ICON_SIZE,
   Input,
+  Modal,
+  NoticeStrip,
   Segmented,
   Select,
   Skeleton,
   Textarea,
+  toastError,
+  toastInfo,
+  toastSuccess,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
@@ -59,9 +65,6 @@ import { useAuth } from "../../state/auth";
 import { useCompany } from "../../state/company";
 import { useProject } from "../../state/project";
 import { useTheme } from "../../state/theme";
-import { ConfirmModal } from "../../components/ui/confirm-modal";
-import { Modal } from "../../components/ui/modal";
-import { toastError, toastInfo, toastSuccess } from "../../components/ui/toast";
 import { OrgSection } from "./org-layout";
 import { PathMarkdown, PathText } from "./path-capsule";
 import {
@@ -83,7 +86,6 @@ import {
 } from "./ticket-board";
 import { ticketHistoryRows, ticketSummaryCounts } from "./ticket-history";
 import { dayKey } from "./calendar-geom";
-import { NoticeStrip } from "../../components/ui/notice-strip";
 import { orgKey } from "./company-nav";
 import { deskRows } from "./org-sessions";
 import { chatPath, openTempSession } from "./temp-session";
@@ -938,6 +940,7 @@ function TicketDialog({
         title={S.common.confirmSaveTitle}
         tone="primary"
         confirmLabel={S.common.save}
+        cancelLabel={S.common.cancel}
         busy={busy}
         onClose={() => (busy ? undefined : setPendingSave(null))}
         onConfirm={commitSave}
@@ -951,6 +954,7 @@ function TicketDialog({
         title={S.company.tickets.unblock}
         tone="primary"
         confirmLabel={S.common.confirm}
+        cancelLabel={S.common.cancel}
         busy={busy}
         onClose={() => (busy ? undefined : setConfirmUnblock(false))}
         onConfirm={() => {
@@ -1054,6 +1058,7 @@ export function MoveTicketConfirm({
       title={S.company.tickets.moveTitle}
       tone={move?.to === "rejected" ? "danger" : "primary"}
       confirmLabel={S.common.confirm}
+      cancelLabel={S.common.cancel}
       confirmDisabled={needsReason && reason.trim() === ""}
       busy={busy}
       onClose={onClose}

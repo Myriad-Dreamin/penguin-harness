@@ -12,9 +12,11 @@
  * and close on pick).
  */
 import type { ReactNode } from "react";
-import { ChevronDown, controlBase, sizeClass } from "@prismshadow/penguin-ui";
-import type { ControlSize } from "@prismshadow/penguin-ui";
-import { Dropdown } from "./dropdown";
+import { ChevronDown } from "../../icons/marks/marks";
+import { Dropdown } from "../../overlays/dropdown/dropdown";
+import { controlBase } from "../field/field";
+import { sizeClass } from "../input/input";
+import type { ControlSize } from "../input/input";
 
 /** The trigger's own props: everything FormPicker draws, minus the menu it hangs. */
 export interface FormPickerTriggerProps {
@@ -67,10 +69,12 @@ export function FormPickerTrigger({
       className={`flex w-full items-center gap-2 text-left ${controlBase} ${sizeClass[size]} disabled:cursor-not-allowed disabled:opacity-60`}
     >
       {leading}
-      <span className={`min-w-0 flex-1 truncate ${muted ? "text-gray-400" : ""} ${labelClassName}`}>
+      <span
+        className={`min-w-0 flex-1 truncate ${muted ? "text-fg-subtle" : ""} ${labelClassName}`}
+      >
         {label}
       </span>
-      <ChevronDown className="text-gray-400" />
+      <ChevronDown className="text-fg-subtle" />
     </button>
   );
 }
