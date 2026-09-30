@@ -84,7 +84,7 @@ import { ApprovalRegistry, makeApprove } from "./approvals.js";
 import { goalOutcomeOf, goalProgressOf } from "./goal-events.js";
 import type { Approvals, PendingApproval } from "./approvals.js";
 import type { ChannelHub } from "./channel.js";
-import type { ErrorSink } from "./error-recorder.js";
+import type { ErrorContext, ErrorSink } from "./error-recorder.js";
 import { AgentStateStore } from "./agent-state.js";
 import type { LiveTail } from "./live-tail.js";
 import { asSessionSource } from "./session-sources.js";
@@ -1310,7 +1310,7 @@ export class SessionManager {
       });
       // The objective doubles as the title material (same role as a task's input text).
       entry.running = this.driveTraced(entry, () =>
-        this.drive(entry, gen, { userExcerpt: objective }),
+        this.drive(entry, gen, { userExcerpt: objective }, input[0]?.timestamp),
       );
       return { sessionId: entry.sessionId };
     });
@@ -1441,7 +1441,9 @@ export class SessionManager {
       .filter(isPlainText("user"))
       .map((m) => m.payload.text)
       .join("\n");
-    entry.running = this.driveTraced(entry, () => this.drive(entry, gen, { userExcerpt }));
+    entry.running = this.driveTraced(entry, () =>
+      this.drive(entry, gen, { userExcerpt }, input[0]?.timestamp),
+    );
   }
 
   /**
@@ -2236,12 +2238,15 @@ export class SessionManager {
    * Drive the output stream in the background: publish each message + persist usage +
    * persist LLM/tool errors; on completion (including errors) resets to idle and pushes
    * the status. `titleSource` is passed only for Task runs (compaction doesn't generate
-   * a title): its user text drives automatic title generation at run start.
+   * a title): its user text drives automatic title generation at run start. `taskId` is the
+   * Task's key on every error this run records: the timestamp of its input message, which is
+   * the prompt's own timestamp in the Trace (a compaction has none).
    */
   private async drive(
     entry: RuntimeEntry,
     gen: AsyncGenerator<OmniMessage>,
     titleSource?: { userExcerpt: string },
+    taskId?: string,
   ): Promise<void> {
     const ctx: UsageContext = {
       projectId: entry.projectId,
@@ -2249,6 +2254,12 @@ export class SessionManager {
       sessionId: entry.sessionId,
       provider: entry.provider,
       modelId: entry.modelId,
+    };
+    const errorCtx: ErrorContext = {
+      projectId: entry.projectId,
+      agentId: entry.agentId,
+      sessionId: entry.sessionId,
+      ...(taskId !== undefined ? { taskId } : {}),
     };
     // Title policy fires at run start, from the user input alone: the generator persists
     // the input's first words as an immediate fallback and issues the LLM replacement
@@ -2275,13 +2286,7 @@ export class SessionManager {
     // converges them into the message stream), so the try/catch below can't catch them:
     // the watcher inspects messages one by one and fishes them out for persistence
     // (subagent failures flow through this same stream too; see stream-error-watcher).
-    const watcher = this.deps.errors
-      ? new StreamErrorWatcher(this.deps.errors, {
-          projectId: entry.projectId,
-          agentId: entry.agentId,
-          sessionId: entry.sessionId,
-        })
-      : null;
+    const watcher = this.deps.errors ? new StreamErrorWatcher(this.deps.errors, errorCtx) : null;
     // Subagent (origin) registration: as soon as session_meta arrives, the child Session
     // is persisted so it appears immediately in the sidebar (the frontend picks it up
     // when it refreshes the list at task completion). The title material is "the prompt
@@ -2375,7 +2380,7 @@ export class SessionManager {
             this.deps.errors?.record({
               source: "subagent",
               err,
-              ctx,
+              ctx: errorCtx,
               code: "subagent_register_failed",
             });
           }
@@ -2418,7 +2423,12 @@ export class SessionManager {
           else await tally.timeAsync("usage", () => this.deps.recorder.record(ctx, msg));
         } catch (err) {
           this.log(`[usage] Insert failed: ${err instanceof Error ? err.message : String(err)}`);
-          this.deps.errors?.record({ source: "usage", err, ctx, code: "usage_insert_failed" });
+          this.deps.errors?.record({
+            source: "usage",
+            err,
+            ctx: errorCtx,
+            code: "usage_insert_failed",
+          });
         }
       }
     } catch (err) {
@@ -2427,7 +2437,12 @@ export class SessionManager {
       this.log(
         `[session] Run failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
-      this.deps.errors?.record({ source: "session", err, ctx, code: "session_run_failed" });
+      this.deps.errors?.record({
+        source: "session",
+        err,
+        ctx: errorCtx,
+        code: "session_run_failed",
+      });
       runStatus = "error";
     } finally {
       // Wrap-up: persist any still-pending LLM failure and clear the tool-name cache (the watcher's state doesn't carry across runs).
