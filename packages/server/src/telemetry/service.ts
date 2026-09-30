@@ -113,6 +113,10 @@ export class TelemetryService implements Telemetry {
     return sample;
   }
 
+  keys(): TelemetryKeys | undefined {
+    return this.#ring === null ? undefined : this.#scope.getStore();
+  }
+
   within(keys: TelemetryKeys, run: () => Promise<unknown>): Promise<unknown> {
     if (this.#ring === null) return run();
     return this.#scope.run({ ...this.#scope.getStore(), ...keys }, run);
