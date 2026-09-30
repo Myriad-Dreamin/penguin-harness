@@ -3,6 +3,7 @@
 - **Date:** 2026-09-30
 - **Type:** feature
 - **Scope:** `web`, `plugins`
+- **PR:** [Myriad-Dreamin/penguin-harness#125](https://github.com/Myriad-Dreamin/penguin-harness/pull/125)
 
 [English](2026-09-30-proposal-graph-web.md)
 
