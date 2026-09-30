@@ -8,7 +8,8 @@
  * It is reached from the queue's header and from a proposal's header; the latter opens it with
  * `?proposal=<n>`, and the page scrolls to that proposal's row and tints it, or says in one line
  * why the proposal has no row. PRs the graph could not place and proposals whose impl PR is not
- * on it are listed under the graph, as the server reported them.
+ * on it are listed under the graph, as the server reported them. Each registered penguin server
+ * is marked on the row its commit sits on, and listed under the graph when it sits on none.
  *
  * The lanes are an SVG drawn behind fixed-height rows, so a row's geometry never depends on how
  * its text wraps: the text truncates and carries the full value in its tooltip.
@@ -39,6 +40,7 @@ import { ErrorLine, TitleButton } from "../company/shared";
 import { PROPOSAL_STATUS_TONE } from "./proposals-model";
 import { focusedProposal, layoutGraph, rowOfProposal } from "./pr-graph-model";
 import type { GraphRow } from "./pr-graph-model";
+import { ServerMarks, ServersOff } from "./pr-graph-servers";
 
 /** The focused proposal's row: a background wash only, so the marks on it keep their own ink. */
 const FOCUS_WASH = "bg-blue-50 dark:bg-blue-950/40";
@@ -237,6 +239,7 @@ export function GraphPage() {
                         node={row.node}
                         isTop={graph.top === row.node.number}
                         onOpenProposal={openProposal}
+                        servers={graph.servers}
                       />
                     )}
                   </li>
@@ -250,12 +253,19 @@ export function GraphPage() {
               <ul className="divide-y divide-gray-100 dark:divide-gray-800">
                 {layout.detached.map((node) => (
                   <li key={node.number} className="flex items-center py-1.5 pr-3">
-                    <NodeRow node={node} isTop={false} onOpenProposal={openProposal} />
+                    <NodeRow
+                      node={node}
+                      isTop={false}
+                      onOpenProposal={openProposal}
+                      servers={graph.servers}
+                    />
                   </li>
                 ))}
               </ul>
             </OrgSection>
           )}
+
+          <ServersOff servers={graph.servers} />
 
           {graph.unplaced.length > 0 && (
             <OrgSection title={t.unplaced} count={graph.unplaced.length} info={t.unplacedHint}>
@@ -365,6 +375,7 @@ function BaseRow({ graph }: { graph: ProposalGraphResponse }) {
         </span>
       )}
       {graph.base.fork && <Mark tone="attention">{t.baseForked}</Mark>}
+      <ServerMarks servers={graph.servers} at={0} />
     </div>
   );
 }
@@ -373,10 +384,13 @@ function NodeRow({
   node,
   isTop,
   onOpenProposal,
+  servers,
 }: {
   node: ProposalGraphNode;
   isTop: boolean;
   onOpenProposal: (n: number) => void;
+  /** Absent from a server older than the registry. */
+  servers: ProposalGraphResponse["servers"] | undefined;
 }) {
   const t = S.company.proposals.graph;
   const relationWord = (r: ProposalGraphRelation) => t.relation[r] ?? r;
@@ -414,6 +428,7 @@ function NodeRow({
         {!node.onChain && (
           <Mark tone={RELATION_TONE[node.relation]}>{t.offChain(relationWord(node.relation))}</Mark>
         )}
+        <ServerMarks servers={servers} at={node.number} />
       </div>
       <div
         className={`flex min-w-0 items-center ${ICON_GAP.row} text-[11px] text-gray-500 dark:text-gray-400`}

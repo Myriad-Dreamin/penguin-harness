@@ -19,6 +19,9 @@ const B1 = sha("b");
 const C1 = sha("c");
 const E1 = sha("e");
 const F1 = sha("f");
+/** Commits servers run: X is on GitHub (past #12), L only on some machine's local line. */
+const X = sha("7");
+const L = sha("6");
 
 const pull = (number: number, branch: string, head: string, base: string, repo = "acme/site") => ({
   number,
@@ -39,6 +42,11 @@ function fakeGitHub(fail: string[] = []): { gh: RunGh; calls: string[] } {
     [`${A1}...${C1}`]: { status: "ahead", ahead_by: 3, behind_by: 0 },
     [`${B1}...${E1}`]: { status: "diverged", ahead_by: 2, behind_by: 5 },
     [`${A1}...${A0}`]: { status: "behind", ahead_by: 0, behind_by: 4 },
+    // A server's commit X, three past #12's head and further past the layers below it.
+    [`${D0}...${X}`]: { status: "ahead", ahead_by: 9, behind_by: 0 },
+    [`${A1}...${X}`]: { status: "ahead", ahead_by: 4, behind_by: 0 },
+    [`${B1}...${X}`]: { status: "ahead", ahead_by: 3, behind_by: 0 },
+    [`${C1}...${X}`]: { status: "diverged", ahead_by: 4, behind_by: 3 },
   };
   const gh: RunGh = async (args) => {
     const path = args[1]!;
@@ -140,6 +148,7 @@ describe("PrGraphReader", () => {
       origins: [],
       compare: (from, to) => layers[`${from}...${to}`],
       proposals: [],
+      servers: [],
       errors: [],
       checkedAt: "2026-09-30T00:00:00.000Z",
     });
@@ -197,6 +206,41 @@ describe("PrGraphReader", () => {
     await reader.read(config);
     expect(calls.filter((c) => c.includes("/pulls?")).length).toBe(2);
     expect(calls.filter((c) => c.includes("/compare/")).length).toBe(1);
+  });
+
+  it("places each server at the layer its commit is or contains, and lists the rest apart with one reason each", async () => {
+    const { gh, calls } = fakeGitHub();
+    const reading = (name: string, commit: string | null, error: string | null = null) => ({
+      name,
+      url: name === "this" ? null : `http://${name}`,
+      self: name === "this",
+      commit,
+      describe: commit === null ? null : `v1-1-g${commit.slice(0, 7)}`,
+      error,
+    });
+    const g = await new PrGraphReader({ gh, now: () => 0 }).read({
+      ...config,
+      servers: [
+        reading("this", A1.slice(0, 9)),
+        reading("late", X),
+        reading("local", L),
+        reading("dark", null, "/api/install answered 401"),
+      ],
+    });
+    expect(g.servers.map((s) => [s.name, s.at, s.relation, s.ahead, s.error])).toEqual([
+      ["this", 11, "same", 0, null],
+      ["late", 12, "ahead", 3, null],
+      ["local", null, null, null, null],
+      ["dark", null, null, null, "/api/install answered 401"],
+    ]);
+    // A commit that is a layer's head is not compared at all.
+    expect(calls.some((c) => c.includes(`...${A1.slice(0, 9)}`))).toBe(false);
+    // The commit GitHub does not have: one line, not one per layer.
+    const lines = g.errors.filter((e) => e.startsWith("server "));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(
+      new RegExp(`^server local: commit ${L} not compared with any layer: no fake compare for [0-9a-f]{40}\\.\\.\\.${L}$`),
+    );
   });
 
   it("does not ask gh about a repository name GitHub would not accept", async () => {

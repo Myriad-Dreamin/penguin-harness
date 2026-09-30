@@ -4917,6 +4917,12 @@ Scenarios:
         detachedHint:
           "Their declared base is neither the base branch nor the branch of any PR on the graph (usually a closed PR's branch).",
         unplaced: "Proposals whose impl PR is not on the graph",
+        serversOff: "Servers on no layer",
+        serversOffHint:
+          "The commit it runs could not be read, or compares with no layer on the graph (for instance a commit only on some machine's local deployment line).",
+        serverTitle: (name: string, commit: string, describe: string | null, ahead: number | null): string =>
+          `Server ${name} runs ${describe ?? commit}${ahead !== null && ahead > 0 ? `, ${ahead} commits past this layer` : ""}`,
+        serverUnread: "commit not read",
         unplacedHint:
           "The impl PR is registered but is not an open PR on the delivery repository (closed, merged, or opened elsewhere).",
         empty: "No open PRs on the delivery repository; the graph is the base alone.",

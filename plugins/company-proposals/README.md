@@ -44,6 +44,9 @@ penguin org proposal comments <n> [--pending]
 penguin org proposal resolve <n> <commentId> [-m …]
 penguin org proposal merged <n>
 penguin org proposal reject <n> --reason <text>         # any employee, as a person may: the reason and who are recorded
+penguin org proposal graph                              # the PR graph, each registered server marked at its commit
+penguin org proposal server add <name> <url>            # register a penguin server; a repeat (name, address or install id) is refused
+penguin org proposal server ls                          # the registry, this server first as `this`
 ```
 
 The document a revision sends:
@@ -77,7 +80,9 @@ The ledger is one append-only file per organization, `<root>/<project>/organizat
 
 ## API
 
-`/api/projects/:projectId/organizations/:orgId/proposals` — `GET /`, `POST /` (`{ author, brief, title? }`), `GET|PUT /:number` (`{ markdown }`), `PUT /:number/brief` (`{ brief }`, the author or a person), `POST /:number/ready|approve|reject|merged|implement|materials|feedback|comments|comments/request|comments/:id/resolve|read` (`reject` takes `{ reason }` from a person or any employee), `POST /:number/discussions` (a person; answers the session) and `POST /:number/discussions/:sessionId/conclude` (`{ text }`, a person or that session). Every route answers 404 while company mode is off.
+`/api/projects/:projectId/organizations/:orgId/proposals` — `GET /`, `POST /` (`{ author, brief, title? }`), `GET|PUT /:number` (`{ markdown }`), `PUT /:number/brief` (`{ brief }`, the author or a person), `POST /:number/ready|approve|reject|merged|implement|materials|feedback|comments|comments/request|comments/:id/resolve|read` (`reject` takes `{ reason }` from a person or any employee), `POST /:number/discussions` (a person; answers the session) and `POST /:number/discussions/:sessionId/conclude` (`{ text }`, a person or that session), `GET /graph` (with a `servers` array), `GET|POST /servers` (`{ name, url }`; anybody in the organization; 409 `server_registered` on a repeat, 422 `server_unreachable` when the address is not read as a penguin server). Every route answers 404 while company mode is off.
+
+A server's commit is read from its public `GET /api/install` (`installId`, `commit`, `describe`) on every graph read; `this` is read over the address the caller reached it by. Registrations are `server` lines in the same ledger.
 
 ## Development
 
