@@ -86,9 +86,9 @@ import { MachineEventHub } from "../src/machines/event-hub.js";
 import { MachineSockets } from "../src/machines/machine-sockets.js";
 import type { Access } from "../src/mechanisms/projects.js";
 
-export async function makeTempRoot(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "penguin-server-test-"));
-}
+import { makeTempRoot } from "./temp-roots.js";
+
+export { makeTempRoot };
 
 let symlinkCapability: boolean | undefined;
 
