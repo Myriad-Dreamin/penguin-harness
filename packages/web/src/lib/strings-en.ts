@@ -142,7 +142,13 @@ export const en: Strings = {
   shortcuts: {
     commands: {
       "palette.toggle": "Command palette",
+      "sessions.search": "Search sessions",
+      "chat.new": "New chat",
+      "sidebar.toggle": "Show or hide the sidebar",
+      "dock.toggleRight": "Show or hide the right sidebar",
+      "dock.toggleBottom": "Show or hide the bottom panel",
       "terminal.toggle": "Show or hide the terminal",
+      "terminal.new": "New terminal",
       "terminal.close": "Close the focused terminal",
       "editor.save": "Save",
     },

@@ -164,7 +164,13 @@ export const zh = {
   shortcuts: {
     commands: {
       "palette.toggle": "命令面板",
+      "sessions.search": "搜索会话",
+      "chat.new": "新建对话",
+      "sidebar.toggle": "显示或隐藏侧栏",
+      "dock.toggleRight": "显示或隐藏右侧栏",
+      "dock.toggleBottom": "显示或隐藏下侧栏",
       "terminal.toggle": "显示或隐藏终端",
+      "terminal.new": "新建终端",
       "terminal.close": "关闭当前终端",
       "editor.save": "保存",
     },

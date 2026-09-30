@@ -27,7 +27,17 @@ export type ShortcutGroup = "general" | "panels" | "terminal" | "editor";
  * The rebindable commands. `palette.toggle` is owned by the command palette; its id and default
  * are reserved here so the settings page lists it before the palette lands.
  */
-export type CommandId = "palette.toggle" | "terminal.close" | "terminal.toggle" | "editor.save";
+export type CommandId =
+  | "palette.toggle"
+  | "sessions.search"
+  | "chat.new"
+  | "sidebar.toggle"
+  | "dock.toggleRight"
+  | "dock.toggleBottom"
+  | "terminal.toggle"
+  | "terminal.new"
+  | "terminal.close"
+  | "editor.save";
 
 /**
  * One key combination. `code` is the `KeyboardEvent.code` of the non-modifier key ("KeyW",
@@ -84,4 +94,8 @@ export interface KeyLike {
   shiftKey: boolean;
   repeat?: boolean;
   isComposing?: boolean;
+  /** A DOM or React event's modifier query; the matcher asks it for AltGraph. */
+  getModifierState?: (key: string) => boolean;
+  /** Test literals set this directly; on a real event it is read through getModifierState. */
+  altGraph?: boolean;
 }

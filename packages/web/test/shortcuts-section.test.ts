@@ -55,11 +55,9 @@ describe("ShortcutsSection", () => {
       setActiveStrings(dict);
       const html = render();
       for (const cmd of SHORTCUT_COMMANDS) expect(html).toContain(dict.shortcuts.commands[cmd.id]);
-      for (const group of ["general", "terminal", "editor"] as const) {
-        expect(html).toContain(dict.shortcuts.groups[group]);
+      for (const group of ["general", "panels", "terminal", "editor"] as const) {
+        expect(count(html, `>${dict.shortcuts.groups[group]}<`)).toBe(1);
       }
-      // No command sits in the panels group yet, so its heading is not drawn.
-      expect(count(html, `>${dict.shortcuts.groups.panels}<`)).toBe(0);
     }
   });
 
