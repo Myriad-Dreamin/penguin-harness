@@ -62,14 +62,14 @@ import {
   shippedPlugins,
 } from "../../plugin/loader.js";
 import { PluginInstallError } from "../../plugin/install.js";
-import { satisfies } from "../../plugin/activation.js";
+import { pickIndexEntry, satisfies } from "../../api/plugin-pick.js";
 import {
   fetchIntoStore,
   PluginIntegrityMismatch,
   PluginStoreError,
   readStore,
 } from "../../plugin/store.js";
-import { INTEGRITY, mergeIndexes, pickIndexEntry } from "../../plugin/registry.js";
+import { INTEGRITY, mergeIndexes } from "../../plugin/registry.js";
 import { resolveRegistries } from "./plugins.js";
 import { PluginHost, pluginHostFrom, PLUGINS_RESOURCE_ID } from "../../plugin/host.js";
 import { Access, ProjectConfigStore } from "../../mechanisms/projects.js";

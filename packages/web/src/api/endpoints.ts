@@ -192,6 +192,7 @@ import type {
   PluginConfigActionResponse,
   PluginConfigUpdateRequest,
   LanguageIndexResponse,
+  PluginContentsResponse,
   PluginReadmeResponse,
   SessionsResponse,
   SessionsOverviewResponse,
@@ -1615,6 +1616,12 @@ export const getLanguages = () => apiFetch<LanguageIndexResponse>("/api/language
 
 export const getPluginReadme = (name: string) =>
   apiFetch<PluginReadmeResponse>(`/api/plugins/registry/readme?name=${encodeURIComponent(name)}`);
+
+/** Every content the index lists under one name, for its detail page. */
+export const getPluginContents = (name: string) =>
+  apiFetch<PluginContentsResponse>(
+    `/api/plugins/registry/contents?name=${encodeURIComponent(name)}`,
+  );
 
 export const getAgentSkills = (projectId: string, agentId: string) =>
   apiFetch<AgentSkillsResponse>(
