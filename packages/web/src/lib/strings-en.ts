@@ -4943,7 +4943,12 @@ Scenarios:
         serversOff: "Servers on no layer",
         serversOffHint:
           "The commit it runs could not be read, or compares with no layer on the graph (for instance a commit only on some machine's local deployment line).",
-        serverTitle: (name: string, commit: string, describe: string | null, ahead: number | null): string =>
+        serverTitle: (
+          name: string,
+          commit: string,
+          describe: string | null,
+          ahead: number | null,
+        ): string =>
           `Server ${name} runs ${describe ?? commit}${ahead !== null && ahead > 0 ? `, ${ahead} commits past this layer` : ""}`,
         serverUnread: "commit not read",
         unplacedHint:
