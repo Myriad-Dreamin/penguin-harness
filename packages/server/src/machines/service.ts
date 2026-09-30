@@ -90,9 +90,10 @@ import { machinesRoutes } from "../http/routes/machines.js";
 import { machinesProxy } from "./proxy.js";
 import { ConnectClock } from "./connect-stages.js";
 import { MachineEventHub } from "./event-hub.js";
-import { MachineSockets } from "./machine-sockets.js";
+import { MachineSockets, machineFaultInto, type MachineFault } from "./machine-sockets.js";
 import { HttpError } from "../http/errors.js";
 import type { Access } from "../mechanisms/projects.js";
+import type { Errors } from "../mechanisms/observability.js";
 import { Hono } from "hono";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -1722,6 +1723,7 @@ export class MachinesModule {
   @Use() private readonly access!: Access;
   /** Whether the predecessor's delivered sessions may be claimed (hmr/platform.ts judged their contract). */
   @Use() private readonly resourceGroups!: ResourceGroups;
+  @Use() private readonly errors?: Errors;
   @Provide() machines!: Machines;
   @Bind("MachinesModule.routes") routes!: Hono<AppEnv>;
   @Bind("MachinesModule.server-proxy") serverProxyRoutes!: Hono<AppEnv>;
@@ -1737,8 +1739,14 @@ export class MachinesModule {
     // The generation's one socket cache and the event hub over it (PRFC-0011): the proxy's
     // streams and the machines' aggregate event stream share both, so the hub holds ONE
     // subscription per machine however many tabs read it.
-    const sockets = new MachineSockets((line) => console.log(line));
-    const events = new MachineEventHub(sockets, (line) => console.log(line));
+    // What goes wrong on them goes into the error table as well as the log (source `machine`).
+    const fault = this.errors !== undefined ? machineFaultInto(this.errors) : undefined;
+    const sockets = new MachineSockets((line) => console.log(line), {
+      ...(fault !== undefined ? { fault } : {}),
+    });
+    const events = new MachineEventHub(sockets, (line) => console.log(line), {
+      ...(fault !== undefined ? { fault } : {}),
+    });
     const machines = new MachinesService(
       this.paths.root,
       repo.ownId(),
@@ -1748,7 +1756,11 @@ export class MachinesModule {
     );
     this.machines = machines;
     this.routes = machinesRoutes({ machines, access: this.access, events });
-    this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events });
+    this.serverProxyRoutes = machinesServerProxyRoutes(machines, {
+      sockets,
+      events,
+      ...(fault !== undefined ? { fault } : {}),
+    });
     // This generation's transient sessions close with it; held ones stay up in the registry
     // for the successor to claim, and its start() re-holds whatever the record says was
     // held and is not there.
@@ -1764,7 +1776,7 @@ export class MachinesModule {
  */
 export function machinesServerProxyRoutes(
   machines: MachinesService,
-  shared: { sockets?: MachineSockets; events?: MachineEventHub } = {},
+  shared: { sockets?: MachineSockets; events?: MachineEventHub; fault?: MachineFault } = {},
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const proxy = machinesProxy(

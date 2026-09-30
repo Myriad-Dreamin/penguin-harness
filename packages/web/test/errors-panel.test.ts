@@ -28,6 +28,12 @@ const item = (code: string): UsageErrorItem => ({
   code,
   kind: "unexpected",
   message: `${code} went wrong`,
+  agentId: null,
+  sessionId: null,
+  taskId: null,
+  requestId: null,
+  status: 500,
+  stack: null,
 });
 
 function errorsOf(items: UsageErrorItem[]): UsageErrors {
