@@ -1,6 +1,8 @@
 /**
  * One plugin's detail page: the index entry's metadata plus its long-form readme,
- * rendered from Markdown.
+ * rendered from Markdown, and every content the index lists under the name. The Plugins
+ * page shows a name as one row (the entry an install takes); the contents behind it —
+ * versions, integrities, what this machine stores and runs — are listed here.
  *
  * The readme is fetched separately from the index (GET /api/plugins/registry/readme) because the
  * shapes differ — the listing is sent in full on every visit to the Plugins page, while a
@@ -11,7 +13,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import type { PluginIndexEntry } from "@prismshadow/penguin-server/api";
+import type { PluginContent, PluginIndexEntry } from "@prismshadow/penguin-server/api";
 import ReactMarkdown from "react-markdown";
 import { REHYPE_PLUGINS, REMARK_PLUGINS } from "../../lib/markdown-plugins";
 import * as api from "../../api/endpoints";
@@ -24,6 +26,7 @@ import { GlyphIcon } from "../../components/ui/glyph-icon";
 import { NAV_ICONS } from "../../components/ui/icons";
 import { Skeleton } from "../../components/ui/skeleton";
 import { toneInk } from "../../lib/tone";
+import { indexEntryOf } from "./plugins-page";
 
 export function PluginDetailPage() {
   const params = useParams();
@@ -32,6 +35,7 @@ export function PluginDetailPage() {
 
   const [entry, setEntry] = useState<PluginIndexEntry | null | undefined>(undefined);
   const [readme, setReadme] = useState<string | null | undefined>(undefined);
+  const [contents, setContents] = useState<PluginContent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { copied, flash } = useCopied();
 
@@ -42,11 +46,13 @@ export function PluginDetailPage() {
     setError(null);
     setEntry(undefined);
     setReadme(undefined);
+    setContents(null);
     api
       .getPluginIndex()
       .then((res) => {
         if (cancelled) return;
-        setEntry(res.find((p) => p.name === name) ?? null);
+        // The entry the list's row shows: the one an install takes.
+        setEntry(indexEntryOf(res, name) ?? null);
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(apiErrorText(e));
@@ -60,6 +66,13 @@ export function PluginDetailPage() {
       .catch(() => {
         if (!cancelled) setReadme(null);
       });
+    api
+      .getPluginContents(name)
+      .then((res) => {
+        if (!cancelled) setContents(res.contents);
+      })
+      // Like the readme: the metadata is still worth showing without the list.
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -156,6 +169,8 @@ export function PluginDetailPage() {
               {S.pluginRegistry.installHint}
             </p>
 
+            {contents !== null && contents.length > 0 && <Contents contents={contents} />}
+
             <section className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-800">
               <h2 className="text-sm font-semibold">{S.pluginRegistry.readme}</h2>
               {readme === undefined ? (
@@ -176,6 +191,43 @@ export function PluginDetailPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Every content listed under the name: version, integrity, and whether this machine stores and runs it. */
+function Contents({ contents }: { contents: PluginContent[] }) {
+  const mark = (on: boolean) => (on ? S.pluginRegistry.yes : "—");
+  return (
+    <section className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-800">
+      <h2 className="text-sm font-semibold">{S.pluginRegistry.contents}</h2>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        {S.pluginRegistry.contentsHint}
+      </p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="text-gray-400 dark:text-gray-500">
+            <tr>
+              <th className="py-1 pr-4 font-normal">{S.pluginRegistry.contentVersion}</th>
+              <th className="py-1 pr-4 font-normal">{S.pluginRegistry.contentIntegrity}</th>
+              <th className="py-1 pr-4 font-normal">{S.pluginRegistry.contentStored}</th>
+              <th className="py-1 font-normal">{S.pluginRegistry.contentLinked}</th>
+            </tr>
+          </thead>
+          <tbody className="text-gray-600 dark:text-gray-300">
+            {contents.map((c, i) => (
+              <tr key={`${c.version}#${c.integrity ?? i}`}>
+                <td className="py-1 pr-4 font-mono">{c.version}</td>
+                <td className="py-1 pr-4 font-mono">
+                  {c.integrity?.slice(7, 23) ?? S.pluginRegistry.contentNoIntegrity}
+                </td>
+                <td className="py-1 pr-4">{mark(c.stored)}</td>
+                <td className="py-1">{mark(c.linked)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
