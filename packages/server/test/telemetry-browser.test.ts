@@ -51,9 +51,7 @@ describe("browserSample", () => {
 
   it("caps the attributes of one sample", () => {
     const attrs = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`a${i}`, i]));
-    expect(Object.keys(browserSample({ probe: "web.boot", attrs })?.attrs ?? {})).toHaveLength(
-      16,
-    );
+    expect(Object.keys(browserSample({ probe: "web.boot", attrs })?.attrs ?? {})).toHaveLength(16);
   });
 });
 
@@ -133,9 +131,7 @@ describe("POST /api/telemetry/samples", () => {
 
   it("rejects a body that is not a bounded list", async () => {
     await turn(true);
-    expect((await member.post("/api/telemetry/samples", { samples: "web.turn" })).status).toBe(
-      400,
-    );
+    expect((await member.post("/api/telemetry/samples", { samples: "web.turn" })).status).toBe(400);
     const tooMany = Array.from({ length: BROWSER_BATCH_MAX + 1 }, () => ({ probe: "web.turn" }));
     expect((await member.post("/api/telemetry/samples", { samples: tooMany })).status).toBe(400);
   });
