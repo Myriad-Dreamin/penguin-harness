@@ -3,7 +3,7 @@
 - **Date:** 2026-09-30
 - **Type:** feature
 - **Scope:** `server`, `cli`, `web`
-- **PR:** PENDING
+- **PR:** [Myriad-Dreamin/penguin-harness#122](https://github.com/Myriad-Dreamin/penguin-harness/pull/122)
 
 [English](2026-09-30-errors-one-table.md)
 
