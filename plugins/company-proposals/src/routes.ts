@@ -7,7 +7,7 @@
  *   POST   /                         start one: { author?, brief, title? } (author defaults to the calling employee)
  *   GET    /test-groups              the test groups a proposal may use, in order: { groups: [{ id, description }] }
  *   GET    /graph                    the delivery repository's open PRs as a commit graph (pr-graph.ts), with the servers placed on it
- *   GET    /servers                  the server registry, `this` first (servers.ts)
+ *   GET    /servers                  the server registry: the servers registered, none by default (servers.ts)
  *   POST   /servers                  anybody in the organization registers one: { name, url }; a repeat is 409 server_registered
  *   POST   /adopt-impl               anybody in the organization: proposals without an impl PR take their latest delivery-repo `pr` material
  *   GET    /:number                  the proposal
@@ -90,11 +90,6 @@ function actorOfQuery(c: Context): OrgActor {
     ...(via === "token" && sessionId ? { sessionId } : {}),
     ...(via === "token" && agentId ? { agentId } : {}),
   };
-}
-
-/** The address the caller reached this server by: how the registry reads `this` (servers.ts). */
-function selfUrlOf(c: Context): string {
-  return new URL(c.req.url).origin;
 }
 
 async function jsonBody(c: Context): Promise<Record<string, unknown>> {
@@ -191,20 +186,11 @@ export function proposalRoutes(service: ProposalService): Hono {
   );
 
   app.get("/graph", async (c) =>
-    c.json(
-      await service.graph(param(c, "projectId"), param(c, "orgId"), selfUrlOf(c), actorOfQuery(c)),
-    ),
+    c.json(await service.graph(param(c, "projectId"), param(c, "orgId"), actorOfQuery(c))),
   );
 
   app.get("/servers", async (c) =>
-    c.json(
-      await service.servers(
-        param(c, "projectId"),
-        param(c, "orgId"),
-        selfUrlOf(c),
-        actorOfQuery(c),
-      ),
-    ),
+    c.json(await service.servers(param(c, "projectId"), param(c, "orgId"), actorOfQuery(c))),
   );
 
   app.post("/servers", async (c) => {
@@ -215,7 +201,6 @@ export function proposalRoutes(service: ProposalService): Hono {
         param(c, "projectId"),
         param(c, "orgId"),
         req,
-        selfUrlOf(c),
         actorOf(c, body),
       ),
     );

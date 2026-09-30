@@ -1860,8 +1860,11 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
     );
   });
 
-  it("server add registers under the caller's identity, a repeat fails, and server ls lists this one first", async () => {
+  it("server add registers under the caller's identity, a repeat fails, and server ls lists what was registered and nothing else", async () => {
     server.addProposal("acme", { number: 1 });
+    // Nothing is on the registry by default: this server does not register itself.
+    expect(await cli(["org", "proposal", "server", "ls"])).toBe(0);
+    expect(out()).toBe("");
     expect(await cli(["org", "proposal", "server", "add", "desk", "http://localhost:53531"])).toBe(
       0,
     );
@@ -1880,10 +1883,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
     );
     stdout.length = 0;
     expect(await cli(["org", "proposal", "server", "ls"])).toBe(0);
-    expect(out().split("\n").slice(0, 2)).toEqual([
-      "this  -  self-id",
-      "desk  http://localhost:53531  desk-id  agent:dev1  2026-09-02T10:00:00.000Z",
-    ]);
+    expect(out()).toBe("desk  http://localhost:53531  desk-id  agent:dev1  2026-09-02T10:00:00.000Z\n");
   });
 
   it("graph marks each server on its layer and lists the ones on no layer", async () => {
@@ -1917,9 +1917,8 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
       checkedAt: "2026-09-30T00:00:00.000Z",
       servers: [
         {
-          name: "this",
-          url: null,
-          self: true,
+          name: "here",
+          url: "http://h:0",
           commit: "bbbbbbbbbbbb",
           describe: "v1-1-gbbbbbbb",
           at: 11,
@@ -1930,7 +1929,6 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
         {
           name: "old",
           url: "http://h:1",
-          self: false,
           commit: "aaaaaaaaaaaa",
           describe: "v1",
           at: 0,
@@ -1941,7 +1939,6 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
         {
           name: "late",
           url: "http://h:2",
-          self: false,
           commit: "eeeeeeeeeeee",
           describe: "v1-9-geeeeeee",
           at: 11,
@@ -1952,7 +1949,6 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
         {
           name: "local",
           url: "http://h:3",
-          self: false,
           commit: "fffffffff",
           describe: "v1-5-gfffffffff",
           at: null,
@@ -1963,7 +1959,6 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
         {
           name: "dark",
           url: "http://h:4",
-          self: false,
           commit: null,
           describe: null,
           at: null,
@@ -1977,7 +1972,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
     expect(out()).toBe(
       [
         "acme/site dev aaaaaaaaa  @old aaaaaaaaa",
-        `  #11 feat/a bbbbbbbbb +2  [top]  ${t.org.graphNoProposal()}  @this bbbbbbbbb  @late eeeeeeeee +3`,
+        `  #11 feat/a bbbbbbbbb +2  [top]  ${t.org.graphNoProposal()}  @here bbbbbbbbb  @late eeeeeeeee +3`,
         "",
         t.org.graphServersOff(),
         "  @local fffffffff  v1-5-gfffffffff  http://h:3",
