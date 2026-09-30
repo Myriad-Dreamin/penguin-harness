@@ -5,6 +5,7 @@
  *   GET    /api/plugins/:plugin/files                     # the files a library plugin ships, for the detail view's browser
  *   GET    /api/plugins/registry                          # the merged plugin index: the build's, the store's and the published entries
  *   GET    /api/plugins/registry/readme?name=…            # one indexed entry's long-form readme
+ *   GET    /api/plugins/registry/contents?name=…          # every content listed under one name, for its detail page
  *   POST   /api/projects/:p/agents/:a/plugins             # install plugins from the library (any member)
  * Installing a plugin writes each of its skills to agent_state/skills/<name>/ and its hook
  * package to agent_state/hooks/<plugin>/ (hooks.json + scripts); reinstalling overwrites with
@@ -31,6 +32,7 @@ import {
 import type {
   AgentPluginsInstallResponse,
   PluginFilesResponse,
+  PluginContentsResponse,
   PluginIndexEntry,
   PluginLibraryResponse,
   PluginReadmeResponse,
@@ -54,6 +56,9 @@ import {
 } from "../../plugin/registry.js";
 import type { CachedRegistry, IndexSnapshot, PluginRegistry } from "../../plugin/registry.js";
 import { pluginBases, shippedBases } from "../../plugin/loader.js";
+import { currentGeneration, readGeneration } from "../../plugin/activation.js";
+import { readStore } from "../../plugin/store.js";
+import { compareVersions } from "../../api/plugin-pick.js";
 import type { PluginBase } from "../../plugin/loader.js";
 
 /** What these route groups reach — bound by their component below. */
@@ -233,7 +238,46 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
     const body: PluginReadmeResponse = { name, readme: null };
     return c.json(body);
   });
+  app.get("/contents", async (c) => {
+    const name = c.req.query("name");
+    if (name === undefined || name === "") {
+      return c.json({ error: { code: "bad_request", message: "name is required" } }, 400);
+    }
+    // Only a name this deployment lists, like the readme: not a probe of what exists.
+    const listed = (await mergeIndexes(registries)).filter((e) => e.name === name);
+    if (listed.length === 0) {
+      return c.json({ error: { code: "not_found", message: "no such plugin" } }, 404);
+    }
+    const { stored, linked } = await onThisMachine(options.root);
+    const contents = listed
+      .map((e) => ({
+        version: e.version,
+        ...(e.integrity !== undefined ? { integrity: e.integrity } : {}),
+        stored: e.integrity !== undefined && stored.has(e.integrity),
+        linked: e.integrity !== undefined && linked.has(e.integrity),
+      }))
+      // Stable: among equal versions the merged index's order (the build's first) stays.
+      .sort((a, b) => compareVersions(b.version, a.version));
+    const body: PluginContentsResponse = { name, contents };
+    return c.json(body);
+  });
   return app;
+}
+
+/** The integrities this machine's store holds and its current generation links. */
+async function onThisMachine(
+  root: string | undefined,
+): Promise<{ stored: Set<string>; linked: Set<string> }> {
+  if (root === undefined) return { stored: new Set(), linked: new Set() };
+  const gen = currentGeneration(root);
+  const [inStore, inGeneration] = await Promise.all([
+    readStore(root),
+    gen === null ? Promise.resolve(null) : readGeneration(root, gen),
+  ]);
+  return {
+    stored: new Set(inStore.map((e) => e.integrity)),
+    linked: new Set((inGeneration ?? []).map((e) => e.integrity)),
+  };
 }
 
 /** The index's sources, in precedence order: the build, the store, the published index. */
