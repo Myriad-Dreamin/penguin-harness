@@ -199,15 +199,24 @@ async function request(method, url) {
   return res.json();
 }
 let base = m === null ? "" : "/api/projects/" + m[1] + "/organizations/" + m[2] + "/claude-code";
+let machine = null;
 async function resolveOrg() {
   try {
     const listing = await request("GET", "/api/projects/" + m[1] + "/organizations");
     const mine = (listing.organizations || []).find((o) => o.orgId === decodeURIComponent(m[2]));
-    if (mine && typeof mine.machineId === "string" && mine.machineId !== "") base = "/server/" + encodeURIComponent(mine.machineId) + base;
+    if (mine && typeof mine.machineId === "string" && mine.machineId !== "") {
+      machine = mine.machineId;
+      base = "/server/" + encodeURIComponent(machine) + base;
+    }
   } catch {
     // No listing: asked here, where the organization runs unless it says otherwise.
   }
 }
+// A run's Session lives where the organization runs. The app learns a Session's machine from the
+// answers it fetched itself, and it never fetched these, so the link says it: without
+// ?machine= the chat page asks this server, hears 404 and falls back to the newest personal
+// conversation.
+const sessionPath = (sessionId) => "/chat/" + encodeURIComponent(sessionId) + (machine === null ? "" : "?machine=" + encodeURIComponent(machine));
 const go = (path) => {
   const entered = read(() => {
     const parent = window.parent;
@@ -230,7 +239,7 @@ function row(r) {
   const name = r.title || firstLine(r.prompt);
   const when = r.startedAt || r.queuedAt;
   const actions = [];
-  if (r.sessionId) actions.push('<a class="button' + (r.status === "running" ? " primary" : "") + '" href="/chat/' + encodeURIComponent(r.sessionId) + '" target="_top" data-open="' + esc(r.sessionId) + '">' + esc(T.open) + "</a>");
+  if (r.sessionId) actions.push('<a class="button' + (r.status === "running" ? " primary" : "") + '" href="' + esc(sessionPath(r.sessionId)) + '" target="_top" data-open="' + esc(r.sessionId) + '">' + esc(T.open) + "</a>");
   if (r.status !== "ended") actions.push('<button type="button" data-release="' + r.id + '" data-queued="' + (r.status === "queued" ? "1" : "") + '">' + esc(r.status === "queued" ? T.cancel : T.release) + "</button>");
   return '<div class="row"><span class="id">#' + r.id + '</span><div class="body"><div class="name">' + esc(name) + " " + pill(r) + "</div>" +
     '<div class="meta">' + esc(r.agentId) + " · " + esc(T.by) + " " + esc(String(r.by).replace(/^(user|agent):/, "")) + " · " + esc(when) + '</div>' +
@@ -255,7 +264,7 @@ main.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
   const open = target.closest("[data-open]");
-  if (open) { event.preventDefault(); go("/chat/" + encodeURIComponent(open.getAttribute("data-open"))); return; }
+  if (open) { event.preventDefault(); go(sessionPath(open.getAttribute("data-open"))); return; }
   const release = target.closest("[data-release]");
   if (release) {
     if (!confirm(release.getAttribute("data-queued") ? T.confirmCancel : T.confirmRelease)) return;
