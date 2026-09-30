@@ -687,7 +687,10 @@ function renderGraph(g: ProposalGraphResponse, t: Messages): string {
           [
             t.org.graphServersOff(),
             ...offServers.map((s) =>
-              indent(1, `@${s.name} ${short(s.commit)}  ${s.describe ?? "-"}${s.url === null ? "" : `  ${s.url}`}${s.error === null ? "" : `  (${s.error})`}`),
+              indent(
+                1,
+                `@${s.name} ${short(s.commit)}  ${s.describe ?? "-"}${s.url === null ? "" : `  ${s.url}`}${s.error === null ? "" : `  (${s.error})`}`,
+              ),
             ),
           ].join("\n"),
         ]
@@ -720,7 +723,12 @@ function renderGraph(g: ProposalGraphResponse, t: Messages): string {
 /** `proposal server ls`: one server per line — name, address (`-` for this one), install id, who registered it. */
 function renderServers(res: ProposalServersResponse): string {
   const lines = res.servers.map((s) =>
-    [s.name, s.url ?? "-", s.installId ?? "?", ...(s.by === null ? [] : [s.by, s.registeredAt ?? ""])].join("  "),
+    [
+      s.name,
+      s.url ?? "-",
+      s.installId ?? "?",
+      ...(s.by === null ? [] : [s.by, s.registeredAt ?? ""]),
+    ].join("  "),
   );
   return `${lines.join("\n")}\n`;
 }
