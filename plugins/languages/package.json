@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Syntax highlighting for Typst, Swift, Kotlin, C# and Dart in PenguinHarness.",
   "license": "MIT",
+  "author": "Prism Shadow",
+  "categories": [
+    "languages"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Prism-Shadow/penguin-harness.git",
