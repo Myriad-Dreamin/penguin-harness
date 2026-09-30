@@ -15,3 +15,4 @@ A hot push to a Windows installation was refused with `No package.json above the
 - There is no fallback to the first package.json that could be read: when neither starting point leads to a host, the library call fails with a message naming both places it started from, instead of the push failing or the library silently coming up empty.
 - The program's path has its symlinks resolved first, so a package manager's bin leads to the installation it belongs to.
 - Plugin packages resolve through the host package's own `require`, so a pushed platform reads the plugins installed with the program rather than looking for them next to the store.
+- A library a hot push carried ([its own entry](2026-09-19-pushed-plugin-library.md)) still outranks both starting points and is walked the same way; the error names it too when one is set.
