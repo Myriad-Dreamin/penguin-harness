@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import type {
   AgentSummary,
   ModelRefDto,
@@ -124,7 +124,7 @@ import {
   sessionForProject,
   sessionProbeKey,
 } from "./session-project";
-import { machineForSession } from "../../lib/session-machines";
+import { machineForSession, rememberLinkedMachine } from "../../lib/session-machines";
 import { nameOnMachine } from "../../lib/workspace-machines";
 import { CHAT_DEFAULTS_CHANGED_EVENT, chatDefaultsChangedDetail } from "./chat-defaults-event";
 import { advanceCostStat, applyUsageFetch, createCostStatHold } from "./header-stats";
@@ -375,6 +375,8 @@ export function ChatPage() {
   const [modelSwitchPosting, setModelSwitchPosting] = useState(false);
 
   const routeSessionId = params.sessionId ?? null;
+  const [linkedParams] = useSearchParams();
+  if (routeSessionId) rememberLinkedMachine(routeSessionId, linkedParams.get("machine"));
   // The docks' arrangement lives in the dock store (features/dock) — tabs, active tab,
   // sizes, all global and persisted. This page re-renders on any dock change and owns only
   // the stream-driven JUMP COMMANDS the panel bodies consume: each is a fresh object per
