@@ -6,7 +6,9 @@
  *
  * Admin only for the reason unattributed errors are: the samples carry other users' Session
  * ids and routes, so a member's view would leak across tenants. The switch itself is a system
- * setting (`PUT /api/admin/settings { telemetry }`), not a route of its own.
+ * setting (`PUT /api/admin/settings { telemetry }`), not a route of its own. A Session's own
+ * credential passes the admin check but reads only with `session=` naming one of its Agent's
+ * sessions, and never clears (auth/session-scope.ts).
  *
  * One route is not a read and not admin-only — the sample intake the page's collector posts to:
  *
