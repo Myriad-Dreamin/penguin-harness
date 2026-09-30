@@ -88,6 +88,9 @@ import { pushedLibraryDir } from "./asset-archives.js";
 import { migrate } from "../db/migrations.js";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
+import type { Telemetry } from "../mechanisms/telemetry.js";
+import type { TelemetrySampleInput } from "../api/types.js";
+import { TELEMETRY_GENERATION_RESOURCE_ID } from "../telemetry/service.js";
 
 /**
  * This server's hot host: the mechanism (@prismshadow/penguin-hmr) with the api ITS platforms
@@ -345,12 +348,29 @@ async function createInner(
     );
   }
   const caps = claim.kind === "claimed" ? claim.caps : null;
+  // Telemetry's boot timings (PRFC-0008): this App's generation number — how many creates this
+  // process has run, counted in the runtime's registry so it survives the swap — and the
+  // phases below, measured unconditionally (a handful of clock reads per boot) and handed to
+  // the Telemetry node once the tree is up, which keeps them only while its switch is on.
+  const createdAt = performance.now();
+  const generation =
+    (ctx.resources.claim<{ n: number }>(TELEMETRY_GENERATION_RESOURCE_ID)?.n ?? 0) + 1;
+  ctx.resources.register(TELEMETRY_GENERATION_RESOURCE_ID, { n: generation });
+  const bootTimings: TelemetrySampleInput[] = [];
+  const timed = <T>(probe: string, run: () => T): T => {
+    const start = performance.now();
+    try {
+      return run();
+    } finally {
+      bootTimings.push({ probe, durMs: performance.now() - start });
+    }
+  };
   // A pushed platform carries its own migrations, which is the only way the tables its
   // business needs can reach a runtime older than they are — that runtime will never grow
   // them by restarting, because it does not have them. swapPath: this boot can be rolled
   // back, so a restart-only migration is refused here instead of being left behind. Before
   // any node is created: every repo below prepares its statements against this schema.
-  if (caps !== null) migrate(caps.db, { swapPath: true });
+  if (caps !== null) timed("boot.migrate", () => migrate(caps.db, { swapPath: true }));
   // Resource-interface reconciliation, BEFORE anything is adopted: integrate the groups
   // the predecessor declared at the version this build also declares, hard-stop the
   // rest — a version bump or a dropped group means this create() does not speak the
@@ -432,6 +452,7 @@ async function createInner(
     }
     throw err;
   };
+  const pluginsAt = performance.now();
   const plugins =
     caps === null
       ? pluginHostFrom(ctx.resources)
@@ -443,6 +464,7 @@ async function createInner(
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
         ).catch(restoreGeneration);
+  bootTimings.push({ probe: "boot.plugins", durMs: performance.now() - pluginsAt });
   // Plus whatever a test stood up in process, which no closure could name (see the id).
   const injected = ctx.resources.claim<PluginHost | null>(HMR_TEST_PLUGINS_RESOURCE_ID);
   if (injected != null && typeof injected.entries === "function") {
@@ -477,6 +499,7 @@ async function createInner(
     // group and the terminal manager are modules wired by their manifests — checked as
     // data before any create() runs, created in dependency order. Sandbox backends the
     // plugin host registered enter the same tree as one contributing module.
+    const modulesAt = performance.now();
     ({ tree, left: leftOut } = await bootWithoutUnsatisfied(loaded, (kept) =>
       bootModules(
         platformDef(
@@ -493,9 +516,12 @@ async function createInner(
           ifaces: plugins.ifaces(ifaceTable as unknown as IfaceTable),
           resources: ctx.resources,
           parked: parkedModules(context),
+          onCreated: (module, ms) =>
+            bootTimings.push({ probe: "boot.module", durMs: ms, attrs: { module } }),
         },
       ),
     ).catch(restoreGeneration));
+    bootTimings.push({ probe: "boot.modules", durMs: performance.now() - modulesAt });
     business = tree;
     terminals = tree.api<TerminalManager>("TerminalModule", "terminals");
   }
@@ -603,6 +629,11 @@ async function createInner(
   }>("HttpModule", "http");
   const http = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
   const logNode = business?.api<Log>("RuntimeModule", "Log") ?? null;
+  const telemetry = business?.api<Telemetry>("TelemetryModule", "Telemetry") ?? null;
+  if (telemetry?.on() === true) {
+    for (const sample of bootTimings) telemetry.record(sample);
+    telemetry.record({ probe: "boot.create", durMs: performance.now() - createdAt });
+  }
 
   return {
     log: (line) => (logNode !== null ? logNode.line(line) : console.log(line)),

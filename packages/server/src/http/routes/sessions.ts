@@ -145,6 +145,7 @@ import type { ModelScopeAuth } from "../../services/modelscope-auth-service.js";
 import type { Schedules, SessionIndex, SessionOrigins } from "../../mechanisms/sessions.js";
 import type { ErrorLog, UsageQueries } from "../../mechanisms/observability.js";
 import type { TraceIndex, Traces } from "../../mechanisms/traces.js";
+import { redactValue } from "../../services/redact.js";
 import type { FileReveal, PullRequests, WorkspaceFiles } from "../../mechanisms/workspace.js";
 import type { Machines } from "../../machines/service.js";
 import type { AgentConfig, AgentLifecycle } from "../../mechanisms/agents.js";
@@ -1596,14 +1597,17 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
     const row = resolveSession(c);
     const index = positiveIntParam(c, "index");
     const { offset, limit } = paginationQuery(c);
+    // Raw content: credential-shaped fields and values are redacted before they leave.
     return c.json(
-      await deps.traceService.readEvents(
-        row.projectId,
-        row.agentId,
-        row.sessionId,
-        index,
-        offset,
-        limit,
+      redactValue(
+        await deps.traceService.readEvents(
+          row.projectId,
+          row.agentId,
+          row.sessionId,
+          index,
+          offset,
+          limit,
+        ),
       ),
     );
   });
