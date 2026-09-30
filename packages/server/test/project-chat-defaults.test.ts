@@ -33,6 +33,7 @@ const SERVED = {
     confinementSupported: false,
     noNetworkSupported: false,
     localNetworkSupported: false,
+    unavailableBackends: [],
   },
 };
 
