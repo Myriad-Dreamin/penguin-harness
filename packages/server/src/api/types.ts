@@ -4237,35 +4237,8 @@ export interface PluginIndexEntry {
    * listed and cannot be installed.
    */
   integrity?: string;
-  /** A yanked entry stays in its source as a record and is left out of the catalogue. */
+  /** A yanked entry stays in its source as a record and is left out of the listing. */
   yanked?: boolean;
-}
-
-/** Where a catalogue row comes from: the running build, this machine's plugin store, or the published index. */
-export type PluginEntrySource = "builtin" | "store" | "index";
-
-/**
- * One row of the plugin catalogue: one content (name, version, integrity), with every source
- * that lists it — the first one's metadata describes it.
- */
-export interface PluginCatalogueEntry extends PluginIndexEntry {
-  sources: PluginEntrySource[];
-  /**
-   * Whether this machine can install it: it names its integrity — shipped with the build,
-   * already in the store, or published with one that a fetched copy is checked against.
-   */
-  installable: boolean;
-}
-
-/** GET /api/plugins/registry: the catalogue — the build's index, the store's and the published one, merged. */
-export interface PluginIndexResponse {
-  plugins: PluginCatalogueEntry[];
-  /**
-   * Sources that could not be read, by `source` and reason. Present and empty when every
-   * source answered. A remote index that is down shortens the listing rather than emptying
-   * it, so the page needs to be able to say so instead of silently showing less.
-   */
-  failures: { source: string; error: string }[];
 }
 
 /** GET /api/plugins/registry/readme — long-form docs for one entry; `readme` is null when none exists. */
