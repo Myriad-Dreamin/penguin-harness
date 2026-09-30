@@ -59,6 +59,7 @@ import {
 } from "./trace/index.js";
 import { Session } from "./session.js";
 import { scriptPreToolUseHook, scriptStopHook, scriptUserPromptHook } from "./hooks/script-hook.js";
+import type { ScriptHookOptions } from "./hooks/script-hook.js";
 import type { HookSubagentRequest, SessionHooks } from "./hooks/stop-hook.js";
 import { predatesEveryPromptHooks, userPromptTrigger } from "./plugins/index.js";
 import type { SessionConfig, SessionOpenedContext } from "./session.js";
@@ -906,7 +907,7 @@ export class Agent {
       trace,
       openNextContext: rt.openNextContext,
       // The first context's hooks; each context `openNextContext` opens brings its own.
-      hooks: this.sessionHooks(rt.subagentRunner, context.hookPackages),
+      hooks: this.sessionHooks(rt.subagentRunner, context.hookPackages, spec),
 
       createBareLLM: rt.createBareLLM,
       compaction: context.compaction,
@@ -1316,7 +1317,7 @@ export class Agent {
         sessionMeta: sessionMeta(next.meta),
         maxTurns: next.maxTurns ?? -1,
         compaction: next.compaction,
-        hooks: this.sessionHooks(subagentRunner, next.hookPackages),
+        hooks: this.sessionHooks(subagentRunner, next.hookPackages, spec),
       };
     };
 
@@ -1384,33 +1385,47 @@ export class Agent {
    * the context opens, which is how uninstalling the last package reaches a conversation
    * that is running. This is the one place a Session's hooks are assembled.
    */
-  private sessionHooks(runner: SubagentRunner, installed: readonly InstalledHook[]): SessionHooks {
-    // Hook scripts get the same PATH front as commands do (see
-    // CreateAgentOptions.pathPrepend). Only the environment half applies: a hook is run as
-    // `node <script>` directly, with no shell and so no login profile to re-prepend
-    // anything after it.
-    const pathPrepend = this.pathPrepend;
+  private sessionHooks(
+    runner: SubagentRunner,
+    installed: readonly InstalledHook[],
+    spec: SessionSpec,
+  ): SessionHooks {
+    const { root, projectId, agentId } = this.state;
+    const ctx: ControlEnvContext = { projectId, agentId, sessionId: spec.sessionId };
+    // A hook script is spawned the way a command is: the same PATH front (see
+    // CreateAgentOptions.pathPrepend — only the environment half applies, a hook is run
+    // as `node <script>` with no shell to re-order PATH afterwards), and the same sandbox
+    // (CreateAgentOptions.confineSpawn, bound to this Session's coordinates and re-read
+    // at every run), with the Session's Workspace and scratchpad as its scope.
+    const options: ScriptHookOptions = {
+      ...(this.pathPrepend ? { pathPrepend: this.pathPrepend } : {}),
+      ...(this.confineSpawn ? { confineSpawn: () => this.confineSpawn!(ctx) } : {}),
+      scope: {
+        workspaceDir: spec.workspaceDir,
+        scratchpadDir: sessionScratchpadDir(root, projectId, agentId, spec.sessionId),
+      },
+    };
+    const withTimeout = (timeoutS: number | undefined): ScriptHookOptions => ({
+      ...options,
+      ...(timeoutS !== undefined ? { timeoutS } : {}),
+    });
     const stop = installed.flatMap((hook) =>
       hook.stop.map((cmd) =>
-        scriptStopHook(hook.name, hook.dir, cmd.command, cmd.timeout, pathPrepend),
+        scriptStopHook(hook.name, hook.dir, cmd.command, withTimeout(cmd.timeout)),
       ),
     );
     const preToolUse = installed.flatMap((hook) =>
       hook.pre_tool_use.map((cmd) =>
-        scriptPreToolUseHook(hook.name, hook.dir, cmd.command, cmd.timeout, pathPrepend),
+        scriptPreToolUseHook(hook.name, hook.dir, cmd.command, withTimeout(cmd.timeout)),
       ),
     );
     const userPrompt = installed.flatMap((hook) => {
       remindToUpdate(hook);
       return hook.user_prompt.map((cmd) =>
-        scriptUserPromptHook(
-          hook.name,
-          hook.dir,
-          cmd.command,
-          cmd.timeout,
-          pathPrepend,
-          userPromptTrigger(hook.version, cmd),
-        ),
+        scriptUserPromptHook(hook.name, hook.dir, cmd.command, {
+          ...withTimeout(cmd.timeout),
+          trigger: userPromptTrigger(hook.version, cmd),
+        }),
       );
     });
     return {
