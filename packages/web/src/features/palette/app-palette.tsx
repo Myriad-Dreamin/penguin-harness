@@ -116,12 +116,17 @@ export function AppPalette({ extra = [] }: { extra?: readonly PaletteAction[] })
   const actions = useMemo<PaletteAction[]>(
     () => [
       ...extra,
-      {
-        id: "harness-history",
-        label: S.commandPalette.harnessHistory,
-        keywords: ["harness history", "version", "hmr", "ifaces"],
-        run: () => setHistoryOpen(true),
-      },
+      // The version history and its rollback are the server's own: an admin's view.
+      ...(isAdmin
+        ? [
+            {
+              id: "harness-history",
+              label: S.commandPalette.harnessHistory,
+              keywords: ["harness history", "version", "hmr", "ifaces"],
+              run: () => setHistoryOpen(true),
+            },
+          ]
+        : []),
       ...hostCommandActions(offers, locale).map(({ command, action }): PaletteAction => {
         return {
           id: `host-${command}`,
@@ -146,13 +151,13 @@ export function AppPalette({ extra = [] }: { extra?: readonly PaletteAction[] })
         },
       },
     ],
-    [extra, offers, locale],
+    [extra, offers, locale, isAdmin],
   );
 
   return (
     <>
       <CommandPalette actions={actions} />
-      <HarnessHistoryOverlay open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <HarnessHistoryOverlay open={historyOpen && isAdmin} onClose={() => setHistoryOpen(false)} />
     </>
   );
 }

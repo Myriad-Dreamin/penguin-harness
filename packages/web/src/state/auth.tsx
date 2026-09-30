@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import type { MeResponse, UploadLimits, UserInfo } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
 import { ApiError, setUnauthorizedHandler } from "../api/client";
+import { setPerfSwitch } from "../lib/perf/switch";
 
 /**
  * Stand-in until GET /api/me answers, matching the server's shipped defaults. The window is the
@@ -109,7 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Must be registered before the GET /api/me effect below (effects in the same component
   // run in declaration order).
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null));
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      setPerfSwitch(false);
+    });
     return () => setUnauthorizedHandler(null);
   }, []);
 
@@ -125,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionVia(res.sessionVia);
         setUploadLimits(res.uploadLimits);
         setCompanyMode(res.companyMode);
+        setPerfSwitch(res.telemetry === true);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -155,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionVia(me.sessionVia);
       setUploadLimits(me.uploadLimits);
       setCompanyMode(me.companyMode);
+      setPerfSwitch(me.telemetry === true);
     } catch {
       // Login itself succeeded; keep the optimistic default.
     }
@@ -165,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.logout();
     } finally {
       setUser(null);
+      setPerfSwitch(false);
     }
   }, []);
 
@@ -178,6 +185,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionVia(res.sessionVia);
     setUploadLimits(res.uploadLimits);
     setCompanyMode(res.companyMode);
+    setPerfSwitch(res.telemetry === true);
   }, []);
 
   return (
