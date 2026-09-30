@@ -2565,6 +2565,7 @@ export class SessionsModule {
       assembly,
       sandboxDefaults: () => sandbox.currentSettings(),
       sandboxDimensions: () => [...new Set(sandbox.backends().flatMap((b) => b.dimensions))],
+      sandboxUnavailable: () => sandbox.failures(),
     });
     this.manager = manager;
     this.sessionService = sessionService;
