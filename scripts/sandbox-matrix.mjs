@@ -54,9 +54,8 @@
 // that the gap no longer reproduces — the cue to drop the flag. It does not apply to a cell that
 // was not run, nor to a cleanup that failed.
 import http from "node:http";
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
 const args = parseArgs(process.argv.slice(2), ["enable-backend"]);
@@ -343,6 +342,22 @@ function judge() {
   result.reason = reasons.length === 0 ? null : reasons.join("; ");
 }
 
+/** `penguin auth token --mark` on the fresh HOME; the token is the line after the mark. */
+function mintToken(home) {
+  const out = spawnSync(args.serve, ["auth", "token", "--mark"], {
+    env: { ...process.env, HOME: home, USERPROFILE: home },
+    encoding: "utf8",
+    shell: process.platform === "win32",
+  });
+  const lines = (out.stdout ?? "").split(/\r?\n/);
+  const mark = lines.findIndex((l) => l.trim() === "---penguin-auth-token---");
+  const token = mark === -1 ? undefined : lines[mark + 1]?.trim();
+  if (out.status !== 0 || !token) {
+    throw new Error(`penguin auth token failed (${out.status}): ${out.stderr ?? ""}`);
+  }
+  return token;
+}
+
 /**
  * Starts the installed program the way its own next-steps line says to — `penguin web` — on a
  * HOME of its own, so the data root is fresh and nothing of the caller's is read or written.
@@ -358,20 +373,19 @@ function startServer() {
   let log = "";
   child.stdout.on("data", (c) => (log += c));
   child.stderr.on("data", (c) => (log += c));
-  const tokenFile = join(home, ".penguin", "data", "api-token");
   const ready = (async () => {
     for (let i = 0; i < 120; i++) {
       if (child.exitCode !== null) {
         throw new Error(`the server exited with ${child.exitCode}: ${log.slice(-500)}`);
       }
-      const up =
-        existsSync(tokenFile) &&
-        (await fetch(`${BASE}/api/install`).then(
-          (r) => r.ok,
-          () => false,
-        ));
+      const up = await fetch(`${BASE}/api/install`).then(
+        (r) => r.ok,
+        () => false,
+      );
       if (up) {
-        args.token = readFileSync(tokenFile, "utf8").trim();
+        // The admin's credential for this fresh root: a sign-in token the installed CLI mints
+        // straight into its web.db (the server keeps no token file of its own).
+        args.token = mintToken(home);
         return;
       }
       await new Promise((r) => setTimeout(r, 1000));
