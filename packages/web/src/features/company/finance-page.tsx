@@ -44,6 +44,9 @@ import {
   ICONS,
   ICON_GAP,
   ICON_SIZE,
+  InfoPopover,
+  Segmented,
+  noAutofill,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
@@ -57,9 +60,6 @@ import { useCompany } from "../../state/company";
 import { useTheme } from "../../state/theme";
 import type { Currency } from "../../state/theme";
 import { NAV_ICONS } from "../../lib/nav-icons";
-import { InfoPopover } from "../../components/ui/info-popover";
-import { noAutofill } from "../../components/ui/input";
-import { Segmented } from "../../components/ui/segmented";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { TrendChart } from "../usage/trend-chart";
 import { OrgPage, OrgPageSkeleton, useOrg } from "./org-layout";

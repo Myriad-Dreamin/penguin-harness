@@ -26,6 +26,8 @@ import {
   ICONS,
   ICON_GAP,
   ICON_SIZE,
+  Input,
+  Select,
   Skeleton,
   SkeletonCard,
 } from "@prismshadow/penguin-ui";
@@ -42,8 +44,6 @@ import type { MergedBenchmark } from "../../lib/benchmark-merge";
 import { nameOnMachine } from "../../lib/workspace-machines";
 import { useLocale } from "../../state/locale";
 import { ConfirmModal } from "../../components/ui/confirm-modal";
-import { Input } from "../../components/ui/input";
-import { Select } from "../../components/ui/select";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { AiCreateModal, CreateButtons, pickDefaultAgent } from "../ai-create";
 import { latestWithDelta, matchesBenchmarkQuery, sparklineSeries } from "./benchmark-metrics";
