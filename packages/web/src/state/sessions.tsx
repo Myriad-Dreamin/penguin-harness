@@ -583,16 +583,16 @@ export function createSessionsStore() {
                   const res = await timedAsk(
                     fanout,
                     api.listSessions(
-                    projectId,
-                    agentId,
-                    {
-                      offset: 0,
-                      limit: SIDEBAR_PAGE_SIZE + 1,
-                      category,
-                      excludeOrg: true,
-                      ...(scope === "" ? {} : { workspaceGroup: scope }),
-                      ...(category === "active" && scope === "" ? { withCounts: true } : {}),
-                    },
+                      projectId,
+                      agentId,
+                      {
+                        offset: 0,
+                        limit: SIDEBAR_PAGE_SIZE + 1,
+                        category,
+                        excludeOrg: true,
+                        ...(scope === "" ? {} : { workspaceGroup: scope }),
+                        ...(category === "active" && scope === "" ? { withCounts: true } : {}),
+                      },
                       source,
                     ),
                   );

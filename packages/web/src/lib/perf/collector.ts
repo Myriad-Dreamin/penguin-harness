@@ -284,8 +284,7 @@ export function startCollector(opts: { onRefused: () => void }): PerfCollector {
     const src = document.querySelector<HTMLScriptElement>("script[type=module][src]")?.src;
     if (src === undefined) return undefined;
     return performance.getEntriesByName(src, "resource")[0] as
-      | PerformanceResourceTiming
-      | undefined;
+      PerformanceResourceTiming | undefined;
   };
 
   const tryBoot = () => {
@@ -293,8 +292,7 @@ export function startCollector(opts: { onRefused: () => void }): PerfCollector {
     const sample = bootSample(
       {
         navigation: performance.getEntriesByType("navigation")[0] as
-          | PerformanceNavigationTiming
-          | undefined,
+          PerformanceNavigationTiming | undefined,
         paints,
         entryScript: entryScript(),
       },
