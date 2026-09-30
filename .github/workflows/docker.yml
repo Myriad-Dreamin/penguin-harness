@@ -36,7 +36,9 @@ on:
         default: true
         type: boolean
   push:
-    branches: [main]
+    # VERIFY-ONLY (org ticket 2026-09-30-docker-and-windows-cells-need-a-reading, p103): a push to
+    # verify/** runs the smoke job once. Never merged.
+    branches: [main, "verify/**"]
   # Same trigger policy as ci.yml: only a pull request whose base is main, and only when it
   # touches the image.
   pull_request:
@@ -61,7 +63,7 @@ jobs:
   # compiles node-pty under QEMU.
   smoke:
     name: Build and run (amd64)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/verify/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -209,7 +211,7 @@ jobs:
 
   publish:
     name: Build and push
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/heads/verify/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
