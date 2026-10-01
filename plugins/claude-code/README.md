@@ -45,6 +45,10 @@ Runs are kept in `claude-code-runs.json` in the organization's directory (the la
 
 The terminal belongs to the person whose request queued the run. For an employee, that is the user behind the Session's API token, normally the administrator. Another signed-in person sees the run on the console but cannot attach to its terminal.
 
+## Who the program speaks as
+
+The program runs as its Session, the same as any command a harness-driven Session runs. Its environment carries `PENGUIN_API_URL`, the Session's own `PENGUIN_API_TOKEN`, `PENGUIN_PROJECT_ID`, `PENGUIN_AGENT_ID` and `PENGUIN_SESSION_ID`, and the harness's own `penguin` is first on its `PATH`. A `penguin` command that Claude Code runs is therefore signed as the Session's Agent. For a queued run, that Agent is the employee who queued it, so its proposal, ticket and channel writes land under that employee's name. The credential reaches only what a Session credential reaches (its Agent's own Sessions, and the Project's organizations). Inside the Session, `penguin` does not fall back to the sign-in stored on the data root.
+
 ## How the state is read
 
 A terminal cannot say whether the program in it is thinking, but Claude Code says so on its own screen, and that is what this plugin reads. A run is *working* while the last few rows show the spinner line (`✻ Working… (3s)`: a symbol, one word, an ellipsis) or the footer's `esc to interrupt`. It is *waiting for input* otherwise, and once its program exits. The footer counts because a tip or a task list printed under the spinner can push the spinner out of those rows while the turn is still going.
