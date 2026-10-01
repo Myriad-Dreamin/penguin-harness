@@ -18,7 +18,7 @@
 ## 隔离
 
 - **每个站点获得 `<label>.localhost`。** 站点即 `(用户, 机器, 上游 Origin)`。浏览器无需 DNS 就把 `*.localhost` 解析到回环，而 App 在 `localhost` 上的 host-only 会话 Cookie 不会发往那里。根绝对路径、Cookie 与 storage 原样可用，站点之间互不可见。
-- **label 为 128 位随机数**，存于 `web.db`（`browser_sites`，migration 14 `browser-sites`，swap-safe），因此重启或热推送之后站点仍在原主机上，Cookie 与 storage 得以保留。每个用户保留最近使用的 200 个。
+- **label 为 128 位随机数**，存于 `web.db`（`browser_sites`，migration 16 `browser-sites`，swap-safe），因此重启或热推送之后站点仍在原主机上，Cookie 与 storage 得以保留。每个用户保留最近使用的 200 个。
 - **浏览器主机上没有 App。** `HttpModule` 新增 `hosts` slot：Host 匹配的请求先于请求体上限、JSON-only 规则、Cookie 门与一切路由组分发给绑定的 app，且从不落回。未知 label 答 `404`。
 - **站点只能由 App 签发**：`POST /api/browser/sites`，位于浏览器页面永远拿不到的会话 Cookie 之后。机器的端口需要管理员；本服务端的端口与公网对任一登录用户开放。
 - label 是该主机唯一的凭据，因此所有代理响应都带 `Referrer-Policy: no-referrer`。iframe 沙箱不含 `allow-top-navigation`。
