@@ -22,6 +22,7 @@ them when the task reaches them:
 | `reference/model-catalog.md` | Touching `model-catalog.ts`, pricing, provider groups or glyphs |
 | `reference/authoring.md` | Writing a blog post, auditing prose, or proposing a simplification |
 | `reference/release.md` | Preparing a release: the branch order, what changes, the announcement, the blog post and its screenshots |
+| `reference/testing.md` | **Writing or changing any test**: scenarios first, behaviour only, one fake per boundary, branch coverage, speed |
 | `reference/ai-slop.md` | **Every** change a user sees or reads: UI, styles, UI strings, docs, landing, blog, changelog — the rules, the scanner, the catalogue of tells |
 
 ## No AI slop — every time something is rendered or written
@@ -70,6 +71,17 @@ widening the root. The only paths outside the worktree worth reading are the sib
 `../agenthub` where it is checked out. Reach them by name; never find them by scanning. Say all of
 this to every subagent you dispatch — widening the search root is the first move a subagent makes
 when a path does not resolve.
+
+## Tests prove behaviour, not the source
+
+Before a test, write its scenarios (Given / When / Then) in the file header; one `it` per
+scenario, named as the behaviour. Assert only what the caller can observe — and look first for
+what must *not* happen (a retry that must not duplicate, a refusal that must not write). Never
+test a constant, a copied table, a UI string against its dictionary, or which private helper
+ran. Fake only at the system's edge with the package's shared helpers (one fetch fake, one mock
+LLM, `createTestApp`, real temp dirs, fake timers); do not `vi.mock` the package's own modules.
+Every branch a change adds is taken by a scenario; pruning never lowers branch coverage. No real
+sleeps, no per-test servers. `reference/testing.md` has the rules and the checklist.
 
 ## Verify what you changed
 
