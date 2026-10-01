@@ -105,4 +105,13 @@ export class AuthSessionsRepo implements AuthSessions {
   deleteByUserAndVia(userId: string, via: SessionViaValue): void {
     this.db.prepare("DELETE FROM auth_sessions WHERE user_id = ? AND via = ?").run(userId, via);
   }
+
+  /** Whether the user holds any session that has not expired. */
+  hasLiveForUser(userId: string, nowIso: string): boolean {
+    return (
+      this.db
+        .prepare("SELECT 1 FROM auth_sessions WHERE user_id = ? AND expires_at > ? LIMIT 1")
+        .get(userId, nowIso) !== undefined
+    );
+  }
 }
