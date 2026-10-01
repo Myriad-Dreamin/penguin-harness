@@ -557,11 +557,11 @@ export const MIGRATIONS: readonly Migration[] = [
     },
   },
   {
-    version: 16,
+    version: 14,
     name: "port-forwards-adoption",
     // A data root that ran the closed #797 line is stamped 13 under THAT line's numbering
     // (13 = company-mode-org-caches-adoption), so on this line's numbering port-forwards
-    // (13) reads as already applied and only browser-sites (14) runs. Such a root reaches
+    // (13) reads as already applied and only the migrations after it run. Such a root reaches
     // the latest version without `port_forwards`, and the port-forwards module's start —
     // which lists the table — throws at boot: the server exits before it listens. Seen on
     // every machine a server on the old line handed this build to.
@@ -588,12 +588,12 @@ export const MIGRATIONS: readonly Migration[] = [
     down() {},
   },
   {
-    version: 17,
+    version: 15,
     name: "port-forwards-direction",
     // ADOPTION of a mistake: migration 13's DDL was changed in place (a `direction` column,
     // uniqueness per direction) while a few data roots had already run its first form — a
     // stamped migration is never re-run, so those roots kept a `port_forwards` the platform
-    // can no longer write to (every insert names `direction`) and answered 500. Migration 15
+    // can no longer write to (every insert names `direction`) and answered 500. Migration 14
     // creates that same first form on the roots it adopts, so its tables arrive here too.
     // This brings such a table to the current shape, rows kept as `in` forwards; a root
     // whose table already has the column is left alone.
@@ -647,7 +647,7 @@ export const MIGRATIONS: readonly Migration[] = [
     },
   },
   {
-    version: 18,
+    version: 16,
     name: "browser-sites",
     // One new table, nothing existing touched: a platform rolled back to one without the
     // Browser never queries it.

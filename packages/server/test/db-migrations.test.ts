@@ -750,7 +750,7 @@ describe("a root stamped by the closed #797 line: port-forwards-adoption", () =>
       // Exactly the broken root: every table but port_forwards, stamped past this line's
       // port-forwards migration — what a hand-over onto a root the other line stamped leaves behind.
       db.exec("DROP TABLE port_forwards");
-      db.exec("PRAGMA user_version = 15");
+      db.exec("PRAGMA user_version = 13");
       const list = () => db.prepare("SELECT * FROM port_forwards").all();
       expect(list).toThrow(/no such table/);
 
@@ -764,7 +764,7 @@ describe("a root stamped by the closed #797 line: port-forwards-adoption", () =>
       const fresh = new sqlite.DatabaseSync(":memory:");
       try {
         fresh.exec(SCHEMA_SQL);
-        fresh.exec("PRAGMA user_version = 15");
+        fresh.exec("PRAGMA user_version = 13");
         migrate(fresh, { swapPath: true });
         expect(fresh.prepare("SELECT * FROM port_forwards").all()).toEqual([]);
       } finally {
@@ -804,7 +804,7 @@ describe("the first form of port_forwards → current: port-forwards-direction",
     db.prepare(
       "INSERT INTO port_forwards (id, machine_id, workspace, remote_port, local_port, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run("f1", "m1", "/home/dev/site", 3000, 3000, "2026-09-21T00:00:00.000Z");
-    db.exec("PRAGMA user_version = 16");
+    db.exec("PRAGMA user_version = 14");
     return db;
   }
   const columns = (db: DatabaseSync): string[] =>
@@ -856,7 +856,7 @@ describe("the first form of port_forwards → current: port-forwards-direction",
     try {
       db.exec(SCHEMA_SQL);
       db.exec("DROP TABLE port_forwards");
-      db.exec("PRAGMA user_version = 15");
+      db.exec("PRAGMA user_version = 13");
       migrate(db, { swapPath: true });
       expect(columns(db)).toContain("direction");
       insertNew(db, "f1", "/home/dev/site", "out", 5432, 5432);
@@ -869,7 +869,7 @@ describe("the first form of port_forwards → current: port-forwards-direction",
     const db = new sqlite.DatabaseSync(":memory:");
     try {
       db.exec(SCHEMA_SQL);
-      db.exec("PRAGMA user_version = 16");
+      db.exec("PRAGMA user_version = 14");
       const before = shape(db);
       migrate(db);
       expect(shape(db)).toBe(before);
@@ -883,7 +883,7 @@ describe("the first form of port_forwards → current: port-forwards-direction",
     try {
       migrate(db);
       insertNew(db, "f2", "/home/dev/site", "out", 5432, 3000);
-      rollbackTo(db, 15);
+      rollbackTo(db, 13);
       expect(columns(db)).not.toContain("direction");
       expect(db.prepare("SELECT id FROM port_forwards").all()).toEqual([{ id: "f1" }]);
     } finally {
