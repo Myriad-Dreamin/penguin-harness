@@ -14,7 +14,7 @@
  */
 import type { ReactNode } from "react";
 import type { PortForwardInfo } from "@prismshadow/penguin-server/api";
-import { ICON_GAP } from "@prismshadow/penguin-ui";
+import { ICONS, ICON_GAP } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { toneInk } from "../../lib/tone";
 import type { Tone } from "../../lib/tone";
@@ -36,7 +36,7 @@ export function Plug({
   children?: ReactNode;
 }) {
   return (
-    <span className={PLUG} title={name}>
+    <span className={PLUG} data-tooltip={name}>
       <span className={PLUG_NAME}>{name}</span>
       {port !== undefined && <span className={PLUG_PORT}>:{port}</span>}
       {children}
@@ -67,7 +67,7 @@ export function Cable({ tone, label }: { tone: Tone; label: string }) {
       </svg>
       <svg viewBox="0 0 8 12" className="-ml-px h-3 w-2 shrink-0" aria-hidden="true">
         <path
-          d="M1 2l5 4-5 4"
+          d={ICONS.cableArrowHead}
           fill="none"
           stroke="currentColor"
           strokeWidth="1.7"
@@ -113,7 +113,7 @@ export function ForwardRow({
         )}
       </div>
       <div
-        className={`mt-1 truncate pl-1 text-[11px] ${tone === "link" ? "text-gray-500 dark:text-gray-400" : toneInk[tone]}`}
+        className={`mt-1 truncate pl-1 text-xs ${tone === "link" ? "text-gray-500 dark:text-gray-400" : toneInk[tone]}`}
       >
         {status}
       </div>
