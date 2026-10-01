@@ -18,7 +18,7 @@ The dock gets Browser tabs. `localhost:3000` in one means port 3000 of the machi
 ## Isolation
 
 - **Each site gets `<label>.localhost`.** A site is `(user, machine, upstream origin)`. Browsers resolve `*.localhost` to the loopback without DNS, and the app's host-only session cookie on `localhost` is not sent there. Root-absolute paths, cookies and storage work untouched, and sites cannot see each other.
-- **The label is 128 random bits**, stored in `web.db` (`browser_sites`, migration 14 `browser-sites`, swap-safe), so a site keeps its host, its cookies and its storage across a restart or a hot push. Each user keeps the 200 most recently used.
+- **The label is 128 random bits**, stored in `web.db` (`browser_sites`, migration 16 `browser-sites`, swap-safe), so a site keeps its host, its cookies and its storage across a restart or a hot push. Each user keeps the 200 most recently used.
 - **The app is not on a Browser host.** `HttpModule` gains a `hosts` slot: a request whose Host matches is dispatched to the bound app ahead of the body cap, the JSON-only rule, the cookie gate and every route group, and never falls back. An unknown label is `404`.
 - **A site is minted only by the app**, at `POST /api/browser/sites`, behind the session cookie a Browser page never has. A machine's ports need an admin; this server's ports and the public internet are any signed-in user's.
 - The label is that host's only credential, so every proxied response carries `Referrer-Policy: no-referrer`. The frame's sandbox withholds `allow-top-navigation`.
