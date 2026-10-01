@@ -29,6 +29,7 @@ export abstract class SessionIndex {
   abstract updateThinkingLevel(sessionId: string, level: ThinkingLevelName): void;
   abstract updateTitle(sessionId: string, title: string): void;
   abstract updateTitleIfNull(sessionId: string, title: string): void;
+  abstract updateModel(sessionId: string, provider: string, modelId: string): void;
   abstract setArchived(sessionId: string, archivedAt: string | null): void;
   abstract replaceId(oldSessionId: string, newSessionId: string): void;
   abstract deleteByAgent(projectId: string, agentId: string): void;

@@ -1483,9 +1483,12 @@ export interface SessionInfo {
   sessionId: string;
   projectId: string;
   agentId: string;
-  /** Provider group of the session's model (paired with `modelId` to form a model reference). */
+  /**
+   * Provider group of the session's **current** model (paired with `modelId` to form a model
+   * reference). It moves with each in-session switch (`POST /api/sessions/:id/switch-model`).
+   */
   provider: string;
-  /** Upstream model_id of the session's model (the request id sent to AgentHub). */
+  /** Upstream model_id of the session's current model (the request id sent to AgentHub). */
   modelId: string;
   workspace: string;
   approvalMode: ApprovalMode;
@@ -1894,6 +1897,33 @@ export interface GoalStateView {
 export interface GoalResponse {
   /** The Session's most recent goal run; null if it never ran one. */
   goal: GoalStateView | null;
+}
+
+/**
+ * `POST /api/sessions/:sessionId/switch-model`: switch this Session to another model in place.
+ * The running context is closed on the model it ran on, then the next one opens on the target.
+ *
+ * - **202** {@link TaskCreateResponse} — the switch streams, the Session status `compacting`.
+ *   A context with a completed turn is closed by an ordinary `manual` compaction pair (always
+ *   summarize); one without — just compacted, or its first request never finished — has
+ *   nothing to summarize and streams no pair. Then come the new context's opener records
+ *   and, last, its `session_meta`: its `provider` / `model_id` name the model the Session now
+ *   runs on, the Session reads report that pair from this record on, and `task_state` turns
+ *   idle after it.
+ *   A compaction that ends other than `completed` means no switch — no `session_meta` follows
+ *   and the Session keeps its model.
+ * - **200** {@link SessionResponse} — a Session that never ran has no context to close: it
+ *   switched inside the request, and nothing is streamed.
+ * - **409**, one code per refusal, before any event: `task_in_progress` / `compacting` (busy),
+ *   `same_model`, `model_not_configured` (the target is not in the Project config),
+ *   `model_unavailable` (its client cannot be constructed, e.g. no credential), and
+ *   `compaction_not_configured`.
+ */
+export interface SessionSwitchModelRequest {
+  /** Provider group of the target model. */
+  provider: string;
+  /** Upstream model_id of the target model. */
+  modelId: string;
 }
 
 export interface TaskCreateResponse {
