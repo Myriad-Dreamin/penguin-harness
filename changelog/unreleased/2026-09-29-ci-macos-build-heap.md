@@ -17,3 +17,5 @@ heap limit is 2240 MB, and the server's declaration build needs more than that, 
 - The build step prints the runner's memory and the heap limit, both the default and the one in
   effect, before it builds.
 - Only the build step carries the setting; the test steps keep the runner's default.
+- The desktop packaging workflow builds the workspace without the shared step, so its build
+  step carries the same 4 GB heap; otherwise its macOS job would hit the same limit.
