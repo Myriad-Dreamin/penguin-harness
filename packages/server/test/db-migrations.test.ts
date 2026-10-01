@@ -803,7 +803,7 @@ describe("a root stamped by the chain before its restack onto main: model-tables
       const fresh = new sqlite.DatabaseSync(":memory:");
       try {
         fresh.exec(SCHEMA_SQL);
-        fresh.exec("PRAGMA user_version = 18");
+        fresh.exec("PRAGMA user_version = 16");
         migrate(fresh, { swapPath: true });
         expect(fresh.prepare("SELECT * FROM model_promotions").all()).toEqual([]);
         expect(fresh.prepare("SELECT * FROM model_provider_auth_tokens").all()).toEqual([]);
