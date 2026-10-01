@@ -220,3 +220,19 @@ describe("streams", () => {
     s.ws.close();
   });
 });
+
+// Last in the file: it signs admin out everywhere, which every earlier case's cookie needs.
+describe("revocation", () => {
+  it("answers 401 once the user holds no live session, as the same call over HTTP does", async () => {
+    const s = await open({ cookie });
+    if (!("ws" in s)) throw new Error("handshake refused");
+    send(s.ws, { id: 1, call: { method: "GET", path: "/api/me" } });
+    expect(await s.next()).toMatchObject({ id: 1, status: 200 });
+    // What a password reset does to the user's sessions (AdminService.signOutEverywhere).
+    t.deps.db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run("admin");
+    send(s.ws, { id: 2, call: { method: "GET", path: "/api/me" } });
+    expect(await s.next()).toMatchObject({ id: 2, status: 401 });
+    expect((await t.app.request("/api/me", { headers: { cookie } })).status).toBe(401);
+    s.ws.close();
+  });
+});
