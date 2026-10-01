@@ -83,6 +83,13 @@ export class HttpModule {
         app = this.assemble(routes, async (c, next) => {
           const user = this.users.findById(userId);
           if (user === null) throw new HttpError(401, "unauthorized", "Unknown user.");
+          // The handshake's cookie is not re-read per call, so a socket opened before the
+          // user was signed out everywhere (a password reset, AdminService.signOutEverywhere)
+          // would otherwise keep answering as that user. A 401 here reaches the page's
+          // unauthorized handler, exactly as the same call over HTTP would.
+          if (!this.auth.userHasLiveSession(userId)) {
+            throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
+          }
           c.set("user", user);
           // The handshake does not say how the cookie behind it was minted, so the most
           // demanding kind is assumed: what needs the old password keeps needing it.
