@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { WebSocket } from "ws";
 import type { Reassembly } from "../src/hmr/capabilities.js";
-import { createTestApp, waitFor } from "./helpers.js";
+import { createTestApp, loginAdmin, waitFor } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
 /** The little of `ws` the socket protocol touches, with the frames and the close recorded. */
@@ -59,6 +59,9 @@ describe("the API socket across a swap", () => {
 
   it("stays open through a re-assembly, and its next call enters the re-assembled App", async () => {
     t = await createTestApp();
+    // The handshake the runtime authenticated came from a signed-in browser: a socket's calls
+    // answer only while its user holds a live session.
+    await loginAdmin(t.app);
     const platform = await t.deps.hmr.ensure();
     const ws = fakeSocket();
     platform.api.attachStream(ws as unknown as WebSocket, REF as never, URL_, () => undefined);
