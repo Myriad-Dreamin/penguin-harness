@@ -205,6 +205,7 @@ import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
 import { prepareNewChatDraft } from "../../features/chat/new-chat";
 import { CreateProjectDialog, ProjectSettingsDialog } from "./project-dialogs";
 import { UserMenu } from "./user-menu";
+import { PinnedBalanceBadge } from "../../features/models/group-balance";
 import { isCurrentPath, renderRouterLink } from "./router-link";
 import { navNoteFor, useUpdateBadges } from "../../lib/use-update-badges";
 import { pendingScheduleSessions } from "../../features/schedules/schedule-panel-state";
@@ -1958,6 +1959,7 @@ export function Sidebar({
             </UserAvatar>
           }
           name={user?.displayName ?? user?.userId}
+          trailing={<PinnedBalanceBadge />}
           {...(user?.isAdmin ? { role: S.auth.admin } : {})}
         />
       )}

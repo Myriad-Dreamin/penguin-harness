@@ -69,6 +69,7 @@ import type {
   MessagingBindingsResponse,
   MessagingChannel,
   MessagingTestMessageResponse,
+  ModelBalanceResponse,
   ModelOAuthCodeResponse,
   ModelOAuthStartRequest,
   ModelOAuthStartResponse,
@@ -401,6 +402,15 @@ export const putDefaultModel = (projectId: string, body: DefaultModelUpdateReque
     method: "PUT",
     body,
   });
+
+/**
+ * A group's account balance, read by the server with the group's stored key (the key never
+ * comes back). `force` skips the server's 60 s cache — the page's refresh click.
+ */
+export const getModelBalance = (projectId: string, provider: string, force = false) =>
+  apiFetch<ModelBalanceResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/balance?provider=${encodeURIComponent(provider)}${force ? "&force=1" : ""}`,
+  );
 
 /** Connectivity test: model reference (provider, modelId) is passed in the request body (may include an unsaved apiKey / baseUrl). */
 export const testModel = (projectId: string, body: ModelTestRequest) =>
