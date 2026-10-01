@@ -180,3 +180,13 @@ export function rowWidths(rows: readonly GraphRow[]): number[] {
   });
   return widest.map((w) => w + 1);
 }
+
+/**
+ * Whether a merged proposal stays out of the graph's lists by default. A merged proposal whose
+ * impl PR is still a layer on the chain stays drawn (the layer is real work on the stack); one
+ * that is off the chain, undrawable, or has no open impl PR is finished business, and listing it
+ * beside the live problems only reads as one. The page folds these into a "merged" line.
+ */
+export function foldedAsMerged(status: string | null | undefined): boolean {
+  return status === "merged";
+}

@@ -14,6 +14,7 @@ import {
   focusedProposal,
   graphTops,
   layoutGraph,
+  foldedAsMerged,
   rowOfProposal,
   rowWidths,
   splitArgs,
@@ -214,5 +215,14 @@ describe("rowWidths", () => {
     // 0: lane 1, hanging from row 3; rows 1 and 2 sit on lane 0 but the edge passes them.
     const rows = [row(1, 3), row(0, 2), row(0, 3), row(0, null)];
     expect(rowWidths(rows)).toEqual([2, 2, 2, 1]);
+  });
+});
+
+describe("foldedAsMerged", () => {
+  it("folds a merged proposal and nothing else", () => {
+    expect(foldedAsMerged("merged")).toBe(true);
+    for (const s of ["ready", "approved", "drafting", "rejected", null, undefined]) {
+      expect(foldedAsMerged(s)).toBe(false);
+    }
   });
 });
