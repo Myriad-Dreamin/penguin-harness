@@ -191,7 +191,7 @@ function MachinePorts({
                     <>
                       <button
                         type="button"
-                        title={S.browser.openInBrowser}
+                        data-tooltip={S.browser.openInBrowser}
                         aria-label={S.browser.openInBrowser}
                         // The Browser's localhost is the MACHINE's: the remote port, not the
                         // local one — it reaches the same server through the same connection.
