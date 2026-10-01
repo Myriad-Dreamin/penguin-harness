@@ -179,7 +179,7 @@ export function BrowserTab({
         <button
           type="button"
           className={BAR_BUTTON}
-          title={S.browser.back}
+          data-tooltip={S.browser.back}
           aria-label={S.browser.back}
           disabled={trail.at <= 0}
           onClick={() => step(-1)}
@@ -189,7 +189,7 @@ export function BrowserTab({
         <button
           type="button"
           className={BAR_BUTTON}
-          title={S.browser.forward}
+          data-tooltip={S.browser.forward}
           aria-label={S.browser.forward}
           disabled={trail.at >= trail.entries.length - 1}
           onClick={() => step(1)}
@@ -199,7 +199,7 @@ export function BrowserTab({
         <button
           type="button"
           className={BAR_BUTTON}
-          title={S.browser.reload}
+          data-tooltip={S.browser.reload}
           aria-label={S.browser.reload}
           disabled={shown === null}
           onClick={() => {
