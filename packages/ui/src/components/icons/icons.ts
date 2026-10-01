@@ -286,6 +286,8 @@ export const ICONS = {
    * Arrows rather than a plug, which the Machines page already reads as "use".
    */
   arrowsOpposed: "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
+  /** An open arrowhead on an 8×12 box: the tip a port-forward cable ends in. */
+  cableArrowHead: "M1 2l5 4-5 4",
 
   // --- Layout -------------------------------------------------------------------------------
 
