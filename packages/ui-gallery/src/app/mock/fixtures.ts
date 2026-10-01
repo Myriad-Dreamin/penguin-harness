@@ -1385,6 +1385,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       attachmentMaxMb: 100,
       attachmentTotalMb: 120,
       companyMode: false,
+      telemetry: false,
     },
     project,
     members: [
