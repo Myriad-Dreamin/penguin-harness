@@ -25,6 +25,7 @@ import plugin, {
   ROUTES_ID,
   CONFIG_GROUP,
   DEFAULT_TEST_GROUPS,
+  DeployService,
   TEST_GROUP_LINE,
   ledgerPath,
   proposalRoutes,
@@ -32,6 +33,14 @@ import plugin, {
   testGroupsOf,
 } from "../src/index.js";
 import type { RunGh } from "../src/pr-status.js";
+
+/** The deploy half of the routes, unused here: these tests never reach a deploy route. */
+const deploysFor = (s: ProposalService): DeployService =>
+  new DeployService({
+    scope: (projectId, orgId, actor) => s.deployScope(projectId, orgId, actor),
+    root: os.tmpdir(),
+    log: () => undefined,
+  });
 
 const PLUGIN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PROJECT = "proj";
@@ -281,7 +290,7 @@ describe("ProposalService", () => {
       c.set("sessionVia" as never, "token" as never);
       await next();
     });
-    app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service));
+    app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service, deploysFor(service)));
     const call = (method: string, suffix: string, body?: unknown) =>
       app.request(`/p/${PROJECT}/o/${ORG}/proposals${suffix}`, {
         method,
@@ -1437,7 +1446,7 @@ describe("ProposalService", () => {
         c.set("sessionVia" as never, via as never);
         await next();
       });
-      app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service));
+      app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service, deploysFor(service)));
       const post = (suffix: string, body?: unknown) =>
         app.request(`/p/${PROJECT}/o/${ORG}/proposals/${n}${suffix}`, {
           method: "POST",
@@ -1765,7 +1774,7 @@ describe("ProposalService", () => {
       c.set("sessionVia" as never, "token" as never);
       await next();
     });
-    app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service));
+    app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service, deploysFor(service)));
     const post = (body: unknown) =>
       app.request(`/p/${PROJECT}/o/${ORG}/proposals/${n}/reject`, {
         method: "POST",
@@ -2004,7 +2013,7 @@ describe("ProposalService", () => {
       c.set("sessionVia" as never, "token" as never);
       await next();
     });
-    app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service));
+    app.route("/p/:projectId/o/:orgId/proposals", proposalRoutes(service, deploysFor(service)));
     const put = (body: unknown) =>
       app.request(`/p/${PROJECT}/o/${ORG}/proposals/${n}/brief`, {
         method: "PUT",
