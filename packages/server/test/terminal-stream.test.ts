@@ -13,7 +13,7 @@ import type { Server as HttpServer } from "node:http";
 import { WebSocket } from "ws";
 import { createTestApp, loginAdmin, provisionUser, apiClient } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
-import { attachTerminalWebSocket } from "../src/terminal/ws.js";
+import { platformUpgradeSeam } from "../src/hmr/upgrade-seam.js";
 import {
   TerminalStreamOpcode,
   decodeTerminalFrame,
@@ -35,12 +35,14 @@ let port: number;
 let server: ReturnType<typeof serve>;
 let adminCookie: string;
 let api: ReturnType<typeof apiClient>;
-/** Everything terminal/ws.ts logged for this suite (see the log hook in beforeAll). */
+/** Everything the platform logged for this suite (the app's log, set in beforeAll). */
 const serverLogs: string[] = [];
 
 beforeAll(async () => {
   if (IS_WINDOWS) return;
-  t = await createTestApp();
+  // Kept, not discarded: the backpressure test's precondition (the server deciding a
+  // viewer is too far behind) is only observable through the platform's log.
+  t = await createTestApp({ log: (line) => serverLogs.push(line) });
   const admin = await loginAdmin(t.app);
   adminCookie = admin.cookie;
   api = apiClient(t.app, adminCookie);
@@ -50,13 +52,7 @@ beforeAll(async () => {
       resolve();
     });
   });
-  attachTerminalWebSocket(server as unknown as HttpServer, {
-    hmr: t.deps.hmr,
-    authService: t.deps.authService,
-    // Kept, not discarded: the backpressure test's precondition (the server deciding a
-    // viewer is too far behind) is only observable through this line.
-    log: (line) => serverLogs.push(line),
-  });
+  platformUpgradeSeam(server as unknown as HttpServer, t.deps.control);
 });
 
 /**

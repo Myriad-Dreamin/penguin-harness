@@ -2,10 +2,9 @@
  * The terminal stream's PROTOCOL: frames, coalescing, the restore-first attach sequence,
  * size ownership and the lagging-viewer resync.
  *
- * This is platform code even though the socket is the runtime's. The seam cannot carry a
- * stream — a handler returns one whole Response — so the runtime keeps the upgrade
- * handshake and its authentication (terminal/ws.ts) and hands the live socket here. What
- * flows over it afterwards is behaviour, and behaviour a push must be able to change:
+ * Platform code, like the handshake before it (terminal/upgrade.ts, reached through the
+ * upgrade seam), which hands the live socket here. What flows over it is behaviour, and
+ * behaviour a push must be able to change:
  * every byte of the wire format, the ~5ms coalescing window and both backpressure
  * watermarks are decided in this file.
  *

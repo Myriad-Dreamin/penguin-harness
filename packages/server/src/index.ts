@@ -34,7 +34,7 @@ import { clearInitialAdminPassword, renderFirstLoginNotice } from "./initial-pas
 import { applyProxySettings, installGlobalProxyDispatcher } from "./net/proxy.js";
 import { PluginHost } from "./plugin/host.js";
 import { loadPlugins } from "./plugin/loader.js";
-import { attachTerminalWebSocket } from "./terminal/ws.js";
+import { platformUpgradeSeam } from "./hmr/upgrade-seam.js";
 import { loopbackHostRoles } from "./services/preview-token.js";
 import { acquireServerLock, liveServerLock, releaseServerLock } from "./lock.js";
 import { shellPortOf, wireShellUpdatePort } from "./services/desktop-update-port.js";
@@ -223,17 +223,14 @@ class PenguinServer {
 
   /**
    * Assembles the layer's middleware and routes; from here the listening port answers
-   * with them. The terminal stream is a WebSocket upgrade, which never reaches the fetch
-   * handler — it is bound on each Node listener here, once the platform it asks exists.
+   * with them. A WebSocket upgrade never reaches the fetch handler, so each Node listener
+   * also forwards its upgrades to the platform (hmr/upgrade-seam.ts), once one exists.
    */
   buildApp(): void {
     this.app = createApp(this.deps);
-    attachTerminalWebSocket(this.httpServer as unknown as HttpServer, this.terminalWebSocketDeps());
+    platformUpgradeSeam(this.httpServer as unknown as HttpServer, this.deps.control);
     if (this.ipv6Loopback !== null) {
-      attachTerminalWebSocket(
-        this.ipv6Loopback as unknown as HttpServer,
-        this.terminalWebSocketDeps(),
-      );
+      platformUpgradeSeam(this.ipv6Loopback as unknown as HttpServer, this.deps.control);
     }
   }
 
@@ -452,26 +449,14 @@ class PenguinServer {
         `[server] IPv6 loopback listener unavailable (${err.code ?? err.message}); previews via localhost may not resolve.`,
       );
     });
-    // The terminal stream is bound on every listener in buildApp(), this one included, or
-    // the terminal only works on whichever address the browser happened to resolve; a
+    // Upgrades are forwarded on every listener in buildApp(), this one included, or a
+    // terminal only works on whichever address the browser happened to resolve; a
     // loopback opened after buildApp() (never in practice — binding is quick) gets it here.
     if (this.app !== undefined) {
-      attachTerminalWebSocket(loopback as unknown as HttpServer, this.terminalWebSocketDeps());
+      platformUpgradeSeam(loopback as unknown as HttpServer, this.deps.control);
     }
   }
 
-  /** Terminal WebSocket wiring, shared by every listener this process opens. */
-  private terminalWebSocketDeps() {
-    const auth = () => this.auth();
-    return {
-      hmr: this.deps.hmr,
-      // A getter: the upgrade handler asks per handshake, and gets the current generation's.
-      get authService() {
-        return auth();
-      },
-      log: (line: string) => console.log(line),
-    };
-  }
 
   /**
    * Graceful shutdown, idempotent across every path that can trigger it: interrupt all

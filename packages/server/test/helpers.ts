@@ -166,6 +166,8 @@ export interface TestDeps {
   config: ServerConfig;
   db: DatabaseSync;
   hmr: ServerHmrHost;
+  /** The frozen operations over `hmr` — what the seams drive (ServerBoot.control). */
+  control: ServerBoot["control"];
   channels: ChannelHub;
   desktop: DesktopService | null;
   tree: ModuleTree;
@@ -214,6 +216,7 @@ export function flattenForTests(boot: ServerBoot): TestDeps {
     config: boot.config,
     db: boot.db,
     hmr: boot.hmr,
+    control: boot.control,
     channels: boot.channels,
     desktop: boot.desktop,
     tree,

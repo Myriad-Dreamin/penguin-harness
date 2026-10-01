@@ -203,7 +203,7 @@ createInner
 | Agent 运行时 | `runtime/session-manager.ts`——**App 级** | 任务 / 审批 / 中止 / 压缩路由与 SSE `GET /api/sessions/:sessionId/stream`；内部经 `createAgent` 委托给 core |
 | 事件 | `runtime/channel.ts` 的 `ChannelHub`（⑥，进程级；SSE 流跨热替换存活） | 用户级 SSE `GET /api/events`；`ServerEvent` 类型族 |
 | Scheduler | `runtime/scheduler.ts`——**App 级**（随 create 启停） | schedules 路由；执行结果发布进 ChannelHub |
-| HMR 宿主 / 平台 | `@prismshadow/penguin-hmr`（`HmrHost`、`hmrMain`）与 `hmr/platform.ts`（平台） | `PlatformApi`（`info` / `log` / `http` / `terminals` / `attachStream` / `business` / `shutdown` / `drained`，外加内核的 `park`）；`/api/hmr/*`（含 `POST /api/hmr/upgrade`）是平台贡献的路由组，推送的新一代若不提供这组路由，会在提交前被拒 |
+| HMR 宿主 / 平台 | `@prismshadow/penguin-hmr`（`HmrHost`、`hmrMain`）与 `hmr/platform.ts`（平台） | `PlatformApi`（`info` / `log` / `http` / `upgrade` / `terminals` / `attachStream` / `business` / `shutdown` / `drained`，外加内核的 `park`）；`/api/hmr/*`（含 `POST /api/hmr/upgrade`）是平台贡献的路由组，推送的新一代若不提供这组路由，会在提交前被拒 |
 | 终端 | `terminal/`——**App 级** | `/api/terminals*` 路由组、WS `GET /api/terminals/:id/stream`；pty 寄存在注册表中，跨热替换存活 |
 | 插件宿主 | 每个 App 的 `create()` 构建，在提交时登记进注册表供下一个 App 复用；⑤ `loadPlugins` 为早于这一改动的平台构建一份，在 ⑥ 发布 | 一个 npm 包：生成的 `ifaces.json`（模块载荷）、默认导出 `{ modules?: [<class>, …], replaces?: [<class>, …] }`；配置面是各 Project 的 `.project_config.toml` 中的 `[plugins]` 表，经 `/api/projects/:projectId/plugins/installed` 写入 |
 | 沙箱 | `sandbox/service.ts`——**App 级**（一个模块；后端向它的 `providers` 槽位投递） | 插件模块向 `SandboxModule.providers` 投递的一条 contribution；约束经 core 的 spawn 接缝落到命令与钩子脚本上，Session 的策略经 core 的 `sandboxPolicy` 接缝交给文件工具 |

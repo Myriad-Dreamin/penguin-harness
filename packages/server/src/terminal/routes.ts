@@ -15,7 +15,7 @@
  * JSON-only rule for writes DO apply already: both middlewares sit above the seam.
  *
  * Split the way this server is built: JSON over HTTP for control, and a separate binary
- * WebSocket for the byte stream (the runtime's terminal/ws.ts hands the socket over; its
+ * WebSocket for the byte stream (terminal/upgrade.ts takes the handshake and hands the socket over; its
  * `/:id/stream` path is deliberately not a route here, so it declines).
  *
  *   GET    /api/terminals            list the caller's terminals

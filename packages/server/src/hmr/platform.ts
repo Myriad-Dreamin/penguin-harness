@@ -22,6 +22,8 @@
  * ones it does not own. A pushed bundle therefore replaces the business wholesale:
  * adding or changing an endpoint or a service needs no runtime change.
  */
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import type { WebSocket } from "ws";
 import type {
   Impl,
@@ -49,6 +51,7 @@ import type { TerminalSession } from "../terminal/session.js";
 import type { RemoteTerminals } from "../machines/terminal-relay.js";
 import { identityFrom } from "../terminal/identity.js";
 import { bindTerminalStream } from "../terminal/stream.js";
+import { terminalUpgrade } from "../terminal/upgrade.js";
 import { Hono } from "hono";
 import type { AppEnv } from "../auth/middleware.js";
 import type { SessionManager } from "../runtime/session-manager.js";
@@ -91,9 +94,14 @@ export interface PlatformApi extends Park {
    */
   http(request: Request): Promise<Response | null>;
   /**
-   * In-process accessors for the one thing the seam cannot carry: a live socket. The
-   * runtime's ws transport authenticates an upgrade, then asks for the session and hands
-   * the socket back for the platform's protocol to drive.
+   * The upgrade seam (hmr/upgrade-seam.ts): every WebSocket upgrade is offered here, raw.
+   * True when the platform took the socket — the handshake (path, Origin, session, owner)
+   * is decided here (terminal/upgrade.ts) — false declines it.
+   */
+  upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean;
+  /**
+   * In-process accessors an entry from before the upgrade seam still calls: it does the
+   * terminal handshake itself, then asks for the session and hands the socket back.
    */
   terminals(): TerminalManager;
   attachStream(ws: WebSocket, session: TerminalSession, url: URL, log: (l: string) => void): void;
@@ -419,9 +427,15 @@ async function createInner(
   );
   const http = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
   const logNode = business?.api<Log>("RuntimeModule", "Log") ?? null;
+  const log = (line: string) => (logNode !== null ? logNode.line(line) : console.log(line));
+  const attachStream = (ws: WebSocket, session: TerminalSession, url: URL, l: (l: string) => void) => {
+    // A reference to a machine's pty is the relay's to serve; a local one is bound here.
+    if (remote?.attach(ws, session, url, l) === true) return;
+    bindTerminalStream(ws, session, url, l);
+  };
 
   return {
-    log: (line) => (logNode !== null ? logNode.line(line) : console.log(line)),
+    log,
     park: () => {
       const modules = tree.park();
       // The top-level fields are written for every platform that reads them: a bare
@@ -446,13 +460,13 @@ async function createInner(
       terminals: terminals.handleIds().length,
     }),
     http,
+    upgrade: terminalUpgrade({
+      auth,
+      terminals: () => terminals,
+      attach: (ws, session, url) => attachStream(ws, session, url, log),
+    }),
     terminals: () => terminals,
-    attachStream: (ws, session, url, log) => {
-      // The runtime handed the socket over exactly as for a local pty; the relay takes it
-      // when the session is a reference to a machine's pty, and declines a local one.
-      if (remote?.attach(ws, session, url, log) === true) return;
-      bindTerminalStream(ws, session, url, log);
-    },
+    attachStream,
     business: () => business,
     // Process exit wants the manager's graceful ≤5s drain, which a synchronous dispose
     // effect cannot await — exposed for index.ts's shutdown to call before disposing.
@@ -560,6 +574,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
       park: () => inner.api.park(),
       info: () => inner.api.info(),
       http: (request) => inner.api.http(request),
+      upgrade: (req, socket, head) => inner.api.upgrade(req, socket, head),
       terminals: () => inner.api.terminals(),
       attachStream: (ws, session, url, log) => inner.api.attachStream(ws, session, url, log),
       business: () => inner.api.business(),
