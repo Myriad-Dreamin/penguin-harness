@@ -1478,6 +1478,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       imageCompressionOverMb: 4,
       companyMode: false,
       browserExtensionsEnabled: true,
+      telemetry: false,
     },
     project,
     members: [
