@@ -862,7 +862,12 @@ function MachineCard({
             onClick={onConfigure}
           />
           {onPorts !== null && (
-            <Verb label={S.ports.verb} title={S.ports.verbTitle} d={ICONS.arrowsOpposed} onClick={onPorts} />
+            <Verb
+              label={S.ports.verb}
+              title={S.ports.verbTitle}
+              d={ICONS.arrowsOpposed}
+              onClick={onPorts}
+            />
           )}
         </div>
         <Output job={job} />
