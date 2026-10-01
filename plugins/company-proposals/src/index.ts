@@ -139,15 +139,6 @@ export const PAGE_ID = "company-proposals.page";
         },
       },
     ],
-    "WebModule.quickStarts": [
-      {
-        id: "company-proposals.quick-start",
-        prompt:
-          "Explain how proposals work in this organization — who delegates one, who writes it, who builds it and how the person reviews it — and walk me through the `penguin org proposal` commands an author, an implementer and a tester use.",
-        promptZh:
-          "讲一讲这个组织里的提案是怎么运转的——谁委托、谁写、谁实施、人怎么审——并带我过一遍作者、实施者与测试者各自会用到的 `penguin org proposal` 命令。",
-      },
-    ],
   },
   context: { version: 1 },
 })

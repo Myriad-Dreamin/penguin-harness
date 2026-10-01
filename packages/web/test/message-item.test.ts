@@ -15,7 +15,10 @@ const item = readFileSync(
 
 describe("the transcript's messages (source contract)", () => {
   it("renders every assistant reply through AssistantText", () => {
-    expect(item).toContain("<AssistantText text={item.text} streaming={item.streaming}>");
+    // The reply's text and stream state, plus the proposal capsules' remark pass.
+    expect(item).toMatch(
+      /<AssistantText\s+text=\{item\.text\}\s+streaming=\{item\.streaming\}\s+extraPlugins=\{PROPOSAL_REMARK_PLUGINS\}/,
+    );
     expect(item).not.toContain("▌");
     expect(item).not.toMatch(/<Md\b/);
   });
