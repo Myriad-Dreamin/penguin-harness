@@ -5158,6 +5158,10 @@ Scenarios:
       moderator: "moderator",
       proposals: "Proposals",
       roadmapItems: "Derived roadmaps",
+      showFinished: (n: number): string => `Show ${n} merged or rejected`,
+      hideFinished: (n: number): string => `Hide ${n} merged or rejected`,
+      finishedToggleTitle:
+        "Merged and rejected proposals are finished; they keep their place in the list when shown",
       noItems: "No items yet.",
       stage: { draft: "draft", brief: "brief", delegated: "delegated" },
       childRoadmap: (n: number) => `Roadmap #${n}`,
