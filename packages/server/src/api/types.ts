@@ -326,6 +326,8 @@ export interface TelemetryKeys {
   request?: string;
   session?: string;
   generation?: number;
+  /** The machine a connection probe measured, by its address (`ssh:<alias>`). */
+  machine?: string;
 }
 
 /** A sample as a probe hands it over; the buffer stamps `ts`. */
