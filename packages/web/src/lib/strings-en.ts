@@ -2660,6 +2660,15 @@ Scenarios:
       } as Record<string, string>,
       unsupported: "Not supported",
       localUnsupported: "No sandbox backend on this machine can limit the network to localhost",
+      /** The short note beside a level nothing can enforce because no backend is installed. */
+      notInstalled: "Not installed",
+      noBackend:
+        "No sandbox backend is installed on this server, so commands cannot be confined. An administrator can enable this platform's backend on the Plugins page (More…).",
+      noNetworkUnsupported: "No sandbox backend on this machine can cut the network off",
+      /** The short note beside a level whose enabled backend failed its check. */
+      notAvailable: "Unavailable",
+      backendUnavailable: (name: string, reason: string) =>
+        `The sandbox backend ${name} is enabled but not in use: ${reason}. An administrator can fix this on the Sandbox card (More…).`,
       more: "More…",
       approval: "Approval",
     },
