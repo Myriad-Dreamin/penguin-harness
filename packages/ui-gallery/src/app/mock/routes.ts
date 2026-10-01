@@ -1893,6 +1893,9 @@ router
   .post("/api/port-forwards", () => readOnly("forward a port"))
   .delete("/api/port-forwards/:id", () => readOnly("remove a port forward"));
 
+// The Browser tab: a site is minted on a host of its own behind a real server; the demo has none.
+router.post("/api/browser/sites", () => readOnly("open a site in a Browser tab"));
+
 // ---------------------------------------------------------------------------------------------
 // Agent packages: publishing to a gist and installing from a source both reach GitHub or a
 // registry, which the demo has no server for.

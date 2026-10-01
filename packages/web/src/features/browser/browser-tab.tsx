@@ -19,13 +19,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { EmptyState, GlyphIcon, ICONS, ICON_SIZE, noAutofill } from "@prismshadow/penguin-ui";
 import { openBrowserSite } from "../../api/endpoints";
-import { GlyphIcon } from "../../components/ui/glyph-icon";
-import { ARROW_LEFT_ICON, ARROW_RIGHT_ICON, REFRESH_ICON } from "../../components/ui/icons";
-import { EmptyState } from "../../components/ui/empty-state";
-import { noAutofill } from "../../components/ui/input";
 import { apiErrorText } from "../../lib/api-error";
-import { ICON_SIZE } from "../../lib/icon-scale";
 import { S } from "../../lib/strings";
 import { readDocumentTheme } from "../../lib/workflow-theme";
 import { useTheme } from "../../state/theme";
@@ -93,7 +89,7 @@ export function BrowserTab({
   const [trail, setTrail] = useState<{ entries: string[]; at: number }>({ entries: [], at: -1 });
   /** Bumped to reload: the frame is keyed on it, since a cross-origin frame cannot be told to. */
   const [generation, setGeneration] = useState(0);
-  const { dark, accent, fontScale } = useTheme();
+  const { dark, themeId, accent, textSize, fontLatin, fontCjk } = useTheme();
 
   const show = useCallback(
     async (address: string, record: boolean) => {
@@ -138,7 +134,7 @@ export function BrowserTab({
   useEffect(() => {
     const handle = requestAnimationFrame(postTheme);
     return () => cancelAnimationFrame(handle);
-  }, [postTheme, dark, accent, fontScale]);
+  }, [postTheme, dark, themeId, accent, textSize, fontLatin, fontCjk]);
 
   useEffect(() => {
     if (shown === null) return;
@@ -188,7 +184,7 @@ export function BrowserTab({
           disabled={trail.at <= 0}
           onClick={() => step(-1)}
         >
-          <GlyphIcon d={ARROW_LEFT_ICON} size={ICON_SIZE.inlineGlyph} />
+          <GlyphIcon d={ICONS.arrowLeftCentered} size={ICON_SIZE.inlineGlyph} />
         </button>
         <button
           type="button"
@@ -198,7 +194,7 @@ export function BrowserTab({
           disabled={trail.at >= trail.entries.length - 1}
           onClick={() => step(1)}
         >
-          <GlyphIcon d={ARROW_RIGHT_ICON} size={ICON_SIZE.inlineGlyph} />
+          <GlyphIcon d={ICONS.arrowRightCentered} size={ICON_SIZE.inlineGlyph} />
         </button>
         <button
           type="button"
@@ -212,7 +208,7 @@ export function BrowserTab({
             setGeneration((n) => n + 1);
           }}
         >
-          <GlyphIcon d={REFRESH_ICON} size={ICON_SIZE.inlineGlyph} />
+          <GlyphIcon d={ICONS.refresh} size={ICON_SIZE.inlineGlyph} />
         </button>
         <input
           {...noAutofill}
