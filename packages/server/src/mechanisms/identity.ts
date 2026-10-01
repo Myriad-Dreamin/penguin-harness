@@ -39,6 +39,7 @@ export abstract class AuthSessions {
   abstract deleteExpired(nowIso: string): void;
   abstract deleteByUser(userId: string): void;
   abstract deleteByUserAndVia(userId: string, via: SessionViaValue): void;
+  abstract hasLiveForUser(userId: string, nowIso: string): boolean;
 }
 
 /** Auth: the mechanism AuthService implements. */
@@ -61,6 +62,7 @@ export abstract class Auth {
     token: string,
   ): { user: UserRow; via: SessionVia; renewed: boolean } | null;
   abstract sessionIsLive(token: string): boolean;
+  abstract userHasLiveSession(userId: string): boolean;
   abstract isAdmin(userId: string): boolean;
 }
 
