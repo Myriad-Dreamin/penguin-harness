@@ -10,7 +10,7 @@
  *
  * Default prints the per-probe summary (count, p50, p95, max, bytes); `--by session` the
  * per-session one; `--by machine` this process as it stands (memory, App generations, what each
- * loaded session holds); `--samples` the samples themselves, oldest first. Run inside a session
+ * loaded session holds) and each machine it connected to, per probe and connect stage; `--samples` the samples themselves, oldest first. Run inside a session
  * (PENGUIN_SESSION_ID set), the view is narrowed to that session unless `--session` names
  * another or `--all` lifts it — a filter for reading, not a boundary: the route answers admins
  * only, whatever is asked. `on` / `off` flip the system setting, `clear` empties the buffer.
@@ -165,30 +165,57 @@ export function registerTelemetryCommand(program: Command, t: Messages): void {
           )}\n`,
         );
         const loaded = m.sessions ?? [];
-        if (loaded.length === 0) return void out.write(`${t.telemetry.machineNoSessions()}\n`);
         const count = (n: number | null) => (n === null ? "-" : String(n));
+        if (loaded.length === 0) out.write(`${t.telemetry.machineNoSessions()}\n`);
+        else
+          out.write(
+            renderTable(
+              [
+                t.telemetry.colSession(),
+                t.telemetry.colStatus(),
+                t.telemetry.colHistory(),
+                t.telemetry.colChannel(),
+                t.telemetry.colSubscribers(),
+                t.telemetry.colLive(),
+                t.telemetry.colIdle(),
+              ],
+              loaded.map((s) => [
+                s.session,
+                s.status,
+                count(s.resumedHistory),
+                s.channelEvents === null
+                  ? "-"
+                  : `${s.channelEvents} / ${formatBytes(s.channelBytes)}`,
+                count(s.subscribers),
+                formatBytes(s.liveBytes),
+                formatMs(s.idleMs),
+              ]),
+            ),
+          );
+        const machines = m.machines ?? [];
+        if (machines.length === 0) return void out.write(`${t.telemetry.machineNoMachines()}\n`);
         out.write(
           renderTable(
             [
-              t.telemetry.colSession(),
-              t.telemetry.colStatus(),
-              t.telemetry.colHistory(),
-              t.telemetry.colChannel(),
-              t.telemetry.colSubscribers(),
-              t.telemetry.colLive(),
-              t.telemetry.colIdle(),
+              t.telemetry.colMachine(),
+              t.telemetry.colProbe(),
+              t.telemetry.colCount(),
+              t.telemetry.colErrors(),
+              t.telemetry.colN(),
+              t.telemetry.colTotal(),
+              t.telemetry.colMax(),
             ],
-            loaded.map((s) => [
-              s.session,
-              s.status,
-              count(s.resumedHistory),
-              s.channelEvents === null
-                ? "-"
-                : `${s.channelEvents} / ${formatBytes(s.channelBytes)}`,
-              count(s.subscribers),
-              formatBytes(s.liveBytes),
-              formatMs(s.idleMs),
-            ]),
+            machines.flatMap((machine) =>
+              machine.probes.map((p) => [
+                machine.machine,
+                p.stage === undefined ? p.probe : `${p.probe} ${p.stage}`,
+                String(p.count),
+                String(p.errors),
+                count(p.n),
+                formatMs(p.totalMs),
+                p.maxMs === null ? "-" : formatMs(p.maxMs),
+              ]),
+            ),
           ),
         );
         return;

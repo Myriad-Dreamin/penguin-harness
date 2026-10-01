@@ -143,7 +143,7 @@ describe("penguin telemetry", () => {
     expect(out()).toContain(t.telemetry.cleared());
   });
 
-  it("prints the machine view: the process, its generations and each loaded session", async () => {
+  it("prints the machine view: the process, its generations, each loaded session and each machine", async () => {
     server.telemetry.machine = {
       process: {
         pid: 4242,
@@ -169,6 +169,32 @@ describe("penguin telemetry", () => {
           idleMs: 1500,
         },
       ],
+      machines: [
+        {
+          machine: "ssh:lab",
+          count: 2,
+          lastTs: 1_000,
+          probes: [
+            {
+              probe: "machine.connect.stage",
+              stage: "start-server",
+              count: 1,
+              errors: 0,
+              n: null,
+              totalMs: 2400,
+              maxMs: 2400,
+            },
+            {
+              probe: "machine.socks.handshake",
+              count: 1,
+              errors: 1,
+              n: 7,
+              totalMs: 30,
+              maxMs: 30,
+            },
+          ],
+        },
+      ],
       totals: {
         sessions: 1,
         resumedHistory: 120,
@@ -185,11 +211,27 @@ describe("penguin telemetry", () => {
     expect(out()).toContain(t.telemetry.machineGeneration("3", "a1b2c3d4e5f6×2"));
     expect(out()).toContain(SESSION);
     expect(out()).toContain("40 / 8.0KB");
+    // One row per machine and probe — the connect stage beside its probe, the handshake count in N.
+    const stageRow = out()
+      .split("\n")
+      .find((line) => line.includes("start-server"));
+    expect(stageRow).toMatch(/ssh:lab\s+machine\.connect\.stage start-server\s+1\s+0\s+-\s+2\.40s/);
+    const socksRow = out()
+      .split("\n")
+      .find((line) => line.includes("machine.socks.handshake"));
+    expect(socksRow).toMatch(/ssh:lab\s+machine\.socks\.handshake\s+1\s+1\s+7\s/);
 
+    // No session loaded: said so, and the machines still follow.
     stdout.length = 0;
     server.telemetry.machine = { ...(server.telemetry.machine as object), sessions: [] };
     expect(await cli(["telemetry", "--by", "machine"])).toBe(0);
     expect(out()).toContain(t.telemetry.machineNoSessions());
+    expect(out()).toContain("start-server");
+
+    stdout.length = 0;
+    server.telemetry.machine = { ...(server.telemetry.machine as object), machines: [] };
+    expect(await cli(["telemetry", "--by", "machine"])).toBe(0);
+    expect(out()).toContain(t.telemetry.machineNoMachines());
   });
 
   it("refuses a bad --by and a bad --limit", async () => {

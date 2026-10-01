@@ -254,6 +254,13 @@ export interface Messages {
     colSubscribers(): string;
     colLive(): string;
     colIdle(): string;
+    /** `--by machine`: no connection probe has named a machine since the switch went on. */
+    machineNoMachines(): string;
+    colMachine(): string;
+    /** A SOCKS window's handshake count, summed. */
+    colN(): string;
+    colErrors(): string;
+    colTotal(): string;
     /** `penguin telemetry errors`: the always-on error table, not the telemetry buffer. */
     errorsDesc: string;
     errorsRequest: string;
@@ -1283,6 +1290,11 @@ const en: Messages = {
     colSubscribers: () => "SUBSCRIBERS",
     colLive: () => "LIVE TAIL",
     colIdle: () => "IDLE",
+    machineNoMachines: () => "No machine connection measured.",
+    colMachine: () => "MACHINE",
+    colN: () => "N",
+    colErrors: () => "ERRORS",
+    colTotal: () => "TOTAL",
     errorsDesc:
       "List the project's recorded errors (always on, not the telemetry buffer); inside a session, that session's",
     errorsRequest: "Only errors of this request (telemetry's request id)",
@@ -2311,6 +2323,11 @@ const zh: Messages = {
     colSubscribers: () => "订阅",
     colLive: () => "live tail",
     colIdle: () => "闲置",
+    machineNoMachines: () => "没有测到任何机器连接。",
+    colMachine: () => "机器",
+    colN: () => "计数",
+    colErrors: () => "失败",
+    colTotal: () => "总用时",
     errorsDesc: "列出 Project 记录下的错误（常开，不是遥测缓冲）；在会话里运行时只列本会话",
     errorsRequest: "只看这个请求的错误（遥测的请求 id）",
     errorsKind: "只看非预期（unexpected）或预期（expected）的错误",

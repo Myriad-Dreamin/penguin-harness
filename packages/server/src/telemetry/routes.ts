@@ -91,7 +91,11 @@ export function telemetryRoutes(telemetry: Telemetry): Hono<AppEnv> {
     if (view === "machine") {
       // Read now, not buffered — and not while off: the Sessions' report is asked only here.
       if (enabled)
-        body.machine = machineView(telemetry.generations(), telemetry.report("sessions"));
+        body.machine = machineView(
+          telemetry.generations(),
+          telemetry.report("sessions"),
+          telemetry.samples({}),
+        );
     } else if (view === "samples") {
       body.samples = telemetry.samples(query);
     } else {

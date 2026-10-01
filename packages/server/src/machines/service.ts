@@ -101,6 +101,8 @@ import type { Db, Hmr, Paths, ResourceGroups } from "../hmr/capabilities.js";
 import { currentRemoteLayout } from "./layout.js";
 import type { RemoteLayout } from "./layout.js";
 import { redactText } from "../services/redact.js";
+import type { Telemetry } from "../mechanisms/telemetry.js";
+import { bindMachineTimings } from "./telemetry-binding.js";
 
 /** A job's narrator: a line for the log, and optionally the step of the pipeline it begins. */
 type Say = (line: string, phase?: MachinePhase) => void;
@@ -1724,6 +1726,8 @@ export class MachinesModule {
   /** Whether the predecessor's delivered sessions may be claimed (hmr/platform.ts judged their contract). */
   @Use() private readonly resourceGroups!: ResourceGroups;
   @Use() private readonly errors?: Errors;
+  /** Absent in a test App without it: the connection probes then stay off, as they are while it is off. */
+  @Use() private readonly telemetry?: Telemetry;
   @Provide() machines!: Machines;
   @Bind("MachinesModule.routes") routes!: Hono<AppEnv>;
   @Bind("MachinesModule.server-proxy") serverProxyRoutes!: Hono<AppEnv>;
@@ -1765,6 +1769,8 @@ export class MachinesModule {
     // for the successor to claim, and its start() re-holds whatever the record says was
     // held and is not there.
     effect(() => machines.stop());
+    // The connection probes follow the Telemetry switch (PRFC-0008), into this generation's buffer.
+    if (this.telemetry !== undefined) effect(bindMachineTimings(this.telemetry));
   }
 }
 

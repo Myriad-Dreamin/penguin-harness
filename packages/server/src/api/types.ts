@@ -341,6 +341,8 @@ export interface TelemetryKeys {
   /** One run of a Session (a Task, a compaction, a goal loop), minted while the switch is on. */
   task?: string;
   generation?: number;
+  /** The machine a connection probe measured, by its address (`ssh:<alias>`). */
+  machine?: string;
 }
 
 /** A sample as a probe hands it over; the buffer stamps `ts`. */
@@ -442,6 +444,29 @@ export interface TelemetrySessionReport {
 }
 
 /**
+ * One machine's connection samples in the buffer (`keys.machine`), per probe — and per stage
+ * for `machine.connect.stage`, so a slow connect reads as the stage it spent its time in.
+ */
+export interface TelemetryMachineSummary {
+  machine: string;
+  count: number;
+  /** Newest sample's time, epoch ms. */
+  lastTs: number;
+  probes: Array<{
+    probe: string;
+    /** The connect stage (`probe`, `start-server`, …) of a `machine.connect.stage` row. */
+    stage?: string;
+    count: number;
+    /** Samples whose status is not `ok`. */
+    errors: number;
+    /** Sum of the samples' counts (a SOCKS window's handshakes); null when none carries one. */
+    n: number | null;
+    totalMs: number;
+    maxMs: number | null;
+  }>;
+}
+
+/**
  * `GET /api/telemetry?view=machine`: this process, read at request time — memory, the App
  * generations it has created, and each loaded Session's own report. Absent while the switch
  * is off, like every other view's content: nothing is asked of the Sessions then.
@@ -460,6 +485,8 @@ export interface TelemetryMachineView {
   generation: TelemetryGenerations;
   /** Each loaded Session's report; null when the Sessions module registered none. */
   sessions: TelemetrySessionReport[] | null;
+  /** Each machine the buffered connection probes name, newest first; empty when none has run. */
+  machines: TelemetryMachineSummary[];
   /** Sums over `sessions` (a null counter adds nothing). */
   totals: {
     sessions: number;

@@ -62,6 +62,7 @@ export class TelemetryService implements Telemetry {
   #generation: number | undefined;
   #bundles: Record<string, number> = {};
   readonly #reports = new Map<string, () => unknown>();
+  readonly #watchers = new Set<(on: boolean) => void>();
 
   setup({ resources }: ClassCtx) {
     const record = resources.claim<GenerationRecord>(TELEMETRY_GENERATION_RESOURCE_ID);
@@ -76,8 +77,18 @@ export class TelemetryService implements Telemetry {
 
   setEnabled(enabled: boolean): void {
     this.settings.set(TELEMETRY_ENABLED_KEY, JSON.stringify(enabled));
+    const was = this.#ring !== null;
     if (!enabled) this.#ring = null;
     else this.#ring ??= new SampleRing();
+    if (was !== enabled) for (const listener of this.#watchers) tell(listener, enabled);
+  }
+
+  watch(listener: (on: boolean) => void): () => void {
+    this.#watchers.add(listener);
+    tell(listener, this.#ring !== null);
+    return () => {
+      this.#watchers.delete(listener);
+    };
   }
 
   record(input: TelemetrySampleInput): TelemetrySample | null {
@@ -132,5 +143,14 @@ export class TelemetryService implements Telemetry {
       current: this.#generation ?? null,
       bundles: Object.entries(this.#bundles).map(([bundle, creates]) => ({ bundle, creates })),
     };
+  }
+}
+
+/** A watcher that throws must not fail the settings write that told it. */
+function tell(listener: (on: boolean) => void, on: boolean): void {
+  try {
+    listener(on);
+  } catch {
+    // The switch is applied regardless; the watcher's own state is its concern.
   }
 }
