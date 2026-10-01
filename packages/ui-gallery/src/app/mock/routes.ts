@@ -11,6 +11,7 @@
 import type {
   ContributionsResponse,
   HostCommandsResponse,
+  TelemetryResponse,
   AdminUserCreateResponse,
   AdminUsersResponse,
   AgentConfigResponse,
@@ -204,6 +205,13 @@ router
     store.f.prefs = { ...store.f.prefs, ...record(body) };
     return { prefs: store.f.prefs };
   });
+
+// Telemetry is off in the demo: the buffer reads as empty, as a server with the switch off answers.
+router.get("/api/telemetry", ({ query }): TelemetryResponse => ({
+  enabled: false,
+  view: query.get("view") === "sessions" ? "sessions" : "probes",
+  buffered: 0,
+}));
 
 // ---------------------------------------------------------------------------------------------
 // Admin
