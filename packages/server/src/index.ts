@@ -457,7 +457,6 @@ class PenguinServer {
     }
   }
 
-
   /**
    * Graceful shutdown, idempotent across every path that can trigger it: interrupt all
    * active runs (pending approvals converge to deny), wait ≤5s for wrap-up, then close

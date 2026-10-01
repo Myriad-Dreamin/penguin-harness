@@ -49,7 +49,8 @@ export function terminalUpgrade(
       return true;
     }
     const token = readCookie(req.headers.cookie, SESSION_COOKIE);
-    const authed = token !== null && deps.auth !== null ? deps.auth.authenticateWithMeta(token) : null;
+    const authed =
+      token !== null && deps.auth !== null ? deps.auth.authenticateWithMeta(token) : null;
     if (!authed) {
       refuseUpgrade(socket, 401, "Unauthorized");
       return true;

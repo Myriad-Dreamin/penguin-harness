@@ -428,7 +428,12 @@ async function createInner(
   const http = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
   const logNode = business?.api<Log>("RuntimeModule", "Log") ?? null;
   const log = (line: string) => (logNode !== null ? logNode.line(line) : console.log(line));
-  const attachStream = (ws: WebSocket, session: TerminalSession, url: URL, l: (l: string) => void) => {
+  const attachStream = (
+    ws: WebSocket,
+    session: TerminalSession,
+    url: URL,
+    l: (l: string) => void,
+  ) => {
     // A reference to a machine's pty is the relay's to serve; a local one is bound here.
     if (remote?.attach(ws, session, url, l) === true) return;
     bindTerminalStream(ws, session, url, l);

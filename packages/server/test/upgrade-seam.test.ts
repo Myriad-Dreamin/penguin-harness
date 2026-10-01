@@ -21,8 +21,7 @@ afterEach(async () => {
 /** A control object whose current generation is `api`, or none when `api` is an Error. */
 function control(api: object | Error): Hmr<PlatformApi> {
   return {
-    current: () =>
-      api instanceof Error ? Promise.reject(api) : Promise.resolve({ api } as never),
+    current: () => (api instanceof Error ? Promise.reject(api) : Promise.resolve({ api } as never)),
   } as unknown as Hmr<PlatformApi>;
 }
 
