@@ -673,7 +673,7 @@ export const MIGRATIONS: readonly Migration[] = [
     },
   },
   {
-    version: 19,
+    version: 17,
     name: "model-tables-adoption",
     // A data root that ran the chain before it was restacked onto main (2026-09-23) is
     // stamped 16 under THAT line's numbering, where 9 and 10 were sessions-sandbox and
