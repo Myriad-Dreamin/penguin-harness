@@ -254,6 +254,13 @@ export interface Messages {
     colSubscribers(): string;
     colLive(): string;
     colIdle(): string;
+    /** `--by machine`: no connection probe has named a machine since the switch went on. */
+    machineNoMachines(): string;
+    colMachine(): string;
+    /** A SOCKS window's handshake count, summed. */
+    colN(): string;
+    colErrors(): string;
+    colTotal(): string;
   };
   /** `penguin schedule`: scheduled-task listing and management (a validated writer over the schedules API; the TOML file stays the single source of truth). */
   schedule: {
@@ -1386,6 +1393,11 @@ const en: Messages = {
     colSubscribers: () => "SUBSCRIBERS",
     colLive: () => "LIVE TAIL",
     colIdle: () => "IDLE",
+    machineNoMachines: () => "No machine connection measured.",
+    colMachine: () => "MACHINE",
+    colN: () => "N",
+    colErrors: () => "ERRORS",
+    colTotal: () => "TOTAL",
   },
   schedule: {
     desc: "Manage scheduled tasks",
@@ -2521,6 +2533,11 @@ const zh: Messages = {
     colSubscribers: () => "订阅",
     colLive: () => "live tail",
     colIdle: () => "闲置",
+    machineNoMachines: () => "没有测到任何机器连接。",
+    colMachine: () => "机器",
+    colN: () => "计数",
+    colErrors: () => "失败",
+    colTotal: () => "总用时",
   },
   schedule: {
     desc: "管理定时任务",
