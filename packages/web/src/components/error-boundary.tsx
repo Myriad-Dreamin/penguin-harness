@@ -8,7 +8,7 @@ import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { S } from "../lib/strings";
 import { reportBrowserError } from "../lib/error-report";
-import { Button } from "./ui/button";
+import { Button } from "@prismshadow/penguin-ui";
 
 interface State {
   failed: boolean;
