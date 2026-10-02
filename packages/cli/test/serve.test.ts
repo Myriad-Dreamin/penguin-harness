@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 import { Command } from "commander";
 import { DEFAULT_SERVER_PORT } from "@prismshadow/penguin-core";
 import {
   DEFAULT_HOST,
   DEFAULT_PORT,
+  advertisedCliEntry,
   browserCommand,
   appPagePath,
   browserUrl,
+  cliEntryFor,
   describeReadinessFailure,
   registerServeCommands,
   resolvePort,
@@ -70,15 +73,45 @@ describe("browserUrl (wildcard listen addresses map to 127.0.0.1)", () => {
 describe("registerServeCommands (command registration)", () => {
   it("registers the server and web top-level commands; web defaults to open=true (--no-open turns it off)", () => {
     const program = new Command();
-    registerServeCommands(program, {
-      t: getMessages("en"),
-      harness: { source: "installed", cliEntry: null, bundle: null },
-    });
+    registerServeCommands(program, getMessages("en"));
     const names = program.commands.map((c) => c.name());
     expect(names).toContain("server");
     expect(names).toContain("web");
     const web = program.commands.find((c) => c.name() === "web")!;
     expect(web.opts().open).toBe(true);
+  });
+});
+
+describe("cliEntryFor (the entry advertised for the web self-update)", () => {
+  it("advertises only entries plain node can re-run (.js/.mjs/.cjs), resolved absolute", () => {
+    // Expectations go through path.resolve too: on win32 an absolute POSIX-style input
+    // gains a drive prefix and backslashes, and the contract is "resolved", not a literal.
+    expect(cliEntryFor("/opt/penguin/lib/dist/index.js")).toBe(
+      path.resolve("/opt/penguin/lib/dist/index.js"),
+    );
+    expect(cliEntryFor("/x/cli.MJS")).toBe(path.resolve("/x/cli.MJS"));
+    expect(cliEntryFor("/x/cli.cjs")).toBe(path.resolve("/x/cli.cjs"));
+  });
+  it("refuses a tsx dev entry and a missing argv[1] (the endpoint then reports unsupported)", () => {
+    expect(cliEntryFor("/repo/packages/cli/src/index.ts")).toBeNull();
+    expect(cliEntryFor(undefined)).toBeNull();
+    expect(cliEntryFor("")).toBeNull();
+  });
+});
+
+describe("advertisedCliEntry (a supervised child keeps its supervisor's entry)", () => {
+  const installed = path.resolve("/opt/penguin/lib/dist/index.js");
+  const loader = path.resolve("/opt/penguin/lib/dist/penguin-hmr.js");
+  it("a supervised child started through penguin-hmr leaves the installed entry in place", () => {
+    const env = { PENGUIN_SERVE_CHILD: "1", PENGUIN_CLI_ENTRY: installed };
+    expect(advertisedCliEntry(loader, env)).toBeNull();
+  });
+  it("a supervisor, or a child with nothing inherited, advertises its own entry", () => {
+    expect(advertisedCliEntry(installed, { PENGUIN_CLI_ENTRY: "/elsewhere.js" })).toBe(installed);
+    expect(advertisedCliEntry(loader, { PENGUIN_SERVE_CHILD: "1" })).toBe(loader);
+    expect(advertisedCliEntry(loader, { PENGUIN_SERVE_CHILD: "1", PENGUIN_CLI_ENTRY: " " })).toBe(
+      loader,
+    );
   });
 });
 

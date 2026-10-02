@@ -72,6 +72,7 @@ import {
   signInFailureDialog,
 } from "./attach-session.js";
 import type { SignInFailure } from "./attach-session.js";
+import { embeddedCliEntry } from "./launcher.js";
 import { webDistEntry, webDistFor } from "./web-dist.js";
 import { resolveTrayIcon, resolveWindowIcon } from "./app-icon.js";
 import { openAppWindow, parseOpenWindowRequest } from "./app-window.js";
@@ -600,6 +601,11 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
   const started = await startEmbeddedServer({
     dataRoot,
     webDist,
+    cliEntry: embeddedCliEntry({
+      isPackaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      env: process.env,
+    }),
     profile,
     portFile: path.join(app.getPath("userData"), "server-port"),
     preferredPortFile: path.join(app.getPath("userData"), "preferred-port"),

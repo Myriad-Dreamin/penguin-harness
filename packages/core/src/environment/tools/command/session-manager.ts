@@ -50,6 +50,9 @@ const HARDENED_ENV: NodeJS.ProcessEnv = {
  * a particular port should be told so in its own invocation (or through the vault), never by
  * ambient inheritance.
  *
+ * `PENGUIN_CLI_ENTRY` is internal plumbing: the CLI uses it to tell the server which script to
+ * re-run for self-update. It means nothing to any other program and leaks the install path.
+ *
  * `PENGUIN_WEB_DIST` is *not* internal — it is a documented deployment override (see the
  * configuration reference and the server README) — and is stripped anyway because it names this
  * installation's front-end build. In the self-development case an Agent that starts a
@@ -79,6 +82,7 @@ const HARDENED_ENV: NodeJS.ProcessEnv = {
 const STRIPPED_ENV_KEYS = new Set([
   "PORT",
   "HOST",
+  "PENGUIN_CLI_ENTRY",
   "PENGUIN_WEB_DIST",
   "FORCE_COLOR",
   "CLICOLOR_FORCE",

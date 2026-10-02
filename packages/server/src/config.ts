@@ -91,12 +91,17 @@ export interface ServerConfig {
    */
   trustProxy: boolean;
   /**
-   * The CLI script of the harness that runs this server — the file the `<root>/bin/penguin`
-   * shim execs (see services/cli-shim.ts) and the self-update job runs as `update`. It is
-   * what the starter resolved (index.ts StartOptions: the CLI's resolveHarness); without
-   * one, the entry of the checkout this server was started from, when it has a built one.
-   * Null = no CLI to offer, and no shim is written. A checkout has no release to update to:
-   * its `update` refuses, which the job reports as unsupported.
+   * The CLI entry script this harness offers to the Agents it runs — the file the
+   * `<root>/bin/penguin` shim execs (see services/cli-shim.ts). `PENGUIN_CLI_ENTRY` when
+   * set: `penguin server|web` exports its own entry there, and the desktop shell passes
+   * the bundled one to the server it forks. Otherwise the entry of the checkout this
+   * server was started from, when it has a built one. Null = no CLI to offer, and no shim
+   * is written.
+   *
+   * Related to but wider than the self-update endpoint's use of the same variable
+   * (http/routes/version.ts), which accepts only an INSTALLED entry it can re-run as
+   * `penguin update`: a checkout has no release to update to, but its CLI is exactly the
+   * one an Agent working on that checkout should be running.
    *
    * OPTIONAL for the same reason: absent — a runtime older than this field — reads as null,
    * no CLI to offer and no shim written.
@@ -225,20 +230,17 @@ function resolvePluginIndexUrl(raw: string | undefined): string | null {
   return value.toLowerCase() === "off" ? null : value;
 }
 
-/** Parses server config from environment variables (PORT / HOST / PENGUIN_HOME / PENGUIN_WEB_DIST / PENGUIN_WEB_DB / PENGUIN_PREVIEW_ORIGIN / PENGUIN_GO_ORIGIN / MODELSCOPE_BRIDGE_URL / PENGUIN_SEED_ADMIN_PASSWORD / PENGUIN_DESKTOP_TOKEN / PENGUIN_PORT_FILE / PENGUIN_TRUST_PROXY / PENGUIN_PLUGIN_INDEX), plus what the starter resolved (the CLI entry). */
-export function resolveServerConfig(
-  env: NodeJS.ProcessEnv = process.env,
-  resolved: { port?: number; host?: string; cliEntry?: string | null } = {},
-): ServerConfig {
+/** Parses server config from environment variables (PORT / HOST / PENGUIN_HOME / PENGUIN_WEB_DIST / PENGUIN_WEB_DB / PENGUIN_PREVIEW_ORIGIN / PENGUIN_GO_ORIGIN / MODELSCOPE_BRIDGE_URL / PENGUIN_SEED_ADMIN_PASSWORD / PENGUIN_DESKTOP_TOKEN / PENGUIN_PORT_FILE / PENGUIN_TRUST_PROXY / PENGUIN_CLI_ENTRY / PENGUIN_PLUGIN_INDEX). */
+export function resolveServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const root = env.PENGUIN_HOME ?? resolveRoot();
   // An empty PORT string is treated as unset (the common `.env` case of an empty
   // `PORT=`): Number("") === 0 would pass the range check and bind to a random
   // port; this matches the CLI's resolvePort convention.
-  const port = resolved.port ?? Number(env.PORT || DEFAULT_SERVER_PORT);
+  const port = Number(env.PORT || DEFAULT_SERVER_PORT);
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new Error(`Invalid port configuration PORT=${resolved.port ?? env.PORT}`);
+    throw new Error(`Invalid port configuration PORT=${env.PORT}`);
   }
-  const host = resolved.host ?? env.HOST ?? "127.0.0.1";
+  const host = env.HOST ?? "127.0.0.1";
   const desktopToken = env.PENGUIN_DESKTOP_TOKEN?.trim() || null;
   // Desktop mode redeems its token through a URL: never allow it off loopback.
   if (desktopToken !== null && host !== "127.0.0.1" && host !== "localhost") {
@@ -260,7 +262,7 @@ export function resolveServerConfig(
     desktopToken,
     portFile: env.PENGUIN_PORT_FILE?.trim() || null,
     trustProxy: env.PENGUIN_TRUST_PROXY === "1",
-    cliEntry: resolved.cliEntry ?? defaultCliEntry(),
+    cliEntry: env.PENGUIN_CLI_ENTRY?.trim() || defaultCliEntry(),
     pluginIndexUrl: resolvePluginIndexUrl(env.PENGUIN_PLUGIN_INDEX),
   };
 }

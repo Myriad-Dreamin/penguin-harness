@@ -6,8 +6,9 @@
  * process: a start while one runs joins it, and the finished status stays readable until
  * the next start (which is also how a failed run is retried).
  *
- * How the self-update works: the job runs the CLI of the harness that runs this server
- * (config.cliEntry, resolved by whoever started the server) as `node <entry> update --yes` — the CLI's update command owns all install-kind detection,
+ * How the self-update works: `penguin server|web` exports PENGUIN_CLI_ENTRY (its own entry
+ * script path) before importing this server, and the job re-runs that script as
+ * `node <entry> update --yes` — the CLI's update command owns all install-kind detection,
  * download and replacement logic (packages/cli/src/commands/update.ts). A server started
  * any other way (tests, a custom embedding) has no CLI to run and reports "unsupported".
  * SECURITY: the spawned argv is a fixed literal list; nothing from any request flows into

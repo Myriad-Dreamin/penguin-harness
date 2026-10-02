@@ -43,8 +43,9 @@ const PROBE_OUTPUT_CAP = 4 * 1024 * 1024;
  * `ELECTRON_RUN_AS_NODE` — importing that one would make every later relaunch of the
  * app run as plain Node instead of Electron.
  *
- * `PENGUIN_WEB_DIST` joins them because it selects *code*: the embedded server reads it for
- * the Web App it serves, and the fork does not override it. A profile line written for a
+ * `PENGUIN_WEB_DIST` and `PENGUIN_CLI_ENTRY` join them because they select *code*: the
+ * embedded server reads the first for the Web App it serves and the second for the entry it
+ * self-updates through, and the fork does not override either. A profile line written for a
  * repo checkout would silently retarget an installed app that the user only double-clicked.
  * Data and settings variables are not excluded — `PENGUIN_HOME` chooses which data root the
  * app opens, which is a configuration choice a user can mean to make once for both the CLI
@@ -58,6 +59,7 @@ const EXCLUDED_KEYS = new Set([
   "TERM",
   "ELECTRON_RUN_AS_NODE",
   "PENGUIN_WEB_DIST",
+  "PENGUIN_CLI_ENTRY",
 ]);
 
 /** Environment variable names as the POSIX shells define them; also drops `BASH_FUNC_f%%` exported functions. */

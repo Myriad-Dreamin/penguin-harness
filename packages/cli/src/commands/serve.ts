@@ -5,21 +5,21 @@
  *   penguin server reset-admin-password        (subcommand, see reset-password.ts)
  *   penguin web [--port <port>] [--host <host>] [--no-open] [--app <project>/<agent>/<workflow>[/<tab>]]
  *
- * Both are entry points into the same service process: it calls `startServer` from
- * `@prismshadow/penguin-server` (which handles dotenv loading and graceful shutdown on its
- * own) with the port, the host and the CLI of the harness this process resolved (the
- * command context, harness.ts), so the two never listen on separate ports in parallel.
- * Port/host priority: command-line option > existing environment variable (including
- * .env) > default 7364 / 127.0.0.1. `penguin web` additionally polls until the service is
- * ready, prints the URL, and opens a browser per-platform (`--no-open` disables this).
+ * Both are entry points into the same service process: after setting PORT / HOST, it
+ * dynamically imports `@prismshadow/penguin-server` (whose entry point handles dotenv
+ * loading and graceful shutdown on its own), so the two never listen on separate ports
+ * in parallel. Port/host priority: command-line option > existing environment variable
+ * (including .env) > default 7364 / 127.0.0.1. `penguin web` additionally polls until the
+ * service is ready, prints the URL, and opens a browser per-platform (`--no-open`
+ * disables this). Before the import, PENGUIN_CLI_ENTRY is exported (when node can re-run
+ * this entry) so the server's admin self-update endpoint can invoke `penguin update`.
  *
- * Supervision: when plain node can re-run the harness's CLI, the service runs as a CHILD
- * process (`node <harness CLI> server …`, marked PENGUIN_SERVE_CHILD=1) and this process
- * stays behind as its supervisor — it forwards the terminal's signals, exits with the
- * child's code, and relaunches the child when it exits with core's SERVER_RESTART_EXIT_CODE.
- * That exit is what the Web App's "restart to update" asks for once `penguin update` has
- * replaced the install, and what entry-side code that came with a push waits for: every
- * launch resolves the harness again, so it runs the newest release or push.
+ * Supervision: when plain node can re-run this entry, the service runs as a CHILD process
+ * (`node <entry> server …`, marked PENGUIN_SERVE_CHILD=1) and this process stays behind
+ * as its supervisor — it forwards the terminal's signals, exits with the child's code, and
+ * relaunches the child when it exits with core's SERVER_RESTART_EXIT_CODE. That exit is
+ * what the Web App's "restart to update" asks for once `penguin update` has replaced the
+ * install: the relaunch re-resolves the same entry path, which now holds the new release.
  * The child is told a supervisor is there (PENGUIN_SUPERVISED=1); a dev run through tsx
  * cannot be re-spawned by node and runs in-process as before, where the server reports
  * that a restart must be done by hand.
@@ -27,6 +27,7 @@
  */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import path from "node:path";
 import {
   DEFAULT_SERVER_PORT,
   SERVER_RESTART_EXIT_CODE,
@@ -38,8 +39,7 @@ import type { Messages, WebProbeFailureKind } from "../i18n.js";
 import { registerResetPasswordCommand } from "./reset-password.js";
 import { registerStatusCommand } from "./server-status.js";
 import { registerStopCommand } from "./server-stop.js";
-import { resolveHarness } from "../harness.js";
-import type { CommandContext } from "../context.js";
+import { serverStartEntry } from "../server-entry.js";
 
 /** Why the readiness poll gave up: failure class plus a one-line diagnostic from the last probe. */
 export interface ReadinessFailure {
@@ -104,6 +104,17 @@ export function appPagePath(spec: string): string {
   return `app/${parts.map(encodeURIComponent).join("/")}`;
 }
 
+/**
+ * The CLI entry script advertised to the server for the admin self-update endpoint
+ * (POST /api/version/update re-runs it as `node <entry> update --yes`), or null when it
+ * must not be advertised. Only entries plain `node` can execute qualify: a dev CLI run
+ * through tsx has a .ts entry that node would reject with a syntax error, and reporting
+ * "unsupported" beats a misleading failure. Exported for unit tests.
+ */
+export function cliEntryFor(argv1: string | undefined): string | null {
+  if (!argv1) return null;
+  return /\.(js|mjs|cjs)$/i.test(argv1) ? path.resolve(argv1) : null;
+}
 
 /**
  * Sets PORT / HOST then starts the service: the server entry point only reads
@@ -141,19 +152,16 @@ export function supervisorDecision(
 
 /**
  * Runs the service as a child of this process and keeps it running across restart
- * requests. Each launch resolves the harness again (harness.ts), so a restart after a push
- * runs the pushed CLI. Returns once the first child is spawned; the process then lives as
- * long as the child does (the handle keeps the event loop alive) and takes its exit code.
+ * requests. Each child starts through the pushed CLI when the data root has one
+ * (server-entry.ts), so a restart after a push runs the pushed entry. Returns once the
+ * first child is spawned; the process then lives as long as the child does (the handle
+ * keeps the event loop alive) and takes its exit code.
  */
-function supervise(first: string, host: string, port: number, t: Messages): void {
+function supervise(cliEntry: string, host: string, port: number, t: Messages): void {
   let stopping = false;
   let child: ChildProcess | null = null;
-  let launches = 0;
   const spawnChild = async (): Promise<void> => {
-    const entry =
-      launches++ === 0
-        ? first
-        : ((await resolveHarness(process.argv[1], resolveRoot())).cliEntry ?? first);
+    const entry = await serverStartEntry(cliEntry, resolveRoot());
     if (stopping) return;
     child = spawn(process.execPath, [entry, "server", "--port", String(port), "--host", host], {
       stdio: "inherit",
@@ -184,23 +192,48 @@ function supervise(first: string, host: string, port: number, t: Messages): void
   void spawnChild();
 }
 
+/**
+ * The CLI entry this process advertises as PENGUIN_CLI_ENTRY, or null to leave it as it is.
+ * A supervised child keeps the one its supervisor exported: the child may run the pushed
+ * CLI through `penguin-hmr` (server-entry.ts), whose argv[1] is the loader, while the
+ * self-update endpoint must re-run the installed entry — `penguin update` finds the
+ * installation from its own module's path, and a bundle in the HMR store matches none.
+ * Exported for unit tests.
+ */
+export function advertisedCliEntry(
+  argv1: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string | null {
+  const inherited = env.PENGUIN_CLI_ENTRY?.trim();
+  if (env[SERVE_CHILD_ENV] === "1" && inherited) return null;
+  return cliEntryFor(argv1);
+}
+
 async function startServer(
   opts: { port?: string; host?: string },
-  { t, harness }: CommandContext,
+  t: Messages,
 ): Promise<{ host: string; port: number }> {
   const port = resolvePort(opts.port, process.env.PORT);
   const host = opts.host ?? process.env.HOST ?? DEFAULT_HOST;
-  // A harness node can re-run is what makes supervision possible: the child is this command
-  // again on that harness's CLI, marked as the child so it does not supervise in turn.
-  if (harness.cliEntry !== null && process.env[SERVE_CHILD_ENV] !== "1") {
-    supervise(harness.cliEntry, host, port, t);
+  process.env.PORT = String(port);
+  process.env.HOST = host;
+  // Tell the server which CLI entry script launched it: the admin self-update endpoint
+  // (POST /api/version/update) re-runs `node <entry> update --yes`. Set before the import
+  // so it is visible however the server captures its environment; when the server was not
+  // started through the CLI (or the entry is not re-runnable by plain node, e.g. a tsx dev
+  // run) the variable stays unset and the endpoint reports "unsupported".
+  const advertised = advertisedCliEntry(process.argv[1], process.env);
+  if (advertised !== null) {
+    process.env.PENGUIN_CLI_ENTRY = advertised;
+  }
+  const cliEntry = cliEntryFor(process.argv[1]);
+  // The same re-runnable entry is what makes supervision possible: the child is exactly
+  // this command again, marked as the child so it does not supervise in turn.
+  if (cliEntry !== null && process.env[SERVE_CHILD_ENV] !== "1") {
+    supervise(cliEntry, host, port, t);
     return { host, port };
   }
-  // In this process: the server is handed what it runs with as arguments. Its CLI — what the
-  // `<root>/bin/penguin` shim execs and the self-update job runs — is this harness's; with
-  // none (a tsx dev run), the server infers the checkout's or offers none.
-  const { startServer: start } = await import("@prismshadow/penguin-server");
-  await start({ port, host, cliEntry: harness.cliEntry });
+  await import("@prismshadow/penguin-server");
   return { host, port };
 }
 
@@ -335,8 +368,7 @@ function openBrowser(url: string): void {
   }
 }
 
-export function registerServeCommands(program: Command, context: CommandContext): void {
-  const { t } = context;
+export function registerServeCommands(program: Command, t: Messages): void {
   const server = program
     .command("server")
     .description(t.serve.serverDesc)
@@ -349,7 +381,7 @@ export function registerServeCommands(program: Command, context: CommandContext)
         process.exitCode = 1;
         return;
       }
-      await startServer(opts, context);
+      await startServer(opts, t);
     });
   // Bare `penguin server` still starts the service (commander runs the action when no
   // subcommand is named); the subcommand only dispatches on an exact name match.
@@ -377,7 +409,7 @@ export function registerServeCommands(program: Command, context: CommandContext)
         if (opts.open) openBrowser(existing + page);
         return;
       }
-      const { host, port } = await startServer(opts, context);
+      const { host, port } = await startServer(opts, t);
       const url = browserUrl(host, port);
       const readiness = await waitForReady(url);
       if (!readiness.ready) {

@@ -4,9 +4,7 @@ import { defineConfig } from "tsup";
 import { buildGitDefine } from "../../scripts/build-git-stamp.mjs";
 
 export default defineConfig({
-  entry: ["src/penguin.ts", "src/penguin-hmr.ts", "src/harness.ts"],
-  // Only the harness resolver is imported by another package (the desktop's server entry).
-  dts: { entry: ["src/harness.ts"] },
+  entry: ["src/penguin.ts", "src/penguin-hmr.ts"],
   format: ["esm"],
   target: "node24",
   platform: "node",
