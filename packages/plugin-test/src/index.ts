@@ -17,10 +17,10 @@
  *
  * A plugin is named by its package directory (build it first) or by a package name the server
  * can install on its own. A directory reaches the server the way a hot push brings plugins:
- * the harness packs it, has npm install the tarball into a bundled plugin directory inside the
- * scratch root's push assets (`hmr/harness.json` names them), and writes that directory's index
- * with the tarball's npm integrity — so the server stores it in its plugin store and activates
- * it like any plugin a push carries. The Project lists it by package name.
+ * the harness packs it into a bundled plugin directory inside the scratch root's push assets
+ * (`hmr/harness.json` names them) and writes that directory's index with the tarball's npm
+ * integrity — so the server stores the tarball, unpacks it and loads it like any plugin a push
+ * carries. The Project lists it by package name.
  *
  * The list is CONFIGURATION OF A PROJECT (`plugins` in its `.project_config.toml`), which is
  * what a process loads the closure of; the harness seeds that file for the one Project the
@@ -250,69 +250,41 @@ function run(command: string, args: string[], cwd: string): void {
 
 /**
  * Stages package directories into `root` as a hot push would bring them: each is packed
- * (`pnpm pack`, its `files` honoured), the tarballs are installed by npm into
- * `<root>/hmr/plugin-test-assets/plugins/`, that directory's `index.json` lists each with its
- * tarball's npm integrity, and `<root>/hmr/harness.json` names the assets. Answers the
- * packages' names, in order.
+ * (`pnpm pack`, its `files` honoured) into `<root>/hmr/plugin-test-assets/plugins/`, that
+ * directory's `index.json` lists each with its tarball's npm integrity, and
+ * `<root>/hmr/harness.json` names the assets. Answers the packages' names, in order.
  */
 export async function stagePushedPlugins(root: string, dirs: readonly string[]): Promise<string[]> {
   const prefix = path.join(root, "hmr", ASSETS_DIR, "plugins");
   await fs.mkdir(prefix, { recursive: true });
-  const packed = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-plugin-test-pack-"));
-  try {
-    const names: string[] = [];
-    const rows: Record<string, unknown>[] = [];
-    const tarballs: string[] = [];
-    for (const dir of dirs) {
-      const before = new Set(await fs.readdir(packed));
-      run("pnpm", ["pack", "--pack-destination", packed], dir);
-      const tarball = (await fs.readdir(packed)).find((f) => f.endsWith(".tgz") && !before.has(f));
-      if (tarball === undefined) throw new Error(`pnpm pack left no tarball for ${dir}`);
-      const file = path.join(packed, tarball);
-      const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8")) as {
-        name: string;
-        version: string;
-      };
-      names.push(pkg.name);
-      tarballs.push(file);
-      // The rest of a row (description, authors, license) is for a listing; a test needs none.
-      rows.push({
-        name: pkg.name,
-        version: pkg.version,
-        description: "",
-        authors: [],
-        license: "",
-        integrity: await npmIntegrity(file),
-      });
-    }
-    await fs.writeFile(
-      path.join(prefix, "package.json"),
-      `${JSON.stringify({ name: "penguin-plugin-test-plugins", private: true, version: "0.0.0" }, null, 2)}\n`,
-    );
-    run(
-      "npm",
-      [
-        "install",
-        "--no-save",
-        "--no-package-lock",
-        "--omit=dev",
-        "--no-audit",
-        "--no-fund",
-        "--ignore-scripts",
-        "--",
-        ...tarballs,
-      ],
-      prefix,
-    );
-    await fs.writeFile(path.join(prefix, "index.json"), `${JSON.stringify(rows, null, 2)}\n`);
-    await fs.writeFile(
-      path.join(root, "hmr", "harness.json"),
-      `${JSON.stringify({ assets: { dir: ASSETS_DIR } }, null, 2)}\n`,
-    );
-    return names;
-  } finally {
-    await fs.rm(packed, { recursive: true, force: true });
+  const names: string[] = [];
+  const rows: Record<string, unknown>[] = [];
+  for (const dir of dirs) {
+    const before = new Set(await fs.readdir(prefix));
+    run("pnpm", ["pack", "--pack-destination", prefix], dir);
+    const tarball = (await fs.readdir(prefix)).find((f) => f.endsWith(".tgz") && !before.has(f));
+    if (tarball === undefined) throw new Error(`pnpm pack left no tarball for ${dir}`);
+    const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8")) as {
+      name: string;
+      version: string;
+    };
+    names.push(pkg.name);
+    // The rest of a row (description, authors, license) is for a listing; a test needs none.
+    rows.push({
+      name: pkg.name,
+      version: pkg.version,
+      description: "",
+      authors: [],
+      license: "",
+      integrity: await npmIntegrity(path.join(prefix, tarball)),
+    });
   }
+  await fs.writeFile(path.join(prefix, "index.json"), `${JSON.stringify(rows, null, 2)}\n`);
+  await fs.writeFile(
+    path.join(root, "hmr", "harness.json"),
+    `${JSON.stringify({ assets: { dir: ASSETS_DIR } }, null, 2)}\n`,
+  );
+  return names;
 }
 
 function entryFromExports(exportsField: unknown): string | undefined {
