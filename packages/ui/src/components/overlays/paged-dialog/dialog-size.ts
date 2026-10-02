@@ -50,7 +50,10 @@ export function maxDialogSize(
 export function clampDialogSize(
   size: DialogSize,
   viewport: DialogSize,
-  { min = DIALOG_MIN_SIZE, margin = DIALOG_VIEWPORT_MARGIN_PX }: { min?: DialogSize; margin?: number } = {},
+  {
+    min = DIALOG_MIN_SIZE,
+    margin = DIALOG_VIEWPORT_MARGIN_PX,
+  }: { min?: DialogSize; margin?: number } = {},
 ): DialogSize {
   const max = maxDialogSize(viewport, margin);
   const clamp = (value: number, lo: number, hi: number) =>
