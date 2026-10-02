@@ -46,12 +46,8 @@ import { QQScanTransportProvider } from "./runtime/messaging/qq-scan.js";
 import { WeChatTransportProvider } from "./runtime/messaging/wechat-connector.js";
 import { WeChatScanTransportProvider } from "./runtime/messaging/wechat-scan.js";
 import { DiscordTransportProvider } from "./runtime/messaging/discord-connector.js";
-import {
-  PluginConfig,
-  PluginConfigAdmin,
-  PluginConfigPage,
-  PluginConfigProvider,
-} from "./plugin/config.js";
+import { PluginConfig, PluginConfigProvider } from "./plugin/config.js";
+import { PluginConfigAdmin, PluginConfigPage } from "./plugin/config-page.js";
 import {
   CoreSessionLoaders,
   DefaultTitleGenerators,
