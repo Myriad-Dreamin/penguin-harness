@@ -226,11 +226,15 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     return s;
   };
 
-  /** A pinned content, `sha256-<64 hex digits>`, or undefined when none is asked. */
+  /** A pinned content, npm's `sha512-<base64>` integrity, or undefined when none is asked. */
   const integrityOf = (value: unknown): string | undefined => {
     if (value === undefined || value === null || value === "") return undefined;
     if (typeof value !== "string" || !INTEGRITY.test(value)) {
-      throw new HttpError(400, "bad_request", "integrity must be sha256- and 64 hex digits.");
+      throw new HttpError(
+        400,
+        "bad_request",
+        "integrity must be npm's: sha512- and 88 base64 characters.",
+      );
     }
     return value;
   };
@@ -327,11 +331,16 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       // compared with the entry's integrity before it enters the store.
       const pick = pickIndexEntry(await deps.index(), name, { version, integrity });
       if ("refused" in pick) throw new HttpError(400, "plugin_not_installable", pick.refused);
+      const expected = pick.integrity;
+      // pickIndexEntry never takes an entry without one; said here so the fetch is never unchecked.
+      if (expected === undefined) {
+        throw new HttpError(400, "plugin_not_installable", `'${name}' names no integrity`);
+      }
       try {
         // Into the plugin store (plugin/store.ts), and nowhere else: the re-assembly the list
         // edit asks for activates a generation that links the stored entry.
         await fetchIntoStore(deps.root, `${pick.name}@${pick.version}`, {
-          expected: pick.integrity,
+          expected,
         });
       } catch (err) {
         if (err instanceof PluginInstallError) {
