@@ -9,7 +9,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
-import { EmptyState, Spinner } from "@prismshadow/penguin-ui";
+import { EmptyState, GlyphIcon, ICONS, Spinner } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import type { ChatItem } from "../../lib/omni/stream-model";
 import type { MemoryChangeRow } from "../../lib/omni/memory-changes";
@@ -81,7 +81,7 @@ export interface StreamRenderContext {
 /** Pure list rendering (reused recursively inside subagent cards): consecutive thinking + tool-call items are aggregated into one "Reasoning & Tools" group. */
 export function MessageItems({ items, ctx }: { items: ChatItem[]; ctx: StreamRenderContext }) {
   // Split into segments first — group (consecutive thinking + tool calls) or single (everything
-  // else) — then render. WorkGroup needs to know whether it's the last segment (current turn
+  // else) — then render. ActivityGroup needs to know whether it's the last segment (current turn
   // still in progress) to decide its default expanded/collapsed state.
   type Seg = { type: "group"; items: ChatItem[] } | { type: "single"; item: ChatItem };
   const segs: Seg[] = [];
@@ -128,7 +128,7 @@ export function MessageItems({ items, ctx }: { items: ChatItem[]; ctx: StreamRen
    * The container is created as soon as the turn's **first** segment appears, keyed by that
    * segment's id, and the key never changes afterward. If we waited for the stats row to arrive
    * before moving already-rendered groups into a new container, React would treat it as a
-   * position change — unmount and remount — and the WorkGroup and tool-card expanded states
+   * position change — unmount and remount — and the ActivityGroup and tool-card expanded states
    * (each backed by its own internal useState) would reset instantly: any tool details the user
    * had manually expanded would collapse the moment the reply finishes.
    *
@@ -500,21 +500,7 @@ export function MessageStream({
           onClick={jumpToLatest}
           className="anim-pop absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-gray-300 bg-white p-1.5 text-gray-500 shadow-sm transition-colors duration-150 hover:bg-gray-50 hover:text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            aria-hidden
-          >
-            <path
-              d="M12 5v14M6 13l6 6 6-6"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <GlyphIcon d={ICONS.arrowDown} size={16} />
         </button>
       )}
     </div>

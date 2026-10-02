@@ -90,6 +90,17 @@ export const zh = {
       description: "任务等待人工：一条命令需要批准，允许或拒绝之后任务继续并结束。",
       how: "侧栏 › 带审批标记的会话行。",
     },
+    "chat-harness": {
+      title: "对话 · harness 写入的行",
+      description:
+        "不是人写、也不是模型写的每一种行：交接来源、Skill 与附件、MCP 连接、后台任务完成通知、定时触发、重连、中断、模型报错、压缩与模型切换、目标模式注入的轮次与插话，以及每个任务的统计行和目标横幅。",
+      how: "侧栏 › 会话列表里最早的一行「修复 hooks 文档的引用」。",
+    },
+    "chat-org": {
+      title: "对话 · 组织触发",
+      description: "组织调度器为员工工位开启的会话：首条消息的触发块折叠成一行来源提示。",
+      how: "公司模式 › 员工的工位。",
+    },
     "chat-new": {
       title: "新对话",
       description: "草稿页：选择智能体、工作区、审批模式与模型，输入并发送第一条消息。",
@@ -303,6 +314,7 @@ export const zh = {
     iconSizes: "图标尺寸",
     iconRegistry: (icons: number, files: number) => `${icons} 个图标，来自 ${files} 个文件`,
     duplicateNames: "同一路径的多个名字",
+    iconMarks: "组件标记",
     durations: "时长 × 缓动",
     reducedNote: "已减弱动效：每个变化直接呈现终态。",
     liveSignal: "实时信号",
@@ -331,7 +343,7 @@ export const zh = {
       sidebarRows: ["新对话", "智能体", "模型库"] as readonly string[],
     },
     hookJobs: {
-      "ui-glass": "盖在内容之上的临时层",
+      "ui-glass": "磨砂面：盖在内容之上的临时层，白领的插件与技能图块",
       "ui-eyebrow": "为下方一组条目命名的分组标签",
       "ui-display": "页面或主视觉唯一的展示标题",
       "ui-live": "正在进行之物的动效",
@@ -346,6 +358,7 @@ export const zh = {
       "ui-chart": "统计图：网格、坐标轴、折线、面积、柱与数据点",
       "ui-scrim": "对话框、抽屉与面板背后的遮罩层",
       "ui-stream": "正在流式输出的回答：各主题决定新文字如何出现",
+      "ui-glyph": "按主题换画法的图标：通用为 Octicons，白领为双色调线性，极客为像素画",
     } as Record<HookName, string>,
     hookSamples: {
       menu: ["置顶", "重命名", "删除"] as readonly string[],

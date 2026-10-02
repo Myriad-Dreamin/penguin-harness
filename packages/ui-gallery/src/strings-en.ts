@@ -67,6 +67,18 @@ export const en: GalleryStrings = {
         "A Task waiting on a human: a command needs approval; allow or deny it and the Task carries on and ends.",
       how: "Sidebar › a session row with the approval mark.",
     },
+    "chat-harness": {
+      title: "Chat · harness rows",
+      description:
+        "Every row neither a person nor the model wrote: a handoff origin, Skills and an attached file, the MCP connect row, background-task notices, a scheduled trigger, a reconnect, an abort, a provider error, a compaction and a model switch, the rounds and steering of a goal run, each Task's stats line and the goal banner.",
+      how: "Sidebar › “Fix the hooks doc citations”, the oldest row of the session list.",
+    },
+    "chat-org": {
+      title: "Chat · organization trigger",
+      description:
+        "A desk Session an organization's scheduler opened: the first message's trigger block folds into a one-line origin notice.",
+      how: "Company mode › an employee's desk.",
+    },
     "chat-new": {
       title: "New chat",
       description:
@@ -287,6 +299,7 @@ export const en: GalleryStrings = {
     iconSizes: "Icon sizes",
     iconRegistry: (icons, files) => `${icons} icons from ${files} files`,
     duplicateNames: "One path, several names",
+    iconMarks: "Marks drawn as components",
     durations: "Durations × easings",
     reducedNote: "Reduced motion: every change shows its end state at once.",
     liveSignal: "Live signals",
@@ -318,7 +331,8 @@ export const en: GalleryStrings = {
       sidebarRows: ["New chat", "Agents", "Models"],
     },
     hookJobs: {
-      "ui-glass": "a transient layer over content",
+      "ui-glass":
+        "a frosted surface: a transient layer over content, and Frost's plugin and skill tiles",
       "ui-eyebrow": "a group label naming the items below it",
       "ui-display": "the one display title of a page or hero",
       "ui-live": "motion for something running right now",
@@ -335,6 +349,7 @@ export const en: GalleryStrings = {
       "ui-chart": "a chart: its grid, axes, lines, areas, bars and points",
       "ui-scrim": "the dimmed layer behind a dialog, drawer or sheet",
       "ui-stream": "a reply that is still streaming: each theme decides how new text appears",
+      "ui-glyph": "an icon each theme draws its own way: Octicons, duotone line or pixel art",
     },
     hookSamples: {
       menu: ["Pin", "Rename", "Delete"],

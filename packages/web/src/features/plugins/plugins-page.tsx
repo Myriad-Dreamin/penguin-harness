@@ -49,6 +49,7 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import {
   AgentAvatar,
+  Badge,
   Button,
   CollapsibleSection,
   ConfirmModal,
@@ -109,8 +110,8 @@ export type InstalledMap = ReadonlyMap<string, AgentInstalls>;
 /** The three fields of a plugin the install questions below read (the card passes the whole DTO; tests can pass just these). */
 export type PluginParts = Pick<PluginItem, "name" | "skills" | "hooks">;
 
-/** "Manage installs" button icon (download into tray, 24×24 line path). */
-const INSTALL_ICON = "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3";
+/** "Manage installs" button icon: the arrow landing in its tray. */
+const INSTALL_ICON = ICONS.download;
 
 const NO_INSTALLS: AgentInstalls = { skills: new Map(), hooks: new Map() };
 
@@ -776,7 +777,8 @@ export function PluginsPage() {
         </div>
       )}
 
-      {/* A module plugin change: what it costs is said before it runs. */}
+      {/* A module plugin change: what it costs is said before it runs. An install overwrites
+          (primary); a removal uninstalls and stops runs in every Project (danger). */}
       {pendingApply !== null && (
         <ConfirmModal
           open
@@ -785,7 +787,7 @@ export function PluginsPage() {
               ? S.plugins.applyConfirmInstall(pendingApply.specifier)
               : S.plugins.applyConfirmRemove(pendingApply.specifier)
           }
-          tone="primary"
+          tone={pendingApply.install ? "primary" : "danger"}
           confirmLabel={pendingApply.install ? S.plugins.install : S.plugins.uninstall}
           cancelLabel={S.common.cancel}
           busy={pendingSpecifier !== null}
@@ -1175,7 +1177,7 @@ function PluginFilters({
             : "border-gray-300 dark:border-gray-600"
         }`}
       >
-        {on && <GlyphIcon d="M20 6 9 17l-5-5" size={10} />}
+        {on && <GlyphIcon d={ICONS.check} size={10} />}
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="shrink-0 font-mono text-xs tabular-nums text-gray-400 dark:text-gray-500">
@@ -1234,20 +1236,18 @@ function PluginFilters({
 /** One tag on a row's tag line: a category, "built in", a license, a keyword. */
 function Tag({
   children,
-  mono,
+  quiet,
   title,
 }: {
   children: React.ReactNode;
-  mono?: boolean;
+  /** What the plugin carries or is keyed by, rather than what it is: the outlined weight. */
+  quiet?: boolean;
   title?: string;
 }) {
   return (
-    <span
-      data-tooltip={title}
-      className={`rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-800 ${mono ? "font-mono text-gray-500 dark:text-gray-400" : "font-medium text-gray-600 dark:text-gray-300"}`}
-    >
+    <Badge variant={quiet ? "outline" : "soft"} tooltip={title}>
       {children}
-    </span>
+    </Badge>
   );
 }
 
@@ -1374,8 +1374,8 @@ function PluginCard({
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
           <Tag>{category}</Tag>
           <Tag title={S.plugins.libraryBuiltinHint}>{S.plugins.builtin}</Tag>
-          {plugin.skills.length > 0 && <Tag mono>{S.skills.skillCount(plugin.skills.length)}</Tag>}
-          {plugin.hooks.length > 0 && <Tag mono>{S.hooks.hookCount(plugin.hooks.length)}</Tag>}
+          {plugin.skills.length > 0 && <Tag quiet>{S.skills.skillCount(plugin.skills.length)}</Tag>}
+          {plugin.hooks.length > 0 && <Tag quiet>{S.hooks.hookCount(plugin.hooks.length)}</Tag>}
         </div>
       </button>
       {detailOpen && (
@@ -1714,7 +1714,7 @@ export function ModuleRow({
         {onlyOn !== undefined && <Tag>{S.plugins.onlyOn(onlyOn.join(", "))}</Tag>}
         {shipped && <Tag title={S.plugins.builtinHint}>{S.plugins.builtin}</Tag>}
         {(entry?.keywords ?? []).map((keyword) => (
-          <Tag key={keyword} mono>
+          <Tag key={keyword} quiet>
             {keyword}
           </Tag>
         ))}
