@@ -266,15 +266,11 @@ describe("UpdateCheckService", () => {
 
 describe("POST /api/version/update", () => {
   let t: TestApp;
-  let savedEntry: string | undefined;
   beforeEach(async () => {
-    savedEntry = process.env.PENGUIN_CLI_ENTRY;
-    delete process.env.PENGUIN_CLI_ENTRY;
+    // No CLI resolved for this server (the test app's config.cliEntry is null).
     t = await createTestApp();
   });
   afterEach(async () => {
-    if (savedEntry === undefined) delete process.env.PENGUIN_CLI_ENTRY;
-    else process.env.PENGUIN_CLI_ENTRY = savedEntry;
     await t.cleanup();
   });
 

@@ -25,7 +25,6 @@ The CLI and the server load a `.env` file from the working directory on startup.
 | `PENGUIN_UPDATE_CHECK` | `off` disables the Web App's new-release check | Enabled |
 | `PENGUIN_NO_LOGIN_SHELL_ENV` | Any non-empty value stops the desktop app from importing the login shell's environment on macOS/Linux GUI launches | Unset: the import runs |
 | `PENGUIN_SHELL` | The shell that runs agent commands (an executable name or path) | Unset: picked automatically, see [Tools & Approval](/tools#command-sessions) |
-| `PENGUIN_CLI_ENTRY` | The CLI entry script this installation offers the agents it runs (see [PATH launcher](#path-launcher)) | Set by `penguin server` / `penguin web` and by the desktop app |
 
 Notes:
 
@@ -35,7 +34,6 @@ Notes:
 - `MODELSCOPE_BRIDGE_URL`: server configuration like `PENGUIN_GO_ORIGIN`, not an endpoint the browser can name. It must be an HTTPS address with no credentials, query string or fragment. Unlike `PENGUIN_GO_ORIGIN`, a path prefix **is** allowed, because the production bridge lives under `https://go.penguin.ooo/modelscope`. See [Connect an account](/models#connect-an-account).
 - `PENGUIN_UPDATE_CHECK`: `off` turns off the automatic release check, nothing else. Model requests, an enabled remote-control connection, provider key authorization and the proxy test still reach the network.
 - `PENGUIN_NO_LOGIN_SHELL_ENV`: without it, the import fills only variables the launch left unset. See [Desktop quickstart](/quickstart-desktop).
-- `PENGUIN_CLI_ENTRY`: when the server was started from a source checkout, it falls back to that checkout's `packages/cli/dist/penguin.js`.
 
 ### Environment of agent-run commands
 
@@ -49,7 +47,7 @@ Commands an agent runs with `exec_command` inherit the host environment, with th
 
 ### PATH launcher
 
-This installation's own `penguin` is first on the PATH of every command an agent runs. At startup the server writes a launcher script at `<root>/bin/penguin`, which runs the CLI entry from `PENGUIN_CLI_ENTRY` on the server's own Node, and puts that directory at the front of PATH for each command. So `penguin` inside a command is the harness the agent is running in, whatever version is installed globally on the machine.
+This installation's own `penguin` is first on the PATH of every command an agent runs. At startup the server writes a launcher script at `<root>/bin/penguin`, which runs the CLI of the harness that runs the server on the server's own Node (the pushed CLI once a push has landed, otherwise the installed one; a server started from a source checkout uses that checkout's `packages/cli/dist/penguin.js`), and puts that directory at the front of PATH for each command. So `penguin` inside a command is the harness the agent is running in, whatever version is installed globally on the machine.
 
 The directory is prepended inside the shell as well as in the environment, because commands run through a login shell whose profile often rewrites PATH afterwards. This also puts it ahead of a `PATH` set in the [Vault](#vault), which otherwise replaces the inherited value outright.
 

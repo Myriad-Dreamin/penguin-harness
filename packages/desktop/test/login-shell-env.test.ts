@@ -107,12 +107,11 @@ describe("mergeLoginShellEnv", () => {
     expect(patch).toEqual({ KEEP: "yes" });
   });
 
-  it("never imports the variables that pick which code the embedded server runs", () => {
+  it("never imports the variable that picks which Web App the embedded server serves", () => {
     const patch = mergeLoginShellEnv(
       {},
       {
         PENGUIN_WEB_DIST: "/home/user/src/penguin-harness/packages/web/dist",
-        PENGUIN_CLI_ENTRY: "/home/user/src/penguin-harness/packages/cli/dist/penguin.js",
         // Data root, by contrast, is a configuration choice and does travel.
         PENGUIN_HOME: "/home/user/.penguin",
       },
