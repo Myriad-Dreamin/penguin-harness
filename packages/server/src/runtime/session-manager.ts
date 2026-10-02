@@ -2625,6 +2625,7 @@ export abstract class SessionServiceIface extends Interface<
     | "sessionsOverview"
     | "createSession"
     | "defaultSandbox"
+    | "pickSandbox"
     | "updateSandbox"
     | "latestTracePath"
     | "adoptUnmanagedTraceSessions"
