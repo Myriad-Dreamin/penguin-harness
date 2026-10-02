@@ -17,7 +17,7 @@ import { authMiddleware } from "../auth/middleware.js";
 import type { AppEnv } from "../auth/middleware.js";
 import type { Auth } from "../mechanisms/identity.js";
 import { HttpError } from "../http/errors.js";
-import { pushedCliProblem } from "./cli-check.js";
+import { pushedCliLoader, pushedCliProblem } from "./cli-check.js";
 import { Channels, Config, HmrControl } from "./capabilities.js";
 import type { ServerConfig } from "../config.js";
 import type { ChannelHub } from "../runtime/channel.js";
@@ -30,7 +30,7 @@ export interface HmrRouteDeps {
   control: HmrControlApi;
   /** The platform's auth, applied here after the network gate rather than by the group's `auth: "user"`, so a plaintext public bind is refused before any credential is looked at. */
   auth: Auth;
-  config: Pick<ServerConfig, "host" | "trustProxy">;
+  config: Pick<ServerConfig, "host" | "trustProxy" | "cliEntry">;
   channels: Pick<ChannelHub, "broadcast">;
 }
 
@@ -83,10 +83,15 @@ export function hmrRoutes(deps: HmrRouteDeps): Hono<AppEnv> {
   // THE ONE upgrade endpoint: platform + cli + web move together, atomically — there is no
   // route that updates any of the three alone. The body and the answer are the mechanism's
   // (packages/hmr); live clients (browser tabs AND the desktop window) are told to reload
-  // once a version actually lands. A push whose CLI bundle cannot be loaded is refused
-  // first (cli-check.ts): server start paths run the pushed CLI after the next restart.
+  // once a version actually lands. A push whose CLI bundle cannot be started by this
+  // installation's loader is refused first (cli-check.ts): server start paths run the pushed
+  // CLI after the next restart.
   routes.post("/upgrade", async (c) => {
-    const problem = await pushedCliProblem(c.req.raw.clone(), deps.control.readBlob);
+    const problem = await pushedCliProblem(
+      c.req.raw.clone(),
+      deps.control.readBlob,
+      pushedCliLoader(deps.config.cliEntry),
+    );
     if (problem !== null) {
       return c.json({ error: { code: "bad_request", message: problem } }, 400);
     }
