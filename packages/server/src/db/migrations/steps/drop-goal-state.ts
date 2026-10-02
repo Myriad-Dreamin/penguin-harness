@@ -2,22 +2,11 @@ import type { Migration } from "../migration.js";
 
 export const dropGoalState: Migration = {
   name: "drop-goal-state",
-  // Narrowing: drops a table. A pushed platform rolled back to 0.2.9 mid-process would
-  // prepare its goal statements against a table that is gone (its declarative track only
-  // runs at the runtime's own open, never at a platform boot), so this is the first
-  // restart-only migration: refused on the swap path, applied by the runtime's open.
+  // CONTRACT: drops a table no build since 0.2.10 reads. A pushed platform rolled back to
+  // 0.2.9 mid-process would prepare its goal statements against a table that is gone, so it
+  // is left pending on the swap path and applied by the runtime's own open; until then the
+  // table just sits there unused.
   swapSafe: false,
-  // Done once neither the table nor its index is left. Every database a build since 0.2.10
-  // opened is in that state, so a root adopted into the ledger does not refuse a push here.
-  isApplied(db) {
-    return (
-      db
-        .prepare(
-          "SELECT 1 FROM sqlite_master WHERE name IN ('goal_state', 'idx_goal_session') LIMIT 1",
-        )
-        .get() === undefined
-    );
-  },
   up(db) {
     // 0.2.9 → 0.2.10. goal_state held goal mode's run state, one row per goal run, read
     // back only for the chat page's goal banner; the goal plugin's GOAL.json in the
