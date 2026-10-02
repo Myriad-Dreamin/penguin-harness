@@ -30,7 +30,9 @@ stubDialogGlobals();
 
 const KEY = "penguin.test.dialogSize";
 
-function memoryStorage(initial: Record<string, string> = {}): SizeStorage & { data: Map<string, string> } {
+function memoryStorage(
+  initial: Record<string, string> = {},
+): SizeStorage & { data: Map<string, string> } {
   const data = new Map(Object.entries(initial));
   return {
     data,
@@ -124,7 +126,14 @@ describe("remembered size", () => {
 
   it("reads nothing from an empty, malformed or nonsensical value", () => {
     expect(readDialogSize(memoryStorage(), KEY)).toBeNull();
-    for (const raw of ["{", "null", "42", '{"width":900}', '{"width":-1,"height":600}', '{"width":"900","height":600}']) {
+    for (const raw of [
+      "{",
+      "null",
+      "42",
+      '{"width":900}',
+      '{"width":-1,"height":600}',
+      '{"width":"900","height":600}',
+    ]) {
       expect(readDialogSize(memoryStorage({ [KEY]: raw }), KEY)).toBeNull();
     }
   });
@@ -186,8 +195,12 @@ describe("PagedDialog resizable", () => {
     stubWindow(1280);
     const html = dialog(true);
     expect([...html.matchAll(/role="separator"/g)]).toHaveLength(2);
-    expect(html).toMatch(/role="separator" aria-orientation="vertical" aria-label="Resize width"[^>]*tabindex="0"/);
-    expect(html).toMatch(/role="separator" aria-orientation="horizontal" aria-label="Resize height"[^>]*tabindex="0"/);
+    expect(html).toMatch(
+      /role="separator" aria-orientation="vertical" aria-label="Resize width"[^>]*tabindex="0"/,
+    );
+    expect(html).toMatch(
+      /role="separator" aria-orientation="horizontal" aria-label="Resize height"[^>]*tabindex="0"/,
+    );
     expect(html).toContain('aria-valuemin="600"');
     expect(html).toContain('data-edge="left"');
     expect(html).toContain('data-edge="corner"');
