@@ -8,6 +8,7 @@
  * runs in the wrong order.
  */
 import { ApiError } from "./errors";
+import { answerAsResponse } from "./fetch-shim";
 import { router } from "./routes";
 import { getStore } from "./store";
 import type { Method } from "./router";
@@ -73,4 +74,10 @@ export async function apiFetchWithMeta<T>(
   if (answer.kind === "empty") return { data: undefined as T, serverNowMs };
   if (answer.kind === "raw") return { data: answer.body as T, serverNowMs };
   return { data: answer.body as T, serverNowMs };
+}
+
+/** `fetch` for the callers that read the Response themselves (the app's `apiRequest`), answered by the router. */
+export async function apiRequest(url: string, init: { method?: string } = {}): Promise<Response> {
+  await beat();
+  return answerAsResponse((init.method ?? "GET") as Method, url, undefined);
 }

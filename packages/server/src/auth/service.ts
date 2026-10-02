@@ -368,6 +368,17 @@ export class AuthService implements Auth {
     return Date.parse(session.expiresAt) > this.clock.now().getTime();
   }
 
+  /**
+   * Whether the user holds any live session — the gate for a connection that was
+   * authenticated once and carries no cookie of its own afterwards (the API socket, whose
+   * calls enter as its user). Signing a user out everywhere (a password reset, a deleted
+   * account) drops every row, so this turns false at once; it does not tell one of the
+   * user's browsers from another, which a single connection has no cookie to say.
+   */
+  userHasLiveSession(userId: string): boolean {
+    return this.authSessions.hasLiveForUser(userId, this.clock.now().toISOString());
+  }
+
   private issueSession(userId: string, via: SessionViaValue): string {
     return this.authSessions.issue({
       userId,
