@@ -284,6 +284,13 @@ export const ICONS = {
   arrowLeftCentered: "M19 12H5m6-6-6 6 6 6",
   /** The mirror of `arrowLeftCentered`, pointing right. */
   arrowRightCentered: "M5 12h14m-6-6 6 6-6 6",
+  /**
+   * Two opposed arrows, one line each way — bytes going out and coming back: port forwarding.
+   * Arrows rather than a plug, which the Machines page already reads as "use".
+   */
+  arrowsOpposed: "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
+  /** An open arrowhead on an 8×12 box: the tip a port-forward cable ends in. */
+  cableArrowHead: "M1 2l5 4-5 4",
 
   // --- Layout -------------------------------------------------------------------------------
 
