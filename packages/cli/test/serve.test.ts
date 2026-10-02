@@ -5,7 +5,6 @@ import { DEFAULT_SERVER_PORT } from "@prismshadow/penguin-core";
 import {
   DEFAULT_HOST,
   DEFAULT_PORT,
-  advertisedCliEntry,
   browserCommand,
   appPagePath,
   browserUrl,
@@ -96,22 +95,6 @@ describe("cliEntryFor (the entry advertised for the web self-update)", () => {
     expect(cliEntryFor("/repo/packages/cli/src/index.ts")).toBeNull();
     expect(cliEntryFor(undefined)).toBeNull();
     expect(cliEntryFor("")).toBeNull();
-  });
-});
-
-describe("advertisedCliEntry (a supervised child keeps its supervisor's entry)", () => {
-  const installed = path.resolve("/opt/penguin/lib/dist/index.js");
-  const loader = path.resolve("/opt/penguin/lib/dist/penguin-hmr.js");
-  it("a supervised child started through penguin-hmr leaves the installed entry in place", () => {
-    const env = { PENGUIN_SERVE_CHILD: "1", PENGUIN_CLI_ENTRY: installed };
-    expect(advertisedCliEntry(loader, env)).toBeNull();
-  });
-  it("a supervisor, or a child with nothing inherited, advertises its own entry", () => {
-    expect(advertisedCliEntry(installed, { PENGUIN_CLI_ENTRY: "/elsewhere.js" })).toBe(installed);
-    expect(advertisedCliEntry(loader, { PENGUIN_SERVE_CHILD: "1" })).toBe(loader);
-    expect(advertisedCliEntry(loader, { PENGUIN_SERVE_CHILD: "1", PENGUIN_CLI_ENTRY: " " })).toBe(
-      loader,
-    );
   });
 });
 

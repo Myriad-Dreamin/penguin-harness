@@ -9,6 +9,8 @@
  * (packages/cli/src/server-entry.ts). Nothing pushed, or a broken record, starts the bundled
  * server: a server that starts beats one that does not.
  */
+import fs from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { readPushedCli } from "@prismshadow/penguin-server/hmr/manifest";
 
@@ -20,10 +22,14 @@ if (pushed?.kind === "bundle") {
   // supervisor's child (PENGUIN_SERVE_CHILD, packages/cli/src/commands/serve.ts): the
   // desktop main process is the supervisor here, and a second one would spawn
   // process.execPath — the Electron binary. It also records which CLI started it as
-  // PENGUIN_CLI_ENTRY (what the Agents' `penguin` runs), read from argv[1]; this file is not
-  // a CLI, so argv[1] names the app's bundled one, or nothing in a source run.
+  // PENGUIN_CLI_ENTRY (what the Agents' `penguin` runs and self-update re-runs), read from
+  // argv[1]. This file is not a CLI, so argv[1] names the CLI of the harness that runs: the
+  // `penguin-hmr` loader bundled beside the app's CLI (tsup.config.ts), or nothing in a
+  // source run, where the app pins no CLI.
   process.env.PENGUIN_SERVE_CHILD = "1";
-  process.argv[1] = process.env.PENGUIN_CLI_ENTRY ?? "";
+  const appCli = process.env.PENGUIN_CLI_ENTRY;
+  const loader = appCli !== undefined ? path.join(path.dirname(appCli), "penguin-hmr.js") : null;
+  process.argv[1] = loader !== null && fs.existsSync(loader) ? loader : (appCli ?? "");
   const mod = (await import(pathToFileURL(pushed.file).href)) as {
     cli?: (argv: string[]) => Promise<number>;
   };
