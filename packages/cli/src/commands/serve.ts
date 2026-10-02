@@ -39,6 +39,7 @@ import type { Messages, WebProbeFailureKind } from "../i18n.js";
 import { registerResetPasswordCommand } from "./reset-password.js";
 import { registerStatusCommand } from "./server-status.js";
 import { registerStopCommand } from "./server-stop.js";
+import { serverStartEntry } from "../server-entry.js";
 
 /** Why the readiness poll gave up: failure class plus a one-line diagnostic from the last probe. */
 export interface ReadinessFailure {
@@ -151,14 +152,18 @@ export function supervisorDecision(
 
 /**
  * Runs the service as a child of this process and keeps it running across restart
- * requests. Returns once the first child is spawned; the process then lives as long as
- * the child does (the handle keeps the event loop alive) and takes its exit code.
+ * requests. Each child starts through the pushed CLI when the data root has one
+ * (server-entry.ts), so a restart after a push runs the pushed entry. Returns once the
+ * first child is spawned; the process then lives as long as the child does (the handle
+ * keeps the event loop alive) and takes its exit code.
  */
 function supervise(cliEntry: string, host: string, port: number, t: Messages): void {
   let stopping = false;
   let child: ChildProcess | null = null;
-  const spawnChild = (): void => {
-    child = spawn(process.execPath, [cliEntry, "server", "--port", String(port), "--host", host], {
+  const spawnChild = async (): Promise<void> => {
+    const entry = await serverStartEntry(cliEntry, resolveRoot());
+    if (stopping) return;
+    child = spawn(process.execPath, [entry, "server", "--port", String(port), "--host", host], {
       stdio: "inherit",
       env: { ...process.env, [SERVE_CHILD_ENV]: "1", PENGUIN_SUPERVISED: "1" },
     });
@@ -166,7 +171,7 @@ function supervise(cliEntry: string, host: string, port: number, t: Messages): v
       const decision = supervisorDecision({ code, signal }, stopping);
       if (decision.action === "respawn") {
         process.stdout.write(`${t.serve.restarting}\n`);
-        spawnChild();
+        void spawnChild();
         return;
       }
       process.exitCode = decision.code;
@@ -184,7 +189,7 @@ function supervise(cliEntry: string, host: string, port: number, t: Messages): v
       });
     }
   }
-  spawnChild();
+  void spawnChild();
 }
 
 async function startServer(
