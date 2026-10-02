@@ -576,4 +576,3 @@ function writePortFile(file: string, port: number): void {
   fs.writeFileSync(tmp, `${port}\n`);
   fs.renameSync(tmp, file);
 }
-
