@@ -39,17 +39,6 @@ export class UnknownMigrationError extends Error {
   }
 }
 
-export class RestartRequiredError extends Error {
-  constructor(readonly migration: string) {
-    super(
-      `migration ${migration} is restart-only and cannot be applied while a pushed platform ` +
-        `boots: it is not safe to leave behind if this boot is rolled back. Restart the ` +
-        `runtime on a build that carries it, then push again.`,
-    );
-    this.name = "RestartRequiredError";
-  }
-}
-
 function hasLedger(db: DatabaseSync): boolean {
   return (
     db
@@ -76,6 +65,11 @@ export interface MigrateResult {
   adopted: boolean;
   /** Names applied by this run, in order. */
   applied: readonly string[];
+  /**
+   * Contract migrations this swap-path run left pending, in order: the runtime's next open on
+   * a build that declares them applies them. Always empty off the swap path.
+   */
+  deferred: readonly string[];
 }
 
 /**
@@ -87,9 +81,10 @@ export interface MigrateResult {
  * with exactly the migrations that fully applied. An already-current database does no work
  * and writes nothing. `PRAGMA user_version` is neither read nor written.
  *
- * `swapPath` marks the caller as a booting pushed platform: the first pending restart-only
- * migration whose effect is not already present throws RestartRequiredError BEFORE anything
- * is written (the ledger table included), so the push is refused whole.
+ * `swapPath` marks the caller as a booting pushed platform. Expand migrations apply as
+ * anywhere else; contract migrations (`swapSafe: false`) are skipped and stay pending — never
+ * applied, never a reason to refuse the boot — and are returned in `deferred`. A hot push
+ * therefore never fails on a migration it is not allowed to run, and never removes anything.
  */
 export function migrate(
   db: DatabaseSync,
@@ -99,14 +94,15 @@ export function migrate(
   const adopted = !hasLedger(db);
   const done = new Set(appliedMigrations(db));
   const pending = migrations.filter((m) => !done.has(m.name));
-  if (swapPath) {
-    const blocked = pending.find((m) => !m.swapSafe && !m.isApplied(db));
-    if (blocked) throw new RestartRequiredError(blocked.name);
-  }
   if (adopted) db.exec(LEDGER_DDL);
   const record = db.prepare("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)");
   const applied: string[] = [];
+  const deferred: string[] = [];
   for (const m of pending) {
+    if (swapPath && !m.swapSafe) {
+      deferred.push(m.name);
+      continue;
+    }
     db.exec("BEGIN");
     try {
       m.up(db);
@@ -118,7 +114,7 @@ export function migrate(
     }
     applied.push(m.name);
   }
-  return { adopted, applied };
+  return { adopted, applied, deferred };
 }
 
 /**

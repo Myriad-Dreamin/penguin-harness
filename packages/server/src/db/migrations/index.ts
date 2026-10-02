@@ -27,9 +27,9 @@
  * SWAP-SAFE. A pushed platform boots against a live database and is ROLLED BACK to its
  * predecessor if it fails; the predecessor then runs on whatever the migration already did.
  * Additive work survives that, narrowing work does not. Anything that drops, retypes,
- * constrains, or reshapes in a way the predecessor cannot read or write is `swapSafe: false`,
- * and is refused on the swap path rather than half-applied unless its `isApplied` probe finds
- * its effect already there (migration.ts).
+ * constrains, or reshapes in a way the predecessor cannot read or write is a CONTRACT
+ * (`swapSafe: false`): the swap path leaves it pending and boots without it, and the runtime's
+ * own open applies it (migration.ts). A hot push never refuses on a migration.
  *
  * DOWN, AND WHO DOES NOT CALL IT. Every migration declares an undo — or `null` to say it has
  * none. `down` is NOT the hot-update rollback mechanism: a failed platform boot reverts the
@@ -61,12 +61,7 @@ import { sessionsSandbox } from "./steps/sessions-sandbox.js";
 import { userProfile } from "./steps/user-profile.js";
 
 export type { Migration } from "./migration.js";
-export {
-  IrreversibleMigrationError,
-  RestartRequiredError,
-  UnknownMigrationError,
-  appliedMigrations,
-} from "./runner.js";
+export { IrreversibleMigrationError, UnknownMigrationError, appliedMigrations } from "./runner.js";
 export type { MigrateResult } from "./runner.js";
 
 /**
@@ -91,7 +86,7 @@ export const MIGRATIONS: readonly Migration[] = [
 
 /**
  * Applies every declared migration the ledger does not record. `swapPath` marks the caller as
- * a booting pushed platform, where a restart-only migration refuses the boot (runner.ts).
+ * a booting pushed platform, where contract migrations stay pending (runner.ts).
  */
 export function migrate(
   db: DatabaseSync,

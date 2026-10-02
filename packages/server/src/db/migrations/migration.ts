@@ -24,24 +24,20 @@ interface MigrationBase {
   down: ((db: DatabaseSync) => void) | null;
 }
 
-/** Strictly additive (or a superset the previous platform still reads and writes). */
-interface SwapSafeMigration extends MigrationBase {
+/** EXPAND: strictly additive, or a superset the previous platform still reads and writes. */
+interface ExpandMigration extends MigrationBase {
   swapSafe: true;
 }
 
 /**
- * Narrowing work a rolled-back platform could not survive: refused on the swap path, applied
- * by the runtime's own open.
+ * CONTRACT: removes or narrows what no platform reads or writes any more. Applied only by the
+ * runtime's own open; on the swap path it stays pending and the push boots without it. No
+ * platform may depend on its effect, and no expand migration may assume it has run — a change
+ * to an existing shape is split into expand (old and new side by side), the platforms moving
+ * to the new shape, then contract (the old shape removed).
  */
-interface RestartOnlyMigration extends MigrationBase {
+interface ContractMigration extends MigrationBase {
   swapSafe: false;
-  /**
-   * Is this migration's effect already in the database? A root adopted into the ledger has
-   * every migration pending by name, though most of them took effect long ago; without this
-   * probe the first restart-only migration would refuse every hot push onto such a root. When
-   * it answers true the swap path does not refuse, and `up` runs as the no-op it then is.
-   */
-  isApplied: (db: DatabaseSync) => boolean;
 }
 
 /**
@@ -49,4 +45,4 @@ interface RestartOnlyMigration extends MigrationBase {
  * a live database and is ROLLED BACK to its predecessor if it fails; the predecessor then runs
  * on whatever the migration already did.
  */
-export type Migration = SwapSafeMigration | RestartOnlyMigration;
+export type Migration = ExpandMigration | ContractMigration;

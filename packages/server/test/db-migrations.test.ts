@@ -14,7 +14,6 @@ import {
   IrreversibleMigrationError,
   MIGRATIONS,
   type Migration,
-  RestartRequiredError,
   UnknownMigrationError,
   appliedMigrations,
   migrate,
@@ -79,7 +78,7 @@ describe("the ledger", () => {
     try {
       const before = { shape: shape(db), contents: contents(db), ledger: appliedMigrations(db) };
       const again = migrate(db);
-      expect(again).toEqual({ adopted: false, applied: [] });
+      expect(again).toEqual({ adopted: false, applied: [], deferred: [] });
       expect({ shape: shape(db), contents: contents(db), ledger: appliedMigrations(db) }).toEqual(
         before,
       );
@@ -134,7 +133,7 @@ describe("the ledger", () => {
     const db = openFresh();
     try {
       record(db, [...namesAfter(null), "from-a-newer-build"]);
-      expect(migrate(db)).toEqual({ adopted: false, applied: [] });
+      expect(migrate(db)).toEqual({ adopted: false, applied: [], deferred: [] });
       expect(appliedMigrations(db)).toContain("from-a-newer-build");
     } finally {
       db.close();
@@ -175,7 +174,11 @@ describe("the ledger", () => {
       const cut = [...MIGRATIONS.slice(0, half), boom, ...MIGRATIONS.slice(half)];
       expect(() => runner.migrate(db, cut)).toThrow(/stops-here/);
       expect(appliedMigrations(db)).toEqual(namesThrough("user-profile"));
-      expect(migrate(db)).toEqual({ adopted: false, applied: namesAfter("user-profile") });
+      expect(migrate(db)).toEqual({
+        adopted: false,
+        applied: namesAfter("user-profile"),
+        deferred: [],
+      });
       expect(shape(db)).toBe(shape(fresh));
     } finally {
       db.close();
@@ -214,8 +217,8 @@ describe("every migration is re-runnable", () => {
   });
 });
 
-describe("the swap path refuses what a rollback could not survive", () => {
-  it("adopts a numbered root while a pushed platform boots, once drop-goal-state's work is done", () => {
+describe("the swap path applies every expand migration and leaves contracts pending", () => {
+  it("adopts a numbered root while a pushed platform boots, leaving drop-goal-state for the runtime", () => {
     const db = openFresh();
     const fresh = openFresh();
     try {
@@ -226,23 +229,33 @@ describe("the swap path refuses what a rollback could not survive", () => {
       );
       const r = migrate(db, { swapPath: true });
       expect(r.adopted).toBe(true);
-      expect(r.applied).toEqual(namesAfter(null));
+      expect(r.applied).toEqual(namesAfter(null).filter((n) => n !== "drop-goal-state"));
+      expect(r.deferred).toEqual(["drop-goal-state"]);
       expect(shape(db)).toBe(shape(fresh));
+      // The runtime's next open records it, as the no-op it is here.
+      expect(migrate(db)).toEqual({ adopted: false, applied: ["drop-goal-state"], deferred: [] });
     } finally {
       db.close();
       fresh.close();
     }
   });
 
-  it("refuses a restart-only migration whose work is not done whole, writing nothing — not even the ledger", () => {
+  it("boots on a root whose goal_state is still there, keeping it — a contract never runs on the swap path", () => {
     const db = open024();
     try {
-      const before = shape(db);
-      expect(() => migrate(db, { swapPath: true })).toThrow(RestartRequiredError);
-      expect(shape(db)).toBe(before);
-      expect(hasTable(db, "schema_migrations")).toBe(false);
-      // The runtime's own open, which owns the process, may apply it.
-      expect(migrate(db).applied).toEqual(namesAfter(null));
+      const r = migrate(db, { swapPath: true });
+      expect(r.deferred).toEqual(["drop-goal-state"]);
+      expect(r.applied).toEqual(namesAfter(null).filter((n) => n !== "drop-goal-state"));
+      expect(hasTable(db, "goal_state")).toBe(true);
+      // A second push leaves it pending again, and still boots.
+      expect(migrate(db, { swapPath: true })).toEqual({
+        adopted: false,
+        applied: [],
+        deferred: ["drop-goal-state"],
+      });
+      // The runtime's own open, which owns the process, applies it.
+      expect(migrate(db).applied).toEqual(["drop-goal-state"]);
+      expect(hasTable(db, "goal_state")).toBe(false);
     } finally {
       db.close();
     }
@@ -323,7 +336,7 @@ describe("rollbackTo", () => {
       expect(appliedMigrations(db)).toEqual([]);
       expect(shape(db)).not.toBe(afterUp);
       expect(hasTable(db, "messaging_bindings")).toBe(false);
-      expect(migrate(db)).toEqual({ adopted: false, applied: namesAfter(null) });
+      expect(migrate(db)).toEqual({ adopted: false, applied: namesAfter(null), deferred: [] });
       expect(shape(db)).toBe(afterUp);
     } finally {
       db.close();

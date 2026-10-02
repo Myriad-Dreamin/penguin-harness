@@ -12,6 +12,6 @@ The server's `web.db` migrations lost their numbers. Each migration is identifie
 ## Details
 
 - Every migration is re-runnable. `company-mode-org-caches` no longer recreates the two chat tables once `company-mode-channels` has replaced them; the other migrations were already guarded.
-- A restart-only migration declares how to recognise its work as done, so a hot push onto a root where that work happened long ago is not refused.
+- Every migration is an expand (additive) or a contract (removes what no platform uses). A hot push applies the expands and leaves contracts pending for the runtime's next restart, so it never refuses on a migration and never deletes anything. `drop-goal-state` is the only contract.
 - Rolling back reverts migrations in the reverse of the order they were applied, by name.
 - `packages/server/src/db/migrations.ts` was split into `db/migrations/`: the runner, the ordered list, and one file per migration.
