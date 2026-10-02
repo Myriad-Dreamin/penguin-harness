@@ -1,10 +1,14 @@
 /**
  * One plugin entry — one package at one version with one content — as the build, a machine's
- * plugin store and the index repository (Prism-Shadow/penguin-plugins) all lay it out:
+ * plugin store and the index repository (Prism-Shadow/penguin-plugins) all file it:
  *
  *   packages/[<@scope>/]<bucket>/<name>/<version>/<key>/
  *     manifest.toml      the index manifest, `integrity` required
- *     package/           the package, every dependency it needs inside its own node_modules
+ *     package.tgz        the package's tarball — the bytes `integrity` is the sha512 of
+ *
+ * A plugin packs itself: its tarball is the whole of it, and nothing here installs what it
+ * declares as dependencies. A machine unpacks an entry under the same path in
+ * `<data root>/plugins/` to load it (packages/server/src/plugin/activation.ts).
  *
  * The bucket keeps every directory narrow however many plugins there are. It is read off the
  * name without its scope, lower-cased, the way the crates.io index files a crate: a name of 1
@@ -13,19 +17,14 @@
  * `packages/@penguinharness/sa/nd/sandbox-bwrap/`. The index repository has a line-for-line
  * copy of this rule (`plugin-index/src/entry.ts`); both test the same path vectors.
  *
- * The index repository's entries also carry a `package-lock.json`; nothing on a machine reads
- * one, so neither the build nor the store writes it.
- *
  * Plain JavaScript because scripts/build-plugins.mjs runs it directly and the server bundles
- * it (packages/server/src/plugin/store.ts); the types are in plugin-entry.d.mts. One copy, so
- * the tree the build lays out and the tree a machine's store writes cannot drift.
+ * it (packages/server/src/plugin/store.ts); the types are in plugin-entry.d.mts.
  *
  * THE KEY IS THE CONTENT, AND THE CONTENT IS NPM'S. `integrity` is npm's own `dist.integrity`:
  * `sha512-<base64>` of the bytes of the tarball the registry serves — the value in the registry's
  * metadata and in every npm lockfile, which anyone can check with `npm view <name>@<version>
- * dist.integrity`. It covers the package, not its dependencies. Nothing here hashes a directory:
- * the build computes it over the very tarball it publishes (`tarballIntegrity`), a fetch takes
- * the value npm recorded for what it downloaded, and the index repository takes the registry's.
+ * dist.integrity`. The build computes it over the very tarball it publishes; a machine checks
+ * every tarball against it before storing it (`tarballIntegrity`).
  * An entry's directory, its KEY, is the integrity's own first 16 base64 characters made path
  * safe (`+` → `-`, `/` → `_`, as base64url writes them): `sha512-I9XMINsuCWQOUXWr…` is filed
  * under `I9XMINsuCWQOUXWr/`, so a directory and the integrity it holds read alike. Base64 is
@@ -39,6 +38,9 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 export const MANIFEST_FILE = "manifest.toml";
+/** An entry's tarball. */
+export const TARBALL_FILE = "package.tgz";
+/** An unpacked entry's package directory: the top directory of every npm tarball. */
 export const PACKAGE_DIR = "package";
 /** The flat listing rebuilt from a tree, beside it. */
 export const INDEX_FILE = "index.json";
@@ -63,6 +65,15 @@ export async function tarballIntegrity(file) {
   const hash = createHash("sha512");
   for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
   return `sha512-${hash.digest("base64")}`;
+}
+
+/**
+ * The file name `npm pack` gives a package's tarball: the name without its scope's `@`, `/` as
+ * `-`, then `-<version>.tgz` — `@penguinharness/sandbox-bwrap` 0.2.3 is
+ * `penguinharness-sandbox-bwrap-0.2.3.tgz`. A build's bundled plugin directory holds them so.
+ */
+export function tarballFileName(name, version) {
+  return `${name.replace(/^@/, "").replace("/", "-")}-${version}.tgz`;
 }
 
 /** The directory under a tree root that holds every entry: `<root>/packages`. */
@@ -135,41 +146,6 @@ export async function treeNames(root) {
   return out.sort((a, b) => byCodeUnit(a.name, b.name));
 }
 
-/** Regular files under `dir`, as sorted relative posix paths; symlinks are not files. */
-export async function walkFiles(dir, prefix = "") {
-  const out = [];
-  for (const e of await fsp.readdir(dir, { withFileTypes: true })) {
-    const rel = prefix === "" ? e.name : `${prefix}/${e.name}`;
-    if (e.isDirectory()) out.push(...(await walkFiles(path.join(dir, e.name), rel)));
-    else if (e.isFile()) out.push(rel);
-  }
-  return out.sort(byCodeUnit);
-}
-
-/** Whether anything may execute `abs`: any of its execute bits. */
-export function isExecutable(abs) {
-  try {
-    return (fs.statSync(abs).mode & 0o111) !== 0;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Laying out an entry
-// ---------------------------------------------------------------------------
-
-/** Copies `from`'s files to `to`, each 0755 when anything may execute it and 0644 otherwise. */
-async function copyNormalized(from, to) {
-  for (const rel of await walkFiles(from)) {
-    const src = path.join(from, ...rel.split("/"));
-    const dest = path.join(to, ...rel.split("/"));
-    await fsp.mkdir(path.dirname(dest), { recursive: true });
-    await fsp.copyFile(src, dest);
-    await fsp.chmod(dest, isExecutable(src) ? 0o755 : 0o644);
-  }
-}
-
 /** The package.json under `dir`, or null. */
 export async function readPackageJson(dir) {
   try {
@@ -177,41 +153,6 @@ export async function readPackageJson(dir) {
   } catch {
     return null;
   }
-}
-
-const names = (table) => (table !== null && typeof table === "object" ? Object.keys(table) : []);
-
-/**
- * The dependencies of the package at `pkgDir` that live OUTSIDE it, in the prefix `prefixDir`
- * it was installed into: what npm hoisted to `<prefix>/node_modules/<dep>`, found the way Node
- * finds a package (`node_modules` upward, stopping at the prefix), for its dependencies and
- * optional dependencies, transitively. A dependency nested inside the package already travels
- * with it; an optional one npm did not install (another platform's binary) is skipped.
- */
-async function hoistedDependencies(pkgDir, prefixDir) {
-  const out = new Map();
-  const top = path.resolve(prefixDir);
-  const inside = (dir) => dir === pkgDir || dir.startsWith(pkgDir + path.sep);
-  const visit = async (from) => {
-    const manifest = await readPackageJson(from);
-    if (manifest === null) return;
-    for (const dep of [...names(manifest.dependencies), ...names(manifest.optionalDependencies)]) {
-      let found = null;
-      for (let dir = from; ; dir = path.dirname(dir)) {
-        const candidate = path.join(dir, "node_modules", ...dep.split("/"));
-        if (fs.existsSync(path.join(candidate, "package.json"))) {
-          found = candidate;
-          break;
-        }
-        if (dir === top || path.dirname(dir) === dir) break;
-      }
-      if (found === null || inside(found) || out.has(dep)) continue;
-      out.set(dep, found);
-      await visit(found);
-    }
-  };
-  await visit(pkgDir);
-  return out;
 }
 
 /** An author as the index repository writes one: a display name, optionally `<contact>`. */
@@ -261,31 +202,6 @@ export function manifestOf(pkg, name, version, integrity) {
     ...(categories.length > 0 ? { categories } : {}),
     integrity,
   };
-}
-
-/**
- * Lays out the package at `pkgDir` — installed into the npm prefix `prefixDir` — as an entry
- * in the directory `stage`: `package/` (the package, its hoisted dependencies copied into its
- * own `node_modules`, modes normalized), then `manifest.toml`, written by `stringifyToml`.
- * `integrity` is the package's npm integrity, which the caller knows (the tarball it packed,
- * the index row, what npm recorded); nothing here computes one. Answers the entry's name,
- * version, integrity and manifest.
- */
-export async function layOutEntry(stage, pkgDir, prefixDir, { stringifyToml, integrity }) {
-  if (entryKey(integrity) === null) throw new Error(`'${integrity}' is not a sha512 integrity`);
-  const pkg = await readPackageJson(pkgDir);
-  const name = typeof pkg?.name === "string" ? pkg.name : null;
-  const version = typeof pkg?.version === "string" ? pkg.version : null;
-  if (pkg === null || name === null || version === null) {
-    throw new Error(`${pkgDir}: no package.json with a package name and a version`);
-  }
-  await copyNormalized(pkgDir, path.join(stage, PACKAGE_DIR));
-  for (const [dep, dir] of await hoistedDependencies(path.resolve(pkgDir), prefixDir)) {
-    await copyNormalized(dir, path.join(stage, PACKAGE_DIR, "node_modules", ...dep.split("/")));
-  }
-  const manifest = manifestOf(pkg, name, version, integrity);
-  await fsp.writeFile(path.join(stage, MANIFEST_FILE), stringifyToml(manifest));
-  return { name, version, integrity, manifest };
 }
 
 /** Index entries in the order a tree's index is written: name, then version, then integrity. */

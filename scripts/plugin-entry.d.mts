@@ -4,7 +4,9 @@
  * one way.
  */
 export declare const MANIFEST_FILE: string;
+export declare const TARBALL_FILE: string;
 export declare const PACKAGE_DIR: string;
+export declare function tarballFileName(name: string, version: string): string;
 export declare const INDEX_FILE: string;
 export declare const INTEGRITY: RegExp;
 export declare const KEY_LENGTH: number;
@@ -22,8 +24,6 @@ export declare function entryDir(
   integrity: string,
 ): string;
 
-export declare function walkFiles(dir: string, prefix?: string): Promise<string[]>;
-export declare function isExecutable(abs: string): boolean;
 export declare function readPackageJson(dir: string): Promise<Record<string, unknown> | null>;
 
 /** An entry's `manifest.toml`: the index repository's fields, `integrity` required. */
@@ -45,16 +45,6 @@ export declare function manifestOf(
   version: string,
   integrity: string,
 ): EntryManifest;
-
-export declare function layOutEntry(
-  stage: string,
-  pkgDir: string,
-  prefixDir: string,
-  options: {
-    stringifyToml: (value: Record<string, unknown>) => string;
-    integrity: string;
-  },
-): Promise<{ name: string; version: string; integrity: string; manifest: EntryManifest }>;
 
 export declare function sortIndex<T extends { name: string; version: string; integrity: string }>(
   entries: readonly T[],

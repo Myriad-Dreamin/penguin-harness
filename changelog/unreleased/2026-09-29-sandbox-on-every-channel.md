@@ -7,7 +7,7 @@
 
 [中文版](2026-09-29-sandbox-on-every-channel.zh.md)
 
-Every build now carries a bundled plugin directory: the plugins it built, installed by npm, and an `index.json` listing each with its integrity. The CLI bundle, the desktop app and a hot push already did; the Docker image and a source checkout now do too. The CLI's npm package carries the index alone, and fetches a plugin from the npm registry when a Project asks for it. A plugin's integrity is npm's own `dist.integrity`. A shipped plugin still loads only when a Project asks for it, and the sandbox mode still starts at Off.
+Every build now carries a bundled plugin directory: each plugin it built as its tarball, and an `index.json` listing each with its integrity. A plugin packs itself: its tarball is all of it, and what it declares as dependencies is not installed. `@penguinharness/sandbox-dsh` declares runtime dependencies and does not load until it packs them itself. The CLI bundle, the desktop app and a hot push already did; the Docker image and a source checkout now do too. The CLI's npm package carries the index alone, and fetches a plugin from the npm registry when a Project asks for it. A plugin's integrity is npm's own `dist.integrity`. A shipped plugin still loads only when a Project asks for it, and the sandbox mode still starts at Off.
 
 ## Channels
 
@@ -17,15 +17,16 @@ Every build now carries a bundled plugin directory: the plugins it built, instal
 
 ## Integrity
 
-- A plugin's integrity is npm's `dist.integrity`: `sha512-` and the base64 of the sha512 of the published tarball's bytes. It covers the package, not its dependencies.
+- A plugin's integrity is npm's `dist.integrity`: `sha512-` and the base64 of the sha512 of the published tarball's bytes.
 - `build-plugins` packs each plugin once and indexes that tarball's integrity; the release publishes those very tarballs.
-- A registry fetch installs with npm's ordinary layout and stores the package only when the integrity npm recorded for the tarball it downloaded is the index's.
-- A plugin store entry's directory is the first 16 hex digits of that sha512. A pin in a Project's plugin table, the `integrity` of `POST …/plugins/installed`, and every index entry take this form.
+- The plugin store keeps each plugin's tarball (`package.tgz`, with `manifest.toml` and `.stored`). Every tarball, carried by the build or fetched, is hashed before it is stored and refused when it does not match its index row; a stored one can be checked again at any time.
+- A registry fetch is `npm pack <name>@<version>`: the registry's tarball of that exact version, nothing installed.
+- A plugin store entry's directory is the integrity's first 16 base64 characters, with `+` and `/` written as `-` and `_`, so the directory reads as the start of its integrity. A pin in a Project's plugin table, the `integrity` of `POST …/plugins/installed`, and every index entry take this form.
 
 ## Activation
 
-- `<data root>/plugins/current` is the selection itself: a JSON file naming, for each plugin a process loads, its store entry (name, version, integrity), and the selection before it. A plugin is imported straight from its store entry's `package/`. The generation directories under `plugins/`, with their links and completion markers, are gone; an earlier layout's pointer is read as no selection and replaced at the next activation.
-- Each step has one commit point, a rename: a store entry is written whole in `.staging/` with `.stored` inside it and renamed into place; the selection is written to `current.tmp` and renamed over `current`, only after every entry it names is stored; a swept entry is renamed into `.staging/` before it is deleted, so a crash never leaves a marked entry with files missing. A boot that fails writes the previous selection back.
+- `<data root>/plugins/current` is the selection itself: a JSON file naming, for each plugin a process loads, its store entry (name, version, integrity), and the selection before it. A selected entry is unpacked under `plugins/` by the store's path rule (`plugins/packages/…/<version>/<key>/{.unpacked, package/}`), and the plugin is imported from there. The generation directories under `plugins/`, with their links and completion markers, are gone; an earlier layout's pointer is read as no selection and replaced at the next activation.
+- Each step has one commit point, a rename: a store entry is written whole in `.staging/` with `.stored` inside it and renamed into place, and an unpacked entry the same way with `.unpacked`; the selection is written to `current.tmp` and renamed over `current`, only after every entry it names is stored and unpacked; a swept entry is renamed into a `.staging/` before it is deleted, so a crash never leaves a marked entry with files missing. A boot that fails writes the previous selection back.
 
 ## Registry fetch
 

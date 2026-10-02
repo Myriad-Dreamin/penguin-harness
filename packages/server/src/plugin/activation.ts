@@ -7,16 +7,18 @@
  *   { "plugins":  { "<name>": { "version": "1.2.3", "integrity": "sha512-…" }, … },
  *     "previous": { … } | null }
  *
- * A plugin is loaded straight from its store entry's `package/` (plugin/store.ts): there is no
- * directory of links to keep in step. Nothing else under `<root>/plugins/` is read.
+ * The store keeps tarballs (plugin/store.ts); a selected entry is UNPACKED under
+ * `<root>/plugins/` by the store's own path rule — `plugins/packages/…/<name>/<version>/<key>/`
+ * holding `package/` and the marker `.unpacked` — and a plugin is loaded from there. Nothing
+ * else under `<root>/plugins/` is read.
  *
- * ATOMIC. An activation first gets every entry it will name into the store (each entry is
- * committed by its own rename, and only with `.stored` inside it), and only then writes the
+ * ATOMIC. An activation first gets every entry it will name into the store and unpacked (each
+ * committed by its own rename, and only with its marker inside it), and only then writes the
  * selection: a temporary file beside `current`, renamed over it. That rename is the one step
  * that changes what a process loads; a reader sees the whole old selection or the whole new
  * one, and a crash before it leaves the old one in force. The same selection is not rewritten.
  * A boot that fails after activating writes back the document it found (hmr/platform.ts). The
- * sweep (plugin/gc.ts) keeps what `plugins` and `previous` name.
+ * sweep (plugin/gc.ts) keeps what `plugins` and `previous` name, in the store and unpacked.
  *
  * A selection is RESOLVED from the closure (every Project's table for this machine): for each
  * name, the entry a Project pinned (`integrity`), or else the store entries whose version
@@ -29,22 +31,26 @@
  * the platform serializes on its one queue (hmr/platform.ts), so two admins' edits never
  * interleave.
  *
- * A plugin runs from its store entry, so the host SDK it keeps external is lent to it from the
- * running program (`lendHostPackages`).
+ * A plugin runs from its unpacked entry, so the host SDK it keeps external is lent to it from
+ * the running program (`lendHostPackages`).
  */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import nodeModule from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import * as tar from "tar";
 import {
+  discardDir,
+  onStoreQueue,
   PACKAGE_DIR,
-  pluginStoreDir,
   programEntry,
   readStore,
+  STAGING_DIR,
   storeEntryDir,
   syncPluginStore,
 } from "./store.js";
+import { entryDir, TARBALL_FILE } from "../../../../scripts/plugin-entry.mjs";
 import type { StoreIndexEntry } from "./store.js";
 import { compareVersions, satisfies } from "../api/plugin-pick.js";
 
@@ -52,6 +58,8 @@ import { compareVersions, satisfies } from "../api/plugin-pick.js";
 export const PLUGINS_DIR = "plugins";
 /** The selection file. */
 export const CURRENT_FILE = "current";
+/** An unpacked entry's completion marker. */
+export const UNPACKED_FILE = ".unpacked";
 
 export function pluginsDir(root: string): string {
   return path.join(root, PLUGINS_DIR);
@@ -149,9 +157,52 @@ export async function writeCurrent(
   await fsp.rename(tmp, file);
 }
 
-/** Where a selected plugin's package is: its store entry's `package/`. */
+/** Where a stored entry is unpacked: under `<root>/plugins/`, by the store's own path rule. */
+export function unpackedDir(root: string, e: SelectedPlugin): string {
+  return entryDir(pluginsDir(root), e.name, e.version, e.integrity);
+}
+
+/** Where a selected plugin's package is: its unpacked entry's `package/`. */
 export function selectedPackageDir(root: string, e: SelectedPlugin): string {
-  return path.join(storeEntryDir(root, e.name, e.version, e.integrity), PACKAGE_DIR);
+  return path.join(unpackedDir(root, e), PACKAGE_DIR);
+}
+
+/** Whether an entry is unpacked: its directory holds the marker. */
+export function isUnpacked(dir: string): boolean {
+  return fs.existsSync(path.join(dir, UNPACKED_FILE));
+}
+
+/**
+ * Unpacks the stored entry `e` under `<root>/plugins/`, unless it is unpacked already: the
+ * tarball is extracted into `plugins/.staging/u-…/package/`, the marker written last, and the
+ * directory renamed into place — one step. What the plugin declares as dependencies is not
+ * installed: a plugin packs itself.
+ */
+export function unpackEntry(root: string, e: SelectedPlugin): Promise<string> {
+  return onStoreQueue(async () => {
+    const dest = unpackedDir(root, e);
+    if (isUnpacked(dest)) return dest;
+    const staging = path.join(pluginsDir(root), STAGING_DIR);
+    await fsp.mkdir(staging, { recursive: true });
+    const stage = await fsp.mkdtemp(path.join(staging, "u-"));
+    try {
+      const pkg = path.join(stage, PACKAGE_DIR);
+      await fsp.mkdir(pkg);
+      const tarball = path.join(storeEntryDir(root, e.name, e.version, e.integrity), TARBALL_FILE);
+      await tar.x({ file: tarball, cwd: pkg, strip: 1, preservePaths: false });
+      await fsp.writeFile(path.join(stage, UNPACKED_FILE), "");
+      if (fs.existsSync(dest)) await discardDir(root, dest, staging);
+      await fsp.mkdir(path.dirname(dest), { recursive: true });
+      try {
+        await fsp.rename(stage, dest);
+      } catch (err) {
+        if (!isUnpacked(dest)) throw err;
+      }
+      return dest;
+    } finally {
+      await fsp.rm(stage, { recursive: true, force: true });
+    }
+  });
 }
 
 /**
@@ -226,8 +277,21 @@ export async function activatePlugins(
   const missing = new Map<string, string>();
   for (const [name, list] of asks) {
     const pick = chooseEntry(name, list, stored, shipped);
-    if ("missing" in pick) missing.set(name, pick.missing);
-    else chosen.push({ name: pick.name, version: pick.version, integrity: pick.integrity });
+    if ("missing" in pick) {
+      missing.set(name, pick.missing);
+      continue;
+    }
+    const e = { name: pick.name, version: pick.version, integrity: pick.integrity };
+    // The selection names only what is unpacked: a reader of `current` finds every package.
+    try {
+      await unpackEntry(root, e);
+      chosen.push(e);
+    } catch (err) {
+      missing.set(
+        name,
+        `'${name}' could not be unpacked: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
   const before = readCurrent(root);
   if (before !== null && sameSelection(before.plugins, chosen)) {
@@ -262,8 +326,8 @@ interface HostLending {
 }
 
 /**
- * Lets a plugin loaded from `root`'s store resolve a host package the way the running program
- * does. A plugin runs from its store entry, and Node
+ * Lets a plugin unpacked under `root` resolve a host package the way the running program
+ * does. A plugin runs from its unpacked entry, and Node
  * resolves its imports from there — under the data root, where no `node_modules` holds the
  * host's SDK; from the installation's prefix it used to find the program's copy by walking up.
  * Only a HOST_PACKAGES import the plugin's own package cannot resolve is retried, from the
@@ -281,7 +345,7 @@ export function lendHostPackages(root: string): void {
       throw err;
     },
   });
-  slot.roots.add(pathToFileURL(path.join(pluginStoreDir(root), path.sep)).href);
+  slot.roots.add(pathToFileURL(path.join(pluginsDir(root), path.sep)).href);
   slot.retry = (specifier, context, next, err) => {
     const parent = context.parentURL;
     const entry = programEntry();

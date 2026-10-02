@@ -323,7 +323,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       }
       try {
         // Into the plugin store (plugin/store.ts), and nowhere else: the re-assembly the list
-        // edit asks for activates a generation that links the stored entry.
+        // edit asks for unpacks the stored entry and names it in the selection.
         await fetchIntoStore(deps.root, `${pick.name}@${pick.version}`, {
           expected,
         });

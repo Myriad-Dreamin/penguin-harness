@@ -1,5 +1,6 @@
 /**
- * The plugin sweep: the store (plugin/store.ts) does not grow without bound.
+ * The plugin sweep: the store (plugin/store.ts) and the unpacked entries under `<root>/plugins/`
+ * (plugin/activation.ts) do not grow without bound.
  *
  * A complete store entry is KEPT when any of these holds, and removed otherwise:
  *
@@ -8,9 +9,12 @@
  *   - a Project's table pins it — the shared table or any machine's;
  *   - it was stored less than a day ago (the mtime of its `.stored`).
  *
+ * An unpacked entry is kept only while a kept selection names it: any other can be unpacked
+ * again from the store.
+ *
  * A package the build ships but no kept selection names goes like any other: the next
  * activation stores it again from the shipped prefix. An entry without `.stored` is a write
- * that did not finish, and goes once it is a day old; so does anything under `.staging/`. A
+ * that did not finish, and goes once it is a day old; so does anything under either `.staging/`. A
  * `<version>/`, `<name>/` or bucket directory goes with its last entry. Nothing outside the
  * store's `packages/` is an entry, so an earlier layout's directories are neither kept nor
  * removed here.
@@ -30,6 +34,7 @@
  */
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { isUnpacked, pluginsDir } from "./activation.js";
 import {
   discardDir,
   isStored,
@@ -64,6 +69,7 @@ export interface SweepOptions {
 /** How much one sweep removed, and what it could not. */
 export interface SweepReport {
   entries: number;
+  unpacked: number;
   staging: number;
   /** Why a part was skipped or a removal failed. */
   failures: string[];
@@ -122,9 +128,46 @@ async function sweepStore(
   }
 }
 
-/** Every `.staging/` directory a day old: work no write finished. */
-async function sweepStaging(root: string, now: number, report: SweepReport): Promise<void> {
-  const staging = path.join(pluginStoreDir(root), STAGING_DIR);
+/**
+ * The unpacked part: every unpacked entry no kept selection names — it can be unpacked again
+ * from the store — and one without its marker once it is a day old.
+ */
+async function sweepUnpacked(
+  root: string,
+  kept: ReadonlySet<string>,
+  now: number,
+  report: SweepReport,
+): Promise<void> {
+  const tree = pluginsDir(root);
+  const staging = path.join(tree, STAGING_DIR);
+  for (const { name, key, dir } of await storeEntryDirs(root, tree)) {
+    try {
+      const done = isUnpacked(dir);
+      if (done && kept.has(`${name}/${key}`)) continue;
+      if (!done && (await age(dir, now)) < STORE_GRACE_MS) continue;
+      await discardDir(root, dir, staging);
+      report.unpacked += 1;
+      await removeEmptyParents(path.dirname(dir), tree);
+    } catch (err) {
+      report.failures.push(`unpacked ${name}/${key}: ${reason(err)}`);
+    }
+  }
+}
+
+/** `dir` and each parent up to (not including) `top`, while each is empty. */
+async function removeEmptyParents(dir: string, top: string): Promise<void> {
+  while (dir !== top && dir.startsWith(top)) {
+    const gone = await fsp.rmdir(dir).then(
+      () => true,
+      () => false,
+    );
+    if (!gone) return;
+    dir = path.dirname(dir);
+  }
+}
+
+/** Every directory a day old in a `.staging/`: work no write finished. */
+async function sweepStaging(staging: string, now: number, report: SweepReport): Promise<void> {
   let dirs: string[];
   try {
     dirs = await fsp.readdir(staging);
@@ -143,24 +186,28 @@ async function sweepStaging(root: string, now: number, report: SweepReport): Pro
 }
 
 /**
- * Sweeps the store of `root` (the rules are this file's header).
+ * Sweeps the store of `root` and its unpacked entries (the rules are this file's header).
  * Never throws: what failed is in the report and in the log.
  */
 export async function sweepPlugins(root: string, options: SweepOptions): Promise<SweepReport> {
   const log = options.log ?? ((m: string) => console.warn(m));
   const now = options.now ?? Date.now();
-  const report: SweepReport = { entries: 0, staging: 0, failures: [] };
+  const report: SweepReport = { entries: 0, unpacked: 0, staging: 0, failures: [] };
   try {
     await onStoreQueue(async () => {
       const kept = keptContents(options);
-      await sweepStaging(root, now, report);
+      await sweepStaging(path.join(pluginStoreDir(root), STAGING_DIR), now, report);
+      await sweepStaging(path.join(pluginsDir(root), STAGING_DIR), now, report);
+      await sweepUnpacked(root, kept, now, report);
       await sweepStore(root, kept, now, report);
     });
   } catch (err) {
     report.failures.push(reason(err));
   }
-  if (report.entries + report.staging > 0) {
-    log(`[plugin-store] swept ${report.entries} entries, ${report.staging} staging directories`);
+  if (report.entries + report.unpacked + report.staging > 0) {
+    log(
+      `[plugin-store] swept ${report.entries} entries, ${report.unpacked} unpacked, ${report.staging} staging directories`,
+    );
   }
   for (const failure of report.failures) log(`[plugin-store] sweep: ${failure}`);
   return report;

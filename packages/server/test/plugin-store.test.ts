@@ -1,7 +1,7 @@
 /**
- * The plugin store (src/plugin/store.ts): one content-addressed entry per packed plugin under
- * `<root>/plugin-store/packages/[<@scope>/]<bucket>/<name>/<version>/<hash16>/`, complete only
- * once `.stored` is written.
+ * The plugin store (src/plugin/store.ts): one content-addressed entry per plugin tarball under
+ * `<root>/plugin-store/packages/[<@scope>/]<bucket>/<name>/<version>/<key>/`, complete only
+ * with its `.stored`.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -16,8 +16,8 @@ import {
   programEntry,
   readStore,
   shippedNames,
-  storePackage,
   storeSources,
+  storeTarball,
   syncPluginStore,
 } from "../src/plugin/store.js";
 import { createHash } from "node:crypto";
@@ -27,7 +27,8 @@ import {
   nameSegments,
   tarballIntegrity,
 } from "../../../scripts/plugin-entry.mjs";
-import { integrityOf } from "./plugin-fixtures.js";
+import { PluginInstallError } from "../src/plugin/install.js";
+import { integrityOf, packDir } from "./plugin-fixtures.js";
 
 let dir: string;
 let root: string;
@@ -49,56 +50,36 @@ async function write(base: string, files: Record<string, string>, mode = 0o644):
   }
 }
 
-/**
- * An npm prefix the way build-plugins.mjs leaves one: its own manifest naming what it ships,
- * the plugin under node_modules, and the plugin's dependency hoisted beside it. Answers the
- * plugin's directory.
- */
-async function prefix(
+/** The plugin's package directory under `at`: a package.json and its entry. */
+async function packageAt(
   at: string,
-  { version = "1.0.0", body = "export default {};", mode = 0o644 } = {},
+  { version = "1.0.0", body = "export default {};" } = {},
 ): Promise<string> {
-  await write(
-    at,
-    {
-      "package.json": JSON.stringify({ dependencies: { "@acme/sandbox-x": version } }),
-      "node_modules/@acme/sandbox-x/package.json": JSON.stringify({
-        name: "@acme/sandbox-x",
-        version,
-        description: "A sandbox backend",
-        author: "Ada <ada@example.com>",
-        license: "MIT",
-        categories: ["sandbox"],
-        dependencies: { native: "^2.0.0" },
-      }),
-      "node_modules/@acme/sandbox-x/dist/index.js": body,
-      "node_modules/native/package.json": JSON.stringify({ name: "native", version: "2.0.1" }),
-      "node_modules/native/index.js": "module.exports = 1;",
-      // Installed beside, but named by nobody the plugin depends on: not copied.
-      "node_modules/unrelated/package.json": JSON.stringify({ name: "unrelated" }),
-    },
-    mode,
-  );
-  return path.join(at, "node_modules", "@acme", "sandbox-x");
+  await write(at, {
+    "package.json": JSON.stringify({
+      name: "@acme/sandbox-x",
+      version,
+      description: "A sandbox backend",
+      author: "Ada <ada@example.com>",
+      license: "MIT",
+      categories: ["sandbox"],
+    }),
+    "dist/index.js": body,
+  });
+  return at;
 }
 
-/**
- * Stores the plugin of a prefix made by `prefix`, under the integrity its tarball would have:
- * one per version and body, the way two packs of different content differ.
- */
-async function store(at: string, options?: Parameters<typeof prefix>[1]) {
-  const version = options?.version ?? "1.0.0";
-  const integrity = integrityOf("@acme/sandbox-x", version, options?.body ?? "");
-  return storePackage(root, await prefix(at, options), at, integrity);
+/** The plugin packed into a tarball under `at`: the file and its npm integrity. */
+async function packed(at: string, options?: Parameters<typeof packageAt>[1]) {
+  const file = path.join(at, "x.tgz");
+  const integrity = await packDir(await packageAt(path.join(at, "src"), options), file);
+  return { file, integrity };
 }
 
-/** npm's lockfile for a prefix that installed `@acme/sandbox-x`, recording `integrity` for it. */
-async function writeLock(at: string, integrity: string | null): Promise<void> {
-  const entry = integrity === null ? { version: "1.0.0" } : { version: "1.0.0", integrity };
-  await fs.writeFile(
-    path.join(at, "package-lock.json"),
-    JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/@acme/sandbox-x": entry } }),
-  );
+/** Stores the plugin packed by `packed`. */
+async function store(at: string, options?: Parameters<typeof packageAt>[1]) {
+  const { file, integrity } = await packed(at, options);
+  return storeTarball(root, file, integrity);
 }
 
 async function exists(p: string): Promise<boolean> {
@@ -122,7 +103,7 @@ describe("plugin store", () => {
     expect(entryKey(integrity.slice(0, -4))).toBeNull();
   });
 
-  it("stores a package as one entry keyed by its content, its dependencies inside it", async () => {
+  it("stores a tarball as one entry keyed by its content: the tarball itself, its manifest, its marker", async () => {
     const entry = await store(path.join(dir, "a"));
     expect(entry.dir).toBe(
       path.join(
@@ -136,19 +117,36 @@ describe("plugin store", () => {
         entryKey(entry.integrity)!,
       ),
     );
-    const pkg = path.join(entry.dir, "package");
-    expect(await exists(path.join(pkg, "node_modules", "native", "index.js"))).toBe(true);
-    expect(await exists(path.join(pkg, "node_modules", "unrelated"))).toBe(false);
+    expect((await fs.readdir(entry.dir)).sort()).toEqual([
+      ".stored",
+      "manifest.toml",
+      "package.tgz",
+    ]);
+    // The stored bytes are the tarball's: they hash to the entry's integrity at any time.
+    expect(await tarballIntegrity(path.join(entry.dir, "package.tgz"))).toBe(entry.integrity);
     const manifest = parseToml(await fs.readFile(path.join(entry.dir, "manifest.toml"), "utf8"));
-    expect(manifest).toMatchObject({ name: "@acme/sandbox-x", integrity: entry.integrity });
+    expect(manifest).toMatchObject({
+      name: "@acme/sandbox-x",
+      description: "A sandbox backend",
+      authors: ["Ada <ada@example.com>"],
+      categories: ["sandbox"],
+      integrity: entry.integrity,
+    });
 
-    // The same integrity from another source, with other file modes, is the same entry; another
-    // content under the same version, or another version, is another.
-    const again = await store(path.join(dir, "b"), { mode: 0o664 });
-    expect(again.integrity).toBe(entry.integrity);
+    // The same tarball again is the same entry; another content under the same version, or
+    // another version, is another.
+    const again = await storeTarball(root, path.join(dir, "a", "x.tgz"), entry.integrity);
+    expect(again.dir).toBe(entry.dir);
     await store(path.join(dir, "c"), { body: "x" });
     await store(path.join(dir, "d"), { version: "1.1.0" });
     expect((await readStore(root)).map((r) => r.version)).toEqual(["1.0.0", "1.0.0", "1.1.0"]);
+  });
+
+  it("refuses a tarball whose bytes do not hash to the integrity it came with", async () => {
+    const { file } = await packed(path.join(dir, "a"));
+    const other = integrityOf("@acme/sandbox-x", "1.0.0", "other");
+    await expect(storeTarball(root, file, other)).rejects.toBeInstanceOf(PluginIntegrityMismatch);
+    expect(await readStore(root)).toEqual([]);
   });
 
   it("files a name under packages/, in the bucket its name spells", () => {
@@ -188,13 +186,11 @@ describe("plugin store", () => {
   it("an entry without its completion marker does not exist, and the next write replaces it", async () => {
     const entry = await store(path.join(dir, "a"));
     await fs.rm(path.join(entry.dir, ".stored"));
-    await fs.writeFile(path.join(entry.dir, "package", "dist", "index.js"), "half written");
+    await fs.writeFile(path.join(entry.dir, "package.tgz"), "half written");
     expect(await readStore(root)).toEqual([]);
 
     await store(path.join(dir, "b"));
-    expect(await fs.readFile(path.join(entry.dir, "package", "dist", "index.js"), "utf8")).toBe(
-      "export default {};",
-    );
+    expect(await tarballIntegrity(path.join(entry.dir, "package.tgz"))).toBe(entry.integrity);
     // The entry arrived with its marker in one rename; the leftover went through `.staging/`.
     expect(await fs.readdir(entry.dir)).toContain(".stored");
     expect(await fs.readdir(path.join(pluginStoreDir(root), ".staging"))).toEqual([]);
@@ -210,31 +206,27 @@ describe("plugin store", () => {
     await discardDir(root, entry.dir);
   });
 
-  it("a fetch is checked against the integrity npm recorded: the index's is stored, any other is refused", async () => {
-    const recorded = integrityOf("@acme/sandbox-x", "1.0.0", "registry");
-    // What npm leaves in the staging prefix: the package, and the lockfile naming what it checked.
-    const install = (lock: string | null) => async (_: string, cwd: string) => {
-      await prefix(cwd);
-      await writeLock(cwd, lock);
+  it("a fetch stores the registry's tarball when it hashes to the index's integrity, and nothing else", async () => {
+    const { file, integrity } = await packed(path.join(dir, "registry"));
+    // What `npm pack <spec>` leaves in the staging directory: the registry's tarball.
+    const fetch = async (_: string, cwd: string) => {
+      await fs.copyFile(file, path.join(cwd, "acme-sandbox-x-1.0.0.tgz"));
     };
-
     const entry = await fetchIntoStore(root, "@acme/sandbox-x@1.0.0", {
-      install: install(recorded),
-      expected: recorded,
+      fetch,
+      expected: integrity,
     });
-    expect(entry).toMatchObject({ name: "@acme/sandbox-x", version: "1.0.0", integrity: recorded });
-    expect((await readStore(root)).map((e) => e.integrity)).toEqual([recorded]);
+    expect(entry).toMatchObject({ name: "@acme/sandbox-x", version: "1.0.0", integrity });
 
-    // Another content than the index names, or no record at all: nothing more is stored.
-    const other = integrityOf("@acme/sandbox-x", "1.0.0", "other");
-    for (const lock of [other, null]) {
-      const err = await fetchIntoStore(root, "@acme/sandbox-x@1.0.0", {
-        install: install(lock),
-        expected: integrityOf("@acme/sandbox-x", "1.0.0", "index"),
-      }).catch((e: unknown) => e);
-      expect(err).toBeInstanceOf(PluginIntegrityMismatch);
-    }
-    expect((await readStore(root)).map((e) => e.integrity)).toEqual([recorded]);
+    // The index names another content: refused. npm left no tarball: refused.
+    const other = integrityOf("@acme/sandbox-x", "1.0.0", "index");
+    await expect(
+      fetchIntoStore(root, "@acme/sandbox-x@1.0.0", { fetch, expected: other }),
+    ).rejects.toBeInstanceOf(PluginIntegrityMismatch);
+    await expect(
+      fetchIntoStore(root, "@acme/sandbox-x@1.0.0", { fetch: async () => {}, expected: integrity }),
+    ).rejects.toBeInstanceOf(PluginInstallError);
+    expect((await readStore(root)).map((e) => e.integrity)).toEqual([integrity]);
     expect(await fs.readdir(path.join(pluginStoreDir(root), ".staging"))).toEqual([]);
   });
 });

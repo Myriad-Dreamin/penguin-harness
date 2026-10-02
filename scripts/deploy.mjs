@@ -276,9 +276,9 @@ async function readNativeAssets() {
   for (const { name, from } of FAR_SIDE_SCRIPTS) {
     files[name] = await fsp.readFile(path.join(ROOT, from));
   }
-  // The builtin plugins, as the npm prefix the loader resolves from (`plugins/package.json`
-  // + `plugins/node_modules/<name>/…`, see scripts/build-plugins.mjs), from cache when
-  // unchanged — one archive per package, so an unchanged plugin is an unchanged blob.
+  // The builtin plugins, as the bundled plugin directory (`plugins/index.json` + each plugin's
+  // tarball, see scripts/build-plugins.mjs), from cache when unchanged — each tarball its own
+  // blob, so an unchanged plugin is an unchanged blob.
   const built = await buildBuiltinPlugins({ log });
   const { byPackage, loose } = await prefixPackages(built.dir, built.files, "plugins");
   files["archives/plugins.tgz"] = await packArchive(loose);

@@ -37,8 +37,7 @@ import {
 } from "../src/plugin/registry.js";
 import { pickIndexEntry } from "../src/api/plugin-pick.js";
 import type { PluginRegistry } from "../src/plugin/registry.js";
-import { storePackage } from "../src/plugin/store.js";
-import { integrityOf } from "./plugin-fixtures.js";
+import { storeDir } from "./plugin-fixtures.js";
 import { activatePlugins } from "../src/plugin/activation.js";
 import { resolveServerConfig } from "../src/config.js";
 import { pluginRegistryRoutes } from "../src/http/routes/plugins.js";
@@ -151,14 +150,7 @@ describe("storePluginRegistry", () => {
       path.join(prefix, "node_modules", "@acme", "x", "package.json"),
       JSON.stringify({ name: "@acme/x", version: "1.0.0", description: "X", license: "MIT" }),
     );
-    const stored = [
-      await storePackage(
-        root,
-        path.join(prefix, "node_modules", "@acme", "x"),
-        prefix,
-        integrityOf("@acme/x", "1.0.0"),
-      ),
-    ];
+    const stored = [await storeDir(root, path.join(prefix, "node_modules", "@acme", "x"))];
     expect(await storePluginRegistry(root).index()).toEqual([
       expect.objectContaining({
         name: "@acme/x",
@@ -594,7 +586,7 @@ describe("the route's own merge", () => {
         path.join(pkg, "package.json"),
         JSON.stringify({ name: "@acme/x", version: "1.0.0", description: "X", license: "MIT" }),
       );
-      const stored = await storePackage(root, pkg, prefix, integrityOf("@acme/x", "1.0.0"));
+      const stored = await storeDir(root, pkg);
       await activatePlugins(root, new Map([["@acme/x", [{}]]]), null);
 
       const bare: PluginIndexEntry = { ...VALID_ENTRY };

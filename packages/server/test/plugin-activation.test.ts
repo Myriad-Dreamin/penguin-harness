@@ -13,9 +13,9 @@ import {
   selectedPackageDir,
 } from "../src/plugin/activation.js";
 import type { PluginAsk } from "../src/plugin/activation.js";
-import { storeEntryDir, storePackage } from "../src/plugin/store.js";
+import { storeEntryDir } from "../src/plugin/store.js";
 import type { StoreIndexEntry } from "../src/plugin/store.js";
-import { integrityOf, writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
+import { integrityOf, storeDir, writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
 
 let root: string;
 beforeEach(async () => {
@@ -42,20 +42,17 @@ async function ship(assets: string, name: string, module: string, version = "1.0
   await writeShippedIndex(prefix);
 }
 
-/** A package fetched from the registry, stored the way a fetch stores it. */
+/** A package fetched from the registry, stored the way a fetch stores it: its tarball. */
 async function fetched(name: string, module: string, version: string) {
-  const prefix = path.join(root, "fetched", `${module}-${version}`);
-  await mkdir(prefix, { recursive: true });
-  await writeFile(path.join(prefix, "package.json"), "{}");
-  const dir = path.join(prefix, "node_modules", ...name.split("/"));
+  const dir = path.join(root, "fetched", `${module}-${version}`);
   await writeClassPackage(dir, { name, module, version });
-  return storePackage(root, dir, prefix, integrityOf(name, version, `fetched:${module}`));
+  return storeDir(root, dir);
 }
 
 const asks = (entries: Record<string, PluginAsk[]>) => new Map(Object.entries(entries));
 
 describe("the selection", () => {
-  it("names store entries, is rewritten only when it changes, and records the one before it", async () => {
+  it("names unpacked store entries, is rewritten only when it changes, and records the one before it", async () => {
     const assets = path.join(root, "hmr", "store", "assets", "a");
     await ship(assets, "@acme/one", "One");
     await ship(assets, "@acme/two", "Two");
@@ -64,11 +61,21 @@ describe("the selection", () => {
     expect(readCurrent(root)).toEqual(first.current);
     expect(first.current.previous).toBeNull();
     const [row] = first.current.plugins;
-    expect(selectedPackageDir(root, row!)).toBe(
-      path.join(storeEntryDir(root, row!.name, row!.version, row!.integrity), "package"),
+    // The store holds the tarball; plugins/ holds it unpacked, under the same path.
+    const stored = storeEntryDir(root, row!.name, row!.version, row!.integrity);
+    expect(await readdir(stored)).toContain("package.tgz");
+    const unpacked = path.join(
+      root,
+      "plugins",
+      path.relative(path.join(root, "plugin-store"), stored),
     );
-    // Nothing but the selection file is written under plugins/.
-    expect(await readdir(path.join(root, "plugins"))).toEqual(["current"]);
+    expect(selectedPackageDir(root, row!)).toBe(path.join(unpacked, "package"));
+    expect((await readdir(unpacked)).sort()).toEqual([".unpacked", "package"]);
+    expect((await readdir(path.join(root, "plugins"))).sort()).toEqual([
+      ".staging",
+      "current",
+      "packages",
+    ]);
 
     const file = path.join(root, "plugins", "current");
     const written = (await stat(file)).mtimeMs;

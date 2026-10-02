@@ -60,15 +60,21 @@ export function archiveName(prefix, pkg) {
 }
 
 /**
- * The top-level packages of an npm prefix's `node_modules`, each with its files (`rel` relative
- * to the prefix's parent, so they unpack under `<dirName>/node_modules/…`): what gets one
- * archive apiece. A package's own nested `node_modules` stays inside its archive.
+ * The packages a directory carries, each with its files (`rel` relative to the directory's
+ * parent, so they unpack under `<dirName>/…`): what gets one archive apiece — a top-level
+ * package of its `node_modules` (its own nested `node_modules` stays inside its archive), or a
+ * package tarball at its top (a bundled plugin directory's `<name>-<version>.tgz`).
  */
 export async function prefixPackages(prefixDir, files, dirName) {
   const byPackage = new Map();
   const loose = [];
   for (const rel of files) {
     const parts = rel.split("/");
+    if (parts.length === 1 && rel.endsWith(".tgz")) {
+      const abs = path.join(prefixDir, rel);
+      byPackage.set(rel.slice(0, -".tgz".length), [{ rel: `${dirName}/${rel}`, abs, exec: false }]);
+      continue;
+    }
     if (parts[0] !== "node_modules") {
       loose.push({ rel: `${dirName}/${rel}`, abs: path.join(prefixDir, rel), exec: false });
       continue;

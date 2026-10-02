@@ -6,12 +6,19 @@
  * decorators the host reads.
  */
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { stringify as stringifyToml } from "smol-toml";
+import * as tar from "tar";
 import ts from "typescript";
-import { layOutEntry, sortIndex } from "../../../scripts/plugin-entry.mjs";
+import {
+  manifestOf,
+  sortIndex,
+  tarballFileName,
+  tarballIntegrity,
+} from "../../../scripts/plugin-entry.mjs";
+import { storeTarball } from "../src/plugin/store.js";
+import type { StoredEntry } from "../src/plugin/store.js";
 
 /**
  * The decorators, as a plugin's bundle would carry them — here imported from this
@@ -95,9 +102,33 @@ export function integrityOf(name: string, version: string, content = ""): string
 }
 
 /**
- * Rebuilds a shipped prefix's `index.json` the way scripts/build-plugins.mjs does: a row per
- * package the prefix's own package.json names, with the integrity its tarball would have
- * (`integrityOf`).
+ * Packs the package directory `pkgDir` the way npm does — its files under `package/`, gzipped —
+ * into `file`, and answers the tarball's npm integrity.
+ */
+export async function packDir(pkgDir: string, file: string): Promise<string> {
+  await tar.c(
+    { gzip: true, file, cwd: pkgDir, prefix: "package", portable: true },
+    (await readdir(pkgDir)).sort(),
+  );
+  return tarballIntegrity(file);
+}
+
+/** Stores the package directory `pkgDir` the way a fetch stores a tarball: packed, then stored. */
+export async function storeDir(root: string, pkgDir: string): Promise<StoredEntry> {
+  const tmp = await mkdtemp(path.join(tmpdir(), "store-dir-"));
+  try {
+    const file = path.join(tmp, "package.tgz");
+    return await storeTarball(root, file, await packDir(pkgDir, file));
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Turns a directory whose `node_modules` holds the packages its package.json names into a
+ * bundled plugin directory the way scripts/build-plugins.mjs writes one: each package packed
+ * into `<name>-<version>.tgz` beside the index, and `index.json` a row per package with its
+ * tarball's integrity.
  */
 export async function writeShippedIndex(prefix: string): Promise<void> {
   const manifest = JSON.parse(await readFile(path.join(prefix, "package.json"), "utf8")) as {
@@ -105,18 +136,12 @@ export async function writeShippedIndex(prefix: string): Promise<void> {
   };
   const index = [];
   for (const name of Object.keys(manifest.dependencies ?? {})) {
-    const stage = await mkdtemp(path.join(tmpdir(), "shipped-entry-"));
-    try {
-      const pkgDir = path.join(prefix, "node_modules", ...name.split("/"));
-      const { version, main = "index.js" } = JSON.parse(
-        await readFile(path.join(pkgDir, "package.json"), "utf8"),
-      ) as { version: string; main?: string };
-      // Different content packs to a different tarball, so it is tagged by its entry's code.
-      const integrity = integrityOf(name, version, await readFile(path.join(pkgDir, main), "utf8"));
-      index.push((await layOutEntry(stage, pkgDir, prefix, { stringifyToml, integrity })).manifest);
-    } finally {
-      await rm(stage, { recursive: true, force: true });
-    }
+    const pkgDir = path.join(prefix, "node_modules", ...name.split("/"));
+    const pkg = JSON.parse(await readFile(path.join(pkgDir, "package.json"), "utf8")) as {
+      version: string;
+    } & Record<string, unknown>;
+    const integrity = await packDir(pkgDir, path.join(prefix, tarballFileName(name, pkg.version)));
+    index.push(manifestOf(pkg, name, pkg.version, integrity));
   }
   await writeFile(path.join(prefix, "index.json"), JSON.stringify(sortIndex(index)));
 }

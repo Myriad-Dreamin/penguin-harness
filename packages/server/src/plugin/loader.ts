@@ -53,7 +53,7 @@ import {
   type Activation,
   type PluginAsk,
 } from "./activation.js";
-import { shippedNames, storeSources } from "./store.js";
+import { carriedTarball, shippedNames, storeSources } from "./store.js";
 import { sweepPlugins, type PluginPin } from "./gc.js";
 import { readManifest } from "../hmr/manifest.js";
 import type { Plugin } from "@prismshadow/penguin-core/plugin";
@@ -233,6 +233,8 @@ export interface PluginBase {
   builtin: boolean;
   /** Where each name's package is, when the base is not an npm prefix (the selection). */
   packages?: ReadonlyMap<string, string>;
+  /** Each name's tarball, when the base is a bundled plugin directory: nothing loads from it. */
+  tarballs?: ReadonlyMap<string, string>;
 }
 
 /** A bare package name, scoped or not — never a subpath, a path, a URL or a version range. */
@@ -257,14 +259,28 @@ export function pluginBases(root: string | undefined): PluginBase[] {
 }
 
 /**
- * The prefixes this build ships (the push's, the installation's): where the registry reads a
- * shipped package's readme. Not a lookup location — nothing is loaded from them.
+ * The bundled plugin directory this build carries (the push's, else the installation's), as
+ * each carried name's tarball: where the registry reads a shipped package's readme before it is
+ * unpacked. Not a lookup location — nothing is loaded from it.
  */
 export function shippedBases(assetsDir: string | null): PluginBase[] {
-  return storeSources(assetsDir).map((dir) => ({
-    file: path.join(dir, "package.json"),
-    builtin: true,
-  }));
+  for (const dir of storeSources(assetsDir)) {
+    let rows: unknown;
+    try {
+      rows = JSON.parse(readFileSync(path.join(dir, "index.json"), "utf8"));
+    } catch {
+      continue;
+    }
+    const tarballs = new Map<string, string>();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const { name, version } = (row ?? {}) as { name?: unknown; version?: unknown };
+      if (typeof name !== "string" || typeof version !== "string") continue;
+      const file = carriedTarball(dir, name, version);
+      if (existsSync(file)) tarballs.set(name, file);
+    }
+    return [{ file: path.join(dir, "index.json"), builtin: true, tarballs }];
+  }
+  return [];
 }
 
 /** The assets directory of the committed version, read from harness.json without a host. */
@@ -285,6 +301,7 @@ export function resolvePluginPackage(
 ): { dir: string; manifest: string; base: PluginBase } | null {
   if (!PACKAGE_NAME.test(specifier)) return null;
   for (const base of bases) {
+    if (base.tarballs !== undefined) continue;
     const dir =
       base.packages !== undefined
         ? base.packages.get(specifier)

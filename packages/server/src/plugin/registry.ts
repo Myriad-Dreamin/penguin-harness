@@ -21,7 +21,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { resolvePluginPackage } from "./loader.js";
 import type { PluginBase } from "./loader.js";
-import { readShippedIndex, readStore } from "./store.js";
+import { readShippedIndex, readStore, readTarballFile } from "./store.js";
 import { INTEGRITY } from "../../../../scripts/plugin-entry.mjs";
 
 /** One source of plugin index entries; `source` identifies it for display and errors. */
@@ -101,12 +101,19 @@ export const STORE_REGISTRY_SOURCE = "store";
 /** A package's own README.md, from wherever it is on this machine; null when it is not. */
 async function readmeOf(name: string, bases: readonly PluginBase[]): Promise<string | null> {
   const found = resolvePluginPackage(name, bases);
-  if (found === null) return null;
-  try {
-    return await fsp.readFile(path.join(found.dir, "README.md"), "utf8");
-  } catch {
-    return null;
+  if (found !== null) {
+    try {
+      return await fsp.readFile(path.join(found.dir, "README.md"), "utf8");
+    } catch {
+      return null;
+    }
   }
+  // Carried by the build but not unpacked: the readme is inside its tarball.
+  for (const base of bases) {
+    const tarball = base.tarballs?.get(name);
+    if (tarball !== undefined) return readTarballFile(tarball, "README.md");
+  }
+  return null;
 }
 
 /**

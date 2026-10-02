@@ -6,13 +6,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { activatePlugins } from "../src/plugin/activation.js";
+import { activatePlugins, unpackedDir } from "../src/plugin/activation.js";
 import type { PluginAsk } from "../src/plugin/activation.js";
 import { STORE_GRACE_MS, sweepPlugins } from "../src/plugin/gc.js";
 import { loadPlugins } from "../src/plugin/loader.js";
-import { pluginStoreDir, storePackage } from "../src/plugin/store.js";
+import { pluginStoreDir, readStore } from "../src/plugin/store.js";
 import type { StoredEntry } from "../src/plugin/store.js";
-import { integrityOf, writeClassPackage } from "./plugin-fixtures.js";
+import { storeDir, writeClassPackage } from "./plugin-fixtures.js";
 
 let dir: string;
 let root: string;
@@ -38,14 +38,11 @@ async function exists(p: string): Promise<boolean> {
   );
 }
 
-/** A package stored the way a registry fetch stores it. */
+/** A package stored the way a registry fetch stores it: its tarball. */
 async function stored(name: string, module: string): Promise<StoredEntry> {
-  const prefix = path.join(dir, "fetched", module);
-  await fs.mkdir(prefix, { recursive: true });
-  await fs.writeFile(path.join(prefix, "package.json"), "{}");
-  const pkg = path.join(prefix, "node_modules", ...name.split("/"));
+  const pkg = path.join(dir, "fetched", module);
   await writeClassPackage(pkg, { name, module, version: "1.0.0" });
-  return storePackage(root, pkg, prefix, integrityOf(name, "1.0.0", module));
+  return storeDir(root, pkg);
 }
 
 /** Dates an entry's `.stored`, and so the entry, at `at`. */
@@ -82,6 +79,24 @@ describe("the store", () => {
     expect(await exists(stale.dir)).toBe(false);
     // Removed by a rename into `.staging/` and deleted there: nothing of it is left behind.
     expect(await fs.readdir(path.join(pluginStoreDir(root), ".staging"))).toEqual([]);
+  });
+});
+
+describe("the unpacked entries", () => {
+  it("keep only what a kept selection names; the store keeps the tarball by its own rules", async () => {
+    await stored("@acme/a", "A");
+    await stored("@acme/b", "B");
+    const a = await activatePlugins(root, asks(["@acme/a"]), null);
+    const b = await activatePlugins(root, asks(["@acme/b"]), null);
+    const unpackedA = unpackedDir(root, a.current.plugins[0]!);
+    expect(await exists(unpackedA)).toBe(true);
+    // Kept: b alone. a is unpacked no longer, but its tarball is under a day old: still stored.
+    const report = await sweepPlugins(root, { keep: b.current.plugins, log: () => {} });
+    expect(report.unpacked).toBe(1);
+    expect(await exists(unpackedA)).toBe(false);
+    expect(await exists(unpackedDir(root, b.current.plugins[0]!))).toBe(true);
+    expect((await readStore(root)).map((e) => e.name)).toEqual(["@acme/a", "@acme/b"]);
+    expect(await fs.readdir(path.join(root, "plugins", ".staging"))).toEqual([]);
   });
 });
 

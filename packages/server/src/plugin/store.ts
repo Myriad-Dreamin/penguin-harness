@@ -1,56 +1,54 @@
 /**
- * The plugin store: one place under the data root where every packed plugin a machine has
- * received is kept, keyed by its content.
+ * The plugin store: one place under the data root where every plugin a machine has received is
+ * kept, as its tarball, keyed by its content.
  *
- * `<root>/plugin-store/` has the shape of the tree the build lays out (scripts/build-plugins.mjs)
- * and of the index repository's (penguin-plugins), one path rule for all three
- * (scripts/plugin-entry.mjs): beside `.staging/` there is only `packages/`, and one entry per
- * `packages/[<@scope>/]<bucket>/<name>/<version>/<key>/` — the key is the integrity's first 16
- * base64 characters, path safe (scripts/plugin-entry.mjs) — holding
+ * `<root>/plugin-store/` files entries by the one path rule the build's index and the index
+ * repository (penguin-plugins) use (scripts/plugin-entry.mjs): beside `.staging/` there is only
+ * `packages/`, and one entry per `packages/[<@scope>/]<bucket>/<name>/<version>/<key>/` — the
+ * key is the integrity's first 16 base64 characters, path safe — holding
  *
+ *   package.tgz        the plugin's tarball: its bytes hash to the entry's integrity
  *   manifest.toml      the index manifest (the repository's fields, `integrity` required)
- *   package/           the unpacked package, its dependencies inside its own `node_modules`
  *   .stored            the completion marker; its mtime is when it was stored
+ *
+ * A plugin packs itself: the tarball is the whole of it, and nothing here installs what it
+ * declares as dependencies. A process does not load from the store: an entry is unpacked under
+ * `<root>/plugins/` first (plugin/activation.ts).
  *
  * ATOMIC. An entry is written whole in `.staging/` — `.stored` included, last — and committed
  * by ONE rename into its place, so it appears complete or not at all. It leaves the same way:
  * renamed into `.staging/`, then deleted there (`discardDir`). An entry without `.stored` does
  * not exist: an earlier layout's or an interrupted write's leftover, discarded by the next
  * write of the same content. A rename that finds the entry already complete (the same content
- * stored meanwhile) has nothing left to do. Nothing outside `packages/` is read: a directory an
- * earlier layout left at the top is neither an entry nor linked.
+ * stored meanwhile) has nothing left to do. Nothing outside `packages/` is read.
  *
  * THE KEY IS THE CONTENT, AND THE CONTENT IS NPM'S. `integrity` is npm's `dist.integrity` —
- * `sha512-<base64>` of the tarball's bytes, the value the registry and every npm lockfile carry
- * (scripts/plugin-entry.mjs). The store never hashes a directory: it is told the integrity.
- * Two versions of one name, or two contents of one version, are two entries; one content is
- * stored once.
+ * `sha512-<base64>` of the tarball's bytes. Every tarball is hashed before it is stored, and
+ * one that does not hash to the integrity it came with is refused. Two versions of one name,
+ * or two contents of one version, are two entries; one content is stored once.
  *
- * TWO WAYS IN, both through `storePackage`:
+ * TWO WAYS IN, both through `storeTarball`:
  *
- *   - carried   the plugins the running build carries (a hot push's `plugins/`, else the
+ *   - carried   the tarballs the running build carries (a hot push's `plugins/`, else the
  *               installation's — `lib/plugins` of the CLI bundle and the Docker image, `plugins/`
  *               of the desktop app and of a dev build), each with the integrity its row in the
  *               build's `index.json` names; an entry already stored is not copied again
- *               (`syncPluginStore`). They arrive with the program and are trusted with it;
- *   - registry  a package npm installs into `.staging/`, checked against the index row: the
- *               integrity npm recorded in that install's lockfile for what it downloaded must be
- *               the row's, or nothing is stored (`fetchIntoStore`).
+ *               (`syncPluginStore`);
+ *   - registry  `npm pack <name>@<version>` into `.staging/`, the registry's tarball, checked
+ *               against the index row (`fetchIntoStore`).
  *
  * Every write and the sweep take turns on one queue (`onStoreQueue`): a fetch never lands an
  * entry in a directory the sweep is emptying. What the sweep keeps and removes is plugin/gc.ts.
- *
- * The store is not a lookup location. Nothing resolves a module from it by name: the process
- * loads from the current generation under `<root>/plugins/`, whose `node_modules/<name>` links
- * to an entry's `package/` (plugin/activation.ts).
  */
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
+import * as tar from "tar";
 import { unpackedAssetsDir } from "../hmr/asset-archives.js";
 import { PACKAGE_NAME } from "./loader.js";
 import { npmCommand, npmEnv, npmReason, PluginInstallError } from "./install.js";
@@ -58,11 +56,13 @@ import {
   entryDir,
   entryKey,
   INDEX_FILE,
-  layOutEntry,
   MANIFEST_FILE,
+  manifestOf,
   PACKAGE_DIR,
-  readPackageJson,
   sortIndex,
+  TARBALL_FILE,
+  tarballFileName,
+  tarballIntegrity,
   treeNames,
 } from "../../../../scripts/plugin-entry.mjs";
 import type { EntryManifest } from "../../../../scripts/plugin-entry.mjs";
@@ -102,7 +102,7 @@ export class PluginIntegrityMismatch extends PluginStoreError {
     readonly actual: string,
   ) {
     super(
-      `${name}@${version}: npm recorded ${actual} for what it downloaded, the index names ${expected}; nothing was stored`,
+      `${name}@${version}: the tarball hashes to ${actual}, the index names ${expected}; nothing was stored`,
     );
   }
 }
@@ -130,11 +130,15 @@ export function isStored(dir: string): boolean {
 }
 
 /**
- * Removes `dir` in one step for any reader: renamed into `.staging/` (the same filesystem), then
- * deleted there. A crash midway leaves a staging directory, which the sweep removes.
+ * Removes `dir` in one step for any reader: renamed into a `.staging/` on the same filesystem —
+ * the store's by default, `staging` for a directory elsewhere — then deleted there. A crash
+ * midway leaves a staging directory, which the sweep removes.
  */
-export async function discardDir(root: string, dir: string): Promise<void> {
-  const staging = path.join(pluginStoreDir(root), STAGING_DIR);
+export async function discardDir(
+  root: string,
+  dir: string,
+  staging: string = path.join(pluginStoreDir(root), STAGING_DIR),
+): Promise<void> {
   await fsp.mkdir(staging, { recursive: true });
   const gone = path.join(staging, `d-${process.pid}-${randomUUID()}`);
   try {
@@ -154,25 +158,64 @@ async function stagingDir(root: string): Promise<string> {
 }
 
 /**
- * Stores the package at `pkgDir` — installed into the npm prefix `prefixDir`, whose hoisted
- * dependencies of it are copied into its own `node_modules` — under `integrity`, its npm
- * integrity, and answers the entry. A content already stored is not written again.
+ * The `package.json` inside an npm tarball (its top directory is `package/`), or null. Read by
+ * extracting that one file into a temporary directory beside the store's work.
  */
-export async function storePackage(
+export async function readTarballPackageJson(
+  tarball: string,
+): Promise<Record<string, unknown> | null> {
+  const text = await readTarballFile(tarball, "package.json");
+  if (text === null) return null;
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One file of an npm tarball, by its path inside the package (`README.md`), or null when the
+ * tarball has none. Extracted into a temporary directory of its own.
+ */
+export async function readTarballFile(tarball: string, rel: string): Promise<string | null> {
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "penguin-tarball-"));
+  try {
+    await tar.x({
+      file: tarball,
+      cwd: tmp,
+      strip: 1,
+      preservePaths: false,
+      filter: (p) => p.split("/").slice(1).join("/") === rel,
+    });
+    return await fsp.readFile(path.join(tmp, ...rel.split("/")), "utf8");
+  } catch {
+    return null;
+  } finally {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Stores the tarball `tarball` as the entry its `integrity` names, and answers the entry. The
+ * tarball's bytes must hash to `integrity`, or nothing is stored (`PluginIntegrityMismatch`):
+ * a tarball is checked wherever it came from. A content already stored is not written again.
+ */
+export async function storeTarball(
   root: string,
-  pkgDir: string,
-  prefixDir: string,
+  tarball: string,
   integrity: string,
 ): Promise<StoredEntry> {
-  const pkg = await readPackageJson(pkgDir);
+  const pkg = await readTarballPackageJson(tarball);
   const name = typeof pkg?.name === "string" ? pkg.name : null;
   const version = typeof pkg?.version === "string" ? pkg.version : null;
   if (pkg === null || name === null || version === null || !PACKAGE_NAME.test(name)) {
-    throw new PluginStoreError(`${pkgDir}: no package.json with a package name and a version`);
+    throw new PluginStoreError(`${tarball}: no package.json with a package name and a version`);
   }
   if (version.includes("/") || version.includes("\\") || version.startsWith(".")) {
     throw new PluginStoreError(`${name}: '${version}' cannot name a directory`);
   }
+  const actual = await tarballIntegrity(tarball);
+  if (actual !== integrity) throw new PluginIntegrityMismatch(name, version, integrity, actual);
   const dest = storeEntryDir(root, name, version, integrity);
   const entry: StoredEntry = { name, version, integrity, dir: dest };
   if (isStored(dest)) {
@@ -191,10 +234,13 @@ export async function storePackage(
   }
   const stage = await stagingDir(root);
   try {
-    await layOutEntry(stage, pkgDir, prefixDir, {
-      stringifyToml: (value) => stringifyToml(value),
-      integrity,
-    });
+    await fsp.copyFile(tarball, path.join(stage, TARBALL_FILE));
+    await fsp.writeFile(
+      path.join(stage, MANIFEST_FILE),
+      stringifyToml(
+        manifestOf(pkg, name, version, integrity) as unknown as Record<string, unknown>,
+      ),
+    );
     // Complete before it is in place: the rename below is the one step that stores it.
     await fsp.writeFile(path.join(stage, STORED_FILE), "");
     // A directory without the marker is a write that did not finish: discarded, not trusted.
@@ -211,20 +257,19 @@ export async function storePackage(
   }
 }
 
-/** How a registry fetch installs `specifier` into the npm prefix `cwd`; injectable for tests. */
-export type RegistryInstall = (specifier: string, cwd: string) => Promise<void>;
+/** How a registry fetch puts `specifier`'s tarball into the directory `cwd`; injectable for tests. */
+export type RegistryFetch = (specifier: string, cwd: string) => Promise<void>;
 
-/** Long enough for a cold registry fetch with dependencies; short enough not to hang a request. */
+/** Long enough for a cold registry fetch; short enough not to hang a request. */
 const FETCH_TIMEOUT_MS = 180_000;
 
 /**
- * npm, into a staging prefix, laid out the way npm lays out any install (hoisted); the store
- * folds the package's hoisted dependencies into its entry. npm checks each tarball against the
- * registry's integrity as it downloads, and records it in the prefix's lockfile.
+ * `npm pack <specifier>`: the registry's tarball of that version, as the registry serves it,
+ * through the machine's npm configuration (registry, proxy, auth). Nothing is installed.
  */
-const npmInstall: RegistryInstall = async (specifier, cwd) => {
+const npmPack: RegistryFetch = async (specifier, cwd) => {
   try {
-    const npm = npmCommand(["install", "--omit=dev", "--no-audit", "--no-fund", "--", specifier]);
+    const npm = npmCommand(["pack", "--", specifier]);
     await execFileAsync(npm.command, npm.args, {
       cwd,
       timeout: FETCH_TIMEOUT_MS,
@@ -238,62 +283,27 @@ const npmInstall: RegistryInstall = async (specifier, cwd) => {
   }
 };
 
-/** The bare or scoped name of a specifier, without its version range. */
-function nameOf(specifier: string): string {
-  const at = specifier.lastIndexOf("@");
-  return at > 0 ? specifier.slice(0, at) : specifier;
-}
-
-/**
- * The integrity npm recorded for `name` in the prefix it just installed into: the lockfile's
- * `packages["node_modules/<name>"].integrity`, i.e. what npm checked the downloaded tarball
- * against. Null when the lockfile does not say.
- */
-async function recordedIntegrity(prefix: string, name: string): Promise<string | null> {
-  for (const file of ["package-lock.json", path.join("node_modules", ".package-lock.json")]) {
-    let lock: { packages?: Record<string, { integrity?: unknown }> };
-    try {
-      lock = JSON.parse(await fsp.readFile(path.join(prefix, file), "utf8"));
-    } catch {
-      continue;
-    }
-    const value = lock.packages?.[`node_modules/${name}`]?.integrity;
-    if (typeof value === "string") return value;
-  }
-  return null;
-}
-
 /**
  * Fetches `name@version` from the registry into the store, as the index row `expected` (its
- * npm integrity) names it: npm installs it into a staging prefix, the integrity npm recorded for
- * what it downloaded must be `expected` — one of the lockfile's values when it lists several —
- * or nothing is stored. The staging directory is removed whatever happened.
+ * npm integrity) names it: its tarball is fetched into a staging directory and stored only when
+ * its bytes hash to `expected`. The staging directory is removed whatever happened.
  */
 export function fetchIntoStore(
   root: string,
   specifier: string,
-  { expected, install = npmInstall }: { expected: string; install?: RegistryInstall },
+  { expected, fetch = npmPack }: { expected: string; fetch?: RegistryFetch },
 ): Promise<StoredEntry> {
   return onStoreQueue(async () => {
-    const prefix = await stagingDir(root);
+    const dir = await stagingDir(root);
     try {
-      // A prefix of its own, or npm walks up and installs into whatever package.json is above.
-      await fsp.writeFile(
-        path.join(prefix, "package.json"),
-        `${JSON.stringify({ name: "plugin-store-entry", private: true, version: "0.0.0" }, null, 2)}\n`,
-      );
-      await install(specifier, prefix);
-      const name = nameOf(specifier);
-      const pkgDir = path.join(prefix, "node_modules", ...name.split("/"));
-      const pkg = await readPackageJson(pkgDir);
-      const version = typeof pkg?.version === "string" ? pkg.version : "?";
-      const recorded = await recordedIntegrity(prefix, name);
-      if (recorded === null || !recorded.split(/\s+/).includes(expected)) {
-        throw new PluginIntegrityMismatch(name, version, expected, recorded ?? "nothing");
+      await fetch(specifier, dir);
+      const tarball = (await fsp.readdir(dir)).find((f) => f.endsWith(".tgz"));
+      if (tarball === undefined) {
+        throw new PluginInstallError(`npm pack ${specifier} left no tarball`);
       }
-      return await storePackage(root, pkgDir, prefix, expected);
+      return await storeTarball(root, path.join(dir, tarball), expected);
     } finally {
-      await fsp.rm(prefix, { recursive: true, force: true });
+      await fsp.rm(dir, { recursive: true, force: true });
     }
   });
 }
@@ -313,9 +323,10 @@ async function subdirs(dir: string): Promise<string[]> {
 /** Every entry directory of the store, complete or not, with the name, version and key it sits under. */
 export async function storeEntryDirs(
   root: string,
+  tree: string = pluginStoreDir(root),
 ): Promise<Array<{ name: string; version: string; key: string; dir: string }>> {
   const out: Array<{ name: string; version: string; key: string; dir: string }> = [];
-  for (const { name, dir: nameDir } of await treeNames(pluginStoreDir(root))) {
+  for (const { name, dir: nameDir } of await treeNames(tree)) {
     for (const version of await subdirs(nameDir)) {
       for (const key of await subdirs(path.join(nameDir, version))) {
         out.push({ name, version, key, dir: path.join(nameDir, version, key) });
@@ -408,18 +419,19 @@ export async function readShippedIndex(
   return null;
 }
 
-/** Where a listed row's package sits in its prefix, when the build carries it there. */
-function packageDirOf(prefix: string, name: string): string {
-  return path.join(prefix, "node_modules", ...name.split("/"));
+/** Where a listed row's tarball sits in its bundled plugin directory, when the build carries it. */
+export function carriedTarball(prefix: string, name: string, version: string): string {
+  return path.join(prefix, tarballFileName(name, version));
 }
 
-/** The rows whose package the prefix carries; a row it only lists is fetched from the registry. */
+/** The rows whose tarball the directory carries; a row it only lists is fetched from the registry. */
 function carried(index: { prefix: string; entries: unknown[] }): unknown[] {
   return index.entries.filter((row) => {
-    const name = (row as { name?: unknown }).name;
+    const { name, version } = row as { name?: unknown; version?: unknown };
     return (
       typeof name === "string" &&
-      fs.existsSync(path.join(packageDirOf(index.prefix, name), "package.json"))
+      typeof version === "string" &&
+      fs.existsSync(carriedTarball(index.prefix, name, version))
     );
   });
 }
@@ -461,7 +473,7 @@ export async function syncPluginStore(
       shipped.add(integrity);
       if (isStored(storeEntryDir(root, name, version, integrity))) continue;
       try {
-        await storePackage(root, packageDirOf(index!.prefix, name), index!.prefix, integrity);
+        await storeTarball(root, carriedTarball(index!.prefix, name, version), integrity);
       } catch (err) {
         log(`[plugin-store] ${name}: ${err instanceof Error ? err.message : String(err)}`);
       }
