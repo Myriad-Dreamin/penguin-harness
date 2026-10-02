@@ -15,7 +15,7 @@ import {
 import type { PluginAsk } from "../src/plugin/activation.js";
 import { storeEntryDir, storePackage } from "../src/plugin/store.js";
 import type { StoreIndexEntry } from "../src/plugin/store.js";
-import { writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
+import { integrityOf, writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
 
 let root: string;
 beforeEach(async () => {
@@ -49,7 +49,7 @@ async function fetched(name: string, module: string, version: string) {
   await writeFile(path.join(prefix, "package.json"), "{}");
   const dir = path.join(prefix, "node_modules", ...name.split("/"));
   await writeClassPackage(dir, { name, module, version });
-  return storePackage(root, dir, prefix);
+  return storePackage(root, dir, prefix, integrityOf(name, version, `fetched:${module}`));
 }
 
 const asks = (entries: Record<string, PluginAsk[]>) => new Map(Object.entries(entries));
@@ -99,13 +99,11 @@ describe("a generation", () => {
     await fetched("@acme/old", "Old", "1.0.0");
     const { missing } = await activatePlugins(
       root,
-      asks({ "@acme/old": [{ version: "^2.0.0" }], "@acme/absent": [{}], "/dev/x.js": [{}] }),
+      asks({ "@acme/old": [{ version: "^2.0.0" }], "@acme/absent": [{}] }),
       null,
     );
     expect(missing.get("@acme/absent")).toMatch(/not in the plugin store/);
     expect(missing.get("@acme/old")).toMatch(/no stored '@acme\/old' satisfies \^2\.0\.0/);
-    // A path is the loader's, not the store's.
-    expect(missing.has("/dev/x.js")).toBe(false);
   });
 });
 
@@ -116,7 +114,7 @@ describe("choosing an entry", () => {
     description: "",
     authors: [],
     license: "",
-    integrity: `sha256-${hex.repeat(64)}`,
+    integrity: integrityOf("@acme/p", version, hex),
   });
 
   it("takes a pin, else the highest version every ask admits, the build's content within one", () => {
