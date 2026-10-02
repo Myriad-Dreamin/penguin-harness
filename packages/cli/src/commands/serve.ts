@@ -192,23 +192,6 @@ function supervise(cliEntry: string, host: string, port: number, t: Messages): v
   void spawnChild();
 }
 
-/**
- * The CLI entry this process advertises as PENGUIN_CLI_ENTRY, or null to leave it as it is.
- * A supervised child keeps the one its supervisor exported: the child may run the pushed
- * CLI through `penguin-hmr` (server-entry.ts), whose argv[1] is the loader, while the
- * self-update endpoint must re-run the installed entry — `penguin update` finds the
- * installation from its own module's path, and a bundle in the HMR store matches none.
- * Exported for unit tests.
- */
-export function advertisedCliEntry(
-  argv1: string | undefined,
-  env: NodeJS.ProcessEnv,
-): string | null {
-  const inherited = env.PENGUIN_CLI_ENTRY?.trim();
-  if (env[SERVE_CHILD_ENV] === "1" && inherited) return null;
-  return cliEntryFor(argv1);
-}
-
 async function startServer(
   opts: { port?: string; host?: string },
   t: Messages,
@@ -217,16 +200,17 @@ async function startServer(
   const host = opts.host ?? process.env.HOST ?? DEFAULT_HOST;
   process.env.PORT = String(port);
   process.env.HOST = host;
-  // Tell the server which CLI entry script launched it: the admin self-update endpoint
-  // (POST /api/version/update) re-runs `node <entry> update --yes`. Set before the import
-  // so it is visible however the server captures its environment; when the server was not
-  // started through the CLI (or the entry is not re-runnable by plain node, e.g. a tsx dev
-  // run) the variable stays unset and the endpoint reports "unsupported".
-  const advertised = advertisedCliEntry(process.argv[1], process.env);
-  if (advertised !== null) {
-    process.env.PENGUIN_CLI_ENTRY = advertised;
-  }
+  // Tell the server which CLI entry script launched it — the CLI of the harness that runs
+  // it: the `penguin-hmr` loader for a child the supervisor started on the pushed CLI. The
+  // `<root>/bin/penguin` shim the Agents run execs it, and the admin self-update endpoint
+  // (POST /api/version/update) re-runs it as `node <entry> update --yes`. Set before the
+  // import so it is visible however the server captures its environment; when the entry is
+  // not re-runnable by plain node (e.g. a tsx dev run) the variable stays unset and the
+  // endpoint reports "unsupported".
   const cliEntry = cliEntryFor(process.argv[1]);
+  if (cliEntry !== null) {
+    process.env.PENGUIN_CLI_ENTRY = cliEntry;
+  }
   // The same re-runnable entry is what makes supervision possible: the child is exactly
   // this command again, marked as the child so it does not supervise in turn.
   if (cliEntry !== null && process.env[SERVE_CHILD_ENV] !== "1") {
