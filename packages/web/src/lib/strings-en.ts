@@ -1060,6 +1060,9 @@ export const en: Strings = {
     /** A pager's two steps, as their names and tooltips (the shared UI package's `Pager`). */
     previousPage: "Previous page",
     nextPage: "Next page",
+    /** The handles on a resizable dialog's side and bottom borders (the shared UI package's `PagedDialog`). */
+    resizeWidth: "Resize width",
+    resizeHeight: "Resize height",
     name: "Name",
     username: "Username",
     role: "Role",
