@@ -27,7 +27,9 @@ function push(t: TestApp, cookie: string, cli: unknown) {
   return t.app.request("/api/hmr/upgrade", {
     method: "POST",
     headers: { cookie, "content-type": "application/gzip" },
-    body: zlib.gzipSync(Buffer.from(JSON.stringify({ platform: PLATFORM, cli, web: { files: WEB } }))),
+    body: zlib.gzipSync(
+      Buffer.from(JSON.stringify({ platform: PLATFORM, cli, web: { files: WEB } })),
+    ),
   });
 }
 

@@ -76,7 +76,10 @@ export async function pushedCliProblem(
     const e = err as { killed?: boolean; stderr?: string; message?: string };
     if (e.killed) return `the CLI bundle did not load within ${LOAD_TIMEOUT_MS / 1000}s`;
     // Node prints where the import failed before what failed; the error line says why.
-    const lines = (e.stderr ?? "").split("\n").map((l) => l.trim()).filter((l) => l !== "");
+    const lines = (e.stderr ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l !== "");
     const reason = lines.find((l) => /Error\b|error:/.test(l)) ?? lines[0];
     return `the CLI bundle cannot be loaded: ${reason ?? e.message ?? "unknown error"}`;
   } finally {
