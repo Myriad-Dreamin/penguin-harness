@@ -200,14 +200,14 @@ export function PluginDetailPage() {
 }
 
 /**
- * The first 16 hex digits of an npm integrity's sha512 — the name of its plugin store entry's
- * directory, so what the page shows is what an operator finds on disk. Null when malformed.
+ * The first 16 base64 characters of an npm integrity, path safe (`+` → `-`, `/` → `_`) — the
+ * name of its plugin store entry's directory, so what the page shows is what an operator finds
+ * on disk, and it reads like the integrity. Null when malformed.
  */
 function integrityKey(integrity: string): string | null {
   const b64 = /^sha512-([A-Za-z0-9+/]{86}==)$/.exec(integrity)?.[1];
   if (b64 === undefined) return null;
-  const bytes = atob(b64).slice(0, 8);
-  return Array.from(bytes, (ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+  return b64.slice(0, 16).replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 /** Every content listed under the name: version, integrity, and whether this machine stores and runs it. */

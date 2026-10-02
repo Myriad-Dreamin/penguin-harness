@@ -109,13 +109,14 @@ async function exists(p: string): Promise<boolean> {
 }
 
 describe("plugin store", () => {
-  it("integrity is npm's: the sha512 of the tarball's bytes, and the entry key is its first 16 hex digits", async () => {
+  it("integrity is npm's: the sha512 of the tarball's bytes, and the entry key is its first 16 base64 characters, path safe", async () => {
     const tarball = path.join(dir, "x-1.0.0.tgz");
     await fs.writeFile(tarball, Buffer.from("a tarball's bytes"));
     const digest = createHash("sha512").update("a tarball's bytes").digest();
     const integrity = await tarballIntegrity(tarball);
     expect(integrity).toBe(`sha512-${digest.toString("base64")}`);
-    expect(entryKey(integrity)).toBe(digest.toString("hex").slice(0, 16));
+    expect(entryKey(integrity)).toBe(digest.toString("base64url").slice(0, 16));
+    expect(entryKey(`sha512-${"+/".repeat(43)}==`)).toBe("-_".repeat(8));
     // Anything else is not a key: the sha256 form the store used before, or a truncated value.
     expect(entryKey(`sha256-${"ab".repeat(32)}`)).toBeNull();
     expect(entryKey(integrity.slice(0, -4))).toBeNull();
@@ -166,7 +167,7 @@ describe("plugin store", () => {
     for (const [name, want] of vectors) expect(nameSegments(name).join("/")).toBe(want);
     const integrity = `sha512-${Buffer.alloc(64, 0xab).toString("base64")}`;
     expect(entryDir("/t", "@penguinharness/sandbox-bwrap", "0.2.2", integrity)).toBe(
-      path.join("/t", "packages/@penguinharness/sa/nd/sandbox-bwrap/0.2.2", "ab".repeat(8)),
+      path.join("/t", "packages/@penguinharness/sa/nd/sandbox-bwrap/0.2.2", "q6urq6urq6urq6ur"),
     );
   });
 

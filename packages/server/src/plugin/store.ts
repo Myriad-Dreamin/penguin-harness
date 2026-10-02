@@ -5,7 +5,8 @@
  * `<root>/plugin-store/` has the shape of the tree the build lays out (scripts/build-plugins.mjs)
  * and of the index repository's (penguin-plugins), one path rule for all three
  * (scripts/plugin-entry.mjs): beside `.staging/` there is only `packages/`, and one entry per
- * `packages/[<@scope>/]<bucket>/<name>/<version>/<first 16 hex digits of integrity>/`, holding
+ * `packages/[<@scope>/]<bucket>/<name>/<version>/<key>/` — the key is the integrity's first 16
+ * base64 characters, path safe (scripts/plugin-entry.mjs) — holding
  *
  *   manifest.toml      the index manifest (the repository's fields, `integrity` required)
  *   package/           the unpacked package, its dependencies inside its own `node_modules`
@@ -110,7 +111,7 @@ export function pluginStoreDir(root: string): string {
   return path.join(root, PLUGIN_STORE_DIR);
 }
 
-/** An entry's directory: `<store>/packages/…/<name>/<version>/<first 16 hex digits>`. */
+/** An entry's directory: `<store>/packages/…/<name>/<version>/<key>`. */
 export function storeEntryDir(
   root: string,
   name: string,
@@ -174,7 +175,20 @@ export async function storePackage(
   }
   const dest = storeEntryDir(root, name, version, integrity);
   const entry: StoredEntry = { name, version, integrity, dir: dest };
-  if (isStored(dest)) return entry;
+  if (isStored(dest)) {
+    // A key is a prefix of the integrity; on a case-insensitive filesystem two keys differing
+    // only in case meet in one directory. What is there must be this content.
+    const there = await fsp.readFile(path.join(dest, MANIFEST_FILE), "utf8").then(
+      (t) => parseToml(t).integrity,
+      () => undefined,
+    );
+    if (there !== integrity) {
+      throw new PluginStoreError(
+        `${name}@${version}: ${dest} holds ${String(there)}, not ${integrity} (keys that differ only in case?)`,
+      );
+    }
+    return entry;
+  }
   const stage = await stagingDir(root);
   try {
     await layOutEntry(stage, pkgDir, prefixDir, {

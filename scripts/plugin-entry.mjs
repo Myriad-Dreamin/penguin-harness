@@ -2,7 +2,7 @@
  * One plugin entry — one package at one version with one content — as the build, a machine's
  * plugin store and the index repository (Prism-Shadow/penguin-plugins) all lay it out:
  *
- *   packages/[<@scope>/]<bucket>/<name>/<version>/<first 16 hex digits of its integrity>/
+ *   packages/[<@scope>/]<bucket>/<name>/<version>/<key>/
  *     manifest.toml      the index manifest, `integrity` required
  *     package/           the package, every dependency it needs inside its own node_modules
  *
@@ -26,7 +26,12 @@
  * dist.integrity`. It covers the package, not its dependencies. Nothing here hashes a directory:
  * the build computes it over the very tarball it publishes (`tarballIntegrity`), a fetch takes
  * the value npm recorded for what it downloaded, and the index repository takes the registry's.
- * An entry's directory is the first 16 hex digits of the sha512.
+ * An entry's directory, its KEY, is the integrity's own first 16 base64 characters made path
+ * safe (`+` → `-`, `/` → `_`, as base64url writes them): `sha512-I9XMINsuCWQOUXWr…` is filed
+ * under `I9XMINsuCWQOUXWr/`, so a directory and the integrity it holds read alike. Base64 is
+ * case-sensitive and a case-insensitive filesystem (macOS, Windows) is not: two keys differing
+ * only in case would share a directory. Sixteen characters keep that out of reach (over 80
+ * bits survive case folding), and the store checks a found entry's manifest anyway.
  */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -40,15 +45,17 @@ export const INDEX_FILE = "index.json";
 
 /** `sha512-<base64 of 64 bytes>`: an entry's integrity, npm's `dist.integrity`. */
 export const INTEGRITY = /^sha512-([A-Za-z0-9+/]{86}==)$/;
-/** How many hex digits of the integrity name an entry's directory. */
+/** How many base64 characters of the integrity name an entry's directory. */
 export const KEY_LENGTH = 16;
 
 const byCodeUnit = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** The directory key of an integrity: the first 16 hex digits of its sha512, or null when malformed. */
+/** The directory key of an integrity: its first 16 base64 characters, path safe; null when malformed. */
 export function entryKey(integrity) {
   const b64 = INTEGRITY.exec(integrity)?.[1];
-  return b64 === undefined ? null : Buffer.from(b64, "base64").toString("hex").slice(0, KEY_LENGTH);
+  return b64 === undefined
+    ? null
+    : b64.slice(0, KEY_LENGTH).replace(/\+/g, "-").replace(/\//g, "_");
 }
 
 /** npm's integrity of a tarball file: `sha512-<base64>` of its bytes (what `dist.integrity` is). */
