@@ -58,20 +58,18 @@ import { NAV_ICONS } from "../../lib/nav-icons";
 import { chordKeys } from "../../components/ui/chord-kbd";
 import { useDisplayedBinding, useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { useCoarsePointer } from "../../lib/use-coarse-pointer";
-import { useTerminalChrome } from "../terminal/terminal-appearance";
 import {
   displayTitle,
   killTerminal,
   liveTerminals,
-  subscribeTerminals,
-} from "../terminal/terminal-list";
-import {
+  subscribeTerminalCloseRequests,
   subscribeTerminalViewStates,
+  subscribeTerminals,
   terminalViewContainer,
   terminalViewState,
-  subscribeTerminalCloseRequests,
-} from "../terminal/terminal-view-pool";
-import type { TerminalInfo } from "../terminal/terminal-view";
+  useTerminalChrome,
+  type TerminalInfo,
+} from "../terminal";
 import { isBrowserOffered, subscribeBrowser } from "../builtin-browser/browser-store";
 import { confirmClose } from "./close-guard";
 import { createShellInDock, detachTerminal, openTerminalInDock } from "./dock-terminal";
@@ -633,7 +631,7 @@ export function DockPanel({
   const killConfirm = (
     <ConfirmModal
       open={confirmKill !== null}
-      title={S.dock.killConfirmTitle}
+      title={S.terminal.killConfirmTitle}
       onClose={() => setConfirmKill(null)}
       onConfirm={killConfirmed}
       confirmLabel={S.terminal.killShell}
@@ -641,7 +639,7 @@ export function DockPanel({
     >
       {confirmKill !== null && (
         <p className="break-words text-sm text-gray-600 dark:text-gray-300">
-          {S.dock.killConfirmBody(confirmKill.label)}
+          {S.terminal.killConfirmBody(confirmKill.label)}
         </p>
       )}
     </ConfirmModal>

@@ -55,7 +55,7 @@ import type { SpringDriver } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { NAV_ICONS } from "../../lib/nav-icons";
 import { toneInk } from "../../lib/tone";
-import { subscribeTerminals, terminalApiSupported } from "../terminal/terminal-list";
+import { subscribeTerminals, terminalApiSupported } from "../terminal";
 import { isBrowserOffered, subscribeBrowser } from "../builtin-browser/browser-store";
 import { openTerminalInDock } from "./dock-terminal";
 import { panelGlyph, panelLabel } from "./panel-meta";
