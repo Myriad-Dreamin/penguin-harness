@@ -17,6 +17,7 @@ import { authMiddleware } from "../auth/middleware.js";
 import type { AppEnv } from "../auth/middleware.js";
 import type { Auth } from "../mechanisms/identity.js";
 import { HttpError } from "../http/errors.js";
+import { pushedCliProblem } from "./cli-check.js";
 import { Channels, Config, Hmr, HmrControl } from "./capabilities.js";
 import { acceptsLeavingOut, answerPush, openPushSlip } from "./push-plugins.js";
 import type { Resources } from "@prismshadow/penguin-core/kernel";
@@ -86,13 +87,18 @@ export function hmrRoutes(deps: HmrRouteDeps): Hono<AppEnv> {
   // THE ONE upgrade endpoint: platform + cli + web move together, atomically — there is no
   // route that updates any of the three alone. The body and the answer are the mechanism's
   // (packages/hmr); live clients (browser tabs AND the desktop window) are told to reload
-  // once a version actually lands.
+  // once a version actually lands. A push whose CLI bundle cannot be loaded is refused
+  // first (cli-check.ts): server start paths run the pushed CLI after the next restart.
   //
   // A build that cannot run every installed plugin is refused unless the pusher accepted that
   // (push-plugins.ts). Pushes are taken one at a time here: the slip is one registry entry,
   // and a second push registering over the first would hand its answer to the wrong boot.
   let pushes: Promise<unknown> = Promise.resolve();
-  routes.post("/upgrade", (c) => {
+  routes.post("/upgrade", async (c) => {
+    const problem = await pushedCliProblem(c.req.raw.clone(), deps.control.readBlob);
+    if (problem !== null) {
+      return c.json({ error: { code: "bad_request", message: problem } }, 400);
+    }
     const push = pushes.then(async () => {
       const { slip, close } = openPushSlip(deps.resources, acceptsLeavingOut(c.req.raw));
       try {
