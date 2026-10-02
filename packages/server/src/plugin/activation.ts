@@ -142,7 +142,9 @@ export async function writeCurrent(
     plugins: tableOf(selection.plugins),
     previous: selection.previous === null ? null : tableOf(selection.previous),
   };
-  const tmp = `${file}.${process.pid}.tmp`;
+  // One server per data root (server.lock), so one fixed name: a crash's leftover is simply
+  // overwritten by the next write.
+  const tmp = `${file}.tmp`;
   await fsp.writeFile(tmp, `${JSON.stringify(doc, null, 2)}\n`);
   await fsp.rename(tmp, file);
 }
