@@ -92,7 +92,11 @@ describe("POST /api/hmr/upgrade: the pushed CLI must start", () => {
   it("refuses a CLI whose cli() fails", async () => {
     let cookie: string;
     ({ t, cookie } = await installedApp());
-    const res = await push(t, cookie, "export async function cli() { throw new Error('no start'); }\n");
+    const res = await push(
+      t,
+      cookie,
+      "export async function cli() { throw new Error('no start'); }\n",
+    );
     expect(res.status).toBe(400);
     expect(await res.text()).toContain("no start");
   });
