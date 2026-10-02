@@ -57,6 +57,7 @@
   },
   "files": [
     "dist",
+    "plugins/index.json",
     "LICENSE"
   ],
   "publishConfig": {
