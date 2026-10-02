@@ -139,7 +139,8 @@ const isFile = (file: string): boolean => {
  * leaves the runner nothing to search. The lookup is Windows' own for a name without a
  * directory — `.exe` appended when it has no extension — over PATH's absolute entries only,
  * so neither the current directory nor a relative entry such as `.` takes part; a name PATH
- * does not carry is refused, never handed back to the runner's search. The path the runner
+ * does not carry is refused, never handed back to the runner's search (naming the `.cmd` or
+ * `.bat` PATH carries under that name, when there is one). The path the runner
  * gets is also the one its spawn error names ("command: …"). A program given with a
  * directory, relative or absolute, is passed on as it is.
  */
@@ -151,12 +152,31 @@ export function aclRunnerArgv(argv: readonly string[], host: AclRunnerHost = {})
   const exists = host.isFile ?? isFile;
   // Windows spells the variable `Path`; whichever key the environment has is the one read.
   const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH");
-  const file = path.win32.extname(program) === "" ? `${program}.exe` : program;
-  for (const entry of (key === undefined ? "" : (env[key] ?? "")).split(";")) {
-    const dir = entry.trim().replace(/^"(.*)"$/, "$1");
-    if (!path.win32.isAbsolute(dir)) continue;
+  const bare = path.win32.extname(program) === "";
+  const file = bare ? `${program}.exe` : program;
+  const dirs = (key === undefined ? "" : (env[key] ?? ""))
+    .split(";")
+    .map((entry) => entry.trim().replace(/^"(.*)"$/, "$1"))
+    .filter((dir) => path.win32.isAbsolute(dir));
+  for (const dir of dirs) {
     const candidate = path.win32.join(dir, file);
     if (exists(candidate)) return [candidate, ...rest];
+  }
+  // A stdio MCP Server's launch command comes through here too, and `npx` or `uvx` is a batch
+  // file on Windows: name the one PATH carries, so a missing .exe does not read as a missing
+  // install. The lookup stays .exe-only — this changes what the refusal says, not what starts.
+  const batch = bare
+    ? dirs
+        .flatMap((dir) => [".cmd", ".bat"].map((ext) => path.win32.join(dir, program + ext)))
+        .find((candidate) => exists(candidate))
+    : undefined;
+  if (batch !== undefined) {
+    throw new Error(
+      `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on the ` +
+        `harness's PATH, which carries the batch file ${batch}; a bare name is looked up as ` +
+        `.exe only, so to hand over the batch file, name it with its extension ` +
+        `("${path.win32.basename(batch)}"); refusing to run the command unconfined.`,
+    );
   }
   throw new Error(
     `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on the ` +
