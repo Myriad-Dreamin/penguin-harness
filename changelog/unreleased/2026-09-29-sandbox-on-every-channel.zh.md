@@ -22,6 +22,11 @@
 - 从 registry 现取时以 npm 的常规布局安装，只有 npm 为所下载 tarball 记下的 integrity 与索引一致时才入仓。
 - 插件仓条目的目录名取该 sha512 的前 16 位十六进制。Project 插件表里的钉住、`POST …/plugins/installed` 的 `integrity` 与每条索引条目都用这一写法。
 
+## 激活
+
+- `<数据根>/plugins/current` 就是选择本身：一个 JSON 文件，为进程要加载的每个插件写明它的仓条目（名字、版本、integrity），以及上一次的选择。插件直接从仓条目的 `package/` 导入。`plugins/` 下的代目录及其链接、完成标记一并去掉；更早布局的指针读作没有选择，下一次激活时被替换。
+- 每一步只有一个提交点，都是一次改名：仓条目在 `.staging/` 里连同 `.stored` 写完整，再改名到位；选择写进 `current.tmp`，在它指名的条目都入仓之后改名覆盖 `current`；回收的条目先改名进 `.staging/` 再删除，崩溃不会留下带 `.stored` 却缺文件的条目。启动失败时写回上一次的选择。
+
 ## 从 registry 现取
 
 - 现取运行 `PATH` 上的 `npm`。只有现取所用的 npm 会在 `PATH` 末尾追加运行服务器的 Node 运行时所在目录：CLI 安装包的运行时含 npm，没有 npm 的机器也能现取，用户自己的 npm 仍然优先。服务器自身的 `PATH`（Agent 命令继承的那个）不变。在 Windows 上经 shell 启动 `npm.cmd`（Node 启动 `.cmd` 文件必须经 shell），每个参数都按 cmd.exe 的规则加引号；会被 cmd.exe 展开或拆开的参数直接拒绝。

@@ -22,6 +22,11 @@ Every build now carries a bundled plugin directory: the plugins it built, instal
 - A registry fetch installs with npm's ordinary layout and stores the package only when the integrity npm recorded for the tarball it downloaded is the index's.
 - A plugin store entry's directory is the first 16 hex digits of that sha512. A pin in a Project's plugin table, the `integrity` of `POST …/plugins/installed`, and every index entry take this form.
 
+## Activation
+
+- `<data root>/plugins/current` is the selection itself: a JSON file naming, for each plugin a process loads, its store entry (name, version, integrity), and the selection before it. A plugin is imported straight from its store entry's `package/`. The generation directories under `plugins/`, with their links and completion markers, are gone; an earlier layout's pointer is read as no selection and replaced at the next activation.
+- Each step has one commit point, a rename: a store entry is written whole in `.staging/` with `.stored` inside it and renamed into place; the selection is written to `current.tmp` and renamed over `current`, only after every entry it names is stored; a swept entry is renamed into `.staging/` before it is deleted, so a crash never leaves a marked entry with files missing. A boot that fails writes the previous selection back.
+
 ## Registry fetch
 
 - The fetch runs the `npm` on `PATH`. The fetch's npm alone gets the running Node runtime's directory appended to the end of its `PATH`: a CLI bundle's runtime carries npm, so a machine without npm still fetches, and a user's own npm keeps coming first. The server's own `PATH`, which agent commands inherit, is unchanged. On Windows it starts `npm.cmd` through a shell, which Node requires for a `.cmd` file, with every argument quoted for cmd.exe; an argument that cmd.exe would expand or split is refused.
