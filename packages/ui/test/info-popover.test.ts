@@ -25,10 +25,11 @@ describe("InfoPopover", () => {
     createElement(InfoPopover, { children: "Values take effect from the next task." }),
   );
 
-  it("is a real button carrying an accessible name, shown through the tooltip layer", () => {
+  it("is a real button carrying an accessible name, and no hover tooltip over its own panel", () => {
     expect(html).toMatch(/^<button type="button"/);
     expect(html).toContain('aria-label="More info"');
-    expect(html).toContain('data-tooltip="More info"');
+    // Hovering opens the panel itself; a tooltip naming the button would stack on top of it.
+    expect(html).not.toContain("data-tooltip=");
     expect(html).not.toContain("title=");
   });
 
