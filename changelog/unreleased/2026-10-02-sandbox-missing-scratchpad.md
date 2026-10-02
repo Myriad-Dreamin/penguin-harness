@@ -3,6 +3,7 @@
 - **Date:** 2026-10-02
 - **Type:** fix
 - **Scope:** `server`, `core`
+- **PR:** [Myriad-Dreamin/penguin-harness#190](https://github.com/Myriad-Dreamin/penguin-harness/pull/190)
 
 [中文版](2026-10-02-sandbox-missing-scratchpad.zh.md)
 
