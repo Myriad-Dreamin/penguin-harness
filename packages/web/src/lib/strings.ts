@@ -699,6 +699,24 @@ export const zh = {
       `在${machine === null ? "本机" : ` ${machine} `}上执行「${action}」？它会立即在那台机器上运行，具体做什么由插件决定。`,
     /** Under a number field whose box does not parse; the save is not sent. */
     pluginFieldNotNumber: "必须是数字",
+    /** The fold holding the fields a settings group marks advanced. */
+    pluginAdvanced: "高级选项",
+    /** A table cell its row does not let change, beside the lock mark. */
+    pluginCellLocked: "此行固定，不可修改",
+    pluginCellOn: "开",
+    pluginCellOff: "关",
+    /** Asked when the Sandbox switch is turned on and the machine has no sandbox backend. */
+    sandboxBackendPrompt: {
+      title: "安装沙盒后端",
+      body: (machine: string, pkg: string) =>
+        `${machine} 没有适用于其操作系统的沙盒后端，新会话暂时无法进入沙盒。是否安装 ${pkg}？`,
+      cost: "安装会重新装载服务器的插件，所有项目中正在进行的 Agent 运行都会停止。无论是否安装，开关都保持打开。",
+      install: "安装",
+      installing: "正在安装…",
+      later: "暂不",
+      dontAsk: "此机器不再询问",
+      noProject: "请先打开一个项目：后端会安装到当前项目。",
+    },
     uploadsTitle: "上传",
     /** The compression switch and the size above which it applies. */
     imageCompression: "压缩大图",
