@@ -9,10 +9,14 @@
  *
  *   manifest.toml      the index manifest (the repository's fields, `integrity` required)
  *   package/           the unpacked package, its dependencies inside its own `node_modules`
- *   .stored            the completion marker, written LAST; its mtime is when it was stored
+ *   .stored            the completion marker; its mtime is when it was stored
  *
- * An entry without `.stored` does not exist: it is a write that did not finish, and the next
- * write of the same content replaces it. Nothing outside `packages/` is read: a directory an
+ * ATOMIC. An entry is written whole in `.staging/` — `.stored` included, last — and committed
+ * by ONE rename into its place, so it appears complete or not at all. It leaves the same way:
+ * renamed into `.staging/`, then deleted there (`discardDir`). An entry without `.stored` does
+ * not exist: an earlier layout's or an interrupted write's leftover, discarded by the next
+ * write of the same content. A rename that finds the entry already complete (the same content
+ * stored meanwhile) has nothing left to do. Nothing outside `packages/` is read: a directory an
  * earlier layout left at the top is neither an entry nor linked.
  *
  * THE KEY IS THE CONTENT, AND THE CONTENT IS NPM'S. `integrity` is npm's `dist.integrity` —
@@ -40,6 +44,7 @@
  * to an entry's `package/` (plugin/activation.ts).
  */
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -123,6 +128,23 @@ export function isStored(dir: string): boolean {
   return fs.existsSync(path.join(dir, STORED_FILE));
 }
 
+/**
+ * Removes `dir` in one step for any reader: renamed into `.staging/` (the same filesystem), then
+ * deleted there. A crash midway leaves a staging directory, which the sweep removes.
+ */
+export async function discardDir(root: string, dir: string): Promise<void> {
+  const staging = path.join(pluginStoreDir(root), STAGING_DIR);
+  await fsp.mkdir(staging, { recursive: true });
+  const gone = path.join(staging, `d-${process.pid}-${randomUUID()}`);
+  try {
+    await fsp.rename(dir, gone);
+  } catch (err) {
+    if ((err as { code?: string }).code === "ENOENT") return;
+    throw err;
+  }
+  await fsp.rm(gone, { recursive: true, force: true });
+}
+
 /** A fresh directory under `.staging/`; the caller removes it. */
 async function stagingDir(root: string): Promise<string> {
   const staging = path.join(pluginStoreDir(root), STAGING_DIR);
@@ -159,11 +181,16 @@ export async function storePackage(
       stringifyToml: (value) => stringifyToml(value),
       integrity,
     });
-    // A directory without the marker is a write that did not finish: replaced, not trusted.
-    await fsp.rm(dest, { recursive: true, force: true });
+    // Complete before it is in place: the rename below is the one step that stores it.
+    await fsp.writeFile(path.join(stage, STORED_FILE), "");
+    // A directory without the marker is a write that did not finish: discarded, not trusted.
+    if (fs.existsSync(dest)) await discardDir(root, dest);
     await fsp.mkdir(path.dirname(dest), { recursive: true });
-    await fsp.rename(stage, dest);
-    await fsp.writeFile(path.join(dest, STORED_FILE), "");
+    try {
+      await fsp.rename(stage, dest);
+    } catch (err) {
+      if (!isStored(dest)) throw err;
+    }
     return entry;
   } finally {
     await fsp.rm(stage, { recursive: true, force: true });

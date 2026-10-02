@@ -87,7 +87,7 @@ describe("loadPluginHost", () => {
     // claude-code plugin shipped to a machine and the old one kept spawning.
     const root = await rootAsking(["@acme/real"]);
     try {
-      // Shipped by a push; loaded from the store entry the current generation links to.
+      // Shipped by a push; loaded from the store entry the selection names.
       const assets = path.join(root, "hmr", "store", "assets", "a");
       await writeShipped(assets, { name: "@acme/real", module: "AcmeReal" });
 

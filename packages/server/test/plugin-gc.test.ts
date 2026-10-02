@@ -1,7 +1,6 @@
 /**
- * The plugin sweep (src/plugin/gc.ts): the store keeps what a kept generation or a pin needs and
- * what is less than a day old; the activation directory keeps the generations it is told to;
- * `.staging/` keeps what is less than a day old.
+ * The plugin sweep (src/plugin/gc.ts): the store keeps what the kept selections name, what a pin
+ * needs and what is less than a day old; `.staging/` keeps what is less than a day old.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -56,7 +55,7 @@ async function storedAt(entry: StoredEntry, at: number): Promise<void> {
 }
 
 describe("the store", () => {
-  it("keeps what a kept generation, a pin or the last day needs, and removes the rest", async () => {
+  it("keeps what a kept selection, a pin or the last day needs, and removes the rest in one step", async () => {
     const inCurrent = await stored("@acme/current", "Current");
     const inPrevious = await stored("@acme/previous", "Previous");
     const pinned = await stored("@acme/pinned", "Pinned");
@@ -68,7 +67,7 @@ describe("the store", () => {
     await storedAt(recent, now - DAY + 60_000);
 
     const report = await sweepPlugins(root, {
-      keep: [current.current, previous.current],
+      keep: [...current.current.plugins, ...previous.current.plugins],
       pins: [{ name: pinned.name, integrity: pinned.integrity }],
       now,
       log: () => {},
@@ -81,37 +80,20 @@ describe("the store", () => {
     expect(await exists(path.join(pluginStoreDir(root), "packages", "@acme", "st"))).toBe(false);
     expect(await exists(path.join(pluginStoreDir(root), "packages", "@acme", "cu"))).toBe(true);
     expect(await exists(stale.dir)).toBe(false);
-  });
-
-  it("removes no entry when a kept generation cannot be read", async () => {
-    const stale = await stored("@acme/stale", "Stale");
-    const report = await sweepPlugins(root, {
-      keep: ["0123456789abcdef"],
-      now: later(),
-      log: () => {},
-    });
-    expect(await exists(stale.dir)).toBe(true);
-    expect(report.entries).toBe(0);
+    // Removed by a rename into `.staging/` and deleted there: nothing of it is left behind.
+    expect(await fs.readdir(path.join(pluginStoreDir(root), ".staging"))).toEqual([]);
   });
 });
 
-describe("the activation directory and .staging", () => {
-  it("keep the generations they are told to, and staging less than a day old", async () => {
-    await stored("@acme/a", "A");
-    await stored("@acme/b", "B");
-    const a = await activatePlugins(root, asks(["@acme/a"]), null);
-    await activatePlugins(root, asks(["@acme/b"]), null);
-    const both = await activatePlugins(root, asks(["@acme/a", "@acme/b"]), null);
+describe(".staging", () => {
+  it("keeps what is less than a day old", async () => {
     const staging = path.join(pluginStoreDir(root), ".staging");
     await fs.mkdir(path.join(staging, "w-new"), { recursive: true });
     const old = new Date(Date.now() - 2 * DAY);
     await fs.mkdir(path.join(staging, "w-old"));
     await fs.utimes(path.join(staging, "w-old"), old, old);
-    const report = await sweepPlugins(root, { keep: [both.current, a.current], log: () => {} });
-    expect(report.generations).toBe(1);
-    expect((await fs.readdir(path.join(root, "plugins"))).sort()).toEqual(
-      ["current", a.current, both.current].sort(),
-    );
+    const report = await sweepPlugins(root, { keep: [], log: () => {} });
+    expect(report.staging).toBe(1);
     expect(await fs.readdir(staging)).toEqual(["w-new"]);
   });
 });

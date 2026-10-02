@@ -156,7 +156,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       const declared = await readPluginDeclaration(specifier, bases);
       if ("error" in declared) {
         // The loader's own reason first: a name activation could not place (a pin no stored
-        // entry has) is not in the generation either, and "not installed" would hide why.
+        // entry has) is not in the selection either, and "not installed" would hide why.
         const reason = skipped.get(specifier) ?? declared.error;
         plugins.push({
           specifier,

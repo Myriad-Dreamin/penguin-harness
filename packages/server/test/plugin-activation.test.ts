@@ -1,16 +1,16 @@
 /**
- * Plugin activation: a process loads plugins from one place, the generation `<root>/plugins/current`
- * names, which links store entries; the generation is resolved from the closure.
+ * Plugin activation: a process loads the store entries one file names, `<root>/plugins/current`
+ * (the selection); the selection is resolved from the closure.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   activatePlugins,
   chooseEntry,
-  currentGeneration,
-  readGeneration,
+  readCurrent,
+  selectedPackageDir,
 } from "../src/plugin/activation.js";
 import type { PluginAsk } from "../src/plugin/activation.js";
 import { storeEntryDir, storePackage } from "../src/plugin/store.js";
@@ -54,30 +54,36 @@ async function fetched(name: string, module: string, version: string) {
 
 const asks = (entries: Record<string, PluginAsk[]>) => new Map(Object.entries(entries));
 
-describe("a generation", () => {
-  it("links store entries, is keyed by its content, and is what current points at", async () => {
+describe("the selection", () => {
+  it("names store entries, is rewritten only when it changes, and records the one before it", async () => {
     const assets = path.join(root, "hmr", "store", "assets", "a");
     await ship(assets, "@acme/one", "One");
     await ship(assets, "@acme/two", "Two");
     const first = await activatePlugins(root, asks({ "@acme/one": [{}] }), assets);
-    expect(currentGeneration(root)).toBe(first.current);
-    const [row] = (await readGeneration(root, first.current))!;
-    const link = path.join(root, "plugins", first.current, "node_modules", "@acme", "one");
-    expect(await realpath(link)).toBe(
-      await realpath(
-        path.join(storeEntryDir(root, row!.name, row!.version, row!.integrity), "package"),
-      ),
+    expect(first.changed).toBe(true);
+    expect(readCurrent(root)).toEqual(first.current);
+    expect(first.current.previous).toBeNull();
+    const [row] = first.current.plugins;
+    expect(selectedPackageDir(root, row!)).toBe(
+      path.join(storeEntryDir(root, row!.name, row!.version, row!.integrity), "package"),
     );
+    // Nothing but the selection file is written under plugins/.
+    expect(await readdir(path.join(root, "plugins"))).toEqual(["current"]);
 
+    const file = path.join(root, "plugins", "current");
+    const written = (await stat(file)).mtimeMs;
     const same = await activatePlugins(root, asks({ "@acme/one": [{}] }), assets);
-    expect(same.current).toBe(first.current);
+    expect(same.changed).toBe(false);
+    expect((await stat(file)).mtimeMs).toBe(written);
+
     const both = await activatePlugins(
       root,
       asks({ "@acme/one": [{}], "@acme/two": [{}] }),
       assets,
     );
-    expect(both).toMatchObject({ previous: first.current });
-    expect(both.current).not.toBe(first.current);
+    expect(both.changed).toBe(true);
+    expect(both.current.previous).toEqual(first.current.plugins);
+    expect(both.current.plugins.map((e) => e.name)).toEqual(["@acme/one", "@acme/two"]);
   });
 
   it("switches to the content a push brings under an unchanged name and version", async () => {
@@ -87,12 +93,22 @@ describe("a generation", () => {
     await ship(after, "@acme/one", "After");
     const first = await activatePlugins(root, asks({ "@acme/one": [{}] }), before);
     const second = await activatePlugins(root, asks({ "@acme/one": [{}] }), after);
-    expect(second.current).not.toBe(first.current);
+    expect(second.current.plugins[0]!.integrity).not.toBe(first.current.plugins[0]!.integrity);
     const index = await readFile(
-      path.join(root, "plugins", second.current, "node_modules", "@acme", "one", "index.js"),
+      path.join(selectedPackageDir(root, second.current.plugins[0]!), "index.js"),
       "utf8",
     );
     expect(index).toContain("After");
+  });
+
+  it("reads an earlier layout's pointer as no selection, and replaces it", async () => {
+    await mkdir(path.join(root, "plugins", "0123456789abcdef"), { recursive: true });
+    await writeFile(path.join(root, "plugins", "current"), "0123456789abcdef\n");
+    expect(readCurrent(root)).toBeNull();
+    await fetched("@acme/one", "One", "1.0.0");
+    const done = await activatePlugins(root, asks({ "@acme/one": [{}] }), null);
+    expect(done).toMatchObject({ changed: true, before: null });
+    expect(readCurrent(root)?.plugins.map((e) => e.name)).toEqual(["@acme/one"]);
   });
 
   it("reports what it cannot place, and places the rest", async () => {

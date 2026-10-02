@@ -11,7 +11,7 @@
  * The closure is read from the FILES, without the database: this runs at boot, before the
  * platform exists, and a Project is a directory holding a `.project_config.toml`.
  *
- * A name resolves in ONE place: the current generation under `<root>/plugins/`, which the
+ * A name resolves in ONE place: the selection `<root>/plugins/current` names, which the
  * closure is resolved to against the plugin store before anything is imported
  * (plugin/activation.ts). Nothing else: a plugin is named by its package, never by a path — a
  * source checkout gets its plugins the way the CLI bundle does, through its bundled plugin
@@ -45,8 +45,11 @@ import type {
 import { moduleDefOf, parseManifest } from "@prismshadow/penguin-core/kernel";
 import {
   activatePlugins,
-  currentGenerationDir,
+  CURRENT_FILE,
   lendHostPackages,
+  pluginsDir,
+  readCurrent,
+  selectedPackageDir,
   type Activation,
   type PluginAsk,
 } from "./activation.js";
@@ -74,7 +77,7 @@ export interface PluginLoadResult {
   loaded: LoadedPlugin[];
   /** specifier → why it was skipped. */
   failed: Map<string, string>;
-  /** The generation this load activated, or null when activation failed and the current one was kept. */
+  /** What this load activated, or null when activation failed and the selection in force was kept. */
   activation: Activation | null;
 }
 /** The Project ids of a data root: every directory holding a `.project_config.toml`. */
@@ -184,7 +187,7 @@ function sweptRoots(): Set<string> {
 
 /**
  * The closure with what each Project asks of every name in it, first-asked order: the input a
- * generation is resolved from (plugin/activation.ts).
+ * selection is resolved from (plugin/activation.ts).
  */
 export async function readPluginAsks(
   root: string,
@@ -218,15 +221,18 @@ export async function readPluginClosure(
  * An npm prefix a package name is looked up in (`<dir>/package.json` + `<dir>/node_modules/…`),
  * under its own `node_modules` only.
  *
- * The loader has ONE: the current generation under `<root>/plugins/` (plugin/activation.ts).
+ * The loader has ONE: the selection `<root>/plugins/current` names (plugin/activation.ts), each
+ * package in its store entry — `packages` maps the names to those directories.
  * The bundled plugin directories a hot push and the installation carry are sources of the
  * plugin store, not lookup locations.
- * `builtin` marks a prefix the harness ships; whether a package in a generation is one the build
- * ships is the shipped list's (`shippedPlugins`).
+ * `builtin` marks a prefix the harness ships; whether a selected package is one the build ships is
+ * the shipped list's (`shippedPlugins`).
  */
 export interface PluginBase {
   file: string;
   builtin: boolean;
+  /** Where each name's package is, when the base is not an npm prefix (the selection). */
+  packages?: ReadonlyMap<string, string>;
 }
 
 /** A bare package name, scoped or not — never a subpath, a path, a URL or a version range. */
@@ -241,11 +247,13 @@ export function specifierFault(specifier: string): string | null {
   return `'${specifier}' is not a package name: a plugin is named by its package, never by a subpath, a URL or a version range`;
 }
 
-/** Where a package name is looked up: the current generation, or nowhere before the first activation. */
+/** Where a package name is looked up: the selection in force, or nowhere before the first activation. */
 export function pluginBases(root: string | undefined): PluginBase[] {
   if (root === undefined || root === "") return [];
-  const dir = currentGenerationDir(root);
-  return dir === null ? [] : [{ file: path.join(dir, "package.json"), builtin: false }];
+  const current = readCurrent(root);
+  if (current === null) return [];
+  const packages = new Map(current.plugins.map((e) => [e.name, selectedPackageDir(root, e)]));
+  return [{ file: path.join(pluginsDir(root), CURRENT_FILE), builtin: false, packages }];
 }
 
 /**
@@ -269,7 +277,7 @@ export async function committedAssetsDir(root: string): Promise<string | null> {
 /**
  * The package a bare name names under a base's own `node_modules`: its directory, its
  * manifest, and the base that found it — or null. Nothing about the package is assumed: it is
- * whatever the prefix holds there (in a generation, a link to a store entry's package).
+ * whatever the prefix holds there, or the store entry the selection names.
  */
 export function resolvePluginPackage(
   specifier: string,
@@ -277,7 +285,11 @@ export function resolvePluginPackage(
 ): { dir: string; manifest: string; base: PluginBase } | null {
   if (!PACKAGE_NAME.test(specifier)) return null;
   for (const base of bases) {
-    const dir = path.join(path.dirname(base.file), "node_modules", ...specifier.split("/"));
+    const dir =
+      base.packages !== undefined
+        ? base.packages.get(specifier)
+        : path.join(path.dirname(base.file), "node_modules", ...specifier.split("/"));
+    if (dir === undefined) continue;
     const manifest = path.join(dir, "package.json");
     if (existsSync(manifest)) return { dir, manifest, base };
   }
@@ -330,8 +342,8 @@ function resolvePlugin(
   if (found === null) return null;
   const file = packageEntry(found.dir, found.manifest);
   if (file === null) return null;
-  // Through the generation's link, to the store entry: one content is one file, whichever
-  // generation names it, so a re-activation that keeps a package keeps its imported module.
+  // The store entry's real path: one content is one file, whichever selection names it, so a
+  // re-activation that keeps a package keeps its imported module.
   let real = file;
   try {
     real = realpathSync(file);
@@ -410,7 +422,7 @@ export async function readPluginDeclaration(
   const resolved = resolvePlugin(specifier, bases);
   if (resolved === null) {
     return {
-      error: `'${specifier}' is not installed on this machine (the current plugin generation under <root>/plugins does not hold it)`,
+      error: `'${specifier}' is not installed on this machine (the selection in <root>/plugins/current does not name it)`,
     };
   }
   if (!existsSync(resolved.file)) {
@@ -583,7 +595,7 @@ export async function loadPlugins(
    * Entries an earlier App already imported, by specifier. Reused when the specifier still
    * resolves to the FILE that entry came from, unchanged since — the objects then keep their
    * identity across a swap, which is what the plugin host is parked for. A different file
-   * (the generation now links another store entry) or a file rewritten in place (a dev
+   * (the selection now names another store entry) or a file rewritten in place (a dev
    * checkout's plugin) means different code, and that is imported.
    */
   reuse: ReadonlyMap<string, LoadedPlugin> = new Map(),
@@ -596,24 +608,24 @@ export async function loadPlugins(
   // available without a download — that is what `builtin` means — but availability is not
   // consent: it loads when a Project asks for it, like every other plugin.
   const asks = await readPluginAsks(root, machineId);
-  // The generation the closure resolves to becomes current before anything is imported. When
-  // activation itself fails, whatever generation was current stays so and is loaded.
+  // The selection the closure resolves to is made current before anything is imported. When
+  // activation itself fails, whatever selection was in force stays so and is loaded.
   let activation: Activation | null = null;
   try {
     activation = await activatePlugins(root, asks, pushedAssets);
   } catch (err) {
     console.warn(
-      `[plugins] activation failed, the current generation is kept: ${err instanceof Error ? err.message : String(err)}`,
+      `[plugins] activation failed, the selection in force is kept: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  // The sweep follows the flip, in this boot — so on the assembly queue, never beside a
-  // generation being written — and runs once at the first activation of the process.
+  // The sweep follows a changed selection, in this boot — so on the assembly queue, never
+  // beside an activation — and runs once at the first activation of the process.
   if (activation !== null) {
     const first = !sweptRoots().has(root);
-    if (first || activation.current !== activation.previous) {
+    if (first || activation.changed) {
       sweptRoots().add(root);
       await sweepPlugins(root, {
-        keep: [activation.current, ...(activation.previous !== null ? [activation.previous] : [])],
+        keep: [...activation.current.plugins, ...(activation.current.previous ?? [])],
         pins: await readPluginPins(root),
       });
     }

@@ -392,19 +392,22 @@ describe("builtin plugins", () => {
     expect(pluginBases(root)).toEqual([]);
   });
 
-  it("looks a name up in the current generation alone", async () => {
+  it("looks a name up in the selection alone", async () => {
     const assets = path.join(root, "hmr", "store", "assets", "abc");
     await writeBuiltin(path.join(assets, "plugins"), "@acme/penguin-plugin-one", "One");
     await writeBuiltin(path.join(root, "plugins"), "@acme/installed", "Installed");
     await writeConfig({ plugins: ["@acme/penguin-plugin-one", "@acme/installed"] });
     const result = await loadPlugins(root, assets);
     expect(result.loaded.map((p) => p.specifier)).toEqual(["@acme/penguin-plugin-one"]);
-    // The old prefix's package is not in the store, so no generation holds it.
+    // The old prefix's package is not in the store, so no selection names it.
     expect(result.failed.get("@acme/installed")).toMatch(/not in the plugin store/);
-    const gen = await readFile(path.join(root, "plugins", "current"), "utf8");
-    expect(pluginBases(root)).toEqual([
-      { file: path.join(root, "plugins", gen.trim(), "package.json"), builtin: false },
-    ]);
+    const [base, ...rest] = pluginBases(root);
+    expect(rest).toEqual([]);
+    expect(base).toMatchObject({ file: path.join(root, "plugins", "current"), builtin: false });
+    expect([...base!.packages!.keys()]).toEqual(["@acme/penguin-plugin-one"]);
+    expect(base!.packages!.get("@acme/penguin-plugin-one")).toMatch(
+      /plugin-store[\\/]packages[\\/]@acme[\\/].+[\\/]package$/,
+    );
   });
 
   it("does not load a shipped plugin until it is listed, and then loads it from the shipped prefix", async () => {

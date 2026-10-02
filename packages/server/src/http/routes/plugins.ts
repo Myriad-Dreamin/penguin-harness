@@ -56,7 +56,7 @@ import {
 } from "../../plugin/registry.js";
 import type { CachedRegistry, IndexSnapshot, PluginRegistry } from "../../plugin/registry.js";
 import { pluginBases, shippedBases } from "../../plugin/loader.js";
-import { currentGeneration, readGeneration } from "../../plugin/activation.js";
+import { readCurrent } from "../../plugin/activation.js";
 import { readStore } from "../../plugin/store.js";
 import { compareVersions } from "../../api/plugin-pick.js";
 import type { PluginBase } from "../../plugin/loader.js";
@@ -264,19 +264,15 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
   return app;
 }
 
-/** The integrities this machine's store holds and its current generation links. */
+/** The integrities this machine's store holds and its selection in force names. */
 async function onThisMachine(
   root: string | undefined,
 ): Promise<{ stored: Set<string>; linked: Set<string> }> {
   if (root === undefined) return { stored: new Set(), linked: new Set() };
-  const gen = currentGeneration(root);
-  const [inStore, inGeneration] = await Promise.all([
-    readStore(root),
-    gen === null ? Promise.resolve(null) : readGeneration(root, gen),
-  ]);
+  const inStore = await readStore(root);
   return {
     stored: new Set(inStore.map((e) => e.integrity)),
-    linked: new Set((inGeneration ?? []).map((e) => e.integrity)),
+    linked: new Set((readCurrent(root)?.plugins ?? []).map((e) => e.integrity)),
   };
 }
 

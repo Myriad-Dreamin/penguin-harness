@@ -337,12 +337,9 @@ describe("installed plugins", () => {
       // Undone: the list is as it was, and what runs is what ran.
       expect(body.plugins.map((p) => [p.specifier, p.active])).toEqual([["@acme/fine", true]]);
       expect(await fs.readFile(listFile(), "utf8")).not.toContain("bad-boot");
-      // The pointer is back on the generation that ran, and the one that failed stays on disk.
+      // The selection that ran is written back, word for word; nothing else is under plugins/.
       expect(await current()).toBe(before);
-      const gens = (await fs.readdir(path.join(t.root, "plugins"))).filter((d) =>
-        /^[0-9a-f]{16}$/.test(d),
-      );
-      expect(gens.length).toBeGreaterThanOrEqual(2);
+      expect(await fs.readdir(path.join(t.root, "plugins"))).toEqual(["current"]);
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/deliberately fails to boot/));
     } finally {
       warn.mockRestore();

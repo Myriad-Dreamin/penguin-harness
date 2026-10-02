@@ -81,7 +81,7 @@ import type { Interfaces, MembersOf, ReassemblyChange } from "./capabilities.js"
 import { PLUGINS_RESOURCE_ID, pluginHostFrom } from "../plugin/host.js";
 import type { PluginHost } from "../plugin/host.js";
 import { loadPluginHost } from "../plugin/loader.js";
-import { currentGeneration, pointCurrent } from "../plugin/activation.js";
+import { readCurrent, sameSelection, writeCurrent } from "../plugin/activation.js";
 import { bootWithoutUnsatisfied } from "../plugin/unsatisfied.js";
 import { usePushedPluginLibrary, userText } from "@prismshadow/penguin-core";
 import { pushedLibraryDir } from "./asset-archives.js";
@@ -417,16 +417,21 @@ async function createInner(
   // over by the runtime, so the rule for reading it ships by push like every other policy.
   // Loading ACTIVATES first: what the push carried and what the installation ships go into
   // the plugin store, the closure is resolved against it, and `<root>/plugins/current` is
-  // pointed at that generation (plugin/activation.ts). This boot is the re-assembly's when a
-  // plugin change asked for one, so it runs on that one queue. The generation current before
-  // it is kept, to point back at when the rest of this boot fails.
+  // rewritten to that selection (plugin/activation.ts). This boot is the re-assembly's when a
+  // plugin change asked for one, so it runs on that one queue. The selection in force before
+  // it is kept, to write back when the rest of this boot fails.
   // A bare kernel has no root to read and keeps whatever was already imported.
-  const generationBefore = caps === null ? null : currentGeneration(caps.config.root);
-  const restoreGeneration = async (err: unknown): Promise<never> => {
-    if (caps !== null && currentGeneration(caps.config.root) !== generationBefore) {
-      await pointCurrent(caps.config.root, generationBefore).catch((undo: unknown) => {
+  const selectionBefore = caps === null ? null : readCurrent(caps.config.root);
+  const restoreSelection = async (err: unknown): Promise<never> => {
+    const now = caps === null ? null : readCurrent(caps.config.root);
+    const unchanged =
+      now === null || selectionBefore === null
+        ? now === selectionBefore
+        : sameSelection(now.plugins, selectionBefore.plugins);
+    if (caps !== null && !unchanged) {
+      await writeCurrent(caps.config.root, selectionBefore).catch((undo: unknown) => {
         console.warn(
-          `[plugins] could not point back at the previous generation: ${undo instanceof Error ? undo.message : String(undo)}`,
+          `[plugins] could not write back the previous selection: ${undo instanceof Error ? undo.message : String(undo)}`,
         );
       });
     }
@@ -442,7 +447,7 @@ async function createInner(
           // A Project may list a plugin for one machine only (`[plugins.<machineId>]`); this
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
-        ).catch(restoreGeneration);
+        ).catch(restoreSelection);
   // Plus whatever a test stood up in process, which no closure could name (see the id).
   const injected = ctx.resources.claim<PluginHost | null>(HMR_TEST_PLUGINS_RESOURCE_ID);
   if (injected != null && typeof injected.entries === "function") {

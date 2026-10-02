@@ -4099,7 +4099,7 @@ export interface PluginContent {
   integrity?: string;
   /** In this machine's plugin store. */
   stored: boolean;
-  /** Linked by the current generation, i.e. what this machine runs under the name. */
+  /** Named by the selection in force, i.e. what this machine runs under the name. */
   linked: boolean;
 }
 

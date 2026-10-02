@@ -1,23 +1,24 @@
 /**
- * Plugin activation: the one directory a process loads plugins from.
+ * Plugin activation: which stored plugins a process loads.
  *
- * `<root>/plugins/` holds GENERATIONS. `plugins/current` is a pointer file naming one of them,
- * `plugins/<gen>/`, an npm prefix:
+ * `<root>/plugins/current` is ONE FILE, the selection — JSON naming, for every plugin to load,
+ * the store entry by name, version and npm integrity; and the selection before it:
  *
- *   package.json              `dependencies` name → version (the prefix npm would write), and
- *                             `plugins` name → { version, integrity }, what the generation is
- *   node_modules/<name>       a link to the plugin store entry's `package/` (a symlink on
- *                             POSIX, a junction on Windows; a copy where neither can be made)
- *   .complete                 written last, before the directory is renamed into place
+ *   { "plugins":  { "<name>": { "version": "1.2.3", "integrity": "sha512-…" }, … },
+ *     "previous": { … } | null }
  *
- * A generation's key is the hash of the (name, integrity) list it holds, so the same selection is
- * the same directory. Writing one is atomic for a reader: it is built in `plugins/.tmp-<pid>/`,
- * marked complete, renamed to `plugins/<gen>/`, and only then is `current` flipped — by writing a
- * temporary file and renaming it over the pointer. A reader sees the whole old generation or the
- * whole new one, never a half. The generation current before a flip is the one a failed boot
- * points back at (hmr/platform.ts), and the other one the sweep keeps.
+ * A plugin is loaded straight from its store entry's `package/` (plugin/store.ts): there is no
+ * directory of links to keep in step. Nothing else under `<root>/plugins/` is read.
  *
- * A generation is RESOLVED from the closure (every Project's table for this machine): for each
+ * ATOMIC. An activation first gets every entry it will name into the store (each entry is
+ * committed by its own rename, and only with `.stored` inside it), and only then writes the
+ * selection: a temporary file beside `current`, renamed over it. That rename is the one step
+ * that changes what a process loads; a reader sees the whole old selection or the whole new
+ * one, and a crash before it leaves the old one in force. The same selection is not rewritten.
+ * A boot that fails after activating writes back the document it found (hmr/platform.ts). The
+ * sweep (plugin/gc.ts) keeps what `plugins` and `previous` name.
+ *
+ * A selection is RESOLVED from the closure (every Project's table for this machine): for each
  * name, the entry a Project pinned (`integrity`), or else the store entries whose version
  * satisfies what every Project asks; among those the highest version, and within one version
  * the content the running build carries (its hot push set, or the prefix the installation
@@ -26,15 +27,11 @@
  *
  * Activation runs at every App boot — the first, a hot push's, and every re-assembly, which
  * the platform serializes on its one queue (hmr/platform.ts), so two admins' edits never
- * interleave. A boot that fails after activating flips the pointer back to the generation
- * before it. After the flip the loader sweeps (plugin/gc.ts): generations other than these
- * two go. What is in `<root>/plugins/` besides generations (the npm
- * prefix older builds installed into) is neither read nor removed.
+ * interleave.
  *
- * A linked plugin runs from its store entry, so the host SDK it keeps external is lent to it
- * from the running program (`lendHostPackages`).
+ * A plugin runs from its store entry, so the host SDK it keeps external is lent to it from the
+ * running program (`lendHostPackages`).
  */
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import nodeModule from "node:module";
@@ -53,13 +50,8 @@ import { compareVersions, satisfies } from "../api/plugin-pick.js";
 
 /** `<root>/plugins`: the activation directory. */
 export const PLUGINS_DIR = "plugins";
-/** The pointer file naming the current generation. */
+/** The selection file. */
 export const CURRENT_FILE = "current";
-/** A generation's completion marker, written before it is renamed into place. */
-export const COMPLETE_FILE = ".complete";
-
-/** A generation's directory name. */
-export const GENERATION = /^[0-9a-f]{16}$/;
 
 export function pluginsDir(root: string): string {
   return path.join(root, PLUGINS_DIR);
@@ -72,127 +64,92 @@ export interface PluginAsk {
   integrity?: string;
 }
 
-/** One plugin of a generation. */
-export interface GenerationEntry {
+/** One plugin of a selection: the store entry it names. */
+export interface SelectedPlugin {
   name: string;
   version: string;
   /** npm's integrity, `sha512-<base64>`; the store entry's key is derived from it. */
   integrity: string;
 }
 
-/** The generation `current` names, when the pointer and a complete generation behind it exist. */
-export function currentGeneration(root: string): string | null {
-  let gen: string;
-  try {
-    gen = fs.readFileSync(path.join(pluginsDir(root), CURRENT_FILE), "utf8").trim();
-  } catch {
-    return null;
-  }
-  if (!GENERATION.test(gen)) return null;
-  return fs.existsSync(path.join(pluginsDir(root), gen, COMPLETE_FILE)) ? gen : null;
+/** The selection file: what loads, and what loaded before it. */
+export interface CurrentSelection {
+  plugins: SelectedPlugin[];
+  previous: SelectedPlugin[] | null;
 }
 
-/** The directory of the current generation, or null. */
-export function currentGenerationDir(root: string): string | null {
-  const gen = currentGeneration(root);
-  return gen === null ? null : path.join(pluginsDir(root), gen);
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+function tableOf(
+  list: readonly SelectedPlugin[],
+): Record<string, { version: string; integrity: string }> {
+  const sorted = [...list].sort((a, b) => byCodeUnit(a.name, b.name));
+  return Object.fromEntries(
+    sorted.map((e) => [e.name, { version: e.version, integrity: e.integrity }]),
+  );
 }
 
-/** The plugins a generation holds, from its package.json; null when it is not a generation. */
-export async function readGeneration(root: string, gen: string): Promise<GenerationEntry[] | null> {
-  let manifest: { plugins?: unknown };
-  try {
-    manifest = JSON.parse(
-      await fsp.readFile(path.join(pluginsDir(root), gen, "package.json"), "utf8"),
-    ) as { plugins?: unknown };
-  } catch {
-    return null;
-  }
-  const table = manifest.plugins;
-  if (table === null || typeof table !== "object") return null;
-  const out: GenerationEntry[] = [];
+function listOf(table: unknown): SelectedPlugin[] | null {
+  if (table === null || typeof table !== "object" || Array.isArray(table)) return null;
+  const out: SelectedPlugin[] = [];
   for (const [name, row] of Object.entries(table as Record<string, unknown>)) {
-    const r = row as { version?: unknown; integrity?: unknown };
-    if (typeof r.version !== "string" || typeof r.integrity !== "string") continue;
+    const r = (row ?? {}) as { version?: unknown; integrity?: unknown };
+    if (typeof r.version !== "string" || typeof r.integrity !== "string") return null;
     out.push({ name, version: r.version, integrity: r.integrity });
   }
   return out;
 }
 
-const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
-
-/** The key of a selection: the hash of its sorted (name, integrity) list, 16 hex digits. */
-export function generationKey(entries: readonly GenerationEntry[]): string {
-  const pairs = entries
-    .map((e) => [e.name, e.integrity] as const)
-    .sort(([a], [b]) => byCodeUnit(a, b));
-  return createHash("sha256").update(JSON.stringify(pairs)).digest("hex").slice(0, 16);
-}
-
 /**
- * `node_modules/<name>` → the store entry's package. A junction on Windows (no privilege
- * needed), a directory symlink elsewhere; a copy when the filesystem allows neither.
+ * The selection in force, or null — before the first activation, or when the file is not a
+ * selection (an earlier layout's pointer is read as none, and the next activation replaces it).
  */
-async function linkPackage(target: string, link: string): Promise<void> {
-  await fsp.mkdir(path.dirname(link), { recursive: true });
+export function readCurrent(root: string): CurrentSelection | null {
+  let doc: { plugins?: unknown; previous?: unknown };
   try {
-    await fsp.symlink(target, link, "junction");
-  } catch {
-    await fsp.cp(target, link, { recursive: true });
-  }
-}
-
-/**
- * Writes the generation holding `entries` — unless it already exists — and answers its key.
- * Built in `plugins/.tmp-<pid>/`, marked complete, then renamed into place.
- */
-export async function writeGeneration(
-  root: string,
-  entries: readonly GenerationEntry[],
-): Promise<string> {
-  const gen = generationKey(entries);
-  const dest = path.join(pluginsDir(root), gen);
-  if (fs.existsSync(path.join(dest, COMPLETE_FILE))) return gen;
-  const tmp = path.join(pluginsDir(root), `.tmp-${process.pid}`);
-  await fsp.rm(tmp, { recursive: true, force: true });
-  await fsp.mkdir(tmp, { recursive: true });
-  try {
-    const sorted = [...entries].sort((a, b) => byCodeUnit(a.name, b.name));
-    const manifest = {
-      name: "penguin-plugins-generation",
-      private: true,
-      version: "0.0.0",
-      dependencies: Object.fromEntries(sorted.map((e) => [e.name, e.version])),
-      plugins: Object.fromEntries(
-        sorted.map((e) => [e.name, { version: e.version, integrity: e.integrity }]),
-      ),
+    doc = JSON.parse(fs.readFileSync(path.join(pluginsDir(root), CURRENT_FILE), "utf8")) as {
+      plugins?: unknown;
+      previous?: unknown;
     };
-    await fsp.writeFile(path.join(tmp, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-    for (const e of sorted) {
-      const target = path.join(storeEntryDir(root, e.name, e.version, e.integrity), PACKAGE_DIR);
-      await linkPackage(target, path.join(tmp, "node_modules", ...e.name.split("/")));
-    }
-    await fsp.writeFile(path.join(tmp, COMPLETE_FILE), `${new Date().toISOString()}\n`);
-    // A directory without the marker is a write that did not finish: replaced, not trusted.
-    await fsp.rm(dest, { recursive: true, force: true });
-    await fsp.rename(tmp, dest);
-    return gen;
-  } finally {
-    await fsp.rm(tmp, { recursive: true, force: true });
+  } catch {
+    return null;
   }
+  const plugins = listOf(doc?.plugins);
+  if (plugins === null) return null;
+  return { plugins, previous: doc.previous == null ? null : listOf(doc.previous) };
 }
 
-/** Points `current` at `gen` — a temporary file renamed over the pointer — or removes it (null). */
-export async function pointCurrent(root: string, gen: string | null): Promise<void> {
+/** Whether two selections name the same entries. */
+export function sameSelection(a: readonly SelectedPlugin[], b: readonly SelectedPlugin[]): boolean {
+  return JSON.stringify(tableOf(a)) === JSON.stringify(tableOf(b));
+}
+
+/**
+ * Writes the selection file — a temporary file renamed over `current`, so it changes in one
+ * step — or removes it (null).
+ */
+export async function writeCurrent(
+  root: string,
+  selection: CurrentSelection | null,
+): Promise<void> {
   const file = path.join(pluginsDir(root), CURRENT_FILE);
-  if (gen === null) {
+  if (selection === null) {
     await fsp.rm(file, { force: true });
     return;
   }
   await fsp.mkdir(pluginsDir(root), { recursive: true });
+  const doc = {
+    plugins: tableOf(selection.plugins),
+    previous: selection.previous === null ? null : tableOf(selection.previous),
+  };
   const tmp = `${file}.${process.pid}.tmp`;
-  await fsp.writeFile(tmp, `${gen}\n`);
+  await fsp.writeFile(tmp, `${JSON.stringify(doc, null, 2)}\n`);
   await fsp.rename(tmp, file);
+}
+
+/** Where a selected plugin's package is: its store entry's `package/`. */
+export function selectedPackageDir(root: string, e: SelectedPlugin): string {
+  return path.join(storeEntryDir(root, e.name, e.version, e.integrity), PACKAGE_DIR);
 }
 
 /**
@@ -238,18 +195,21 @@ export function chooseEntry(
   )[0]!;
 }
 
-/** What one activation did: the generation before it, the one now current, and what could not be placed in it. */
+/** What one activation did: the selection before it, the one now in force, and what could not be placed in it. */
 export interface Activation {
-  previous: string | null;
-  current: string;
-  /** name → why it is not in the generation. */
+  before: CurrentSelection | null;
+  current: CurrentSelection;
+  /** Whether `current` was rewritten. */
+  changed: boolean;
+  /** name → why it is not in the selection. */
   missing: Map<string, string>;
 }
 
 /**
- * Resolves the closure against the store, writes that generation if it is new and points
- * `current` at it. The store is brought up to date with this boot's own sources first (their
- * entries are what "the running build carries" means). `asks` maps each listed package name to
+ * Resolves the closure against the store and, when that selection differs from the one in
+ * force, makes it current. The store is brought up to date with this boot's own sources first
+ * (their entries are what "the running build carries" means), so every entry the selection
+ * names is stored before the selection is written. `asks` maps each listed package name to
  * what every Project asks of it; a name that is not a package name finds no store entry and is
  * reported by the loader with its reason.
  */
@@ -260,17 +220,20 @@ export async function activatePlugins(
 ): Promise<Activation> {
   const shipped = await syncPluginStore(root, assetsDir);
   const stored = await readStore(root);
-  const chosen: GenerationEntry[] = [];
+  const chosen: SelectedPlugin[] = [];
   const missing = new Map<string, string>();
   for (const [name, list] of asks) {
     const pick = chooseEntry(name, list, stored, shipped);
     if ("missing" in pick) missing.set(name, pick.missing);
     else chosen.push({ name: pick.name, version: pick.version, integrity: pick.integrity });
   }
-  const previous = currentGeneration(root);
-  const current = await writeGeneration(root, chosen);
-  if (current !== previous) await pointCurrent(root, current);
-  return { previous, current, missing };
+  const before = readCurrent(root);
+  if (before !== null && sameSelection(before.plugins, chosen)) {
+    return { before, current: before, changed: false, missing };
+  }
+  const current: CurrentSelection = { plugins: chosen, previous: before?.plugins ?? null };
+  await writeCurrent(root, current);
+  return { before, current, changed: true, missing };
 }
 
 /**
@@ -298,7 +261,7 @@ interface HostLending {
 
 /**
  * Lets a plugin loaded from `root`'s store resolve a host package the way the running program
- * does. A plugin imported through a generation's link runs from its store entry, and Node
+ * does. A plugin runs from its store entry, and Node
  * resolves its imports from there — under the data root, where no `node_modules` holds the
  * host's SDK; from the installation's prefix it used to find the program's copy by walking up.
  * Only a HOST_PACKAGES import the plugin's own package cannot resolve is retried, from the

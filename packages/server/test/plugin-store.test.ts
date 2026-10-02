@@ -9,6 +9,7 @@ import path from "node:path";
 import { parse as parseToml } from "smol-toml";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  discardDir,
   fetchIntoStore,
   PluginIntegrityMismatch,
   pluginStoreDir,
@@ -193,6 +194,19 @@ describe("plugin store", () => {
     expect(await fs.readFile(path.join(entry.dir, "package", "dist", "index.js"), "utf8")).toBe(
       "export default {};",
     );
+    // The entry arrived with its marker in one rename; the leftover went through `.staging/`.
+    expect(await fs.readdir(entry.dir)).toContain(".stored");
+    expect(await fs.readdir(path.join(pluginStoreDir(root), ".staging"))).toEqual([]);
+  });
+
+  it("discardDir removes a directory in one step, through .staging/", async () => {
+    const entry = await store(path.join(dir, "a"));
+    await discardDir(root, entry.dir);
+    expect(await exists(entry.dir)).toBe(false);
+    expect(await readStore(root)).toEqual([]);
+    expect(await fs.readdir(path.join(pluginStoreDir(root), ".staging"))).toEqual([]);
+    // Gone already is not an error.
+    await discardDir(root, entry.dir);
   });
 
   it("a fetch is checked against the integrity npm recorded: the index's is stored, any other is refused", async () => {
