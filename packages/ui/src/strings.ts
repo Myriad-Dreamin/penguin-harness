@@ -53,6 +53,10 @@ export interface UiStrings {
   next: string;
   /** What a pager's "2/5" readout says aloud: the page, then how many there are (`Pager`). */
   pagePosition: (page: number, pageCount: number) => string;
+  /** The name of the handle on a resizable dialog's side border (`PagedDialog`). */
+  resizeWidth: string;
+  /** The name of the handle on a resizable dialog's bottom border (`PagedDialog`). */
+  resizeHeight: string;
 }
 
 /** The English fallbacks, used wherever no provider is mounted (a test, a stand-alone page). */
@@ -75,6 +79,8 @@ export const DEFAULT_UI_STRINGS: UiStrings = {
   previous: "Previous page",
   next: "Next page",
   pagePosition: (page, pageCount) => `Page ${page} of ${pageCount}`,
+  resizeWidth: "Resize width",
+  resizeHeight: "Resize height",
 };
 
 const UiStringsContext = createContext<UiStrings>(DEFAULT_UI_STRINGS);

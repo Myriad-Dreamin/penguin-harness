@@ -32,6 +32,8 @@ export function uiStringsOf(dict: Strings): UiStrings {
     previous: dict.common.previousPage,
     next: dict.common.nextPage,
     pagePosition: dict.chat.groupPagePosition,
+    resizeWidth: dict.common.resizeWidth,
+    resizeHeight: dict.common.resizeHeight,
   };
 }
 
