@@ -1,12 +1,12 @@
 /**
  * Server process entry point: the whole startup lifecycle, as one ordered sequence.
  *
- * Importing this module STARTS the server — the CLI runs a server in its own process by
- * `await import("@prismshadow/penguin-server")` and nothing else, so main() is invoked at
- * module scope rather than exported.
+ * Importing this module starts nothing: the caller starts a server with `startServer`, and
+ * hands it what it was resolved to run with (`StartOptions`) as an argument — the CLI's
+ * `server` command, the desktop's embedded-server entry, and src/dev.ts for `pnpm dev`.
  *
- * main() comes first in the file and is the sequence itself: each step is one PenguinServer
- * method, named after what it does and appearing in the order main() calls it. The order
+ * startServer() comes first in the file and is the sequence itself: each step is one PenguinServer
+ * method, named after what it does and appearing in the order startServer() calls it. The order
  * carries real constraints — the proxy dispatcher before any outbound request, the instance
  * lock before the database opens, plugins loaded before the platform boots against them,
  * the platform (and with it the whole business surface) before the first request is
@@ -49,11 +49,25 @@ import type { Auth } from "./mechanisms/identity.js";
  * This is the file's table of contents — each call below is a PenguinServer method, and
  * reading them top to bottom is the whole of what starting a server does.
  */
-async function main(): Promise<void> {
+/** What the starter resolved for this server; everything else comes from the environment (config.ts). */
+export interface StartOptions {
+  /** The port and host the starter resolved; absent, PORT / HOST from the environment (config.ts). */
+  port?: number;
+  host?: string;
+  /**
+   * The CLI script of the harness that runs this server (the CLI's resolveHarness): what the
+   * `<root>/bin/penguin` shim execs and what the self-update job runs. Absent or null: this
+   * server infers the CLI of the checkout it runs from, or offers none.
+   */
+  cliEntry?: string | null;
+}
+
+/** Starts a server in this process. Resolves once it serves; the process then lives with it. */
+export async function startServer(options: StartOptions = {}): Promise<void> {
   const server = new PenguinServer();
   server.loadEnv();
   server.installProxy();
-  server.readConfig();
+  server.readConfig(options);
   await server.ensureSoleInstance();
   server.listen();
   // The HMR layer's entry (packages/hmr's main.ts) owns the frozen operations: which
@@ -79,7 +93,7 @@ async function main(): Promise<void> {
 /**
  * One server process, one method per lifecycle step.
  *
- * The steps are not independent: each reads what the ones before it produced. main() is
+ * The steps are not independent: each reads what the ones before it produced. startServer() is
  * the only caller and runs them in order, which is what lets the spine fields below be
  * read without a null check from the step after the one that assigns them.
  */
@@ -129,9 +143,9 @@ class PenguinServer {
     installGlobalProxyDispatcher();
   }
 
-  /** Resolves the process configuration, which comes from the environment only (config.ts). */
-  readConfig(): void {
-    this.config = resolveServerConfig();
+  /** Resolves the process configuration: the environment, plus what the starter resolved (config.ts). */
+  readConfig(options: StartOptions): void {
+    this.config = resolveServerConfig(process.env, options);
   }
 
   /**
@@ -563,7 +577,3 @@ function writePortFile(file: string, port: number): void {
   fs.renameSync(tmp, file);
 }
 
-// Runs on import, which is what starting this server means. It is the last line of the
-// file because main() reaches PenguinServer, whose declaration has to have been evaluated
-// by the time the call happens.
-await main();

@@ -11,7 +11,6 @@ import path from "node:path";
 import { app, utilityProcess } from "electron";
 import type { UtilityProcess } from "electron";
 import type { Profile } from "./app-identity.js";
-import { embeddedCliEntry } from "./launcher.js";
 import { osProxyEnv } from "./os-proxy.js";
 import { choosePort, readPreferredPort, rememberPreferredPort } from "./port-memory.js";
 import { appOriginFor, parsePortFile } from "./util.js";
@@ -110,11 +109,6 @@ export async function startEmbeddedServer(opts: {
   profile: Profile;
   /** Pinned web dist (packaged app), or null to leave it to the server's default lookup. */
   webDist: string | null;
-  /**
-   * Bundled CLI entry the server offers the Agents it runs (see launcher.ts's
-   * embeddedCliEntry), or null to leave it to the server's own checkout lookup.
-   */
-  cliEntry: string | null;
   portFile: string;
   preferredPortFile: string;
   /** One chunk of the server's output, as it arrived on `stream`. */
@@ -136,7 +130,6 @@ export async function startEmbeddedServer(opts: {
       PENGUIN_HOME: opts.dataRoot,
       PENGUIN_PROFILE: opts.profile,
       ...(opts.webDist !== null ? { PENGUIN_WEB_DIST: opts.webDist } : {}),
-      ...(opts.cliEntry !== null ? { PENGUIN_CLI_ENTRY: opts.cliEntry } : {}),
       HOST: "127.0.0.1",
       PORT: String(requestedPort),
       PENGUIN_DESKTOP_TOKEN: token,

@@ -302,7 +302,6 @@ describe("harness environment variables never reach a spawned command", () => {
   const KEYS = [
     "PORT",
     "HOST",
-    "PENGUIN_CLI_ENTRY",
     "PENGUIN_WEB_DIST",
     "PENGUIN_DESKTOP_TOKEN",
     "PENGUIN_PORT_FILE",
@@ -321,12 +320,11 @@ describe("harness environment variables never reach a spawned command", () => {
   const saved: Partial<Record<(typeof KEYS)[number], string | undefined>> = {};
 
   beforeEach(() => {
-    // `penguin web` writes PORT/HOST into its own process env as the channel to the server
-    // module, so this is exactly the state a real serving process is in.
+    // PORT/HOST as a serving process may have them: exported by the shell that started it, or
+    // read from its .env.
     for (const k of KEYS) saved[k] = process.env[k];
     process.env.PORT = "7364";
     process.env.HOST = "127.0.0.1";
-    process.env.PENGUIN_CLI_ENTRY = "/opt/penguin/lib/dist/index.js";
     process.env.PENGUIN_WEB_DIST = "/opt/penguin/web";
     // The desktop shell's process credentials: a leaked token
     // would let an Agent-run command call the server's shutdown endpoint.
