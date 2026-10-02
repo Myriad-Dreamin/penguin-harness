@@ -205,6 +205,12 @@ export const KEY_RULES: readonly KeyRule[] = [
   },
   {
     kind: "exact",
+    key: "penguin.settings.dialogSize",
+    scope: "browser",
+    why: "The width and height the Settings dialog was dragged to, in px; chrome layout, holds no entity.",
+  },
+  {
+    kind: "exact",
     key: "penguin.sidebarGroupMode",
     scope: "browser",
     why: "Group sessions by Workspace/Agent/time — the MODE, not the groups; valid against any root.",
