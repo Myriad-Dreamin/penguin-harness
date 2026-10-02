@@ -1335,6 +1335,9 @@ export const getTelemetry = (params: { view: "probes" | "sessions"; session?: st
     query: { view: params.view, session: params.session },
   });
 
+/** Empties the telemetry buffer (PRFC-0008), admin only; the switch stays where it is. */
+export const clearTelemetry = () => apiFetch<{ ok: true }>("/api/telemetry", { method: "DELETE" });
+
 export const getUsageErrors = (
   projectId: string,
   params: {

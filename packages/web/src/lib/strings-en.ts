@@ -712,6 +712,10 @@ export const en: Strings = {
     currencyInfo: "Display currency for prices; storage is always USD.",
     changePasswordInfo: "Change this account's sign-in password.",
     /** Personal company-mode switch (general page) and the admin master switch (its own server page). */
+    /** Telemetry master switch (general page, admin only; PRFC-0008). */
+    telemetry: "Telemetry",
+    telemetryInfo:
+      "Server-wide, off by default. On, the server and the browser record timings (shape only, never content) into an in-memory buffer read in the cost center's performance panel. Nothing leaves this machine or reaches the disk; off drops the buffer.",
     companyModeTitle: "Company mode",
     companyModePersonal: "Company mode",
     companyModePersonalInfo:
@@ -4161,9 +4165,10 @@ Scenarios:
     perfSessionFilter: "Filter by Session",
     perfAllSessions: "All Sessions",
     perfRefresh: "Refresh",
+    perfClear: "Clear",
     perfBuffered: (n: number): string => `${n} sample${n === 1 ? "" : "s"} buffered`,
     perfOff:
-      "Telemetry is off. Turn it on with penguin telemetry on, and this lists the server's and the browser's timings per probe.",
+      "Telemetry is off. Turn it on under Settings → General, and this lists the server's and the browser's timings per probe.",
     perfEmpty: "No samples yet",
   },
 
