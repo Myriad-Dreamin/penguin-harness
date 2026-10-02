@@ -100,19 +100,6 @@ export interface LibraryHooks {
   files: Record<string, string>;
 }
 
-/**
- * A plugin's quick start (plugin.json `quick_start`): the demo a person runs to see what the
- * plugin does — a prompt the Plugins page pre-fills into a new-chat draft, never sends.
- */
-export interface QuickStart {
-  prompt: string;
-  promptZh?: string;
-  /** Skills of this plugin to pre-select in the draft. */
-  skills?: string[];
-  /** Open the draft in goal mode (the prompt is the objective). */
-  goal?: boolean;
-}
-
 /** A plugin in the library: the manifest fields plus the content it ships. */
 export interface LibraryPlugin {
   /** Plugin name (its directory name). */
@@ -134,8 +121,6 @@ export interface LibraryPlugin {
   icon?: string;
   skills: LibrarySkill[];
   hooks?: LibraryHooks;
-  /** The demo the Plugins page's quick start pre-fills (plugin.json `quick_start`, optional). */
-  quickStart?: QuickStart;
 }
 
 /** Category manifest entry: id and titles (Chinese optional, displayed per UI language). */
@@ -308,17 +293,27 @@ export function workspacePluginRoot(
 }
 
 /**
- * The host package: the package whose `dependencies` name the plugin packages — `packages/core`
- * from source or dist, and the bundling package's own root wherever core is inlined (the CLI
- * bundle, the desktop server bundle). Looked for above this module first, then above the
- * running program (`process.argv[1]`): a hot-pushed platform bundle sits in the data root's
- * store, where nothing above it is a package, and the plugins it can offer are the ones
- * installed beside the program that booted it. The first package.json naming a plugin
- * package wins; failing that, the first package.json that could be read at all (an empty
- * library, with a root to name in errors); failing that, null.
+ * The host package: the package whose `dependencies` name the plugin packages. The library a
+ * hot push carried comes first when the platform named one (usePushedPluginLibrary); then two
+ * fixed starting points, tried in this order, each walked upward to the first package.json
+ * that names a plugin package:
  *
- * Found on first use and never at import: the bundle has to LOAD on a machine that has no
- * host package, and the library call is then what fails, naming both places it looked.
+ * 1. the installation this module sits in — `packages/core` from source or dist, the
+ *    bundling package's own root wherever core is inlined (the CLI bundle, the desktop
+ *    server bundle);
+ * 2. the installation of the running program (`process.argv[1]`, symlinks resolved) — the
+ *    one that matters for a hot-pushed platform bundle, which sits in the data root's store
+ *    where nothing above it is a package, and whose plugins are the ones installed with the
+ *    program that booted it.
+ *
+ * A package.json on the way up that does not name a plugin package is skipped, and so is
+ * one that cannot be read or parsed (somebody else's file, not this one's answer); neither
+ * stops the walk from reaching the host above it. There is no fallback to whichever
+ * package.json was read first: when neither starting point leads to a host, the library
+ * call fails naming both.
+ *
+ * Determined on first use and never at import: the bundle has to LOAD on a machine that has
+ * no host package, and the library call is then what fails.
  */
 interface HostPackage {
   root: string;
@@ -330,7 +325,14 @@ const LOADER_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 function programDir(): string | null {
   const entry = process.argv[1];
-  return typeof entry === "string" && entry !== "" ? path.dirname(path.resolve(entry)) : null;
+  if (typeof entry !== "string" || entry === "") return null;
+  const resolved = path.resolve(entry);
+  // A package manager's bin is a symlink into the installation it belongs to.
+  try {
+    return path.dirname(fs.realpathSync(resolved));
+  } catch {
+    return path.dirname(resolved);
+  }
 }
 
 /**
@@ -356,44 +358,39 @@ export function usePushedPluginLibrary(dir: string | null): void {
   host = undefined;
 }
 
-function findHostPackage(): HostPackage | null {
-  let first: HostPackage | null = null;
-  for (const start of [pushedLibrary, LOADER_DIR, programDir()]) {
-    if (start === null) continue;
-    for (let dir = start; ;) {
-      const file = path.join(dir, "package.json");
-      if (fs.existsSync(file)) {
-        const candidate: HostPackage = { root: dir, require: createRequire(file) };
-        // An unreadable or malformed package.json on the way up is somebody else's file,
-        // not this one's answer: it must not keep the walk from reaching the host package
-        // above the program.
-        let dependencies: Record<string, string> | null = null;
-        try {
-          dependencies = readDependencies(candidate);
-        } catch {
-          break;
-        }
-        if (Object.keys(dependencies).some((d) => d.startsWith(PLUGIN_PKG_PREFIX)))
+/** From `start` upward, the first package.json whose `dependencies` name a plugin package. */
+function hostPackageAbove(start: string): HostPackage | null {
+  for (let dir = start; ;) {
+    const file = path.join(dir, "package.json");
+    if (fs.existsSync(file)) {
+      const candidate: HostPackage = { root: dir, require: createRequire(file) };
+      try {
+        if (Object.keys(readDependencies(candidate)).some((d) => d.startsWith(PLUGIN_PKG_PREFIX)))
           return candidate;
-        first ??= candidate;
-        break;
+      } catch {
+        // Unreadable or malformed: walk on.
       }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
     }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
-  return first;
 }
 
 let host: HostPackage | null | undefined;
 function hostPackage(): HostPackage {
-  if (host === undefined) host = findHostPackage();
+  const program = programDir();
+  if (host === undefined)
+    host =
+      (pushedLibrary === null ? null : hostPackageAbove(pushedLibrary)) ??
+      hostPackageAbove(LOADER_DIR) ??
+      (program === null ? null : hostPackageAbove(program));
   if (host === null) {
-    const program = programDir();
     throw new Error(
-      `No package.json above the plugin loader at ${LOADER_DIR}` +
-        (program === null ? "" : ` or above the program at ${program}`),
+      `No package.json naming a ${PLUGIN_PKG_PREFIX} plugin package above the plugin loader at ${LOADER_DIR}` +
+        (program === null
+          ? " (no running program to look above: process.argv[1] is empty)"
+          : ` or above the program at ${program}`),
     );
   }
   return host;
@@ -525,7 +522,6 @@ interface PluginManifestFile {
   category?: string;
   /** Default true. */
   preinstall?: boolean;
-  quick_start?: { prompt?: unknown; prompt_zh?: unknown; skills?: unknown; goal?: unknown };
   /** One command list per hook point the plugin's hook package answers at. */
   hooks?: {
     stop?: HookCommand[];
@@ -599,49 +595,6 @@ function readPluginDir(name: string, dir: string): LibraryPlugin {
       }),
     ),
     ...(hooks !== undefined ? { hooks } : {}),
-    ...(manifest.quick_start !== undefined
-      ? { quickStart: parseQuickStart(manifest.quick_start, skills, manifestFile) }
-      : {}),
-  };
-}
-
-/**
- * plugin.json `quick_start`, checked: a prompt is required, and the skills it pre-selects
- * must be this plugin's own — a demo naming a skill the plugin does not ship would open a draft
- * with nothing selected.
- */
-function parseQuickStart(
-  raw: NonNullable<PluginManifestFile["quick_start"]>,
-  skills: readonly LibrarySkill[],
-  where: string,
-): QuickStart {
-  if (typeof raw.prompt !== "string" || raw.prompt.trim() === "") {
-    throw new Error(`${where}: quick_start.prompt must be a non-empty string`);
-  }
-  if (raw.prompt_zh !== undefined && typeof raw.prompt_zh !== "string") {
-    throw new Error(`${where}: quick_start.prompt_zh must be a string`);
-  }
-  let picked: string[] | undefined;
-  if (raw.skills !== undefined) {
-    if (!Array.isArray(raw.skills) || raw.skills.some((s) => typeof s !== "string")) {
-      throw new Error(`${where}: quick_start.skills must be a list of skill names`);
-    }
-    const unknown = (raw.skills as string[]).filter((n) => !skills.some((s) => s.name === n));
-    if (unknown.length > 0) {
-      throw new Error(
-        `${where}: quick_start.skills names skills the plugin does not ship: ${unknown.join(", ")}`,
-      );
-    }
-    picked = raw.skills as string[];
-  }
-  if (raw.goal !== undefined && typeof raw.goal !== "boolean") {
-    throw new Error(`${where}: quick_start.goal must be a boolean`);
-  }
-  return {
-    prompt: raw.prompt,
-    ...(typeof raw.prompt_zh === "string" ? { promptZh: raw.prompt_zh } : {}),
-    ...(picked !== undefined ? { skills: picked } : {}),
-    ...(raw.goal === true ? { goal: true } : {}),
   };
 }
 
