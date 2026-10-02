@@ -406,7 +406,7 @@ describe("builtin plugins", () => {
     expect(base).toMatchObject({ file: path.join(root, "plugins", "current"), builtin: false });
     expect([...base!.packages!.keys()]).toEqual(["@acme/penguin-plugin-one"]);
     expect(base!.packages!.get("@acme/penguin-plugin-one")).toMatch(
-      /plugin-store[\\/]packages[\\/]@acme[\\/].+[\\/]package$/,
+      /plugins[\\/]packages[\\/]@acme[\\/].+[\\/]package$/,
     );
   });
 
@@ -432,7 +432,7 @@ describe("builtin plugins", () => {
     expect([...result.failed.entries()]).toEqual([]);
     expect(result.loaded.map((p) => p.specifier)).toEqual(["@acme/penguin-plugin-one"]);
     expect(result.loaded[0]!.modules.map((m) => m.manifest.name)).toEqual(["One"]);
-    expect(result.loaded[0]!.file).toContain(path.join(root, "plugin-store"));
+    expect(result.loaded[0]!.file).toContain(path.join(root, "plugins", "packages"));
   });
 
   it("resolves a package through its exports' import condition, as npm shipped it", async () => {

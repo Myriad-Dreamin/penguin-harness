@@ -37,14 +37,14 @@ import {
 } from "../src/plugin/registry.js";
 import { pickIndexEntry } from "../src/api/plugin-pick.js";
 import type { PluginRegistry } from "../src/plugin/registry.js";
-import { storeDir } from "./plugin-fixtures.js";
+import { packDir, storeDir } from "./plugin-fixtures.js";
 import { activatePlugins } from "../src/plugin/activation.js";
 import { resolveServerConfig } from "../src/config.js";
 import { pluginRegistryRoutes } from "../src/http/routes/plugins.js";
 import { fakeFetch, jsonResponse } from "./fixtures/fetch.js";
 import { apiClient, createTestApp, loginAdmin } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
-import { manifestOf } from "../../../scripts/plugin-entry.mjs";
+import { manifestOf, tarballFileName } from "../../../scripts/plugin-entry.mjs";
 
 const hash = (digit: string) =>
   `sha512-${Buffer.alloc(64, digit.charCodeAt(0)).toString("base64")}`;
@@ -374,11 +374,14 @@ describe("GET /api/plugins/registry/readme", () => {
     const prefix = await installation(path.join(t.root, "install"), [
       { ...VALID_ENTRY, name, version: pkg.manifest.version },
     ]);
-    const dest = path.join(prefix, "node_modules", ...name.split("/"));
-    await mkdir(dest, { recursive: true });
+    // Carried as its tarball, the way scripts/build-plugins.mjs ships it: the readme is read
+    // from inside it, since nothing is unpacked.
+    const src = path.join(t.root, "src");
+    await mkdir(src, { recursive: true });
     for (const file of ["package.json", "README.md"]) {
-      await cp(path.join(PLUGINS_DIR, pkg.dir, file), path.join(dest, file));
+      await cp(path.join(PLUGINS_DIR, pkg.dir, file), path.join(src, file));
     }
+    await packDir(src, path.join(prefix, tarballFileName(name, pkg.manifest.version)));
     const res = await apiClient(t.app, admin.cookie).get(url);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { name: string; readme: string | null };

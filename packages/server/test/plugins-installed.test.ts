@@ -337,9 +337,8 @@ describe("installed plugins", () => {
       // Undone: the list is as it was, and what runs is what ran.
       expect(body.plugins.map((p) => [p.specifier, p.active])).toEqual([["@acme/fine", true]]);
       expect(await fs.readFile(listFile(), "utf8")).not.toContain("bad-boot");
-      // The selection that ran is written back, word for word; nothing else is under plugins/.
+      // The selection that ran is written back, word for word.
       expect(await current()).toBe(before);
-      expect(await fs.readdir(path.join(t.root, "plugins"))).toEqual(["current"]);
       expect(warn).toHaveBeenCalledWith(expect.stringMatching(/deliberately fails to boot/));
     } finally {
       warn.mockRestore();
