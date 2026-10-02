@@ -667,6 +667,10 @@ export const zh = {
     currencyInfo: "价格显示币种；存储始终为美元。",
     changePasswordInfo: "更改当前账号的登录密码。",
     /** Personal company-mode switch (general page) and the admin master switch (its own server page). */
+    /** Telemetry master switch (general page, admin only; PRFC-0008). */
+    telemetry: "遥测",
+    telemetryInfo:
+      "服务器全局，缺省关闭。打开后，服务端与浏览器把耗时（只记形状、不记内容）记进内存缓冲，在统计中心的「性能」面板里看。数据不出本机、不写磁盘；关闭即丢弃缓冲。",
     companyModeTitle: "公司模式",
     companyModePersonal: "公司模式",
     companyModePersonalInfo:
@@ -3911,8 +3915,9 @@ Benchmark：
     perfSessionFilter: "按 Session 筛选",
     perfAllSessions: "全部 Session",
     perfRefresh: "刷新",
+    perfClear: "清空",
     perfBuffered: (n: number): string => `缓冲中 ${n} 条样本`,
-    perfOff: "遥测未开启。用 penguin telemetry on 打开后，这里按采集点列出服务端与浏览器的耗时。",
+    perfOff: "遥测未开启。在「设置 → 通用」里打开后，这里按采集点列出服务端与浏览器的耗时。",
     perfEmpty: "还没有样本",
   },
 

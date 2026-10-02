@@ -7,7 +7,9 @@
 
 [中文版](2026-09-30-usage-performance-panel.zh.md)
 
-For an admin, the cost center now has a full-width **Performance** panel below the errors panel. It reads the telemetry buffer (`GET /api/telemetry`) and lists every probe with its count, p50, p95 and maximum, server probes first and the browser's after them, and can be narrowed to one Session. While telemetry is off it says so and how to turn it on. Members are not shown the panel.
+For an admin, the cost center now has a full-width **Performance** panel below the errors panel. It reads the telemetry buffer (`GET /api/telemetry`) and lists every probe with its count, p50, p95 and maximum, server probes first and the browser's after them, and can be narrowed to one Session. While telemetry is off it says so and points to the switch; while it is on, **Clear** empties the buffer (`DELETE /api/telemetry`). Members are not shown the panel.
+
+An admin turns telemetry on and off under **Settings → General** (`PUT /api/admin/settings`); the tab that flips it starts or stops its own collector at once. Members do not get the row.
 
 The page now records its own half. `/api/me` carries `telemetry`; when it is true the page loads a small collector chunk and sends shape-only samples to a new intake, `POST /api/telemetry/samples`:
 

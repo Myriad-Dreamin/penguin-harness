@@ -7,7 +7,8 @@
  * Unlike the rest of the page it is whole-server, not per Project: the buffer is one per
  * process, and its read route is admin only — so the page renders this panel for an admin
  * alone rather than offering a table that can only answer 403. While telemetry is off the
- * buffer does not exist, and the panel says so and how to turn it on.
+ * buffer does not exist, and the panel says so and where to turn it on (Settings → General);
+ * while it is on, Clear empties the buffer.
  */
 import { useEffect, useState } from "react";
 import type {
@@ -87,6 +88,19 @@ export function PerformancePanel() {
   const [data, setData] = useState<TelemetryResponse | null>(null);
   const [sessions, setSessions] = useState<TelemetrySessionSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  const clear = async () => {
+    setClearing(true);
+    try {
+      await api.clearTelemetry();
+      setTick((t) => t + 1);
+    } catch (e) {
+      setError(apiErrorText(e));
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -133,6 +147,12 @@ export function PerformancePanel() {
         <Button size="sm" onClick={() => setTick((t) => t + 1)}>
           {S.usage.perfRefresh}
         </Button>
+        {/* Clearing empties the buffer and leaves the switch on; there is nothing to clear while it is off. */}
+        {data?.enabled && (
+          <Button size="sm" disabled={clearing} onClick={() => void clear()}>
+            {S.usage.perfClear}
+          </Button>
+        )}
         {data?.enabled && (
           <span className="text-xs text-gray-400">{S.usage.perfBuffered(data.buffered)}</span>
         )}

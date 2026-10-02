@@ -33,9 +33,9 @@ describe("PerformanceTable", () => {
   it("says telemetry is off rather than showing an empty table", () => {
     setActiveStrings(en);
     const html = render({ enabled: false, view: "probes", buffered: 0, probes: [] });
-    // The sentence itself is HTML-escaped in the markup; the command it names is not.
+    // The sentence itself is HTML-escaped in the markup; the place it names is not.
     expect(html).toContain("Telemetry is off.");
-    expect(html).toContain("penguin telemetry on");
+    expect(html).toContain("Settings → General");
     expect(html).not.toContain("<table");
   });
 
