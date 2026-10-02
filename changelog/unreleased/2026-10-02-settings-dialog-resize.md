@@ -3,6 +3,7 @@
 - **Date:** 2026-10-02
 - **Type:** feature
 - **Scope:** `web`, `ui`
+- **PR:** [Myriad-Dreamin/penguin-harness#189](https://github.com/Myriad-Dreamin/penguin-harness/pull/189)
 
 [中文版](2026-10-02-settings-dialog-resize.zh.md)
 
