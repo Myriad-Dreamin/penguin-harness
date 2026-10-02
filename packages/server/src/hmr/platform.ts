@@ -500,7 +500,7 @@ async function createInner(
           parked: parkedModules(context),
         },
       ),
-    ).catch(restoreGeneration));
+    ).catch(restoreSelection));
     business = tree;
     terminals = tree.api<TerminalManager>("TerminalModule", "terminals");
   }
