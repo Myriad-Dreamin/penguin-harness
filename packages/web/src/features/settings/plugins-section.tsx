@@ -443,6 +443,7 @@ export function PluginsSection({ focus }: { focus?: string } = {}) {
           >
             <ConfigHeading
               entry={card}
+              draft={drafts[card.name]}
               nested={false}
               disabled={busy !== null}
               onAction={(action) => void runAction(card, action)}
@@ -456,6 +457,7 @@ export function PluginsSection({ focus }: { focus?: string } = {}) {
               >
                 <ConfigHeading
                   entry={child}
+                  draft={drafts[child.name]}
                   nested
                   disabled={busy !== null}
                   onAction={(action) => void runAction(child, action)}
