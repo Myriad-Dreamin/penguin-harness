@@ -66,6 +66,7 @@ import { VaultTab } from "./vault-tab";
 import { SchedulesTab } from "./schedules-tab";
 import { McpServersSection } from "./mcp-servers-section";
 import { SNAPSHOT_ACCEPT, SNAPSHOT_BUTTON_CLASS, fileToBase64 } from "./snapshot-file";
+import { PublishAgentDialog } from "./publish-dialog";
 import { thinkingLevelOptionsFor } from "../chat/thinking-level";
 
 type TabKey =
@@ -343,6 +344,7 @@ function OverviewTab({
   const [description, setDescription] = useState(data.config.description ?? "");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
   // base64 of the snapshot package pending confirmation for a version conflict (409 version_conflict); non-null shows the confirm modal.
   const [conflict, setConflict] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -471,6 +473,23 @@ function OverviewTab({
               >
                 {S.agent.exportSnapshot}
               </a>
+            )}
+            {isOwner && projectId && (
+              <>
+                <button
+                  type="button"
+                  className={SNAPSHOT_BUTTON_CLASS}
+                  onClick={() => setPublishOpen(true)}
+                >
+                  {S.agent.publishToGist}
+                </button>
+                <PublishAgentDialog
+                  open={publishOpen}
+                  onClose={() => setPublishOpen(false)}
+                  projectId={projectId}
+                  agentId={agentId}
+                />
+              </>
             )}
             {isOwner && (
               <label
