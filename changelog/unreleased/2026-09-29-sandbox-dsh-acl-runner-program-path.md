@@ -17,5 +17,9 @@ directory, inside the Workspace) and System32 before `PATH`.
   shadows `PATH`.
 - A name that no absolute `PATH` entry holds is refused before the runner is involved, with an
   error naming it. A program given with a directory is passed on unchanged.
+- When `PATH` has no `.exe` for a bare name but carries a `.cmd` or `.bat` of it (`npx` and
+  `uvx` are batch files on Windows), the refusal names that file and says a bare name is only
+  looked up as `.exe`; to hand over the batch file, name it with its extension. The lookup
+  itself is unchanged.
 - The runner's own spawn errors now name the absolute path it was given.
 - Linux and macOS are unchanged.

@@ -165,6 +165,26 @@ describe("aclRunnerArgv", () => {
     expect(() => aclRunnerArgv(["pwsh"], { platform: "win32", env: {} })).toThrow(/no pwsh\.exe/);
   });
 
+  it("names the batch file PATH carries when no .exe is found", () => {
+    const NODE = "C:\\Program Files\\nodejs";
+    expect(() =>
+      aclRunnerArgv(["npx", "-y", "server"], on([`${NODE}\\npx.cmd`], `${PS};${NODE}`)),
+    ).toThrow(
+      /no npx\.exe .* carries the batch file C:\\Program Files\\nodejs\\npx\.cmd; a bare name is looked up as \.exe only, so to hand over the batch file, name it with its extension \("npx\.cmd"\)/,
+    );
+    expect(() => aclRunnerArgv(["tool"], on([`${NODE}\\tool.bat`], NODE))).toThrow(
+      /carries the batch file .*tool\.bat/,
+    );
+    // With neither on PATH, the refusal is the plain one.
+    expect(() => aclRunnerArgv(["npx"], on([], NODE))).toThrow(
+      /no npx\.exe in a directory on the harness's PATH, and its ACL runner/,
+    );
+    // Named with its extension, the batch file is looked up as it is.
+    expect(aclRunnerArgv(["npx.cmd"], on([`${NODE}\\npx.cmd`], NODE))).toEqual([
+      `${NODE}\\npx.cmd`,
+    ]);
+  });
+
   it("passes a program given with a directory, and every other platform, as it is", () => {
     const host = on([], PS);
     expect(aclRunnerArgv([`${PWSH}\\pwsh.exe`, "-c"], host)).toEqual([`${PWSH}\\pwsh.exe`, "-c"]);
