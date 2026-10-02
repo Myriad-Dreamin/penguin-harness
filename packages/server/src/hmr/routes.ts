@@ -17,6 +17,7 @@ import { authMiddleware } from "../auth/middleware.js";
 import type { AppEnv } from "../auth/middleware.js";
 import type { Auth } from "../mechanisms/identity.js";
 import { HttpError } from "../http/errors.js";
+import { pushedCliProblem } from "./cli-check.js";
 import { Channels, Config, HmrControl } from "./capabilities.js";
 import type { ServerConfig } from "../config.js";
 import type { ChannelHub } from "../runtime/channel.js";
@@ -82,16 +83,21 @@ export function hmrRoutes(deps: HmrRouteDeps): Hono<AppEnv> {
   // THE ONE upgrade endpoint: platform + cli + web move together, atomically — there is no
   // route that updates any of the three alone. The body and the answer are the mechanism's
   // (packages/hmr); live clients (browser tabs AND the desktop window) are told to reload
-  // once a version actually lands.
-  routes.post("/upgrade", (c) =>
-    deps.control.endpoint(c.req.raw, (outcome) =>
+  // once a version actually lands. A push whose CLI bundle cannot be loaded is refused
+  // first (cli-check.ts): server start paths run the pushed CLI after the next restart.
+  routes.post("/upgrade", async (c) => {
+    const problem = await pushedCliProblem(c.req.raw.clone(), deps.control.readBlob);
+    if (problem !== null) {
+      return c.json({ error: { code: "bad_request", message: problem } }, 400);
+    }
+    return deps.control.endpoint(c.req.raw, (outcome) =>
       deps.channels.broadcast(
         "user:",
         { type: "web_updated", rev: outcome.web.rev },
         "server_event",
       ),
-    ),
-  );
+    );
+  });
 
   return routes;
 }
