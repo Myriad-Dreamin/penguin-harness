@@ -145,6 +145,7 @@ import { TracePanel } from "../traces/trace-panel";
 import { MessagingPanel } from "../messaging/messaging-panel";
 import { SchedulePanel } from "../schedules/schedule-panel";
 import { PortsPanel } from "../ports/ports-panel";
+import { BrowserTab } from "../browser/browser-tab";
 import { noteScheduleEvent } from "../schedules/schedule-store";
 import { DockPanel } from "../dock/dock-panel";
 import { DockLauncher } from "../dock/dock-launcher";
@@ -2109,6 +2110,23 @@ export function ChatPage() {
     }
   };
 
+  /**
+   * A Browser tab's body. `localhost` in it is the machine THIS conversation's Workspace is
+   * on — null (this server) while drafting, where no Session has placed the Workspace yet.
+   */
+  const renderBrowser = (
+    id: string,
+    active: boolean,
+    onTitle: (title: string) => void,
+  ): ReactNode => (
+    <BrowserTab
+      id={id}
+      machineId={selected ? machineForSession(selected.sessionId) : null}
+      active={active}
+      onTitle={onTitle}
+    />
+  );
+
   if (!projectId || !agentId) {
     return (
       <div className="p-6">
@@ -2739,6 +2757,7 @@ export function ChatPage() {
             renderPanel={renderPanel}
             panelBadges={{ agents: anySubagentPending }}
             terminalSupported={terminalSupported}
+            renderBrowser={renderBrowser}
           />
         )}
       </div>
@@ -2751,6 +2770,7 @@ export function ChatPage() {
           renderPanel={renderPanel}
           panelBadges={{ agents: anySubagentPending }}
           terminalSupported={terminalSupported}
+          renderBrowser={renderBrowser}
         />
       )}
 

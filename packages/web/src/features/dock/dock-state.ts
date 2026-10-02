@@ -4,12 +4,12 @@
  * The dock is TWO surfaces — one on the right edge, one at the bottom of the chat page —
  * and every side element is a TAB in one of them: the subagents panel, the Workspace
  * files panel, the Memory panel, the Trace panel, the messaging panel, the scheduled-tasks
- * panel, the built-in browser, the Ports panel, and any number of terminals. A dock
+ * panel, the built-in browser, the Ports panel, and any number of terminals and browsers. A dock
  * shows its tabs in a strip and renders the active one; an OPEN dock with no tabs shows a
  * picker instead (choose what to open here), which is what the toolbar's two pull-open
  * buttons land on. Both docks can be open at once, and any tab can live in either dock
  * (the panel kinds are singletons — one tab per kind within a conversation — while
- * terminals are one tab per shell).
+ * terminals are one tab per shell and browsers one tab per page).
  *
  * The arrangement is SCOPED to the conversation it was made in, like each browser window
  * managing its own tabs: switching Sessions switches the whole arrangement, and no
@@ -40,7 +40,7 @@ const MAX_SCOPES = 40;
 export type DockPosition = "right" | "bottom";
 
 /**
- * The singleton panel kinds. Terminals are the one multi-instance tab kind. The built-in
+ * The singleton panel kinds. Terminals and browsers are the multi-instance tab kinds. The built-in
  * browser is one set of pages shared by every conversation, so each conversation's tab shows
  * the same browser; it exists only in the desktop app, and the menus that offer panels ask
  * features/builtin-browser whether to list it.
@@ -67,11 +67,14 @@ export const PANEL_KINDS: readonly PanelKind[] = [
 ];
 
 export type DockTab =
-  { kind: "panel"; panel: PanelKind } | { kind: "terminal"; terminalId: string };
+  | { kind: "panel"; panel: PanelKind }
+  | { kind: "terminal"; terminalId: string }
+  | { kind: "browser"; browserId: string };
 
-/** Stable identity of a tab ("agents", …, "terminal:<id>") — the stored form. */
+/** Stable identity of a tab ("agents", …, "terminal:<id>", "browser:<id>") — the stored form. */
 export function tabKey(tab: DockTab): string {
-  return tab.kind === "panel" ? tab.panel : `terminal:${tab.terminalId}`;
+  if (tab.kind === "panel") return tab.panel;
+  return tab.kind === "terminal" ? `terminal:${tab.terminalId}` : `browser:${tab.browserId}`;
 }
 
 function parseTabKey(key: string): DockTab | null {
@@ -79,6 +82,8 @@ function parseTabKey(key: string): DockTab | null {
     return { kind: "panel", panel: key as PanelKind };
   if (key.startsWith("terminal:") && key.length > "terminal:".length)
     return { kind: "terminal", terminalId: key.slice("terminal:".length) };
+  if (key.startsWith("browser:") && key.length > "browser:".length)
+    return { kind: "browser", browserId: key.slice("browser:".length) };
   return null;
 }
 
@@ -621,6 +626,43 @@ export function openPanel(kind: PanelKind, position?: DockPosition): void {
 
 export function closePanel(kind: PanelKind): void {
   removeTab(kind);
+}
+
+// ----------------------------------------------------------------------------- browsers
+
+/**
+ * Browser tabs land in the right dock unless a dock asked for them: a page wants width,
+ * where a shell wants lines. What the tab shows is not the store's to know — the address
+ * lives with the tab's own state (features/browser/browser-tabs.ts), keyed by this id.
+ */
+export function addBrowserTab(id: string, position?: DockPosition): void {
+  insertTab({ kind: "browser", browserId: id }, position ?? "right");
+  persist();
+  notify();
+}
+
+/**
+ * Puts a Browser tab back into a NAMED conversation's dock — the detach round trip
+ * (features/browser/browser-detach.ts): the page lived in a tab of the web browser's own,
+ * that tab closed, and the dock tab returns where it left — even if the user is looking at
+ * another conversation by then. A tab already back (opened again from the "+" menu) stays.
+ */
+export function restoreBrowserTab(scopeId: string, id: string, position: DockPosition): void {
+  const key = `browser:${id}`;
+  if (scopeId === scope) {
+    if (findTab(key) === null) addBrowserTab(id, position);
+    return;
+  }
+  const target = scopes[scopeId] ?? emptyScope();
+  if ([...target.right.tabs, ...target.bottom.tabs].some((tab) => tabKey(tab) === key)) return;
+  const state = target[position];
+  state.tabs = [...state.tabs, { kind: "browser", browserId: id }];
+  state.active = key;
+  state.open = true;
+  const { [scopeId]: _previous, ...rest } = scopes;
+  scopes = { ...rest, [scopeId]: target };
+  persist();
+  notify();
 }
 
 // ---------------------------------------------------------------------------- terminals
