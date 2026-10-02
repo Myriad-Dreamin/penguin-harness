@@ -196,6 +196,17 @@ export function PluginDetailPage() {
   );
 }
 
+/**
+ * The first 16 hex digits of an npm integrity's sha512 — the name of its plugin store entry's
+ * directory, so what the page shows is what an operator finds on disk. Null when malformed.
+ */
+function integrityKey(integrity: string): string | null {
+  const b64 = /^sha512-([A-Za-z0-9+/]{86}==)$/.exec(integrity)?.[1];
+  if (b64 === undefined) return null;
+  const bytes = atob(b64).slice(0, 8);
+  return Array.from(bytes, (ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+}
+
 /** Every content listed under the name: version, integrity, and whether this machine stores and runs it. */
 function Contents({ contents }: { contents: PluginContent[] }) {
   const mark = (on: boolean) => (on ? S.pluginRegistry.yes : "—");
@@ -220,7 +231,8 @@ function Contents({ contents }: { contents: PluginContent[] }) {
               <tr key={`${c.version}#${c.integrity ?? i}`}>
                 <td className="py-1 pr-4 font-mono">{c.version}</td>
                 <td className="py-1 pr-4 font-mono">
-                  {c.integrity?.slice(7, 23) ?? S.pluginRegistry.contentNoIntegrity}
+                  {(c.integrity !== undefined ? integrityKey(c.integrity) : null) ??
+                    S.pluginRegistry.contentNoIntegrity}
                 </td>
                 <td className="py-1 pr-4">{mark(c.stored)}</td>
                 <td className="py-1">{mark(c.linked)}</td>
