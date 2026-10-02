@@ -70,7 +70,7 @@ import { PLUGINS_RESOURCE_ID, pluginHostFrom } from "../plugin/host.js";
 import type { PluginHost } from "../plugin/host.js";
 import { loadPluginHost } from "../plugin/loader.js";
 import { bootWithoutUnsatisfied } from "../plugin/unsatisfied.js";
-import { migrate } from "../db/migrations.js";
+import { migrate } from "../db/migrations/index.js";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
 
