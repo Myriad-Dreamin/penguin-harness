@@ -458,14 +458,9 @@ function run(command: string, args: string[], env: Record<string, string>): Prom
   });
 }
 
-/**
- * The real path of the script this process runs, with the ~/.local/bin/penguin symlink
- * resolved: where the installation is. Not this module's own path — a pushed CLI runs from
- * the data root's HMR store through the installation's `penguin-hmr` loader, and the store
- * is no install layout; the loader beside the installed `penguin.js` is.
- */
+/** The real path of this module, with the ~/.local/bin/penguin symlink resolved. */
 function selfPath(): string {
-  const p = process.argv[1] ?? fileURLToPath(import.meta.url);
+  const p = fileURLToPath(import.meta.url);
   try {
     return realpathSync(p);
   } catch {

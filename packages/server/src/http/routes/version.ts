@@ -127,9 +127,8 @@ export function versionRoutes(deps: VersionRouteDeps): Hono<AppEnv> {
     // `penguin update` resolves the release itself.
     const check = await deps.updateCheck.check(false);
     const target = check.updateAvailable ? check.latestVersion : null;
-    return c.json(
-      deps.updateJob.start(deps.config.cliEntry ?? null, target) satisfies UpdateJobStatus,
-    );
+    const cliEntry = process.env.PENGUIN_CLI_ENTRY ?? null;
+    return c.json(deps.updateJob.start(cliEntry, target) satisfies UpdateJobStatus);
   });
 
   app.post("/restart", (c) => {

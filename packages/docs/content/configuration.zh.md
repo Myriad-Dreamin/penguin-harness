@@ -25,6 +25,7 @@ CLI 和服务器启动时会从工作目录加载 `.env` 文件。
 | `PENGUIN_UPDATE_CHECK` | 设为 `off` 时关闭 Web App 的新版本检查 | 启用 |
 | `PENGUIN_NO_LOGIN_SHELL_ENV` | 设为任意非空值后，桌面应用在 macOS/Linux 上从图形界面启动时不再导入登录 shell 的环境变量 | 未设置：照常导入 |
 | `PENGUIN_SHELL` | 运行 Agent 命令的 shell（可执行文件名或路径） | 未设置：自动选择，见[工具与审批](/tools#命令会话) |
+| `PENGUIN_CLI_ENTRY` | 本安装提供给所运行 Agent 的 CLI 入口脚本（见 [PATH 启动脚本](#path-启动脚本)） | 由 `penguin server` / `penguin web` 和桌面应用设置 |
 
 说明：
 
@@ -34,6 +35,7 @@ CLI 和服务器启动时会从工作目录加载 `.env` 文件。
 - `MODELSCOPE_BRIDGE_URL`：与 `PENGUIN_GO_ORIGIN` 一样是服务端配置，不接受浏览器指定的端点。它必须是不带凭据、查询参数或 fragment 的 HTTPS 地址。不同之处是**它允许带路径前缀**，因为生产环境的中转层就挂在 `https://go.penguin.ooo/modelscope` 下。见[连接账户](/models#连接账户)。
 - `PENGUIN_UPDATE_CHECK`：设为 `off` 只关闭自动的版本检查，不影响其他对外请求：模型请求、已启用的远程控制连接、Key 授权和代理测试照常联网。
 - `PENGUIN_NO_LOGIN_SHELL_ENV`：不设置时，导入只填补启动过程没有设置的变量。见[桌面应用快速开始](/quickstart-desktop)。
+- `PENGUIN_CLI_ENTRY`：服务器从源码检出启动时，会回退到检出目录中的 `packages/cli/dist/penguin.js`。
 
 ### Agent 所执行命令的环境
 
@@ -47,7 +49,7 @@ Agent 用 `exec_command` 运行的命令继承宿主环境，但有以下改动�
 
 ### PATH 启动脚本
 
-Agent 运行的每条命令，PATH 的第一位都是本安装自带的 `penguin`。服务器启动时会在 `<root>/bin/penguin` 写入一个启动脚本：脚本用服务器自己的 Node 运行「运行这个服务器的 harness」的 CLI（推送落地后是推送来的 CLI，否则是安装时那份；从源码检出启动的服务器用该检出的 `packages/cli/dist/penguin.js`），并把这个目录放到每条命令 PATH 的最前面。这样，命令里调用的 `penguin` 就是 Agent 正在运行的这套 harness，无论机器上全局装的是什么版本。
+Agent 运行的每条命令，PATH 的第一位都是本安装自带的 `penguin`。服务器启动时会在 `<root>/bin/penguin` 写入一个启动脚本：脚本用服务器自己的 Node 运行 `PENGUIN_CLI_ENTRY` 指向的 CLI 入口，并把这个目录放到每条命令 PATH 的最前面。这样，命令里调用的 `penguin` 就是 Agent 正在运行的这套 harness，无论机器上全局装的是什么版本。
 
 这个目录既前置到环境变量里，也前置到 shell 内部，因为命令通过登录 shell 运行，而登录 shell 的 profile 常常随后重写 PATH。这也让它排在[密钥保险柜](#vault)里设置的 `PATH` 之前，而保险柜里的 `PATH` 原本会整体替换继承来的值。
 

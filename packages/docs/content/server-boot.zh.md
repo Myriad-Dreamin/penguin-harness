@@ -3,9 +3,9 @@ title: Server 启动与子系统
 description: 从进程入口到 App 开始服务的组装顺序、各子系统的对外表面，以及插件在进程级与 App 级两层生命周期中的位置。
 ---
 
-`server/src/index.ts` 导出 `startServer(options)`，导入时不启动任何东西。谁启动 Server，谁就把自己解析出的内容作为参数传进来：端口、主机，以及运行它的 harness 的 CLI。调用方有三个：CLI、桌面应用，以及 `src/start.ts`（供 `pnpm dev` 与 `pnpm start` 使用）。
+`server/src/index.ts` 是一个带副作用的模块：导入它，Server 就会启动。CLI 正是依赖这一约定，才能把 Server 跑在自己选定的 Node 进程里。
 
-启动顺序写在 `startServer()` 里：每一步对应一个 `PenguinServer` 方法，方法名就是步骤名。组装本身分成两部分：
+启动顺序写在 `main()` 里：每一步对应一个 `PenguinServer` 方法，方法名就是步骤名。组装本身分成两部分：
 
 - `bootAppDeps(config)` 构建进程核心（数据库、ChannelHub、HMR host），把它们发布进资源注册表，然后启动平台；业务面在平台内部组装。
 - `createApp(boot)` 组装这一层自己的 Hono 应用（网络守卫、平台接缝、静态托管），但不监听端口。因此测试可以拿到完整的应用，直接用 `app.request(...)` 驱动，不占端口，也完全不经过 `index.ts`。
@@ -17,20 +17,20 @@ description: 从进程入口到 App 开始服务的组装顺序、各子系统�
 
 ## 进程入口
 
-启动 Server 的机制有四种，最终都汇到 `startServer`。
+启动 Server 的机制有四种，殊途同归：同一组环境变量驱动同一个模块。
 
 | 入口 | 机制 |
 | --- | --- |
-| 直接运行 | `node dist/start.js`（`server/package.json` 里的 `start`） |
-| CLI（`penguin server` / `penguin web`） | 用运行中 harness 的 CLI（数据根里有推送来的 CLI 就用它，否则用安装时那份）以**受监管的子进程**运行 Server；子进程把端口、主机和这份 CLI 传给 `startServer` |
+| 直接运行 | `node dist/index.js`（`server/package.json` 里的 `start`） |
+| CLI（`penguin server` / `penguin web`） | 设好 `PORT`/`HOST` 并导出 `PENGUIN_CLI_ENTRY`，然后以**受监管的子进程**运行 Server，由子进程导入 `@prismshadow/penguin-server` |
 | CLI 自动启动 | CLI 命令发现没有运行中的 Server 时，以 `PORT=0` 派生一个分离的 `server` 子命令，等数据根的锁生效后再接入 |
-| 桌面应用 | `utilityProcess.fork` 在**独立**进程里拉起 `server-launch.js`，它按同一规则解析 harness，启动推送来的 CLI 里的 Server 或随应用打包的 Server |
+| 桌面应用 | `utilityProcess.fork` 拉起一个**独立**的 Server 进程，并注入它需要的环境变量 |
 
-受监管的子进程以 `node <harness 的 CLI> server …` 运行，每次拉起都重新解析，所以推送后的重启会跑推送来的 CLI；带有 `PENGUIN_SERVE_CHILD=1` 标记，并通过 `PENGUIN_SUPERVISED=1` 得知有监管者。父进程转发终端的信号，以子进程的退出码退出；子进程以 **重启以更新** 所要求的重启码退出时，父进程重新拉起它。用 tsx 运行的开发实例无法由 node 重新派生，CLI 就改为在本进程内启动 Server。`penguin web` 还会轮询到就绪后打开浏览器。
+受监管的子进程以 `node <entry> server …` 运行，带有 `PENGUIN_SERVE_CHILD=1` 标记，并通过 `PENGUIN_SUPERVISED=1` 得知有监管者。父进程转发终端的信号，以子进程的退出码退出；子进程以 **重启以更新** 所要求的重启码退出时，父进程重新拉起它。每次拉起子进程前，父进程都会检查数据根：推送过 CLI 时，`<entry>` 是已安装入口旁边的 `penguin-hmr` 加载器，子进程运行推送来的 CLI；否则就是已安装的入口。无论哪种情况，子进程的 `PENGUIN_CLI_ENTRY` 都保持为已安装的入口。自动启动经由同一个父进程，因此这样启动的 Server 同样运行推送来的 CLI。用 tsx 运行的开发实例无法由 node 重新派生，CLI 就改为在本进程内导入 Server。`penguin web` 还会轮询到就绪后打开浏览器。
 
 自动启动的输出写入 `<root>/logs/server-auto-<date>.log`。
 
-桌面应用经环境变量注入 `PENGUIN_HOME`、`HOST`、`PORT`、`PENGUIN_DESKTOP_TOKEN` 和 `PENGUIN_PORT_FILE`；应用指定了 `PENGUIN_WEB_DIST` 时，也一并注入。
+桌面应用经环境变量注入 `PENGUIN_HOME`、`HOST`、`PORT`、`PENGUIN_DESKTOP_TOKEN` 和 `PENGUIN_PORT_FILE`；应用指定了 `PENGUIN_WEB_DIST` 和 `PENGUIN_CLI_ENTRY` 时，也一并注入。被拉起的进程在数据根里有推送来的 CLI 时运行它的 Server，否则运行随应用打包的 Server。
 
 > [!NOTE]
 > Server 自身的配置只来自环境变量（`server/src/config.ts`）。`system_config.yaml` 是 Agent 级状态，在 Session 运行时读取，与 Server 启动无关。

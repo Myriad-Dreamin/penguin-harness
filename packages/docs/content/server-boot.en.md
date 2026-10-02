@@ -3,9 +3,9 @@ title: Server Boot and Subsystems
 description: The assembly order from process entry to a serving App, each subsystem's external surface, and where plugins sit in the two-level process/App lifecycle.
 ---
 
-`server/src/index.ts` exports `startServer(options)` and starts nothing on import. Whoever starts a server passes in what it resolved: the port, the host, and the CLI of the harness that runs it. The CLI, the desktop app and `src/start.ts` (for `pnpm dev` and `pnpm start`) are the three callers.
+`server/src/index.ts` is a side-effecting module: importing it starts the server. That is the contract the CLI relies on to run a server inside a Node process of its own choosing.
 
-The startup order is written out in `startServer()`: one `PenguinServer` method per step, and the method name is the step name. Assembly itself is split in two:
+The startup order is written out in `main()`: one `PenguinServer` method per step, and the method name is the step name. Assembly itself is split in two:
 
 - `bootAppDeps(config)` builds the process core: the database, the channel hub and the HMR host. It publishes them into the resource registry and boots the platform. The business surface is assembled inside the platform.
 - `createApp(boot)` assembles the layer's own Hono app: network guards, the platform seam and static hosting. It does not listen. Tests can take the full app and drive it via `app.request(...)`, with no port involved and without going through `index.ts` at all.
@@ -17,20 +17,20 @@ This page answers two questions:
 
 ## Process entry
 
-Four mechanisms start the server. All of them converge on `startServer`.
+Four mechanisms start the server. All of them converge: the same env vars drive the same module.
 
 | Entry | Mechanism |
 | --- | --- |
-| Direct | `node dist/start.js` (`start` in `server/package.json`) |
-| CLI (`penguin server` / `penguin web`) | Runs the server as a **supervised child process** on the CLI of the harness that runs (the pushed CLI when the data root has one, else the installed one). The child calls `startServer` with the port, the host and that CLI |
+| Direct | `node dist/index.js` (`start` in `server/package.json`) |
+| CLI (`penguin server` / `penguin web`) | Sets `PORT`/`HOST` and exports `PENGUIN_CLI_ENTRY`, then runs the server as a **supervised child process** that imports `@prismshadow/penguin-server` |
 | CLI auto-start | A CLI command that finds no running server spawns a detached `server` subcommand with `PORT=0` and attaches once the root's lock is live |
-| Desktop | `utilityProcess.fork` launches `server-launch.js` in a separate process. It resolves the harness by the same rule and starts the pushed CLI's server or the bundled one |
+| Desktop | `utilityProcess.fork` launches a separate server process with the server's env injected |
 
-The supervised child runs as `node <harness CLI> server …`, re-resolved at every launch so a restart after a push runs the pushed CLI, marked `PENGUIN_SERVE_CHILD=1` and told `PENGUIN_SUPERVISED=1`. The parent forwards the terminal's signals, exits with the child's code, and relaunches the child when it exits with the restart code that **Restart to update** asks for. A dev run through tsx cannot be re-spawned by node, so the CLI starts the server in-process instead. `penguin web` additionally polls for readiness and opens the browser.
+The supervised child runs as `node <entry> server …`, marked `PENGUIN_SERVE_CHILD=1` and told `PENGUIN_SUPERVISED=1`. The parent forwards the terminal's signals, exits with the child's code, and relaunches the child when it exits with the restart code that **Restart to update** asks for. Each time it starts a child, the parent checks the data root: when a CLI has been pushed there, `<entry>` is the `penguin-hmr` loader next to the installed entry, so the child runs the pushed CLI; otherwise it is the installed entry. The child keeps the installed entry as `PENGUIN_CLI_ENTRY` either way. Auto-start goes through the same parent, so a server started that way also runs the pushed CLI. A dev run through tsx cannot be re-spawned by node, so the CLI imports the server in-process instead. `penguin web` additionally polls for readiness and opens the browser.
 
 Auto-start output goes to `<root>/logs/server-auto-<date>.log`.
 
-The desktop process injects `PENGUIN_HOME`, `HOST`, `PORT`, `PENGUIN_DESKTOP_TOKEN` and `PENGUIN_PORT_FILE` via env, plus `PENGUIN_WEB_DIST` when the app pins it.
+The desktop process injects `PENGUIN_HOME`, `HOST`, `PORT`, `PENGUIN_DESKTOP_TOKEN` and `PENGUIN_PORT_FILE` via env, plus `PENGUIN_WEB_DIST` and `PENGUIN_CLI_ENTRY` when the app pins them. The process it forks runs the pushed CLI's server when the data root has one, and otherwise the server bundled with the app.
 
 > [!NOTE]
 > The server's own configuration comes from environment variables only (`server/src/config.ts`). `system_config.yaml` is agent-level state, read when a Session runs; it plays no part in server boot.

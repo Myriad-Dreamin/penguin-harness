@@ -9,12 +9,6 @@
     "url": "git+https://github.com/Prism-Shadow/penguin-harness.git",
     "directory": "packages/cli"
   },
-  "exports": {
-    "./harness": {
-      "types": "./dist/harness.d.ts",
-      "import": "./dist/harness.js"
-    }
-  },
   "bin": {
     "penguin": "./dist/penguin.js",
     "penguin-hmr": "./dist/penguin-hmr.js"

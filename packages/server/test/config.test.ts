@@ -6,9 +6,8 @@
  *   non-integer or out-of-range value throws. This matches the CLI's resolvePort.
  * - PENGUIN_SEED_ADMIN_PASSWORD: unset, empty or blank leaves the seed unpinned (null, so the
  *   seed generates its own); a value is kept trimmed; desktop mode changes neither.
- * - What the starter resolved (port, host, the harness's CLI) takes precedence over the
- *   environment; no resolved CLI falls through to the checkout lookup, and an environment
- *   variable cannot name one.
+ * - PENGUIN_CLI_ENTRY: a value is kept trimmed; a blank one falls through to the checkout
+ *   lookup like an unset one.
  * - PENGUIN_GO_ORIGIN accepts a loopback HTTP origin for integration work and refuses anything
  *   that is not a bare origin, or plaintext HTTP to another host.
  * - MODELSCOPE_BRIDGE_URL may carry a path prefix but refuses plaintext HTTP, credentials, a
@@ -65,31 +64,21 @@ describe("resolveServerConfig: seed password", () => {
   });
 });
 
-describe("resolveServerConfig: what the starter resolved", () => {
-  it("takes the harness's CLI — what the <root>/bin/penguin shim execs", () => {
+describe("resolveServerConfig: PENGUIN_CLI_ENTRY parsing", () => {
+  it("keeps a value trimmed — it is what the <root>/bin/penguin shim execs", () => {
     expect(
-      resolveServerConfig(base, { cliEntry: "/opt/penguin/lib/dist/penguin-hmr.js" }).cliEntry,
-    ).toBe("/opt/penguin/lib/dist/penguin-hmr.js");
+      resolveServerConfig({ ...base, PENGUIN_CLI_ENTRY: " /opt/penguin/dist/penguin.js " })
+        .cliEntry,
+    ).toBe("/opt/penguin/dist/penguin.js");
   });
 
-  it("falls through to the checkout lookup without one, whatever the environment says", () => {
-    // What the lookup finds depends on whether this checkout has built its CLI, so the claim
-    // here is only that the environment does not name it (see cli-shim.test.ts for
-    // checkoutCliEntry itself).
-    const inferred = resolveServerConfig(base, { cliEntry: null }).cliEntry;
-    expect(resolveServerConfig({ ...base, PENGUIN_CLI_ENTRY: "/planted/cli.js" }).cliEntry).toBe(
-      inferred,
-    );
-    expect(inferred === null || inferred?.endsWith(`${path.sep}penguin.js`)).toBe(true);
-  });
-
-  it("takes the resolved port and host over PORT / HOST", () => {
-    const config = resolveServerConfig(
-      { ...base, PORT: "7364", HOST: "0.0.0.0" },
-      { port: 0, host: "127.0.0.1" },
-    );
-    expect(config.port).toBe(0);
-    expect(config.host).toBe("127.0.0.1");
+  it("falls through to the checkout lookup on a blank value, like unset", () => {
+    // What the lookup finds depends on whether this checkout has built its CLI, so the
+    // claim here is only that a blank value is not treated as an entry (see cli-shim.test.ts
+    // for checkoutCliEntry itself).
+    const blank = resolveServerConfig({ ...base, PENGUIN_CLI_ENTRY: "   " }).cliEntry;
+    expect(blank).toBe(resolveServerConfig({ ...base }).cliEntry);
+    expect(blank === null || blank?.endsWith(`${path.sep}penguin.js`)).toBe(true);
   });
 });
 

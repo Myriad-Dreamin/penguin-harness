@@ -7,8 +7,7 @@
  * the HMR store instead (see scripts/deploy.mjs).
  */
 import { Command, CommanderError } from "commander";
-import { buildInfo, resolveRoot } from "@prismshadow/penguin-core";
-import { resolveHarness } from "./harness.js";
+import { buildInfo } from "@prismshadow/penguin-core";
 import { registerAuthCommand } from "./commands/auth.js";
 import { registerConfigCommand } from "./commands/config.js";
 import { registerRunCommand } from "./commands/run.js";
@@ -29,26 +28,12 @@ import { reportCommanderError } from "./usage-error.js";
 import { defaultMessages } from "./i18n.js";
 
 /**
- * Starts a server in this process, from the server this CLI was built with — for a starter
- * that runs a pushed CLI bundle in place instead of through its `server` command (the
- * desktop's embedded-server entry). Imported on demand: no other command loads the server.
- */
-export async function serve(
-  options: import("@prismshadow/penguin-server").StartOptions,
-): Promise<void> {
-  const { startServer } = await import("@prismshadow/penguin-server");
-  await startServer(options);
-}
-
-/**
  * Runs one invocation (`argv` = process.argv.slice(2)) and returns its exit code.
  * `exitOverride()` keeps commander from calling process.exit, and process.exitCode is
  * read back then restored, so calling this more than once in a process is safe.
  */
 export async function cli(argv: string[]): Promise<number> {
   const t = defaultMessages();
-  // Which harness this process runs, resolved once and handed to the commands that need it.
-  const harness = await resolveHarness(process.argv[1], resolveRoot());
   const program = new Command();
   program
     .name("penguin")
@@ -77,7 +62,7 @@ export async function cli(argv: string[]): Promise<number> {
   registerScheduleCommand(program, t);
   registerOrgCommand(program, t);
   registerBrowserCommand(program, t);
-  registerServeCommands(program, { t, harness });
+  registerServeCommands(program, t);
   registerUpdateCommand(program, t);
   registerVersionCommand(program, t);
 

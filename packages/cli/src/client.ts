@@ -88,7 +88,7 @@ function readTokenFile(root: string): string | null {
 
 /**
  * The CLI entry script for auto-start, or null when this process cannot re-run itself
- * with plain node (a tsx dev run has a .ts entry) — the same rule as harness.ts.
+ * with plain node (a tsx dev run has a .ts entry) — same rule as serve.ts's cliEntryFor.
  */
 export function autoStartEntry(argv1: string | undefined): string | null {
   if (!argv1) return null;
