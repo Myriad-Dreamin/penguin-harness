@@ -1,7 +1,9 @@
 /**
  * The harness against the real server: it starts on a scratch root, seeds the admin, lists
  * what the Project it seeded asks for, and stops. A plugin directory whose entry is not built is
- * refused before anything starts, with the fix in the message.
+ * refused before anything starts, with the fix in the message. A built directory is staged as a
+ * hot push brings plugins: packed into the push assets' plugin directory, and listed there with
+ * its tarball's npm integrity.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
@@ -12,6 +14,7 @@ import {
   HarnessApiError,
   defaultServerEntry,
   resolvePluginEntry,
+  stagePushedPlugins,
   startHarness,
   type Harness,
 } from "../src/index.js";
@@ -33,6 +36,47 @@ describe("resolvePluginEntry", () => {
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("stagePushedPlugins", () => {
+  it("packs a built package into the push assets and indexes it with its tarball's npm integrity", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-plugin-test-src-"));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-plugin-test-root-"));
+    try {
+      await fs.writeFile(
+        path.join(dir, "package.json"),
+        JSON.stringify({
+          name: "@acme/staged",
+          version: "1.2.3",
+          main: "./dist/index.js",
+          files: ["dist"],
+        }),
+      );
+      await fs.mkdir(path.join(dir, "dist"));
+      await fs.writeFile(path.join(dir, "dist", "index.js"), "export default {};");
+      await fs.writeFile(path.join(dir, "notes.md"), "not in files");
+
+      expect(await stagePushedPlugins(root, [dir])).toEqual(["@acme/staged"]);
+
+      const prefix = path.join(root, "hmr", "plugin-test-assets", "plugins");
+      // The tarball, named the way npm names it, beside the index: nothing installed.
+      expect((await fs.readdir(prefix)).sort()).toEqual(["acme-staged-1.2.3.tgz", "index.json"]);
+      const harness = JSON.parse(await fs.readFile(path.join(root, "hmr", "harness.json"), "utf8"));
+      expect(harness).toEqual({ assets: { dir: "plugin-test-assets" } });
+      const [row] = JSON.parse(await fs.readFile(path.join(prefix, "index.json"), "utf8"));
+      expect(row).toEqual({
+        name: "@acme/staged",
+        version: "1.2.3",
+        description: "",
+        authors: [],
+        license: "",
+        integrity: expect.stringMatching(/^sha512-[A-Za-z0-9+/]{86}==$/),
+      });
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 describe("startHarness", () => {

@@ -15,9 +15,12 @@
  *   …
  *   await harness.stop();
  *
- * A plugin is named by its package directory (its `main` must be built) or by a specifier
- * the server can resolve on its own. The listing writes the entry file's absolute path,
- * which the loader imports directly and walks up from to its `package.json` and the `ifaces.json` beside it.
+ * A plugin is named by its package directory (build it first) or by a package name the server
+ * can install on its own. A directory reaches the server the way a hot push brings plugins:
+ * the harness packs it into a bundled plugin directory inside the scratch root's push assets
+ * (`hmr/harness.json` names them) and writes that directory's index with the tarball's npm
+ * integrity — so the server stores the tarball, unpacks it and loads it like any plugin a push
+ * carries. The Project lists it by package name.
  *
  * The list is CONFIGURATION OF A PROJECT (`plugins` in its `.project_config.toml`), which is
  * what a process loads the closure of; the harness seeds that file for the one Project the
@@ -25,7 +28,8 @@
  *
  * A development dependency: it ships with no build of the harness.
  */
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import net from "node:net";
@@ -182,7 +186,7 @@ export interface Harness {
   /** The data root the server runs on. */
   readonly root: string;
   readonly admin: { userId: string; password: string };
-  /** The plugin specifiers as the Project's config lists them (entry paths for directory plugins). */
+  /** The plugins as the Project's config lists them: package names. */
   readonly plugins: readonly string[];
   /** The Project that asks for them; the prefix of every Project-scoped route a test calls. */
   readonly projectId: string;
@@ -198,7 +202,10 @@ export interface Harness {
   stop(): Promise<void>;
 }
 
-/** Resolves a plugin option to what the Project's config should list. */
+/**
+ * Checks a plugin option: a package name is returned as it is; a package directory must name
+ * an entry that exists (the package is built), which is returned.
+ */
 export async function resolvePluginEntry(plugin: string): Promise<string> {
   if (!path.isAbsolute(plugin)) return plugin;
   const manifestFile = path.join(plugin, "package.json");
@@ -225,6 +232,59 @@ export async function resolvePluginEntry(plugin: string): Promise<string> {
     );
   }
   return entry;
+}
+
+/** The push assets directory the harness stages plugins into, under `<root>/hmr/`. */
+const ASSETS_DIR = "plugin-test-assets";
+
+/** npm's integrity of a file: `sha512-<base64>` of its bytes, what `dist.integrity` is. */
+async function npmIntegrity(file: string): Promise<string> {
+  return `sha512-${createHash("sha512")
+    .update(await fs.readFile(file))
+    .digest("base64")}`;
+}
+
+function run(command: string, args: string[], cwd: string): void {
+  execFileSync(command, args, { cwd, stdio: "pipe", shell: process.platform === "win32" });
+}
+
+/**
+ * Stages package directories into `root` as a hot push would bring them: each is packed
+ * (`pnpm pack`, its `files` honoured) into `<root>/hmr/plugin-test-assets/plugins/`, that
+ * directory's `index.json` lists each with its tarball's npm integrity, and
+ * `<root>/hmr/harness.json` names the assets. Answers the packages' names, in order.
+ */
+export async function stagePushedPlugins(root: string, dirs: readonly string[]): Promise<string[]> {
+  const prefix = path.join(root, "hmr", ASSETS_DIR, "plugins");
+  await fs.mkdir(prefix, { recursive: true });
+  const names: string[] = [];
+  const rows: Record<string, unknown>[] = [];
+  for (const dir of dirs) {
+    const before = new Set(await fs.readdir(prefix));
+    run("pnpm", ["pack", "--pack-destination", prefix], dir);
+    const tarball = (await fs.readdir(prefix)).find((f) => f.endsWith(".tgz") && !before.has(f));
+    if (tarball === undefined) throw new Error(`pnpm pack left no tarball for ${dir}`);
+    const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8")) as {
+      name: string;
+      version: string;
+    };
+    names.push(pkg.name);
+    // The rest of a row (description, authors, license) is for a listing; a test needs none.
+    rows.push({
+      name: pkg.name,
+      version: pkg.version,
+      description: "",
+      authors: [],
+      license: "",
+      integrity: await npmIntegrity(path.join(prefix, tarball)),
+    });
+  }
+  await fs.writeFile(path.join(prefix, "index.json"), `${JSON.stringify(rows, null, 2)}\n`);
+  await fs.writeFile(
+    path.join(root, "hmr", "harness.json"),
+    `${JSON.stringify({ assets: { dir: ASSETS_DIR } }, null, 2)}\n`,
+  );
+  return names;
 }
 
 function entryFromExports(exportsField: unknown): string | undefined {
@@ -283,11 +343,13 @@ async function freePort(): Promise<number> {
 }
 
 /**
- * Starts the server with the plugins installed and waits until it has finished starting. The data root
- * carries only what the server writes; the plugins are listed, never copied.
+ * Starts the server with the plugins installed and waits until it has finished starting. A
+ * package directory is staged as a hot push's plugin (`stagePushedPlugins`); the Project lists
+ * every plugin by package name.
  */
 export async function startHarness(options: StartHarnessOptions): Promise<Harness> {
-  const plugins = await Promise.all(options.plugins.map(resolvePluginEntry));
+  // Every directory must be built before anything is staged.
+  await Promise.all(options.plugins.map(resolvePluginEntry));
   const serverEntry = options.serverEntry ?? defaultServerEntry();
   try {
     await fs.access(serverEntry);
@@ -300,6 +362,9 @@ export async function startHarness(options: StartHarnessOptions): Promise<Harnes
   const root = options.root ?? (await fs.mkdtemp(path.join(os.tmpdir(), "penguin-plugin-test-")));
   const projectId = options.projectId ?? DEFAULT_PROJECT_ID;
   await fs.mkdir(path.join(root, projectId), { recursive: true });
+  const dirs = options.plugins.filter((p) => path.isAbsolute(p));
+  const staged = dirs.length === 0 ? [] : await stagePushedPlugins(root, dirs);
+  const plugins = options.plugins.map((p) => (path.isAbsolute(p) ? staged[dirs.indexOf(p)]! : p));
   // Only `plugins`: the rest of a Project's config is the server's to write when it adopts
   // the directory, and its adoption preserves what is already in the file.
   await fs.writeFile(
