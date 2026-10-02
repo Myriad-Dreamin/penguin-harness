@@ -1,6 +1,6 @@
 /**
  * What each migration changes, from the database the release or line before it left: the
- * 0.2.4 → 0.2.7 messaging tables, the restart-only goal_state drop, the user profile's
+ * 0.2.4 → 0.2.7 messaging tables, the goal_state drop (the one contract), the user profile's
  * columns, the channels table recreation, the queues and model tables, and the repairs for
  * roots the numbered era left behind. The ledger itself is pinned in db-migrations.test.ts.
  */
@@ -83,18 +83,8 @@ describe("0.2.9 → current: drop-goal-state", () => {
     }
   });
 
-  it("is restart-only, and knows when its work is already done", () => {
-    const step = MIGRATIONS.find((m) => m.name === "drop-goal-state")!;
-    expect(step.swapSafe).toBe(false);
-    if (step.swapSafe) return;
-    const db = open029();
-    try {
-      expect(step.isApplied(db)).toBe(false);
-      migrate(db);
-      expect(step.isApplied(db)).toBe(true);
-    } finally {
-      db.close();
-    }
+  it("is a contract: the only migration a hot push leaves pending", () => {
+    expect(MIGRATIONS.filter((m) => !m.swapSafe).map((m) => m.name)).toEqual(["drop-goal-state"]);
   });
 
   it("down recreates the 0.2.9 table empty, with its index", () => {
