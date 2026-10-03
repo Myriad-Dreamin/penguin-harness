@@ -51,7 +51,9 @@ function ProbeName({ probe, table }: { probe: string; table: ProbeSites | null }
       href={link.href}
       target="_blank"
       rel="noopener noreferrer"
-      title={link.dirty ? S.usage.perfSiteDirtyTitle(link.site) : S.usage.perfSiteTitle(link.site)}
+      data-tooltip={
+        link.dirty ? S.usage.perfSiteDirtyTitle(link.site) : S.usage.perfSiteTitle(link.site)
+      }
       className="underline-offset-2 hover:underline"
     >
       {probe}
