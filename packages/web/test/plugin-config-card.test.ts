@@ -4,6 +4,8 @@
  * - Given a group with a `switch`, while the switch is off as drafted the card draws that field
  *   alone (no table, no Advanced field, no row-choice field) and the heading no notice or
  *   action; on, it draws them all but the field a row choice stores into.
+ * - Given a notice with details (why a backend is not in use), the details sit in a collapsed
+ *   fold under it, in the page's language, and a notice without details has no fold.
  * - Given a table row whose name was never changed, the name box holds the declared name as
  *   its value (normal ink, not a placeholder); a renamed row holds the new name.
  * - Given described columns and a described group, every header and the card title carry a "?"
@@ -90,6 +92,42 @@ describe("the settings card", () => {
     }
     // The title and its "?" stay either way.
     expect(heading({ enabled: false })).toContain("Sandbox");
+  });
+
+  it("folds a notice's details under it, collapsed, in the page's language", () => {
+    const withDetails: PluginConfigEntry = {
+      ...ENTRY,
+      notices: [
+        {
+          tone: "muted",
+          text: "Enforced here: file writes, by Landlock (dsh-local).",
+          details:
+            "penguin-bwrap is installed but not in use: refused\nSaving this card checks these backends again.",
+          detailsZh: "penguin-bwrap 已安装但未启用：refused",
+        },
+      ],
+    };
+    const render = (locale: "en" | "zh") =>
+      renderToStaticMarkup(
+        createElement(ConfigHeading, {
+          entry: withDetails,
+          draft: { enabled: true },
+          nested: false,
+          disabled: false,
+          onAction: () => {},
+          locale,
+        }),
+      );
+    const html = render("en");
+    expect(html).toContain("Enforced here: file writes, by Landlock (dsh-local).");
+    // A disclosure: a collapsed button controlling the hidden panel that holds the text.
+    const control = /aria-expanded="false" aria-controls="([^"]+)"/.exec(html)?.[1];
+    expect(control).toBeDefined();
+    const panel = html.slice(html.indexOf(`id="${control}"`));
+    expect(panel).toMatch(/^id="[^"]+" hidden=""/);
+    expect(panel).toContain("penguin-bwrap is installed but not in use: refused");
+    expect(render("zh")).toContain("penguin-bwrap 已安装但未启用：refused");
+    expect(heading({ enabled: true })).not.toContain("aria-expanded");
   });
 
   it("holds the effective name in the name box, the declared one when not renamed", () => {

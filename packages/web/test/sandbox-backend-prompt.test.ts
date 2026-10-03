@@ -1,8 +1,8 @@
 /**
  * When the Sandbox card offers to install a backend (lib/sandbox-backend-prompt.ts).
  *
- * - Given a machine that reports no backend for its OS and names a default, the default is
- *   offered; given one with a backend installed, no default, or no report, nothing is.
+ * - Given a machine that reports no backend for its OS and names defaults, every default is
+ *   offered together; given one with a backend installed, no default, or no report, nothing is.
  * - Given "Don't ask again" ticked for a machine, that machine is not asked again in this
  *   browser, and every other machine still is.
  * - Given storage that throws or holds garbage, the prompt is offered (never silently
@@ -26,20 +26,20 @@ function memoryStorage(): PromptStorage & { data: Map<string, string> } {
   };
 }
 
-const MISSING = { backend: { installed: false, recommended: "@penguinharness/sandbox-bwrap" } };
+const LINUX = ["@penguinharness/sandbox-bwrap", "@penguinharness/sandbox-dsh"];
+const MISSING = { backend: { installed: false, recommended: LINUX } };
 
 describe("the default-backend prompt", () => {
   it("offers the OS's default only when no backend for the OS is installed", () => {
     const storage = memoryStorage();
-    expect(backendToOffer(MISSING, "m1", storage)).toBe("@penguinharness/sandbox-bwrap");
+    expect(backendToOffer(MISSING, "m1", storage)).toEqual(LINUX);
     expect(
-      backendToOffer(
-        { backend: { installed: true, recommended: "@penguinharness/sandbox-bwrap" } },
-        "m1",
-        storage,
-      ),
+      backendToOffer({ backend: { installed: true, recommended: LINUX } }, "m1", storage),
     ).toBeNull();
     expect(backendToOffer({ backend: { installed: false } }, "m1", storage)).toBeNull();
+    expect(
+      backendToOffer({ backend: { installed: false, recommended: [] } }, "m1", storage),
+    ).toBeNull();
     expect(backendToOffer({}, "m1", storage)).toBeNull();
   });
 
@@ -49,7 +49,7 @@ describe("the default-backend prompt", () => {
     dismissBackendPrompt("m1", storage);
     expect(backendPromptDismissed("m1", storage)).toBe(true);
     expect(backendToOffer(MISSING, "m1", storage)).toBeNull();
-    expect(backendToOffer(MISSING, "m2", storage)).toBe("@penguinharness/sandbox-bwrap");
+    expect(backendToOffer(MISSING, "m2", storage)).toEqual(LINUX);
     expect(JSON.parse(storage.data.get(BACKEND_PROMPT_DISMISSED_KEY)!)).toEqual(["m1"]);
   });
 
@@ -63,8 +63,8 @@ describe("the default-backend prompt", () => {
       },
     };
     expect(() => dismissBackendPrompt("m1", throwing)).not.toThrow();
-    expect(backendToOffer(MISSING, "m1", throwing)).toBe("@penguinharness/sandbox-bwrap");
-    expect(backendToOffer(MISSING, "m1", null)).toBe("@penguinharness/sandbox-bwrap");
+    expect(backendToOffer(MISSING, "m1", throwing)).toEqual(LINUX);
+    expect(backendToOffer(MISSING, "m1", null)).toEqual(LINUX);
     const garbage = memoryStorage();
     garbage.setItem(BACKEND_PROMPT_DISMISSED_KEY, "{not json");
     expect(backendPromptDismissed("m1", garbage)).toBe(false);

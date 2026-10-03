@@ -134,9 +134,11 @@ To give the agent a Workspace, mount a directory, for example `-v /srv/project:/
 
 ### Sandbox the agent inside the container
 
-The image ships the sandbox backends: the same builtin plugins prefix as the CLI package, at `/opt/penguin/lib/plugins`, which the server imports into its plugin store at every start. Shipping one is not enabling it. No backend loads until a Project installs it from the **Plugins** page — on Linux that is `@penguinharness/sandbox-bwrap` — and the sandbox mode starts at Off. Installing it downloads nothing.
+The image ships the sandbox backends: the same builtin plugins prefix as the CLI package, at `/opt/penguin/lib/plugins`, which the server imports into its plugin store at every start. Shipping one is not enabling it. No backend loads until a Project installs it, and the sandbox starts off. Turning it on from the [Sandbox](/settings#sandbox) card offers the two Linux backends, `@penguinharness/sandbox-bwrap` and `@penguinharness/sandbox-dsh`, and installing them downloads nothing.
 
-bubblewrap confines a command by creating unprivileged user namespaces, and Docker's defaults refuse that. The default seccomp profile blocks creating the namespace, the default AppArmor profile does too on hosts that apply one, and the paths Docker masks under `/proc` stop bubblewrap mounting a fresh `/proc`. To let the backend run, start the container with these options:
+With Docker's defaults the sandbox works with no option: `sandbox-dsh` confines file writes through Landlock, which Docker's default seccomp profile allows, on a host kernel with Landlock enabled (5.13 or later). The card then reads `Enforced here: file writes, by Landlock (dsh-local)`, and network isolation and masked paths are not enforced: a preset with No network is greyed out, and masked paths are refused rather than run with less confinement.
+
+Network isolation and masked paths need `sandbox-bwrap`, which is optional. bubblewrap confines a command by creating unprivileged user namespaces, and Docker's defaults refuse that. The default seccomp profile blocks creating the namespace, the default AppArmor profile does too on hosts that apply one, and the paths Docker masks under `/proc` stop bubblewrap mounting a fresh `/proc`. To let the backend run, start the container with these options:
 
 ```yaml tab="compose.yaml"
 services:
@@ -173,7 +175,7 @@ sudo apparmor_parser -r /etc/apparmor.d/penguin-userns
 
 Then start the container with `apparmor=penguin-userns` in place of `apparmor=unconfined`, and keep the other two options. The profile loads again at every boot. The other option is to lift the restriction for every program on the host with `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`. To keep that setting after a reboot, add the same line without `sudo sysctl -w` to a file in `/etc/sysctl.d/`.
 
-If the container does not grant them, the sandbox fails closed. The backend's startup probe fails, and the [Sandbox](/settings#sandbox) card shows `@penguinharness/sandbox-bwrap is not in use:` followed by the reason (bwrap is missing or refuses the base profile). Every mode except Off then refuses every agent command rather than running it unconfined. Off still runs commands, with the container as the only boundary.
+Until the container grants them, **More info** under the card's first line shows `penguin-bwrap is installed but not in use:` followed by the reason. If neither backend can run, for example on a kernel without Landlock, the sandbox fails closed: every mode except Off refuses every agent command rather than running it unconfined. Off still runs commands, with the container as the only boundary.
 
 ### Add tools to the image
 
