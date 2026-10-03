@@ -21,7 +21,6 @@ import {
 } from "../dock";
 
 import { isBrowserOffered, subscribeBrowser, BuiltinBrowserPanel } from "../builtin-browser";
-
 import { TracePanel } from "../traces";
 import { MessagingPanel } from "../messaging";
 import { SchedulePanel } from "../schedules";
