@@ -600,6 +600,10 @@ export const en: Strings = {
     currencyInfo: "Display currency for prices; storage is always USD.",
     changePasswordInfo: "Change this account's sign-in password.",
     /** Personal company-mode switch (general page) and the admin master switch (its own server page). */
+    /** Telemetry master switch (general page, admin only; PRFC-0008). */
+    telemetry: "Telemetry",
+    telemetryInfo:
+      "Performance data for people and Agents to analyze. When on, the server and the browser record non-sensitive data into an in-memory buffer: view it in the cost center's Performance panel, or let an Agent read it through the API or the CLI. The data never leaves this machine and is never written to disk.",
     companyModeTitle: "Company mode",
     companyModePersonal: "Company mode",
     companyModePersonalInfo:
@@ -3861,6 +3865,24 @@ Scenarios:
     errorsClearIrreversible: "This cannot be undone.",
     errorsClearDone: (count: number): string =>
       `Deleted ${count} error record${count === 1 ? "" : "s"}`,
+    /** The performance panel (the telemetry buffer, admin only). */
+    performance: "Performance",
+    perfColName: "Name",
+    /** Which language's probe reference the names link to (probes.<lang>.md). */
+    perfDocLang: "en" as "en" | "zh",
+    perfSiteTitle: (site: string): string => `Recorded at ${site} — opens its description`,
+    perfSiteDirtyTitle: (site: string): string =>
+      `Recorded at ${site} — opens its description; built from uncommitted changes, so the line may be off`,
+    perfColCount: "Count",
+    perfColMax: "Max",
+    perfSessionFilter: "Filter by Session",
+    perfAllSessions: "All Sessions",
+    perfRefresh: "Refresh",
+    perfClear: "Clear",
+    perfBuffered: (n: number): string => `${n} sample${n === 1 ? "" : "s"} buffered`,
+    perfOff:
+      "Telemetry is off. Turn it on under Settings → General, and this lists the server's and the browser's timings per probe.",
+    perfEmpty: "No samples yet",
   },
 
   /** The Trace panel's own view of a Trace file (trace-file-view / timeline-chart); the standalone browsing page these once also served is gone. */

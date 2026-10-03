@@ -10,6 +10,7 @@ import type { MeResponse, UploadLimits, UserInfo } from "@prismshadow/penguin-se
 import * as api from "../api/endpoints";
 import { ApiError, setUnauthorizedHandler } from "../api/client";
 import { probeSession } from "../api/session-probe";
+import { setPerfSwitch } from "../lib/perf/switch";
 
 /**
  * Stand-in until GET /api/me answers, matching the server's shipped defaults. The window is the
@@ -109,7 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Must be registered before the GET /api/me effect below (effects in the same component
   // run in declaration order).
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null));
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      setPerfSwitch(false);
+    });
     return () => setUnauthorizedHandler(null);
   }, []);
 
@@ -125,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionVia(res.sessionVia);
         setUploadLimits(res.uploadLimits);
         setCompanyMode(res.companyMode);
+        setPerfSwitch(res.telemetry === true);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -178,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionVia(me.sessionVia);
       setUploadLimits(me.uploadLimits);
       setCompanyMode(me.companyMode);
+      setPerfSwitch(me.telemetry === true);
     } catch (e) {
       // Login itself succeeded; adopt the user and keep the optimistic defaults — unless the
       // read came back 401, which says the session cookie never took. Adopting a user on a
@@ -192,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.logout();
     } finally {
       setUser(null);
+      setPerfSwitch(false);
     }
   }, []);
 
@@ -205,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionVia(res.sessionVia);
     setUploadLimits(res.uploadLimits);
     setCompanyMode(res.companyMode);
+    setPerfSwitch(res.telemetry === true);
   }, []);
 
   return (

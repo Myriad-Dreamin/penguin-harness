@@ -164,6 +164,13 @@ export interface MeResponse {
    * user's own preference (`UiPrefs.companyMode`) only hides the switch for that user.
    */
   companyMode: boolean;
+  /**
+   * The browser half of the telemetry switch (`ServerSettings.telemetry`, PRFC-0008): true
+   * tells the page to load its collector and send shape-only samples to
+   * `POST /api/telemetry/samples`; false (the default) means the page loads, observes and
+   * sends nothing. Read per request, so a reload picks up a change.
+   */
+  telemetry: boolean;
 }
 
 /**
@@ -402,6 +409,41 @@ export interface TelemetryResponse {
   probes?: TelemetryProbeSummary[];
   sessions?: TelemetrySessionSummary[];
   samples?: TelemetrySample[];
+  /** With `view=probes`: where this server's probes are recorded; null when the build has no table. */
+  sites?: ProbeSites | null;
+}
+
+/**
+ * Where each probe is recorded, as the build read it off its own source: `sites` maps a probe
+ * name to `path:line` at `commit` of `repo` (a GitHub https URL). `dirty` means the build had
+ * uncommitted changes, so a line may be off.
+ */
+export interface ProbeSites {
+  repo: string;
+  commit: string;
+  dirty: boolean;
+  sites: Record<string, string>;
+}
+
+/**
+ * `POST /api/telemetry/samples` — the browser's samples into the same buffer the server's
+ * probes fill (any signed-in user; 409 `telemetry_off` while the switch is off). Only `web.*`
+ * probes, numbers and short strings: the route drops what is not a shape.
+ */
+export interface TelemetryBrowserSamplesRequest {
+  samples: Array<{
+    probe: string;
+    durMs?: number;
+    bytes?: number;
+    status?: string;
+    session?: string;
+    attrs?: Record<string, string | number | boolean>;
+  }>;
+}
+
+export interface TelemetryBrowserSamplesResponse {
+  /** How many of the sent samples were stored. */
+  accepted: number;
 }
 
 /**

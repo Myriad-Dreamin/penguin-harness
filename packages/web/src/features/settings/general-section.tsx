@@ -28,11 +28,14 @@ import type { LangPref } from "../../state/locale";
 import { useTheme } from "../../state/theme";
 import type { Currency } from "../../state/theme";
 import { TraceImportRow } from "./trace-import-row";
+import { TelemetryRow } from "./telemetry-row";
+import { useAuth } from "../../state/auth";
 
 export function GeneralSection() {
   const { lang, setLang } = useLocale();
   const { currency, setCurrency } = useTheme();
   const { serverEnabled, personalEnabled, setPersonalEnabled } = useCompany();
+  const { user } = useAuth();
 
   useSyncExternalStore(subscribeNotificationsEnabled, notificationsEnabledVersion);
   const notificationsOn = readNotificationsEnabled();
@@ -101,6 +104,8 @@ export function GeneralSection() {
         />
       )}
       <TraceImportRow />
+      {/* Server-global and admin only (see telemetry-row): nobody else gets the row. */}
+      {user?.isAdmin === true && <TelemetryRow />}
     </div>
   );
 }

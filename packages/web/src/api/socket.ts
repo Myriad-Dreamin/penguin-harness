@@ -32,6 +32,7 @@ import type { OmniMessage } from "@prismshadow/penguin-core/omnimessage";
 import { apiSocketPath } from "@prismshadow/penguin-server/api";
 import type { ServerEvent } from "@prismshadow/penguin-server/api";
 import type { StreamConnection, StreamHandlers } from "./sse";
+import { perfOn, perfSample, setPerfSwitch } from "../lib/perf/switch";
 
 /** Reconnect backoff, the ssh reconnect's shape: doubling from the floor to the ceiling. */
 const RECONNECT_MIN_MS = 1_000;
@@ -394,6 +395,9 @@ export class ApiSocket {
       return;
     }
     this.#state = "connecting";
+    // Telemetry: handshake to first reply, timed only while the switch is on (lib/perf).
+    const connectAt = perfOn() ? performance.now() : null;
+    let replied = false;
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
@@ -429,6 +433,13 @@ export class ApiSocket {
       if (this.#ws !== ws) return;
       this.#lastFrameAt = performance.now();
       this.#framesSeen += 1;
+      if (connectAt !== null && !replied) {
+        replied = true;
+        perfSample({
+          probe: "web.socket.connect",
+          durMs: Math.round((this.#lastFrameAt - connectAt) * 10) / 10,
+        });
+      }
       this.#armWatchdog();
       this.#frame(e.data);
     };
@@ -717,7 +728,9 @@ async function whoAmI(): Promise<string | null> {
   const res = await fetch("/api/me", { credentials: "same-origin" });
   if (res.status === 401) return null;
   if (!res.ok) throw new Error(`/api/me answered ${res.status}`);
-  const body = (await res.json()) as { user?: { userId?: string } };
+  const body = (await res.json()) as { user?: { userId?: string }; telemetry?: boolean };
+  // The socket asks before it opens, so the switch is known by the time the handshake is timed.
+  setPerfSwitch(body.telemetry === true);
   return body.user?.userId ?? null;
 }
 

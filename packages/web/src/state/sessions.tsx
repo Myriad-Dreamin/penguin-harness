@@ -68,6 +68,7 @@ import {
   publishBuiltinBrowserResync,
 } from "../features/builtin-browser/browser-events";
 import { WORKFLOW_UPDATED_EVENT } from "../lib/workflow-tabs";
+import { perfOn, perfSample } from "../lib/perf/switch";
 import { mergeCounts, newestFirst } from "../lib/session-merge";
 import {
   forgetSessionMachines,
@@ -94,6 +95,21 @@ import {
 } from "../lib/session-grouping";
 import { noteScheduleEvent } from "../features/schedules/schedule-store";
 import { useProject } from "./project";
+
+/** A session-list fan-out being timed (telemetry on): when it started and its slowest answer. */
+interface FanoutTiming {
+  startedAt: number;
+  slowestMs: number;
+}
+
+/** Times one fan-out request to its answer or failure; `timing` null passes it through. */
+function timedAsk<T>(timing: FanoutTiming | null, ask: Promise<T>): Promise<T> {
+  if (timing === null) return ask;
+  const askedAt = performance.now();
+  return ask.finally(() => {
+    timing.slowestMs = Math.max(timing.slowestMs, performance.now() - askedAt);
+  });
+}
 
 /** A reload this server answered nothing to is tried again after this, doubling up to the ceiling. */
 const RELOAD_RETRY_MIN_MS = 2_000;
@@ -537,6 +553,11 @@ export function createSessionsStore() {
           source,
         }));
       });
+      // Telemetry (lib/perf): the whole fan-out and its slowest request — timed only while
+      // the switch is on.
+      const fanout: FanoutTiming | null = perfOn()
+        ? { startedAt: performance.now(), slowestMs: 0 }
+        : null;
       try {
         const results = await Promise.all(
           jobs.map(async ({ agentId, source }) => {
@@ -557,18 +578,21 @@ export function createSessionsStore() {
             try {
               const pages = await Promise.all(
                 pairs.map(async ({ category, scope }) => {
-                  const res = await api.listSessions(
-                    projectId,
-                    agentId,
-                    {
-                      offset: 0,
-                      limit: SIDEBAR_PAGE_SIZE + 1,
-                      category,
-                      excludeOrg: true,
-                      ...(scope === "" ? {} : { workspaceGroup: scope }),
-                      ...(category === "active" && scope === "" ? { withCounts: true } : {}),
-                    },
-                    source,
+                  const res = await timedAsk(
+                    fanout,
+                    api.listSessions(
+                      projectId,
+                      agentId,
+                      {
+                        offset: 0,
+                        limit: SIDEBAR_PAGE_SIZE + 1,
+                        category,
+                        excludeOrg: true,
+                        ...(scope === "" ? {} : { workspaceGroup: scope }),
+                        ...(category === "active" && scope === "" ? { withCounts: true } : {}),
+                      },
+                      source,
+                    ),
                   );
                   return {
                     category,
@@ -599,6 +623,13 @@ export function createSessionsStore() {
             }
           }),
         );
+        if (fanout !== null) {
+          perfSample({
+            probe: "web.sessions.fanout",
+            durMs: Math.round((performance.now() - fanout.startedAt) * 10) / 10,
+            attrs: { slowestMs: Math.round(fanout.slowestMs * 10) / 10 },
+          });
+        }
         // Whether each machine answered is a fact about the machine, whichever reload is
         // current by now — recorded before a newer one discards this one's rows.
         const unansweredMachines = new Set(

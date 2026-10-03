@@ -667,6 +667,10 @@ export const zh = {
     currencyInfo: "价格显示币种；存储始终为美元。",
     changePasswordInfo: "更改当前账号的登录密码。",
     /** Personal company-mode switch (general page) and the admin master switch (its own server page). */
+    /** Telemetry master switch (general page, admin only; PRFC-0008). */
+    telemetry: "遥测",
+    telemetryInfo:
+      "可供人类与 Agent 分析的性能数据。打开后，服务端与浏览器把非敏感数据记进内存缓冲，可在统计中心的「性能」面板里查看，也可让 Agent 通过 API 或 CLI 读取。数据不会离开本机，也不会写入磁盘。",
     companyModeTitle: "公司模式",
     companyModePersonal: "公司模式",
     companyModePersonalInfo:
@@ -3903,6 +3907,23 @@ Benchmark：
       `将删除本 Project 中 Agent「${agentId}」${range}的 ${count} 条错误记录，其他 Agent 与其余时间段的记录保留。`,
     errorsClearIrreversible: "此操作不可恢复。",
     errorsClearDone: (count: number): string => `已删除 ${count} 条错误记录`,
+    /** The performance panel (the telemetry buffer, admin only). */
+    performance: "性能",
+    perfColName: "名称",
+    /** Which language's probe reference the names link to (probes.<lang>.md). */
+    perfDocLang: "zh" as "en" | "zh",
+    perfSiteTitle: (site: string): string => `记录于 ${site}，打开它的说明`,
+    perfSiteDirtyTitle: (site: string): string =>
+      `记录于 ${site}，打开它的说明；构建时有未提交的改动，行号可能对不上`,
+    perfColCount: "次数",
+    perfColMax: "最大",
+    perfSessionFilter: "按 Session 筛选",
+    perfAllSessions: "全部 Session",
+    perfRefresh: "刷新",
+    perfClear: "清空",
+    perfBuffered: (n: number): string => `缓冲中 ${n} 条样本`,
+    perfOff: "遥测未开启。在「设置 → 通用」里打开后，这里按采集点列出服务端与浏览器的耗时。",
+    perfEmpty: "还没有样本",
   },
 
   /** The Trace panel's own view of a Trace file (trace-file-view / timeline-chart); the standalone browsing page these once also served is gone. */
