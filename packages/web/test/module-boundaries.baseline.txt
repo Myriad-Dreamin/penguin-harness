@@ -2,13 +2,6 @@
 # One line per edge, sorted: `importing-file -> imported-file` (paths relative to src/), or
 # `cycle: features/a -> features/b` for an edge between two feature directories that lies on a cycle.
 # This list only shrinks: never add a line; delete each line whose edge your change removes.
-components/layout/project-dialogs.tsx -> features/chat/chat-defaults-event.ts
-components/layout/project-dialogs.tsx -> features/chat/draft-cache.ts
-components/layout/project-dialogs.tsx -> features/chat/model-select.tsx
-components/layout/project-dialogs.tsx -> features/chat/thinking-level.ts
-components/layout/project-dialogs.tsx -> features/chat/workspace-select.tsx
-components/layout/project-dialogs.tsx -> features/models/model-grouping.ts
-components/layout/project-dialogs.tsx -> features/semantic-id/semantic-id-field.tsx
 cycle: features/ai-create -> features/chat
 cycle: features/builtin-browser -> features/dock
 cycle: features/builtin-browser -> features/settings
@@ -151,6 +144,13 @@ features/plugins/plugins-page.tsx -> features/chat/skill-use.ts
 features/plugins/plugins-page.tsx -> features/machines/machine-picker.tsx
 features/plugins/plugins-page.tsx -> features/settings/settings-dialog.tsx
 features/plugins/plugins-page.tsx -> features/skills/skill-icon-view.tsx
+features/projects/project-dialogs/chat-defaults-section.tsx -> features/chat/chat-defaults-event.ts
+features/projects/project-dialogs/chat-defaults-section.tsx -> features/chat/draft-cache.ts
+features/projects/project-dialogs/chat-defaults-section.tsx -> features/chat/model-select.tsx
+features/projects/project-dialogs/chat-defaults-section.tsx -> features/chat/thinking-level.ts
+features/projects/project-dialogs/chat-defaults-section.tsx -> features/chat/workspace-select.tsx
+features/projects/project-dialogs/chat-defaults-section.tsx -> features/models/model-grouping.ts
+features/projects/project-dialogs/create-project-dialog.tsx -> features/semantic-id/semantic-id-field.tsx
 features/proposals/activity-view.tsx -> features/company/org-layout.tsx
 features/proposals/activity-view.tsx -> features/company/shared.tsx
 features/proposals/pr-graph-lanes.tsx -> features/company/company-nav.ts
@@ -224,6 +224,7 @@ shell/sidebar/sidebar.tsx -> features/dock/dock-state.ts
 shell/sidebar/sidebar.tsx -> features/dock/dock-terminal.ts
 shell/sidebar/sidebar.tsx -> features/messaging/messaging-binding-modal.tsx
 shell/sidebar/sidebar.tsx -> features/models/group-balance.tsx
+shell/sidebar/sidebar.tsx -> features/projects/index.ts
 shell/sidebar/sidebar.tsx -> features/schedules/schedule-panel-state.ts
 shell/sidebar/sidebar.tsx -> features/schedules/schedule-store.ts
 shell/sidebar/sidebar.tsx -> features/session-list/draft-row.tsx

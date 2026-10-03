@@ -51,7 +51,6 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import {
   AgentAvatar,
-  Badge,
   Button,
   ConfirmModal,
   Dropdown,
@@ -79,7 +78,6 @@ import {
   SidebarNavArea,
   SidebarNavEntry,
   SidebarNavGroup,
-  SidebarSwitcherButton,
   SkeletonList,
   UpdateDot,
   UserAvatar,
@@ -98,7 +96,7 @@ import { forgetSession, noteSessionSeen, useSessionSeen } from "../../lib/sessio
 import { apiErrorText } from "../../lib/api-error";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
-import { agentDisplayName, projectDisplayName, useProject } from "../../state/project";
+import { agentDisplayName, useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
 import {
   FOLDER_CATEGORIES,
@@ -202,10 +200,7 @@ import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
 import { prepareNewChatDraft } from "../../features/chat/new-chat";
 import { docksOnScreen, openPanel } from "../../features/dock/dock-state";
 import { dockWorkspace } from "../../features/dock/dock-terminal";
-import {
-  CreateProjectDialog,
-  ProjectSettingsDialog,
-} from "../../components/layout/project-dialogs";
+import { ProjectSwitcher } from "../../features/projects";
 import { UserMenu } from "./user-menu";
 import { PinnedBalanceBadge } from "../../features/models/group-balance";
 import { isCurrentPath, renderRouterLink } from "./router-link";
@@ -363,14 +358,7 @@ export function Sidebar({
   const location = useLocation();
   const { user, sessionVia } = useAuth();
   const { locale } = useLocale();
-  const {
-    projects,
-    currentProject,
-    setCurrentProjectId,
-    reloadProjects,
-    agents,
-    setCurrentAgentId,
-  } = useProject();
+  const { currentProject, agents, setCurrentAgentId } = useProject();
   const {
     sessions: allSessions,
     byAgent: allByAgent,
@@ -389,9 +377,6 @@ export function Sidebar({
   const chatMatch = useMatch("/chat/:sessionId");
   const activeSessionId = chatMatch?.params.sessionId ?? null;
 
-  const [projectOpen, setProjectOpen] = useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   /** The badges over the update and to-do trails (use-update-badges.ts); the avatar's dot follows the update flow's offer / restart states. */
   const badges = useUpdateBadges();
   const company = useCompany();
@@ -2043,20 +2028,6 @@ export function Sidebar({
   /** The dialogs the column's rows and menus open, mounted after the column. */
   const dialogs = (
     <>
-      <CreateProjectDialog
-        open={createProjectOpen}
-        onClose={() => setCreateProjectOpen(false)}
-        onCreated={(projectId) => {
-          setCreateProjectOpen(false);
-          void reloadProjects().then(() => setCurrentProjectId(projectId));
-        }}
-      />
-      {currentProject && (
-        <ProjectSettingsDialog
-          open={projectSettingsOpen}
-          onClose={() => setProjectSettingsOpen(false)}
-        />
-      )}
       {/* Rename chat */}
       <Modal
         open={renamingSession !== null}
@@ -2236,56 +2207,7 @@ export function Sidebar({
         : {})}
       switcher={
         // The Project switcher; the organization switcher in company mode.
-        inCompany ? (
-          <OrgSwitcher {...(onNavigate ? { onNavigate } : {})} />
-        ) : (
-          <Dropdown
-            open={projectOpen}
-            setOpen={setProjectOpen}
-            className="min-w-0 flex-1"
-            menuClass="left-0 right-0 top-full mt-1 origin-top"
-            button={
-              <SidebarSwitcherButton
-                label={currentProject ? projectDisplayName(currentProject) : S.common.loading}
-                onClick={() => setProjectOpen(!projectOpen)}
-              />
-            }
-          >
-            {/* Plain rows rather than a role="menu": the switcher's Project rows are named
-                like its trigger, and both are reached as buttons. */}
-            {projects.map((p) => (
-              <MenuRadioItem
-                key={p.projectId}
-                label={<span className="font-sans">{projectDisplayName(p)}</span>}
-                trailing={<Badge>{p.role}</Badge>}
-                checked={p.projectId === currentProject?.projectId}
-                onSelect={() => {
-                  setCurrentProjectId(p.projectId);
-                  setProjectOpen(false);
-                }}
-              />
-            ))}
-            <MenuSeparator />
-            <MenuItem
-              glyph={ICONS.plus}
-              label={S.project.create}
-              onSelect={() => {
-                setProjectOpen(false);
-                setCreateProjectOpen(true);
-              }}
-            />
-            {currentProject && (
-              <MenuItem
-                glyph={ICONS.gear}
-                label={S.project.settings}
-                onSelect={() => {
-                  setProjectOpen(false);
-                  setProjectSettingsOpen(true);
-                }}
-              />
-            )}
-          </Dropdown>
-        )
+        inCompany ? <OrgSwitcher {...(onNavigate ? { onNavigate } : {})} /> : <ProjectSwitcher />
       }
       // New chat: always pinned, in the one slot between the switcher above and the scroll area
       // below; it has no pin button and cannot be dragged. A page row like the nav's (no fill at
