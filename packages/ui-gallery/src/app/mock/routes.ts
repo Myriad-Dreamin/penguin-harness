@@ -1391,6 +1391,7 @@ router
       items: items.slice(offset, offset + limit),
       total: items.reduce((n, e) => n + e.count, 0),
       rows: items.length,
+      suppressed: [],
     };
   })
   .delete("/api/projects/:projectId/usage/errors", ({ store }): UsageErrorsClearResponse => {

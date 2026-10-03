@@ -1423,6 +1423,12 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       code: "rate_limited",
       kind: "expected",
       message: "429 Too Many Requests from api.deepseek.com; retried after 8s.",
+      agentId: null,
+      sessionId: null,
+      taskId: null,
+      requestId: null,
+      status: 429,
+      stack: null,
     },
     {
       ts: iso(ago(2, 40)),
@@ -1432,6 +1438,12 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       code: "file_too_large",
       kind: "expected",
       message: "attachment exceeds the 100 MB limit (142 MB).",
+      agentId: null,
+      sessionId: null,
+      taskId: null,
+      requestId: null,
+      status: 413,
+      stack: null,
     },
     {
       ts: iso(ago(5, 12)),
@@ -1442,6 +1454,13 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       kind: "unexpected",
       message:
         "TypeError: cannot read properties of undefined (reading 'source') at rank (src/rag.ts:14).",
+      agentId: null,
+      sessionId: null,
+      taskId: null,
+      requestId: null,
+      status: null,
+      stack:
+        "TypeError: cannot read properties of undefined (reading 'source')\n    at rank (src/rag.ts:14)",
     },
   ];
 
