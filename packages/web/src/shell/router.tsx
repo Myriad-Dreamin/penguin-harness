@@ -19,7 +19,6 @@ import { CompanyProvider, useCompany } from "../state/company";
 import { AppLayout } from "../components/layout/app-layout";
 import { BootPending } from "../components/ui/boot-pending";
 import { LoginPage } from "../pages/login";
-import { homePath } from "../features/company/company-nav";
 import { ContributionsProvider, useContributions } from "../state/contributions";
 import { shellDeps } from "./deps";
 import { ContributedPage } from "./contributed-page";
@@ -65,13 +64,12 @@ function LoginRoute() {
 }
 
 /**
- * `/` and every path nothing matches: the home of the mode the shell stands in (homePath) —
+ * `/` and every path nothing matches: the home of the mode the shell stands in (`homePath`) —
  * the organizations in company mode, the conversations in development mode. A sign-in and
  * the desktop shell's start both arrive at `/`.
  */
 function HomeRedirect() {
-  const { workMode } = useCompany();
-  return <Navigate to={homePath(workMode)} replace />;
+  return <Navigate to={useCompany().homePath} replace />;
 }
 
 export interface AppRouterProps {
