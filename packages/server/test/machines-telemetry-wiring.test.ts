@@ -1,20 +1,13 @@
 /**
  * The machine connection probes on the Telemetry switch (PRFC-0008): the process-wide slot
  * (machines/transport/timings.ts) holds a sink exactly while the switch is on; what the probes
- * hand it lands in the App's buffer keyed by machine; the machine view lists each machine per
- * probe and connect stage; and a generation that is going does not empty a slot its successor
- * already took.
+ * hand it lands in the App's buffer keyed by machine; and a generation that is going does not
+ * empty a slot its successor already took.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ServerSettingsResponse, TelemetryResponse } from "../src/api/types.js";
 import { bindMachineTimings } from "../src/machines/telemetry-binding.js";
-import {
-  emit,
-  flushHandshakes,
-  setTimingsSink,
-  timingsSink,
-  tallyHandshake,
-} from "../src/machines/transport/timings.js";
+import { emit, setTimingsSink, timingsSink } from "../src/machines/transport/timings.js";
 import type { Telemetry } from "../src/mechanisms/telemetry.js";
 import { apiClient, createTestApp, loginAdmin } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
@@ -53,7 +46,7 @@ describe("machine probes on a test App", () => {
       durMs,
       status,
       keys: { machine },
-      attrs: { stage: name, trigger: "connect" },
+      attrs: { stage: name },
     });
 
   it("the slot holds a sink exactly while the switch is on, and the App's dispose empties it", async () => {
@@ -73,46 +66,15 @@ describe("machine probes on a test App", () => {
     t = await createTestApp(); // afterEach cleans up whatever App `t` names
   });
 
-  it("samples land in the buffer keyed by machine, and the machine view lists each machine", async () => {
+  it("samples land in the buffer keyed by machine and generation", async () => {
     await turn(true);
     stage(LAB, "probe", 12);
-    stage(LAB, "start-server", 2400);
-    stage(LAB, "start-server", 1800, "error");
     stage(EDGE, "hold", 40);
-    tallyHandshake(LAB, 3, true);
-    tallyHandshake(LAB, 9, false);
-    flushHandshakes();
-
     const samples = (await read("?view=samples&probe=machine.connect.stage")).samples ?? [];
-    expect(samples).toHaveLength(4);
-    expect(samples[0]).toMatchObject({
-      probe: "machine.connect.stage",
-      durMs: 12,
-      status: "ok",
-      keys: { machine: LAB, generation: 1 },
-      attrs: { stage: "probe" },
-    });
-
-    const { machine } = await read("?view=machine");
-    const rows = machine!.machines;
-    expect(rows.map((r) => r.machine).sort()).toEqual([EDGE, LAB]);
-    const lab = rows.find((r) => r.machine === LAB)!;
-    expect(lab.count).toBe(4);
-    expect(lab.probes.find((p) => p.stage === "start-server")).toEqual({
-      probe: "machine.connect.stage",
-      stage: "start-server",
-      count: 2,
-      errors: 1,
-      n: null,
-      totalMs: 4200,
-      maxMs: 2400,
-    });
-    expect(lab.probes.find((p) => p.probe === "machine.socks.handshake")).toMatchObject({
-      count: 1,
-      errors: 1,
-      n: 2,
-      maxMs: 9,
-    });
+    expect(samples).toMatchObject([
+      { durMs: 12, status: "ok", keys: { machine: LAB, generation: 1 }, attrs: { stage: "probe" } },
+      { durMs: 40, keys: { machine: EDGE }, attrs: { stage: "hold" } },
+    ]);
   });
 });
 

@@ -323,7 +323,7 @@ class MachineShell {
     const next = this.#queue.then(() => this.#runExclusive(command, opts));
     // The queue must survive a rejection, or one failure would stall every later command.
     this.#queue = next.catch(() => undefined);
-    return timedCommand(this.address, opts.input?.length ?? 0, () => next);
+    return timedCommand(this.address, () => next);
   }
 
   /** The session while it is up — pid and SOCKS port — or null. */
