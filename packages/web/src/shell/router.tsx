@@ -19,6 +19,7 @@ import { AppLayout } from "./app-layout";
 import { LoginPage } from "../pages/login";
 import { shellDeps } from "./deps";
 import { ShellPagesProvider, useShellPages, useShellPagesPending } from "./contributions";
+import { HOME_PATH } from "./page-table";
 
 /** Route guard: shows blank while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
@@ -51,10 +52,10 @@ function RequireAuthBare({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** When already logged in, visiting /login redirects straight to the chat page. */
+/** When already logged in, visiting /login redirects straight to the home page (the chat page). */
 function LoginRoute() {
   const { user } = useAuth();
-  if (user) return <Navigate to="/chat" replace />;
+  if (user) return <Navigate to={HOME_PATH} replace />;
   return <LoginPage />;
 }
 
@@ -83,7 +84,7 @@ function PageRoutes() {
           />
         ))}
       <Route element={<RequireAuth />}>
-        <Route index element={<Navigate to="/chat" replace />} />
+        <Route index element={<Navigate to={HOME_PATH} replace />} />
         {/* Admin-only pages are refused server-side (403); the sidebar hides their row, so a
             member only ever reaches one by typing the URL. Company mode is one page, /org/*,
             whose nested routes are its own (features/company/org-routes.tsx). */}
@@ -95,7 +96,7 @@ function PageRoutes() {
         {/* Settings and user management live in the settings dialog now (see
             SettingsDialog); their old routes fall through to the catch-all, which waits
             while a server-contributed page may still claim the path. */}
-        <Route path="*" element={pending ? null : <Navigate to="/chat" replace />} />
+        <Route path="*" element={pending ? null : <Navigate to={HOME_PATH} replace />} />
       </Route>
     </Routes>
   );

@@ -21,9 +21,16 @@
  * renderer drawn in an iframe has no contributor yet and no agreed size inside a reply, so such a
  * rule is skipped like any malformed one.
  *
+ * The answer may also remove pages by key, the app's own or contributed ones alike: such a page
+ * leaves the table with the routes under its path and the pages under it (removedPagesOf), so it
+ * has no nav row and its paths fall to the catch-all. The page the catch-all leads to cannot be
+ * removed. Removal waits for the answer like everything else here: until it arrives the compiled
+ * table is drawn, so a removed page shows in the nav for that moment and its URL still opens it,
+ * then falls to the catch-all — first paint does not wait on the network.
+ *
  * Safe mode (rescue/safe-mode.ts) is the one switch over all of it: while it is on, the store is
- * told nobody is signed in, so nothing is asked, the table is the compiled one and there are no
- * file renderer rules; leaving it asks again.
+ * told nobody is signed in, so nothing is asked, the table is the compiled one (nothing removed)
+ * and there are no file renderer rules; leaving it asks again.
  */
 import {
   createContext,
@@ -42,7 +49,7 @@ import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
 import { FramePage } from "./frame-page";
-import { parentedPagesOf } from "./page-table";
+import { parentedPagesOf, removedPagesOf } from "./page-table";
 import type { ShellPage } from "./page-table";
 
 /** What the store holds for the current user. */
@@ -181,6 +188,34 @@ export function fileRendererRulesOf(
 
 const NO_RULES: readonly FileRendererRule[] = [];
 
+/**
+ * The keys of the pages the answer removes, in the server's order: an entry is read when its key
+ * is a non-empty string; anything else, and an answer that sends no such list, is skipped.
+ */
+export function pageRemovalsOf(answer: ContributionsResponse | null): readonly string[] {
+  const entries: unknown = answer?.pageRemovals;
+  if (!Array.isArray(entries)) return NO_REMOVALS;
+  return (entries as Array<{ key?: unknown } | null>)
+    .map((entry) => entry?.key)
+    .filter((key): key is string => typeof key === "string" && key !== "");
+}
+
+const NO_REMOVALS: readonly string[] = [];
+
+/**
+ * The table the router and the nav read: the compiled pages with the contributed ones appended,
+ * the removed ones dropped from both, and then every page whose parent is gone — so a removed
+ * page takes the pages under it along.
+ */
+export function pageTableFor(
+  compiled: readonly ShellPage[],
+  answer: ContributionsResponse | null,
+): readonly ShellPage[] {
+  return parentedPagesOf(
+    removedPagesOf(contributedPagesOf(compiled, answer), pageRemovalsOf(answer)),
+  );
+}
+
 interface ShellPagesValue {
   pages: readonly ShellPage[];
   pending: boolean;
@@ -205,7 +240,7 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const answer = current ? state.answer : null;
   const pending = current ? state.pending : userId !== null;
   const value = useMemo(
-    () => ({ pages: parentedPagesOf(contributedPagesOf(compiled, answer)), pending }),
+    () => ({ pages: pageTableFor(compiled, answer), pending }),
     [compiled, answer, pending],
   );
   const rules = useMemo(() => fileRendererRulesOf(answer), [answer]);
