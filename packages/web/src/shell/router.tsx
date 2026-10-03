@@ -36,7 +36,7 @@ import { useRuntimeLanguages } from "../lib/use-runtime-languages";
 import { ProjectProvider } from "../state/project";
 import { MachinesProvider } from "../state/machines";
 import { SessionsProvider } from "../state/sessions";
-import { CompanyProvider } from "../state/company";
+import { CompanyProvider, useCompany } from "../state/company";
 import { AppLayout } from "../components/layout/app-layout";
 import { LoginPage } from "../pages/login";
 import { webAppDeps } from "./deps";
@@ -74,11 +74,20 @@ function RequireAuthBare({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** When already logged in, visiting /login redirects straight to the chat page. */
+/** When already logged in, visiting /login redirects to WebApp's home (see HomeRedirect). */
 function LoginRoute() {
   const { user } = useAuth();
-  if (user) return <Navigate to="/chat" replace />;
+  if (user) return <Navigate to="/" replace />;
   return <LoginPage />;
+}
+
+/**
+ * `/` and every path nothing matches: the home of the mode the shell stands in (`homePath`) —
+ * the organizations in company mode, the conversations in development mode. A sign-in and
+ * the desktop shell's start both arrive at `/`.
+ */
+function HomeRedirect() {
+  return <Navigate to={useCompany().homePath} replace />;
 }
 
 /** The root of every route: the leave guard above the page the route renders. */
@@ -91,7 +100,6 @@ function RootFrame() {
   );
 }
 
-/**
 /**
  * The routes: the pages the modules contributed (WebApp's bindings). Company contributions
  * are read and mounted under the organization layout by OrgRoutes
@@ -115,7 +123,7 @@ function appRoutes(pages: readonly WebAppPage[]) {
           />
         ))}
       <Route element={<RequireAuth />}>
-        <Route index element={<Navigate to="/chat" replace />} />
+        <Route index element={<HomeRedirect />} />
         {/* Admin-only pages are refused server-side (403); the sidebar hides their row, so a
             member only ever reaches one by typing the URL. */}
         {pages
@@ -125,7 +133,7 @@ function appRoutes(pages: readonly WebAppPage[]) {
           ))}
         {/* Settings and user management live in the settings dialog now (see
             SettingsDialog); their old routes fall through to the catch-all. */}
-        <Route path="*" element={<Navigate to="/chat" replace />} />
+        <Route path="*" element={<HomeRedirect />} />
       </Route>
     </Route>,
   );
