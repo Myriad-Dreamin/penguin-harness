@@ -24,6 +24,7 @@ Turning the sandbox on in Linux offered `@penguinharness/sandbox-bwrap` alone, a
 ## Backends
 
 - The DSH adaptor runs its chain's probe when it loads, so a host where no rung works fails the load with DSH's reason instead of mounting a backend that refuses every command.
+- A plugin store entry carries the package's peer dependencies as well. `@deepseek-ai/dsh-sandbox-local` names its DSH siblings as peers, and `sandbox-dsh` had failed to load from the store with `Cannot find package '@deepseek-ai/dsh-llm'`.
 - bubblewrap's refusal carries what bwrap said (`setting up uid map: Permission denied`, or the spawn error), and states that the Ubuntu root step is optional and adds network isolation and masked paths.
 
 ## The composer
