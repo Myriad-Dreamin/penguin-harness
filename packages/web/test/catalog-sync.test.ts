@@ -20,8 +20,8 @@ import {
 } from "@prismshadow/penguin-core/model-catalog";
 import type { ModelsResponse } from "@prismshadow/penguin-server/api";
 import { catalogDelta, syncRowsWithCatalog } from "../src/features/models/catalog-sync";
-import { presetUpdateTodo } from "../src/lib/todo-badges";
-import { noticeCounts } from "../src/lib/bulk-update";
+import { presetUpdateTodo } from "../src/features/todos/todo-badges";
+import { noticeCounts } from "../src/features/todos/bulk-update";
 import { rowToEntry, toRow } from "../src/features/models/models-page";
 import type { RowState } from "../src/features/models/models-page";
 

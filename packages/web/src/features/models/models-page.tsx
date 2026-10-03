@@ -140,10 +140,7 @@ import {
 } from "./model-group-expansion";
 import { clearDraftModelRef } from "../chat/draft-cache";
 import { syncRowsWithCatalog } from "./catalog-sync";
-import { useUpdateBadges } from "../../lib/use-update-badges";
-import { dismissTodo } from "../../lib/todo-dismissals";
-import { noticeCounts } from "../../lib/bulk-update";
-import { refreshProjectTodos } from "../../lib/use-project-todos";
+import { useUpdateBadges, dismissTodo, noticeCounts, refreshProjectTodos } from "../todos";
 import { buildImportedRows } from "./group-import";
 import { tpsTone, ttftTone } from "./speed-test";
 import type { SpeedResult, SpeedTone } from "./speed-test";

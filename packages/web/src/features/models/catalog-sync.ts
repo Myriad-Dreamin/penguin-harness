@@ -247,7 +247,7 @@ export interface CatalogDelta {
  * merely different from the catalog's is NOT an update: the sync leaves that URL alone, so
  * counting it would be a dot nobody could ever put down. `refs` is what a dismissal is stamped
  * against, so a later catalog release touching a different model raises the badge again (see
- * `lib/todo-badges.ts`).
+ * `features/todos/todo-badges.ts`).
  */
 export function catalogDelta(
   models: readonly ModelDto[],

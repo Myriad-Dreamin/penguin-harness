@@ -24,7 +24,7 @@
 import { useEffect } from "react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand/react";
-import * as api from "../api/endpoints";
+import * as api from "../../api/endpoints";
 import type { TodoKey } from "./todo-badges";
 
 /** The `ui_prefs` key the whole map is stored under. */
