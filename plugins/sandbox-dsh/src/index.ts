@@ -21,7 +21,7 @@
  * them fails THIS load — reported fail-closed by the service — instead of failing the
  * whole platform bundle's import.
  */
-import { statSync } from "node:fs";
+import { lstatSync, statSync } from "node:fs";
 import path from "node:path";
 import { Bind, Component } from "@prismshadow/penguin-core/plugin";
 import type {
@@ -119,20 +119,42 @@ export function assertAclRunnerCanStart(
 /** What `aclRunnerArgv` reads of the running process; injectable for tests. */
 export interface AclRunnerHost {
   platform?: NodeJS.Platform;
-  env?: NodeJS.ProcessEnv;
+  /** The environment the program is spawned with; the harness's own when absent. */
+  env?: Readonly<Record<string, string | undefined>>;
   isFile?: (file: string) => boolean;
 }
 
-const isFile = (file: string): boolean => {
+/** The two `node:fs` calls {@link isProgramFile} makes; injectable for tests. */
+export interface ProgramFileFs {
+  statSync: (file: string) => { isFile(): boolean; isDirectory(): boolean };
+  lstatSync: (file: string) => { isFile(): boolean; isSymbolicLink(): boolean };
+}
+
+/**
+ * Whether `file` is a program PATH can name. An App Execution Alias — what
+ * `%LOCALAPPDATA%\Microsoft\WindowsApps` holds for a Store install of PowerShell 7 — is a
+ * reparse point that `stat` cannot follow (it throws, or reports something other than a file),
+ * so the entry itself is accepted when `lstat` sees a file or a link there.
+ */
+export function isProgramFile(file: string, fs: ProgramFileFs = { statSync, lstatSync }): boolean {
   try {
-    return statSync(file).isFile();
+    const stat = fs.statSync(file);
+    if (stat.isFile()) return true;
+    if (stat.isDirectory()) return false;
+  } catch {
+    // Fall through to the entry itself.
+  }
+  try {
+    const entry = fs.lstatSync(file);
+    return entry.isFile() || entry.isSymbolicLink();
   } catch {
     return false;
   }
-};
+}
 
 /**
- * `argv` with a bare program name replaced by the file the harness's PATH names. The ACL
+ * `argv` with a bare program name replaced by the file PATH names — the PATH of the environment
+ * the program is spawned with (`host.env`), the harness's own when the caller passes none. The ACL
  * runner starts its command with CreateProcessAsUserW and no application name, and for a bare
  * name Windows then searches, in order: the directory of the runner's own executable (the
  * harness's node, or the desktop app's Electron), the runner's current directory — the
@@ -154,7 +176,7 @@ export function aclRunnerArgv(argv: readonly string[], host: AclRunnerHost = {})
   const platform = host.platform ?? process.platform;
   if (platform !== "win32" || program === undefined || /[\\/:]/.test(program)) return [...argv];
   const env = host.env ?? process.env;
-  const exists = host.isFile ?? isFile;
+  const exists = host.isFile ?? isProgramFile;
   // Windows spells the variable `Path`; whichever key the environment has is the one read.
   const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH");
   const bare = path.win32.extname(program) === "";
@@ -177,15 +199,15 @@ export function aclRunnerArgv(argv: readonly string[], host: AclRunnerHost = {})
     : undefined;
   if (batch !== undefined) {
     throw new Error(
-      `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on the ` +
-        `harness's PATH, which carries the batch file ${batch}; a bare name is looked up as ` +
+      `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on its ` +
+        `PATH, which carries the batch file ${batch}; a bare name is looked up as ` +
         `.exe only, so to hand over the batch file, name it with its extension ` +
         `("${path.win32.basename(batch)}"); refusing to run the command unconfined.`,
     );
   }
   throw new Error(
-    `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on the ` +
-      "harness's PATH, and its ACL runner would otherwise search the Workspace for it; name " +
+    `sandbox-dsh cannot confine "${program}" on Windows: no ${file} in a directory on its ` +
+      "PATH, and its ACL runner would otherwise search the Workspace for it; name " +
       "the program by its absolute path, or put its directory on PATH; refusing to run the " +
       "command unconfined.",
   );
@@ -247,14 +269,20 @@ export async function loadDshAdaptor(host: DshLoadHost = {}): Promise<SandboxPro
   return {
     // DSH's own words: "Network and process visibility are outside this vocabulary."
     dimensions: ["fs-write"],
-    confine(argv, policy): ConfinedArgv {
+    confine(argv, policy, spawn): ConfinedArgv {
       if (policy.mode === "danger-full-access") {
         // Unreachable: this backend implements only fs-write, so the service never hands it a
         // full-access policy (which only ever arrives with a network/mask dimension it lacks).
         throw new Error("dsh-local does not implement full filesystem access with confinement");
       }
       assertAclRunnerCanStart(argv, platform, shell);
-      const confined = dsh.confine(aclRunnerArgv(argv), {
+      // PATH is the spawn's own (a stdio MCP Server's entry env, a command's vault); an
+      // embedder that does not pass it leaves the harness's.
+      const program = aclRunnerArgv(argv, {
+        platform,
+        ...(spawn?.env !== undefined ? { env: spawn.env } : {}),
+      });
+      const confined = dsh.confine(program, {
         mode: policy.mode,
         workspaceRoot: policy.workspaceRoot,
       });

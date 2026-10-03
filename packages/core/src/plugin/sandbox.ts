@@ -138,7 +138,20 @@ export interface SandboxProvider {
    * unimplemented dimension can never be silently ignored.
    */
   readonly dimensions?: readonly SandboxDimension[];
-  confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv;
+  confine(argv: readonly string[], policy: SandboxPolicy, spawn?: SandboxSpawn): ConfinedArgv;
+}
+
+/**
+ * What the caller knows of the spawn a {@link SandboxProvider.confine} prepares — facts about
+ * the process, not part of the policy. Every member is optional: an older embedder passes
+ * nothing, and a backend that needs a member falls back to its own process.
+ */
+export interface SandboxSpawn {
+  /**
+   * The environment the program will be spawned with, before the runner's own entries
+   * ({@link ConfinedArgv.env}): the one whose `PATH` a bare program name is resolved against.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** A provider, or a promise of one: backends load asynchronously (dynamic imports, probes). */

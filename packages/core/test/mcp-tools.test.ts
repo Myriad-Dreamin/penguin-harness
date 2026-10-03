@@ -294,10 +294,13 @@ describe("MCP over stdio — under the Session's sandbox", () => {
       expect(final.output).toMatch(/^via-runner:from-runner\|/);
       // The first spawn the confiner saw is the server's (the file tools' helper is asked
       // about at every tool call, after the server connected).
+      // Its env is the one the server is spawned with, before the runner's entries: what a
+      // backend resolving a bare program name reads PATH from.
       expect(scopes[0]).toEqual({
         cwd: tmp,
         workspaceDir: tmp,
         scratchpadDir: path.join(tmp, "scratchpad", "s1"),
+        env: expect.objectContaining({ FIXTURE_SECRET: "from-entry" }),
       });
     } finally {
       env.dispose();

@@ -54,13 +54,19 @@ settings; when it is something else — a stdio MCP Server launched through bash
 `PENGUIN_SHELL` does not choose — the error says only that the runner cannot start an
 MSYS-runtime program. Nothing here changes on Linux or macOS, where bash runs confined as usual.
 
-A shell named without a directory (`pwsh`, `powershell`) is handed to the runner as the file the
-harness's `PATH` names. Left to itself, the runner looks in its current directory — the session's
+A shell named without a directory (`pwsh`, `powershell`) is handed to the runner as the file
+`PATH` names — the `PATH` of the environment the program is spawned with: a stdio MCP Server's
+own `env`, a command's Agent vault. (A harness older than this backend that does not hand that
+environment over leaves the harness's own `PATH`.) An App Execution Alias, as a Microsoft Store
+install of PowerShell 7 puts on `PATH`, counts as the file. Left to itself, the runner looks in its current directory — the session's
 working directory, inside the Workspace — and in System32 before `PATH`, so an `.exe` of the same
 name written into the Workspace would start instead. A name no `PATH` directory holds is refused.
 A bare name is looked up as `.exe` only, as Windows does: when `PATH` carries a `.cmd` or `.bat`
 of that name instead — `npx` and `uvx` are batch files, a common stdio MCP Server command — the
 refusal names that file; to hand the batch file over, name it with its extension (`npx.cmd`).
+A `.cmd` or `.bat` runs through `cmd.exe`, whose own parsing of the command line the runner's
+quoting does not guard: an argument carrying `"` or `&` can be split or start a second command —
+still under the restricted token, so still confined.
 
 ## Requirements
 

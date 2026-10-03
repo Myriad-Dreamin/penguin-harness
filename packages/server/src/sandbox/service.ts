@@ -234,7 +234,11 @@ export class SandboxService {
       };
       // ConfinedArgv also carries enforcement / denialSignatures / runnerFailureRules;
       // the classification consumer (denial vs runner failure) lands with escalation.
-      const confined = provider.confine(argv, policy);
+      const confined = provider.confine(
+        argv,
+        policy,
+        opts.env !== undefined ? { env: opts.env } : undefined,
+      );
       return confined.env === undefined
         ? { argv: confined.argv }
         : { argv: confined.argv, env: confined.env };

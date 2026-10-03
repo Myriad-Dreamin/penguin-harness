@@ -16,6 +16,7 @@ import type {
   SandboxPolicy,
   SandboxProvider,
   SandboxProviderSource,
+  SandboxSpawn,
 } from "@prismshadow/penguin-core/plugin";
 
 const ARGV = ["bash", "-lc", "echo hi"] as const;
@@ -24,10 +25,12 @@ const OPTS = { cwd: "/work/project/sub", workspaceDir: "/work/project" };
 /** A recording backend; `dimensions` absent = an undeclared (filesystem-only) backend. */
 function fake(label: string, dimensions?: readonly SandboxDimension[]) {
   const calls: SandboxPolicy[] = [];
+  const spawns: Array<SandboxSpawn | undefined> = [];
   const provider: SandboxProvider = {
     ...(dimensions !== undefined ? { dimensions } : {}),
-    confine(argv, policy) {
+    confine(argv, policy, spawn) {
       calls.push(policy);
+      spawns.push(spawn);
       return {
         argv: [label, "--", ...argv],
         enforcement: "full",
@@ -36,7 +39,7 @@ function fake(label: string, dimensions?: readonly SandboxDimension[]) {
       };
     },
   };
-  return { provider, calls };
+  return { provider, calls, spawns };
 }
 
 async function service(entries: Array<[string, SandboxProviderSource]>): Promise<SandboxService> {
@@ -169,6 +172,16 @@ describe("sandbox service — the built-in interface and its optional dimensions
       writableRoots: ["/data/agent/scratchpad/session-1"],
     });
     expect(dsh.calls[1]).not.toHaveProperty("writableRoots");
+  });
+
+  it("the spawn's environment reaches the backend beside the policy, and without one nothing does", async () => {
+    const dsh = fake("dsh");
+    const svc = await service([["dsh-local", dsh.provider]]);
+    const confine = svc.confinerFor(() => ({ mode: "workspace-write" }));
+    confine([...ARGV], { ...OPTS, env: { PATH: "/opt/tools/bin" } });
+    confine([...ARGV], OPTS);
+    expect(dsh.spawns).toEqual([{ env: { PATH: "/opt/tools/bin" } }, undefined]);
+    expect(dsh.calls[0]).not.toHaveProperty("env");
   });
 
   it("requiring a dimension nothing implements is refused, naming what each backend does", async () => {

@@ -16,8 +16,10 @@ import {
   assertAclRunnerCanStart,
   assertSessionShellConfinable,
   hostSessionShell,
+  isProgramFile,
   loadDshAdaptor,
 } from "../src/index.js";
+import type { ProgramFileFs } from "../src/index.js";
 
 const REFUSED = /sandbox-dsh cannot confine .* PENGUIN_SHELL=pwsh .* PENGUIN_SHELL=powershell/;
 
@@ -177,7 +179,7 @@ describe("aclRunnerArgv", () => {
     );
     // With neither on PATH, the refusal is the plain one.
     expect(() => aclRunnerArgv(["npx"], on([], NODE))).toThrow(
-      /no npx\.exe in a directory on the harness's PATH, and its ACL runner/,
+      /no npx\.exe in a directory on its PATH, and its ACL runner/,
     );
     // Named with its extension, the batch file is looked up as it is.
     expect(aclRunnerArgv(["npx.cmd"], on([`${NODE}\\npx.cmd`], NODE))).toEqual([
@@ -194,6 +196,37 @@ describe("aclRunnerArgv", () => {
       "-lc",
       "true",
     ]);
+  });
+});
+
+describe("isProgramFile", () => {
+  const PWSH = "C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe";
+  const sees = (k: "file" | "dir" | "link" | "other") => () => ({
+    isFile: () => k === "file",
+    isDirectory: () => k === "dir",
+    isSymbolicLink: () => k === "link",
+  });
+  const missing = (): never => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  };
+  const on = (statSync: ProgramFileFs["statSync"], lstatSync: ProgramFileFs["lstatSync"]) =>
+    isProgramFile(PWSH, { statSync, lstatSync });
+
+  it("takes a file stat sees, and never a directory", () => {
+    expect(on(sees("file"), missing)).toBe(true);
+    expect(on(sees("dir"), sees("link"))).toBe(false);
+  });
+
+  // An App Execution Alias (WindowsApps\pwsh.exe) is a reparse point stat cannot follow.
+  it("takes a reparse-point entry stat cannot follow, as lstat sees it", () => {
+    expect(on(missing, sees("link"))).toBe(true);
+    expect(on(missing, sees("file"))).toBe(true);
+    expect(on(sees("other"), sees("link"))).toBe(true);
+  });
+
+  it("refuses what neither call finds", () => {
+    expect(on(missing, missing)).toBe(false);
+    expect(on(missing, sees("dir"))).toBe(false);
   });
 });
 

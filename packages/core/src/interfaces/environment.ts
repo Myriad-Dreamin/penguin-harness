@@ -370,13 +370,21 @@ export type ProxyEnvPolicy = { mode: "strip" } | { mode: "inject"; url: string; 
  *   directory a workspace-scoped confinement policy should treat as writable, never
  *   inferred from `cwd` (a command may run in a workdir outside the Workspace);
  *   `scratchpadDir` is the Session's scratchpad, writable beside the workspace under
- *   that policy (absent for a Session without one).
+ *   that policy (absent for a Session without one); `env` is the environment the program
+ *   will be spawned with, before the runner's own entries — what a backend that resolves a
+ *   bare program name reads `PATH` from (absent = the caller did not say; a backend then
+ *   falls back to its own process's).
  * @returns what to spawn instead: the argv, and any environment entries the runner
  *   itself needs (see {@link ConfinedSpawn}).
  */
 export type SpawnConfiner = (
   argv: readonly string[],
-  opts: { cwd: string; workspaceDir: string; scratchpadDir?: string },
+  opts: {
+    cwd: string;
+    workspaceDir: string;
+    scratchpadDir?: string;
+    env?: Readonly<Record<string, string | undefined>>;
+  },
 ) => ConfinedSpawn;
 
 /**

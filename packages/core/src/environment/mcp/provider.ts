@@ -413,7 +413,10 @@ export class McpToolProvider {
       // The server's argv under the Session's sandbox, exactly as a command's: confined
       // before anything starts, so a policy nothing can enforce is this server's connect
       // failure and not a server running outside the sandbox.
-      const confined = this.confine([t.command, ...t.args], cwd);
+      // The environment the server is spawned with, before the runner's entries: a backend
+      // resolving a bare `t.command` reads PATH from it, not from this process.
+      const env = { ...getDefaultEnvironment(), ...t.env };
+      const confined = this.confine([t.command, ...t.args], cwd, env);
       const [command, ...args] = confined.argv;
       if (command === undefined) throw new Error("sandbox: the confiner returned an empty argv");
       const stdio = new StdioClientTransport({
@@ -428,7 +431,7 @@ export class McpToolProvider {
         // by the opposite mechanism. Widening this base (e.g. to process.env) would undo
         // that; the "harness variables never reach a stdio server" test pins it. A
         // sandbox runner's own entries lie over the result.
-        env: { ...getDefaultEnvironment(), ...t.env, ...confined.env },
+        env: { ...env, ...confined.env },
         ...(cwd !== undefined ? { cwd } : {}),
         stderr: "pipe",
       });
@@ -486,7 +489,11 @@ export class McpToolProvider {
    * scratchpad as scope; the argv itself when the Session has no confiner. A throw is the
    * server's connect failure.
    */
-  private confine(argv: readonly string[], cwd: string | undefined): ConfinedSpawn {
+  private confine(
+    argv: readonly string[],
+    cwd: string | undefined,
+    env: Readonly<Record<string, string>>,
+  ): ConfinedSpawn {
     const confiner = this.confineSpawn?.() ?? null;
     if (confiner === null) return { argv };
     try {
@@ -494,6 +501,7 @@ export class McpToolProvider {
         cwd: cwd ?? process.cwd(),
         workspaceDir: this.workspaceDir ?? cwd ?? process.cwd(),
         ...(this.scratchpadDir !== undefined ? { scratchpadDir: this.scratchpadDir } : {}),
+        env,
       });
     } catch (err) {
       throw new Error(`sandbox: ${describeError(err)}`);

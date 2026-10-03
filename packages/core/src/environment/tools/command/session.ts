@@ -88,7 +88,10 @@ export interface SpawnOptions {
    * Workspace root) before handing the confiner down, so this narrower shape only
    * carries what the spawn itself knows (see `SpawnConfiner` in interfaces.ts).
    */
-  confine?: (argv: readonly string[], opts: { cwd: string }) => ConfinedSpawn;
+  confine?: (
+    argv: readonly string[],
+    opts: { cwd: string; env: Readonly<Record<string, string | undefined>> },
+  ) => ConfinedSpawn;
 }
 
 export class ManagedSession {
@@ -126,7 +129,7 @@ export class ManagedSession {
     // place of the original; env assembly is unaffected (the runner inherits it), except
     // for the entries the runner itself asked for, which go on top.
     const argv = [shell.command, ...shell.args, prefix + opts.cmd];
-    const confined = opts.confine ? opts.confine(argv, { cwd: opts.cwd }) : { argv };
+    const confined = opts.confine ? opts.confine(argv, { cwd: opts.cwd, env: opts.env }) : { argv };
     const program = confined.argv[0];
     if (program === undefined) {
       throw new Error("spawn confiner returned an empty argv");

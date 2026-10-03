@@ -298,11 +298,15 @@ export class CommandSessionManager {
       ...(prepend.length > 0 ? { pathPrepend: prepend } : {}),
       ...(confiner !== null
         ? {
-            confine: (argv: readonly string[], o: { cwd: string }) =>
+            confine: (
+              argv: readonly string[],
+              o: { cwd: string; env: Readonly<Record<string, string | undefined>> },
+            ) =>
               confiner(argv, {
                 cwd: o.cwd,
                 workspaceDir: this.workspaceDir ?? o.cwd,
                 ...(this.scratchpadDir !== undefined ? { scratchpadDir: this.scratchpadDir } : {}),
+                env: o.env,
               }),
           }
         : {}),

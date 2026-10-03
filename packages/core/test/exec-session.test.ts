@@ -539,8 +539,11 @@ describe("confineSpawn seam rewrites the exact argv a command spawns", () => {
   it("the Session's scratchpad rides beside the Workspace in the confiner's opts; without one there is no such key", async () => {
     const scratchpadDir = path.join(tmp, "scratchpad", "session-1");
     const seen: Array<{ cwd: string; workspaceDir: string; scratchpadDir?: string }> = [];
+    const envs: Array<Readonly<Record<string, string | undefined>> | undefined> = [];
     confiner = (_argv, opts) => {
-      seen.push({ ...opts });
+      const { env, ...scope } = opts;
+      seen.push(scope);
+      envs.push(env);
       return { argv: [process.execPath, "-e", "console.log('CONFINED')"] };
     };
     const withScratchpad = new Environment({
@@ -560,6 +563,9 @@ describe("confineSpawn seam rewrites the exact argv a command spawns", () => {
       { cwd: tmp, workspaceDir: tmp, scratchpadDir },
       { cwd: tmp, workspaceDir: tmp },
     ]);
+    // And the environment the command is spawned with — hardening entries included — is
+    // handed over too: a backend resolving a bare program name reads PATH from it.
+    expect(envs[0]).toMatchObject({ GIT_TERMINAL_PROMPT: "0" });
   });
 
   it("a throwing confiner fails the spawn closed: reported as spawn error, nothing runs", async () => {
