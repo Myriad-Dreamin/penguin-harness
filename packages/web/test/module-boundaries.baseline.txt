@@ -104,7 +104,6 @@ features/model-picker/model-picker-modal.tsx -> features/models/model-group-orde
 features/model-picker/model-picker-modal.tsx -> features/models/model-grouping.ts
 features/model-picker/model-select.tsx -> features/models/model-grouping.ts
 features/models/models-page.tsx -> features/ai-create/ai-create-buttons.tsx
-features/palette/app-palette.tsx -> features/harness/harness-history-overlay.tsx
 features/plugins/plugin-detail.tsx -> features/skills/skill-icon-view.tsx
 features/plugins/plugins-page.tsx -> features/machines/machine-picker.tsx
 features/plugins/plugins-page.tsx -> features/settings/settings-dialog.tsx
@@ -141,7 +140,6 @@ features/terminal/terminal-view-pool.tsx -> features/dock/dock-state.ts
 features/todos/todo-badges.ts -> features/models/catalog-sync.ts
 features/todos/use-project-todos.ts -> features/usage/usage-controls.ts
 features/todos/use-update-badges.ts -> features/models/catalog-sync.ts
-features/workflows/workflow-app-page.tsx -> features/palette/app-palette.tsx
 features/workspace/workspace-browser.tsx -> features/dock/close-guard.ts
 features/workspace/workspace-browser.tsx -> features/dock/dock-state.ts
 lib/strings-en.ts -> features/terminal/strings.ts
