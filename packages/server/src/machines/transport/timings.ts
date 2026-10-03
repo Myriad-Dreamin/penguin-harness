@@ -23,7 +23,6 @@ export interface MachineSample {
   /** The collection point, named for its layer: `machine.ssh.command`, `machine.connect.stage`, … */
   probe: string;
   durMs?: number;
-  n?: number;
   /** `ok`, `error`, or the point's own word (`timeout`, `exit`). */
   status?: string;
   keys: { machine: string };
