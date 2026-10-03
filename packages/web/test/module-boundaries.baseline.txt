@@ -234,8 +234,6 @@ features/workflows/workflow-app-page.tsx -> features/palette/app-palette.tsx
 features/workflows/workflow-tabs.tsx -> features/chat/skill-use.ts
 shell/router.tsx -> features/chat/use-runtime-languages.ts
 shell/router.tsx -> features/company/company-nav.ts
-shell/router.tsx -> features/dashboard/dashboard-page.tsx
-shell/router.tsx -> features/ports/machine-ports-page.tsx
 shell/router.tsx -> features/proposals/proposals-page.tsx
 state/company.tsx -> features/company/channel-list.ts
 state/company.tsx -> features/company/company-beta.tsx

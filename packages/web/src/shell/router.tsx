@@ -20,8 +20,6 @@ import { AppLayout } from "../components/layout/app-layout";
 import { BootPending } from "../components/ui/boot-pending";
 import { LoginPage } from "../pages/login";
 import { homePath } from "../features/company/company-nav";
-import { MachinePortsPage } from "../features/ports/machine-ports-page";
-import { DashboardPage } from "../features/dashboard/dashboard-page";
 import { OrgProposalsPage } from "../features/proposals/proposals-page";
 import type { PageEntry } from "./page-table";
 import { ContributionsProvider, useContributions } from "../state/contributions";
@@ -32,8 +30,6 @@ import { shellDeps } from "./deps";
  * a server-contributed page renders only when its `builtin` is in this registry.
  */
 const BUILTIN_PAGES: Record<string, React.ComponentType> = {
-  MachinePortsPage,
-  DashboardPage,
   // Company-mode pages a plugin contributes (`nav: "org"`): mounted under the organization
   // layout, never at the root, so the company sidebar stays around them.
   OrgProposalsPage,
