@@ -460,6 +460,8 @@ export const en: Strings = {
     empty: "Nothing is running",
     /** The empty state while a machine did not answer: this server has nothing, the rest is unknown. */
     emptyHere: "Nothing is running on this server",
+    /** The same while this server is the one that did not answer: only the machines that did are known. */
+    emptyAnswered: "Nothing is running on the machines that answered",
     emptyHint:
       "Workspaces with a Session running, or finished since you last opened it, appear here.",
     loadFailed: "Failed to load",

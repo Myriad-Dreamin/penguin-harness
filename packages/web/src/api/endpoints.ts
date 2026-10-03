@@ -763,9 +763,10 @@ export const listSessions = (
 };
 
 /**
- * The dashboard's read: per Workspace, how many Sessions run and how many wait on an
- * approval, over every Agent of the Project. Asked of one server at a time, like the list —
- * this one with no machine, or a machine by its id.
+ * The dashboard's read: every non-archived Session of the Project over every Agent, as
+ * per-Session facts (status, last activity, origin) the page counts from against this
+ * browser's seen markers. Asked of one server at a time, like the list — this one with no
+ * machine, or a machine by its id.
  */
 export const getSessionsOverview = (projectId: string, machineId?: string | null) =>
   apiFetch<SessionsOverviewResponse>(

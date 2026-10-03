@@ -13,9 +13,8 @@ import { useStore } from "zustand/react";
  *
  * Consequences, deliberately accepted:
  * - per BROWSER, not per user — the same account on another device starts with its own markers;
- * - no cross-tab sync — the repo has no `storage` listener anywhere and says so on purpose
- *   (chat-defaults-event.ts: "Same-tab only by design"), so a second tab keeps its own view
- *   until it reloads.
+ * - other tabs follow through the `storage` event and on becoming visible again (the bottom of
+ *   this file), not instantly — a write that storage refused stays in the tab that made it.
  *
  * "Read" is a timestamp comparison rather than a flag, because the question is not "was this
  * Session ever opened" but "was it opened SINCE its last reply": the marker holds when the user
@@ -201,8 +200,27 @@ export function noteSessionSeen(
   if (projectId === null) return;
   const key = sessionSeenKey(projectId);
   const current = read(key, storage);
-  const seeded = current.seededAt === 0 ? { seededAt: Date.now(), seen: current.seen } : current;
-  const next = markSessionSeen(seeded, sessionId, lastActiveAt);
+  const next = markSessionSeen(withBaseline(current), sessionId, lastActiveAt);
+  if (next === current) return;
+  write(key, next, storage);
+}
+
+/** The state with `seededAt` stamped now when the Project has none yet; otherwise the input. */
+function withBaseline(state: SessionSeenState): SessionSeenState {
+  return state.seededAt === 0 ? { seededAt: Date.now(), seen: state.seen } : state;
+}
+
+/**
+ * Stamps a Project's baseline when it has none, without marking any Session: what a page that
+ * counts unread Sessions calls before anything has been opened in this browser, so the history
+ * it finds there starts out read. A no-op once the Project is seeded. It writes, so it belongs
+ * in an effect, never in a render (read() runs inside one).
+ */
+export function seedSessionSeen(projectId: string | null, storage?: SessionSeenStorage): void {
+  if (projectId === null) return;
+  const key = sessionSeenKey(projectId);
+  const current = read(key, storage);
+  const next = withBaseline(current);
   if (next === current) return;
   write(key, next, storage);
 }

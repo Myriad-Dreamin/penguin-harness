@@ -529,14 +529,16 @@ export const zh = {
 
   dashboard: {
     title: "看板",
-    /** The two counts, read beside their numbers: "3 运行中", "1 待审核". */
+    /** The two counts, read beside their numbers: "3 运行中", "1 待查看". */
     running: "运行中",
-    pendingReview: "待审核",
+    pendingReview: "待查看",
     /** The merged row of auto-created temporary Workspaces, as the sidebar groups them. */
     temporaryWorkspaces: "临时工作区",
     empty: "没有正在运行的会话",
     /** The empty state while a machine did not answer: this server has nothing, the rest is unknown. */
     emptyHere: "本机没有正在运行的会话",
+    /** The same while this server is the one that did not answer: only the machines that did are known. */
+    emptyAnswered: "应答的机器上没有正在运行的会话",
     emptyHint: "有会话正在运行、或自你上次打开后已完成的工作区会显示在这里。",
     loadFailed: "加载失败",
     silentMachines: (n: number) => `${n} 台机器没有应答——那里的会话没有计入。请到机器页面连接它。`,

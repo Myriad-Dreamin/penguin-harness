@@ -3,7 +3,8 @@
  * Pinned: the counts are the sidebar's glyph states — running is a live status, to review is
  * a settled Session unread in this browser — a subagent Session is nobody's count, a
  * Workspace is per machine, temporary Workspaces merge into one row per machine, each list
- * names its Sessions latest first, and the order puts what waits on a person first. Which
+ * names its Sessions latest first, and the order puts what waits on a person first; once the
+ * page has seeded a Project, history from before it reads as read. Which
  * servers are asked: this one and every machine a forward can reach — one without a
  * connection is counted as silent without being asked.
  */
@@ -19,7 +20,9 @@ import {
   dashboardTotals,
 } from "../src/features/dashboard/dashboard-view";
 import type { DashboardRow } from "../src/features/dashboard/dashboard-view";
+import { readSessionSeen, resetSessionSeenCache, seedSessionSeen } from "../src/lib/session-seen";
 import type { SessionSeenState } from "../src/lib/session-seen";
+import { memoryStorage } from "./helpers/storage";
 
 /** This browser first saw the Project on the 1st and last opened `s-read` on the 5th. */
 const seen: SessionSeenState = {
@@ -197,6 +200,20 @@ describe("dashboardRows", () => {
     );
     expect(dashboardTotals(rows)).toEqual({ running: 2, pendingReview: 1 });
     expect(dashboardTotals([])).toEqual({ running: 0, pendingReview: 0 });
+  });
+
+  it("lists no history on a browser that first opens the Project here, once the page has seeded it", () => {
+    resetSessionSeenCache();
+    const storage = memoryStorage();
+    // Last ran well before this browser first looked.
+    const history = [local([session("/a", "idle"), session("/b", "idle")])];
+    // Unseeded, every finished Session would be to review — the noise the baseline is for.
+    expect(dashboardTotals(dashboardRows(history, readSessionSeen("p", storage)))).toEqual({
+      running: 0,
+      pendingReview: 2,
+    });
+    seedSessionSeen("p", storage);
+    expect(dashboardRows(history, readSessionSeen("p", storage))).toEqual([]);
   });
 });
 

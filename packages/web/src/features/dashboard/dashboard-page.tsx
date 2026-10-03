@@ -23,13 +23,14 @@ import {
   SkeletonList,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
+import { ApiError } from "../../api/client";
 import { useProject } from "../../state/project";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { toneDot, toneInk } from "../../lib/tone";
 import type { Tone } from "../../lib/tone";
-import { noteSessionSeen, useSessionSeen } from "../../lib/session-seen";
+import { noteSessionSeen, seedSessionSeen, useSessionSeen } from "../../lib/session-seen";
 import { rememberSessionMachine } from "../../lib/session-machines";
 import { sessionActivityLabel } from "../../lib/session-activity";
 import { shortSessionId } from "../chat/agent-topology";
@@ -43,6 +44,28 @@ import type {
 
 /** A running Session moves in seconds; the board follows at a pace a phone's battery forgives. */
 const REFRESH_MS = 15_000;
+
+/**
+ * How long one server's answer is waited for. A machine that has not answered by then counts
+ * as silent, like one that refused — without a bound, one request that never settles would
+ * hold the poll open and every later poll would wait behind it, freezing the board.
+ */
+const ANSWER_DEADLINE_MS = 10_000;
+
+/**
+ * `p`, or the transport failure `apiFetch` itself throws once `ms` pass. The request is not
+ * cancelled (the client takes no signal); its late answer is simply not waited for.
+ */
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new ApiError(0, "network_error", S.errors.networkError)),
+      ms,
+    );
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
 
 const THIS_SERVER: DashboardServer = { machineId: null, label: "", local: true };
 
@@ -149,6 +172,22 @@ export function DashboardPage() {
       return next;
     });
 
+  // Another Project starts from nothing: the previous one's rows, read against this one's
+  // markers until its poll lands, would count the wrong Sessions — and opening one would
+  // mark it read in the wrong Project. Reset while rendering, so they never paint once.
+  const [shownFor, setShownFor] = useState(projectId);
+  if (shownFor !== projectId) {
+    setShownFor(projectId);
+    setSources(null);
+    setSilent(0);
+    setError(null);
+    setExpanded(new Set());
+  }
+
+  // A browser that has opened nothing in this Project yet has no baseline, and every finished
+  // Session would read as unread; stamp it, so the history found here starts out read.
+  useEffect(() => seedSessionSeen(projectId), [projectId]);
+
   /**
    * The Project a poll is out for. The timer, the tab coming back and the mount all ask, and
    * an answer through a machine can take longer than the interval: a second poll for the same
@@ -164,15 +203,21 @@ export function DashboardPage() {
       let servers: DashboardServer[] = [THIS_SERVER];
       let unconnected = 0;
       try {
-        const asked = dashboardServers(await api.getMachines(projectId));
+        const asked = dashboardServers(
+          await withDeadline(api.getMachines(projectId), ANSWER_DEADLINE_MS),
+        );
         if (asked.servers.length > 0) servers = asked.servers;
         unconnected = asked.unconnected;
       } catch {
-        // The machine list is admin-only; everyone else reads this server, which holds its own.
+        // The machine list is admin-only (and bounded like every answer); everyone else, or a
+        // list that never came, reads this server, which holds its own.
       }
       const answers = await Promise.allSettled(
         servers.map(async (server): Promise<DashboardSource> => {
-          const { sessions } = await api.getSessionsOverview(projectId, server.machineId);
+          const { sessions } = await withDeadline(
+            api.getSessionsOverview(projectId, server.machineId),
+            ANSWER_DEADLINE_MS,
+          );
           return {
             machineId: server.machineId,
             machineLabel: server.label,
@@ -227,6 +272,14 @@ export function DashboardPage() {
   };
 
   const totals = rows === null ? null : dashboardTotals(rows);
+  // An empty board names what it knows: everywhere, this server only, or the machines that
+  // answered when this server is the one that did not.
+  const emptyTitle =
+    silent === 0
+      ? S.dashboard.empty
+      : sources?.some((s) => s.local) === true
+        ? S.dashboard.emptyHere
+        : S.dashboard.emptyAnswered;
 
   return (
     <div className="h-full overflow-y-auto p-4 md:p-6">
@@ -263,7 +316,7 @@ export function DashboardPage() {
         {rows === null && error === null && <SkeletonList rows={4} />}
         {rows !== null && rows.length === 0 && (
           <EmptyState
-            title={silent > 0 ? S.dashboard.emptyHere : S.dashboard.empty}
+            title={emptyTitle}
             description={S.dashboard.emptyHint}
           />
         )}
