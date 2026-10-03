@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 
 /**
+ * A group header's trailing action (new chat, Agent settings): a square on the column's hover
+ * wash, the subtle glyph deepening under the pointer.
+ */
+export const GROUP_ACTION_CLASS =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-subtle transition-colors duration-150 hover:bg-fg/7 hover:text-fg";
+
+/**
  * One group's block — its header and body — carrying the manual group order's drop
  * indicator: a thin accent line in the gap the drop would land in, drawn against the
  * WHOLE group rather than its header, so "below" reads as "after this group and its

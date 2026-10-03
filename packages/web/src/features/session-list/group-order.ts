@@ -49,9 +49,9 @@ import {
   orderWithinPinPartitions,
   readStringArray,
   writeStringArray,
-} from "./session-order";
-import type { SessionOrderStorage } from "./session-order";
-import type { GroupMode } from "../components/ui/group-list";
+} from "../../lib/session-order";
+import type { SessionOrderStorage } from "../../lib/session-order";
+import type { GroupMode } from "../../components/ui/group-list";
 
 /**
  * The grouping modes whose groups can be dragged into a manual order. "time" is
