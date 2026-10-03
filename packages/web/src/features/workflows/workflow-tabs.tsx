@@ -17,7 +17,12 @@ import { formatDateTime } from "../../lib/format";
 import { useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { S } from "../../lib/strings";
 import { toneInk } from "../../lib/tone";
-import { forwardFrameKeys, readDocumentTheme, themeWorkflowFrame } from "../../lib/workflow-theme";
+import {
+  forwardFrameKeys,
+  PAGE_FRAME_SANDBOX,
+  readDocumentTheme,
+  themeWorkflowFrame,
+} from "../../lib/workflow-theme";
 import {
   FILL_APP_MESSAGE,
   settleActiveTab,
@@ -429,7 +434,7 @@ export function WorkflowFrame({
         className={`min-h-0 flex-1 border-0 transition-opacity duration-150 motion-reduce:transition-none ${
           shownKey === frameKey ? "opacity-100" : "opacity-0"
         }`}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+        sandbox={PAGE_FRAME_SANDBOX}
       />
       <ConfirmModal
         open={restoring !== null}
