@@ -35,9 +35,9 @@ import {
 } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
-import { NAV_ICONS, NEW_CHAT_ICON } from "../../lib/nav-icons";
+import { NEW_CHAT_ICON } from "../../lib/nav-icons";
 import { GROUP_MODE_ICONS, SORT_MODE_ICONS } from "../../components/ui/group-list";
-import { WorkspaceSelect } from "../chat/workspace-select";
+import { WorkspaceSelect } from "../chat";
 import { DraftRow } from "./draft-row";
 import { AgentGroups } from "./group-by-agent";
 import { WorkspaceGroups } from "./group-by-workspace";
@@ -55,6 +55,7 @@ export function SessionList({
   onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
+  /** The Agents page's own glyph, under the create button's plus in agent grouping. */
   const searchTitle = useShortcutTitle(S.chat.searchSessions, "sessions.search");
   const {
     groupMode,

@@ -1,6 +1,8 @@
 /**
  * The navigation column folded to its rail: the sidebar's compact form, beside the page while the
- * pinned sidebar is collapsed (app-layout.tsx swaps one for the other).
+ * pinned sidebar is collapsed (app-layout.tsx swaps one for the other). It reads the same slots
+ * the column does (iface.ts): the contributed modes' toggles and nav rows, the current mode's
+ * sections' rail forms, and the nav badges' dots.
  */
 import { useMemo, useRef, useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router";
@@ -8,7 +10,6 @@ import {
   ICONS,
   Rail,
   RailAccountButton,
-  RailDivider,
   RailItem,
   Tooltip,
   UpdateDot,
@@ -18,29 +19,18 @@ import { meAvatarUrl } from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
-import { NAV_ICONS, NEW_CHAT_ICON } from "../../lib/nav-icons";
+import { NEW_CHAT_ICON, glyphOf } from "../../lib/nav-icons";
 import { navKeysFor } from "./nav-state";
-import { navPagesOf, useShellPages } from "../index";
-import { navNoteFor, useUpdateBadges } from "../../features/todos";
+import { navPagesOf, pageTitle, useShellPages } from "../index";
 import { useAuth } from "../../state/auth";
+import { useLocale } from "../../state/locale";
 import { useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
-import { useCompany } from "../../features/company";
-import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
-import { ChannelRailRows, DefaultChannelRailRow } from "../../features/company/channel-sidebar";
-import { DeskRailRows, TempSessionRailRows } from "../../features/company/org-session-groups";
-import {
-  COMPANY_NAV_KEYS,
-  ORG_PAGE_RENDERERS,
-  orgPagePath,
-  orgPageRows,
-  parseOrgKey,
-} from "../../features/company/company-nav";
-import { useOrgPages } from "../../features/company/use-org-pages";
 import { UserMenu } from "./user-menu";
 import { isCurrentPath, renderRouterLink } from "./router-link";
-import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
-import { useNewChat } from "../../features/chat/use-new-chat";
+import type { SidebarRailProps } from "./iface";
+import { sidebarDeps } from "./deps";
+import { currentModeIndex, currentModeKey, sectionsIn } from "./modes";
 
 /**
  * The folded navigation column: the unfold button on top; below it, in product-specified order,
@@ -58,32 +48,33 @@ import { useNewChat } from "../../features/chat/use-new-chat";
  * words in a styled tooltip (the package's `RailItem`). The entries' names come from the same
  * strings as the pinned nav's, so the rail follows the UI language with it.
  */
-export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
+export function CollapsedRail({ onExpand }: SidebarRailProps) {
   const { user } = useAuth();
+  const { locale } = useLocale();
   const navPages = navPagesOf(useShellPages());
   const navigate = useNavigate();
   const { currentProject, setCurrentAgentId } = useProject();
   const { sessions, loading } = useSessions();
+  const { sections, modes, useModes, useNotes, drafts } = sidebarDeps.useDeps();
   /**
-   * Passive: the layout above owns the one fetch per session, so the rail only reads the
-   * shared caches — and gets pushed a result that lands while it is mounted. The avatar
-   * mirrors the pinned sidebar's software dot (the user menu behind it holds the App info row);
-   * every other badge here rides on a page entry, which is where its trail continues.
+   * The badges, by anchor. The avatar mirrors the pinned sidebar's account dot (the user menu
+   * behind it holds the App info row); every other badge here rides on a page entry, which is
+   * where its trail continues.
    */
-  const badges = useUpdateBadges();
-  const company = useCompany();
+  const notes = useNotes();
+  const accountNote = notes.get("account") ?? null;
   const location = useLocation();
   /**
-   * Company mode: the all-hands channel takes the top slot, the organization's pages replace
-   * the development ones, and its other channels follow them as rows.
+   * A contributed mode's pages replace the development ones, its own top entry (if it has one)
+   * takes the last conversation's slot, and its sections' rail rows follow the pages.
    */
-  const inCompany = company.workMode === "company";
-  const navOrg = parseOrgKey(company.currentOrgKey ?? company.lastOrgKey);
-  /** The company-mode pages plugins contribute: entries after the organization's six, as in the pinned sidebar. */
-  const contributedOrgPages = useOrgPages();
+  const modeStates = useModes();
+  const current = currentModeIndex(modeStates);
+  const currentKey = currentModeKey(modes, modeStates);
+  const RailTop = current >= 0 ? modes[current]!.mode.RailTop : undefined;
   const activeSessionId = useMatch("/chat/:sessionId")?.params.sessionId ?? null;
   /** On some conversation (any non-draft /chat/:id): the "you are here" state of the last-conversation entry. */
-  const onConversation = activeSessionId !== null && activeSessionId !== DRAFT_SESSION_ID;
+  const onConversation = activeSessionId !== null && activeSessionId !== drafts.newChatId;
 
   /** Newest loaded conversation across the current Project (active/schedule only — archived and subagent rows are never auto-opened; the flat list is only ordered per Agent). An organization's desk and ticket Sessions are never conversations of this list. */
   const lastSession = useMemo(() => latestConversation(withoutOrgSessions(sessions)), [sessions]);
@@ -95,8 +86,8 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
     navigate(`/chat/${lastSession.sessionId}`);
   };
 
-  /** Mirrors the pinned sidebar's "New chat" (use-new-chat.ts): parks any typed-but-unsent draft text first, then opens a draft that names nothing, so it starts on the Project's new-chat defaults. */
-  const newChat = useNewChat();
+  /** Mirrors the pinned sidebar's "New chat": parks any typed-but-unsent draft text first, then opens a draft that names nothing, so it starts on the Project's new-chat defaults. */
+  const newChat = drafts.useNewChat();
 
   /** Page entries (after the top slot and new chat): the pinned nav's manifest, routes
       and labels, in its order, and all of them whether pinned or collapsible there — the
@@ -104,42 +95,29 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
       toolbar's panel switcher, which is the only place it happens. */
   const pages: ReadonlyArray<{
     key: string;
-    /** Where the entry leads — null while company mode has no organization, which renders it disabled. */
+    /** Where the entry leads — null for an entry with nowhere to lead, which renders disabled. */
     to: string | null;
     label: string;
+    /** A name in the UI package's icon registry. */
     icon: string;
     note: string | null;
-  }> = inCompany
-    ? [
-        ...COMPANY_NAV_KEYS.map((key) => ({
-          key,
-          // The six entries keep their places with no organization, disabled: a rail that
-          // empties itself reads as a broken shell rather than as an empty one.
-          to: navOrg === null ? null : orgPagePath(navOrg.projectId, navOrg.orgId, key),
-          label: S.nav.org[key],
-          icon: COMPANY_NAV_ICONS[key],
-          note: null as string | null,
-        })),
-        // A contributed page's entry: its dot says the proposals have unread events, and the
-        // tooltip says how many, since the rail has no room for the count itself.
-        ...orgPageRows(contributedOrgPages, navOrg).map((row) => {
-          const count = row.renderer === "OrgProposalsPage" ? company.unreadProposals : 0;
-          return {
-            key: row.key,
-            to: row.to,
-            label: S.nav.org[ORG_PAGE_RENDERERS[row.renderer].label],
-            icon: ORG_PAGE_ICONS[row.renderer],
-            note: count > 0 ? S.company.proposals.unreadNote(count) : null,
-          };
-        }),
-      ]
-    : navKeysFor(navPages, user?.isAdmin === true).map((key) => ({
-        key,
-        to: `/${key}`,
-        label: S.nav[key],
-        icon: NAV_ICONS[key],
-        note: navNoteFor(badges, `/${key}`),
-      }));
+  }> =
+    current >= 0
+      ? modeStates[current]!.navItems.map((item) => ({ ...item, note: null }))
+      : navKeysFor(navPages, user?.isAdmin === true).flatMap((key) => {
+          const page = navPages.find((p) => p.key === key);
+          return page === undefined
+            ? []
+            : [
+                {
+                  key,
+                  to: `/${key}`,
+                  label: pageTitle(page, locale),
+                  icon: page.icon ?? "",
+                  note: notes.get(key) ?? null,
+                },
+              ];
+        });
 
   /**
    * The rail's avatar hangs its menu off the rail's OUTER edge rather than over the rail:
@@ -172,13 +150,9 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
    */
   const accountName = user?.displayName ?? user?.userId;
   const avatarName =
-    badges.softwareNote !== null
-      ? `${accountName ?? ""} · ${badges.softwareNote}`
-      : (accountName ?? S.auth.admin);
+    accountNote !== null ? `${accountName ?? ""} · ${accountNote}` : (accountName ?? S.auth.admin);
   const avatarTooltip =
-    badges.softwareNote !== null
-      ? `${S.nav.userSettings} · ${badges.softwareNote}`
-      : S.nav.userSettings;
+    accountNote !== null ? `${S.nav.userSettings} · ${accountNote}` : S.nav.userSettings;
   const expandTitle = useShortcutTitle(S.nav.expandSidebar, "sidebar.toggle");
 
   return (
@@ -224,7 +198,7 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
                 >
                   {/* Update reminder, mirroring the pinned sidebar's avatar: the App info row sits
                       in the menu this opens, and the label above names what is waiting. */}
-                  {badges.software !== null && <UpdateDot />}
+                  {accountNote !== null && <UpdateDot />}
                 </UserAvatar>
               </RailAccountButton>
             </Tooltip>
@@ -236,11 +210,11 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
           where the user was. Lit on any non-draft conversation. Dimmed/disabled (tooltip kept)
           only once the list has settled with no non-archived Session — while it is still
           loading the entry keeps its normal look (no flash) and a click is a graceful no-op.
-          Company mode gives the slot to the organization's all-hands channel instead: an
-          organization's conversations are its channels, and the one everyone is in is where a
-          person goes back to. */}
-      {inCompany ? (
-        <DefaultChannelRailRow org={navOrg} />
+          A contributed mode can give the slot to an entry of its own instead — company mode
+          to the organization's all-hands channel: an organization's conversations are its
+          channels, and the one everyone is in is where a person goes back to. */}
+      {RailTop !== undefined ? (
+        <RailTop />
       ) : (
         <RailItem
           label={S.nav.lastConversation}
@@ -250,14 +224,14 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
           onClick={openLastSession}
         />
       )}
-      {/* 2. New chat: lit while on the draft page (pinned-sidebar convention). Company mode
-          leaves this slot empty — a channel is made rarely, from the channel list's own header,
-          and the rail carries no create control of its own. */}
-      {!inCompany && (
+      {/* 2. New chat: lit while on the draft page (pinned-sidebar convention). A contributed
+          mode leaves this slot empty — its create actions are its own sections', and the rail
+          carries no create control of its own. */}
+      {current < 0 && (
         <RailItem
           label={S.chat.newSessionMenu}
           glyph={NEW_CHAT_ICON}
-          active={activeSessionId === DRAFT_SESSION_ID}
+          active={activeSessionId === drafts.newChatId}
           onClick={newChat}
         />
       )}
@@ -271,7 +245,7 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
           <RailItem
             key={item.key}
             label={label}
-            glyph={item.icon}
+            glyph={glyphOf(item.icon)}
             href={item.to ?? ""}
             disabled={item.to === null}
             active={item.to !== null && isCurrentPath(item.to, location.pathname)}
@@ -280,18 +254,10 @@ export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
           />
         );
       })}
-      {/* The organization's other channels, its desks and then its Temporary entries, under the
-          pages the way they sit under the nav in the pinned sidebar. A hairline says where each
-          run ends (the channels and the Temporary entries draw their own, and only when they
-          have rows); a channel row carries its own unread count and a desk or an entry its
-          running dot, since a rail with no labels must still say how much is waiting. */}
-      {inCompany && navOrg !== null && (
-        <>
-          <ChannelRailRows projectId={navOrg.projectId} orgId={navOrg.orgId} />
-          <RailDivider />
-          <DeskRailRows projectId={navOrg.projectId} orgId={navOrg.orgId} />
-          <TempSessionRailRows projectId={navOrg.projectId} orgId={navOrg.orgId} />
-        </>
+      {/* The current mode's sections in their rail form, under the pages the way they sit
+          under the nav in the pinned sidebar. */}
+      {sectionsIn(sections, currentKey, "body").map(({ id, section: { Rail: SectionRail } }) =>
+        SectionRail === undefined ? null : <SectionRail key={id} />,
       )}
     </Rail>
   );

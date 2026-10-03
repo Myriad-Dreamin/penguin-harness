@@ -1,19 +1,16 @@
 /**
- * The session list's dialogs: rename a conversation, bind it to a messaging channel, rename or
- * remove a registered Workspace, and confirm deleting a conversation or a parked draft. Mounted
- * once beside the sidebar's column, whatever the column shows.
+ * The session list's dialogs: rename a conversation, a contributed row entry's dialog (the
+ * messaging binding), rename or remove a registered Workspace, and confirm deleting a
+ * conversation or a parked draft. Mounted once beside the sidebar's column, whatever the column
+ * shows.
  */
 import { Button, ConfirmModal, Input, Modal } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { workspaceLabel } from "../../lib/session-grouping";
-import { draftSessionTitle } from "../chat/draft-sessions";
-import { MessagingBindingModal } from "../messaging/messaging-binding-modal";
 import type { SessionListController } from "./use-session-list";
 
 export function SessionDialogs({ list }: { list: SessionListController }) {
   const {
-    sessions,
-    replace,
     renamingSession,
     setRenamingSession,
     renameText,
@@ -22,8 +19,8 @@ export function SessionDialogs({ list }: { list: SessionListController }) {
     renameError,
     setRenameError,
     confirmRename,
-    messagingSession,
-    setMessagingSession,
+    entryDialog,
+    setEntryDialog,
     renamingWorkspace,
     setRenamingWorkspace,
     workspaceAliasText,
@@ -80,20 +77,12 @@ export function SessionDialogs({ list }: { list: SessionListController }) {
         />
       </Modal>
 
-      {/* Messaging binding dialog (row menu "Messaging binding…"): the row indicator
-          updates in place from the dialog's own save/unbind outcome. */}
-      {messagingSession && (
-        <MessagingBindingModal
-          sessionId={messagingSession.sessionId}
-          onClose={() => setMessagingSession(null)}
-          onChanged={(sessionId, channel) => {
-            const current = sessions.find((x) => x.sessionId === sessionId);
-            if (!current) return;
-            const updated = { ...current };
-            if (channel !== null) updated.messagingChannel = channel;
-            else delete updated.messagingChannel;
-            replace(updated);
-          }}
+      {/* A contributed row entry's dialog (the messaging binding): its own, on the Session the
+          entry was chosen on; it updates the row in place from its own outcome. */}
+      {entryDialog && (
+        <entryDialog.entry.Dialog
+          session={entryDialog.session}
+          onClose={() => setEntryDialog(null)}
         />
       )}
 
@@ -177,7 +166,7 @@ export function SessionDialogs({ list }: { list: SessionListController }) {
       >
         <p className="text-sm text-gray-600 dark:text-gray-300">
           {deletingDraft
-            ? S.chat.deleteDraftConfirm(draftSessionTitle(deletingDraft) || S.chat.draftUntitled)
+            ? S.chat.deleteDraftConfirm(deletingDraft.title || S.chat.draftUntitled)
             : ""}
         </p>
       </ConfirmModal>
