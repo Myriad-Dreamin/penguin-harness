@@ -14,6 +14,7 @@ import type {
 } from "../src/api/types.js";
 import { BROWSER_ERRORS_MAX_BATCH } from "../src/api/types.js";
 import { BROWSER_ERRORS_PER_MINUTE } from "../src/http/routes/browser-errors.js";
+import type { Telemetry } from "../src/mechanisms/telemetry.js";
 import { apiClient, createTestApp, loginAdmin, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
@@ -160,7 +161,11 @@ describe("request key", () => {
     expect((await admin.put("/api/admin/settings", { telemetry: true })).status).toBe(200);
     const failed = await admin.get("/api/projects/default_project/usage?groupBy=date");
     expect(failed.status).toBe(500);
-    const request = failed.headers.get("x-penguin-request-id");
+    // The id the request ran under, as its own http.request sample carries it.
+    const request = t.deps.tree
+      .api<Telemetry>("TelemetryModule", "Telemetry")
+      .samples({ probe: "http.request" })
+      .find((s) => s.attrs?.code === 500)?.keys.request;
     expect(request).toMatch(/^[0-9a-f-]{36}$/);
 
     const page = (await (
