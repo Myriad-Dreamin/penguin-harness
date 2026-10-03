@@ -88,9 +88,9 @@ import type { Access } from "../src/mechanisms/projects.js";
 import { ProcessShellPort } from "../src/builtin-browser/module.js";
 import type { BrowserShellPort } from "../src/builtin-browser/shell-link.js";
 
-export async function makeTempRoot(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "penguin-server-test-"));
-}
+import { makeTempRoot } from "./temp-roots.js";
+
+export { makeTempRoot };
 
 let symlinkCapability: boolean | undefined;
 
