@@ -71,7 +71,7 @@ import { TerminalDockRuntime } from "../src/features/terminal/terminal-view-pool
 import { ShortcutRuntime } from "../src/features/settings/shortcut-runtime";
 import { BuiltinBrowserLayer } from "../src/features/builtin-browser/browser-layer";
 import { builtinBrowserUserEvents } from "../src/features/builtin-browser/browser-events";
-import { AppPalette } from "../src/features/palette/app-palette";
+import { AppPalette } from "../src/rescue/palette";
 import { scheduleUserEvents } from "../src/features/schedules/schedule-store";
 import { SettingsLayer } from "../src/features/settings/settings-layer";
 import { DockScope } from "../src/features/dock/dock-scope";
