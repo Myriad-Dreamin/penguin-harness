@@ -4,16 +4,11 @@
  */
 import { shellDeps } from "./deps";
 import type { ShellLayer } from "./deps";
-import type { ShellPage } from "./page-table";
 
 export type { PageData, PageEntry, ShellPage } from "./page-table";
 export { navPagesOf, orgPagesOf, pageTitle } from "./page-table";
 export { ContributedPage } from "./contributed-page";
-
-/** Every page the modules contributed, by `order`. */
-export function useShellPages(): readonly ShellPage[] {
-  return shellDeps.useDeps().pages;
-}
+export { useShellPages } from "./contributions";
 
 /** The contributed layers, by `order`: the app layout mounts each once, beside the page. */
 export function useShellLayers(): readonly ShellLayer[] {

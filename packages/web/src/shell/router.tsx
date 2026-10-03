@@ -1,6 +1,7 @@
 /**
  * Router (react-router v7 declarative style): /login is public; every other route is a page a
- * module contributed to `ShellModule.pages` (shell/module.ts), read from the shell's bindings.
+ * module contributed to `ShellModule.pages` (shell/module.ts) or the server contributed to
+ * `WebModule.pages` (shell/contributions.tsx), read through `useShellPages()`.
  * A "shell" page goes through the RequireAuth guard (redirects to /login when not
  * authenticated) and is wrapped in ProjectProvider + SessionsProvider, the session providers
  * modules contributed, and AppLayout; a "bare" page only needs the user signed in.
@@ -21,6 +22,7 @@ import { LoginPage } from "../pages/login";
 import { ContributionsProvider, useContributions } from "../state/contributions";
 import { shellDeps } from "./deps";
 import { ContributedPage } from "./contributed-page";
+import { ShellPagesProvider, useShellPages, useShellPagesPending } from "./contributions";
 
 /** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
@@ -70,9 +72,11 @@ export interface AppRouterProps {
 
 export function AppRouter({ initialPath }: AppRouterProps = {}) {
   const tree = (
-    <ContributionsProvider>
-      <RouteTree />
-    </ContributionsProvider>
+    <ShellPagesProvider>
+      <ContributionsProvider>
+        <RouteTree />
+      </ContributionsProvider>
+    </ShellPagesProvider>
   );
   return initialPath === undefined ? (
     <BrowserRouter>{tree}</BrowserRouter>
@@ -82,14 +86,14 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
 }
 
 /**
- * The routes: the pages the modules contributed (the shell's bindings), plus what the server
- * contributes (state/contributions.tsx) — so a page a plugin adds mounts once the
- * contributions have loaded, and the app's own pages are there from the first render. A
+ * The routes: every page in the shell's table (the modules' and the server's, shell/contributions.tsx),
+ * under the guard of its frame, plus what state/contributions.tsx contributes beside it. A
  * company-mode page (`nav: "org"`) mounts under the organization layout, which is company
  * mode's own (features/company/org-routes.tsx).
  */
 function RouteTree() {
-  const { pages } = shellDeps.useDeps();
+  const pages = useShellPages();
+  const pending = useShellPagesPending();
   const { pages: contributed } = useContributions();
   return (
     <Routes>
@@ -117,7 +121,12 @@ function RouteTree() {
         {pages
           .filter((page) => page.frame === "shell")
           .map(({ id, path, Component }) => (
-            <Route key={id} path={path} element={<Component />} />
+            <Route
+              key={id}
+              path={path}
+              // The catch-all waits while a server-contributed page may still claim the path.
+              element={path === "*" && pending ? null : <Component />}
+            />
           ))}
         {contributed.map((page) => (
           <Route key={page.id} path={page.path} element={<ContributedPage page={page} />} />
