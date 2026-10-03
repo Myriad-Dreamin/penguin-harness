@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CommandPolicyDto, CommandPolicyRuleDto } from "@prismshadow/penguin-server/api";
 import {
   Button,
+  ConfirmModal,
   Input,
   SettingRow,
   Switch,
