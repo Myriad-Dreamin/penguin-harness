@@ -7,7 +7,7 @@
  * the other origins have on the same branch.
  *
  * A node's menu (a right-click on its row, or its ellipsis) deploys that PR's head with one of
- * the organization's deploy scripts (pr-graph-deploy.tsx).
+ * the organization's bound deploy Actions (pr-graph-deploy.tsx).
  *
  * It is reached from the queue's header and from a proposal's header; the latter opens it with
  * `?proposal=<n>`, and the page scrolls to that proposal's row and tints it, or says in one line
@@ -44,9 +44,8 @@ import {
   topDown,
 } from "./pr-graph-model";
 import { FOCUS_WASH, Mark, NodeListSection, NodeRow, UnplacedSection } from "./pr-graph-rows";
-import { DeployDialog, DeployableRow, useDeployScripts } from "./pr-graph-deploy";
+import { DeployDialog, DeployableRow, prSubject } from "./pr-graph-deploy";
 import { DeployDock, useDeployJobs } from "./pr-graph-deploy-dock";
-import { AssociateDialog } from "./pr-graph-associate";
 import { DeploymentMarks, DeploymentsOff } from "./pr-graph-deployments";
 import { FoldedLine, GraphLanes, RoadmapHeading, displayMetrics } from "./pr-graph-lanes";
 import { useProposalRoadmaps } from "./pr-graph-roadmaps";
@@ -177,21 +176,22 @@ export function GraphPage() {
   }, [graph, focus]);
 
   const openProposal = (n: number) => navigate(orgProposalPath(projectId, orgId, n));
-  const deployScripts = useDeployScripts(projectId, orgId);
   const deploys = useDeployJobs(projectId, orgId);
-  const [associating, setAssociating] = useState(false);
   const openJob = deploys.jobs.find((j) => j.key === deploys.open) ?? null;
-  const deployable = (node: ProposalGraphNode, row: ReactNode) => (
-    <DeployableRow
-      node={node}
-      scripts={deployScripts.scripts}
-      scriptsError={deployScripts.error}
-      onPick={(script) => deploys.start(node, script)}
-      onAssociate={() => setAssociating(true)}
-    >
-      {row}
-    </DeployableRow>
-  );
+  const deployable = (node: ProposalGraphNode, row: ReactNode) => {
+    const subject = prSubject(graph?.repo ?? "", node.number);
+    return (
+      <DeployableRow
+        projectId={projectId}
+        orgId={orgId}
+        node={node}
+        subject={subject}
+        onPick={(action) => deploys.start(node, subject, action.key)}
+      >
+        {row}
+      </DeployableRow>
+    );
+  };
   const onChain = graph?.nodes.filter((n) => n.onChain).length ?? 0;
   const drawnOff = useMemo(() => {
     const undrawn = new Set(layout?.detached.map((n) => n.number));
@@ -392,22 +392,15 @@ export function GraphPage() {
           projectId={projectId}
           orgId={orgId}
           node={openJob.node}
-          script={openJob.script}
+          subject={openJob.subject}
+          actionKey={openJob.action}
           runId={openJob.runId}
-          onRun={(run) => deploys.update(openJob.key, run)}
-          onClose={deploys.close}
-        />
-      )}
-      {associating && (
-        <AssociateDialog
-          projectId={projectId}
-          orgId={orgId}
-          scripts={deployScripts.scripts ?? []}
-          onClose={() => setAssociating(false)}
-          onSaved={() => {
-            setAssociating(false);
-            deployScripts.reload();
+          onRun={(run) => {
+            // A run that just ended moved a deployment: read the graph again, as its refresh did.
+            if (run.outcome !== null && openJob.outcome === null) void load();
+            deploys.update(openJob.key, run);
           }}
+          onClose={deploys.close}
         />
       )}
       <DeployDock

@@ -160,11 +160,6 @@ export function focusedProposal(params: URLSearchParams): number | null {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
-/** A deploy's extra arguments as typed in the graph's deploy dialog: split at whitespace, nothing empty. */
-export function splitArgs(text: string): string[] {
-  return text.split(/\s+/).filter((a) => a !== "");
-}
-
 /**
  * How many lanes each row actually crosses — its own dot's, and every edge passing through it
  * (an edge runs down the child's lane to the row above its parent, then bends into the parent's
