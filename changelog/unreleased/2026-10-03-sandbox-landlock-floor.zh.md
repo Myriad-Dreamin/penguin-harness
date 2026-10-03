@@ -24,6 +24,7 @@
 ## 后端
 
 - DSH 适配器在加载时运行其链条的探测，因此在没有任何一级可用的主机上，加载会带着 DSH 的原因失败，而不是挂载一个拒绝每条命令的后端。
+- 插件仓的条目同时带上包的 peer 依赖。`@deepseek-ai/dsh-sandbox-local` 把 DSH 的同级包声明为 peer，此前 `sandbox-dsh` 从插件仓加载时会以 `Cannot find package '@deepseek-ai/dsh-llm'` 失败。
 - bubblewrap 的拒绝原因带上 bwrap 的输出（`setting up uid map: Permission denied`，或启动错误），并说明 Ubuntu 上的 root 操作是可选的，只增加网络隔离与屏蔽路径。
 
 ## 输入框
