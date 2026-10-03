@@ -1895,6 +1895,9 @@ router
   .post("/api/port-forwards", () => readOnly("forward a port"))
   .delete("/api/port-forwards/:id", () => readOnly("remove a port forward"));
 
+// What the server's modules and plugins contribute: the demo has no plugin, so nothing.
+router.get("/api/contributions", () => ({ pages: [], agentTabs: [], sessionTabs: [] }));
+
 // The Browser tab: a site is minted on a host of its own behind a real server; the demo has none.
 router.post("/api/browser/sites", () => readOnly("open a site in a Browser tab"));
 
@@ -2086,6 +2089,23 @@ router
   .put("/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar", companyOff)
   .get("/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk", companyOff)
   .post("/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/roadmaps", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/roadmaps/:number", companyOff)
+  .post(
+    "/api/projects/:projectId/organizations/:orgId/roadmaps/:number/items/:key/approve",
+    companyOff,
+  )
+  // The company-proposals plugin's routes: company mode is off in the demo, as for the rest.
+  .get("/api/projects/:projectId/organizations/:orgId/proposals", companyOff)
+  .post("/api/projects/:projectId/organizations/:orgId/proposals", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/proposals/:number", companyOff)
+  .post("/api/projects/:projectId/organizations/:orgId/proposals/deploys", companyOff)
+  .put("/api/projects/:projectId/organizations/:orgId/proposals/:number", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/proposals/:number/*", companyOff)
+  .put("/api/projects/:projectId/organizations/:orgId/proposals/:number/*", companyOff)
+  .post("/api/projects/:projectId/organizations/:orgId/proposals/:number/*", companyOff)
+  .patch("/api/projects/:projectId/organizations/:orgId/proposals/:number/*", companyOff)
+  .delete("/api/projects/:projectId/organizations/:orgId/proposals/:number/*", companyOff)
   .get("/api/projects/:projectId/organizations/:orgId/handbook", companyOff)
   .put("/api/projects/:projectId/organizations/:orgId/handbook", companyOff)
   .get("/api/projects/:projectId/organizations/:orgId/handbook/files", companyOff)

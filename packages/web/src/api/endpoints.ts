@@ -133,6 +133,27 @@ import type {
   OrgTicketStartRequest,
   OrgTicketStartResponse,
   OrgTicketUpdateRequest,
+  ProposalCommentEditRequest,
+  ProposalCommentRequest,
+  ProposalCreateRequest,
+  ProposalDetail,
+  ProposalRevision,
+  ProposalFileResponse,
+  ProposalFeedbackRequest,
+  ProposalGraphResponse,
+  ProposalDeployRunResponse,
+  ProposalDeployScript,
+  ProposalDeployScriptsResponse,
+  ProposalDeployStartResponse,
+  ProposalImplDiff,
+  ProposalImplementRequest,
+  ProposalItem,
+  ProposalMaterialRequest,
+  ProposalPublishRequest,
+  ProposalReadRequest,
+  ProposalRejectRequest,
+  ProposalResolveRequest,
+  ProposalsResponse,
   PasswordChangeRequest,
   PluginFilesResponse,
   PluginInstallRequest,
@@ -2026,6 +2047,90 @@ export const deleteOrganization = (projectId: string, orgId: string) =>
 export const getOrgChart = (projectId: string, orgId: string) =>
   apiFetch<OrgChartResponse>(`${orgBase(projectId, orgId)}/chart`);
 
+/**
+ * An organization's roadmaps, from the company-roadmaps plugin's own route (present only while
+ * that plugin is, which is when the roadmaps page is contributed). The shape is the plugin's;
+ * only the fields the sidebar and the channel page read are typed (features/company/roadmaps.ts).
+ */
+export const listOrgRoadmaps = (
+  projectId: string,
+  orgId: string,
+  filter: { channel?: string; status?: string } = {},
+) => {
+  const q = new URLSearchParams();
+  if (filter.channel !== undefined) q.set("channel", filter.channel);
+  if (filter.status !== undefined) q.set("status", filter.status);
+  const qs = q.toString();
+  return apiFetch<{ roadmaps: OrgRoadmapItem[] }>(
+    `${orgBase(projectId, orgId)}/roadmaps${qs === "" ? "" : `?${qs}`}`,
+  );
+};
+
+/** What the web app reads of one roadmap (the plugin answers more). */
+export interface OrgRoadmapItem {
+  number: number;
+  name: string;
+  status: string;
+  channelId: string | null;
+  createdAt: string;
+  events?: ReadonlyArray<{ at: string }>;
+}
+
+/** One item of a roadmap's draft: a proposal it delegates, or a roadmap it derives. */
+export type OrgRoadmapDraftItem =
+  | {
+      key: string;
+      kind: "proposal";
+      title: string;
+      brief: string;
+      owner: string;
+      /** An existing proposal the roadmap took in as it is (adopted). */
+      proposal?: number;
+    }
+  | { key: string; kind: "roadmap"; title: string; brief: string; employees: string[] };
+
+/** Who gave one of a proposal item's two approvals, and when. */
+export interface OrgRoadmapApproval {
+  by: string;
+  at: string;
+}
+
+/** What an establishment did with one item (the plugin's delegation record, as far as the room's column reads it). */
+export interface OrgRoadmapDelegation {
+  key: string;
+  owner: string;
+  /** The derived roadmap's number (a roadmap item). */
+  child: number | null;
+  /** The proposal linked back (a proposal item). */
+  proposal?: number;
+  /** A brief waits for its two approvals; absent on lines written before that gate, which read as delegated. */
+  stage?: "brief" | "delegated";
+  approvals?: { person?: OrgRoadmapApproval; moderator?: OrgRoadmapApproval };
+}
+
+/** One roadmap as the room's column reads it: the list row plus its moderator, body and items. */
+export interface OrgRoadmapDetail extends OrgRoadmapItem {
+  moderator: string | null;
+  body: string;
+  items: OrgRoadmapDraftItem[];
+  delegations: Record<string, OrgRoadmapDelegation>;
+}
+
+export const getOrgRoadmap = (projectId: string, orgId: string, number: number) =>
+  apiFetch<OrgRoadmapDetail>(`${orgBase(projectId, orgId)}/roadmaps/${number}`);
+
+/** A person's approval of one proposal item's brief (the moderator approves from its room session). */
+export const approveOrgRoadmapItem = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  key: string,
+) =>
+  apiFetch<{ roadmap: OrgRoadmapDetail; hints: string[] }>(
+    `${orgBase(projectId, orgId)}/roadmaps/${number}/items/${encodeURIComponent(key)}/approve`,
+    { method: "POST", body: {} },
+  );
+
 export const hireOrgEmployee = (projectId: string, orgId: string, body: OrgHireRequest) =>
   apiFetch<OrgEmployeeItem>(`${orgBase(projectId, orgId)}/employees`, { method: "POST", body });
 
@@ -2563,3 +2668,198 @@ export const openSessionSurface = (sessionId: string, body: SessionSurfaceOpenRe
 
 export const closeSessionSurface = (sessionId: string) =>
   apiFetch<void>(`/api/sessions/${encodeURIComponent(sessionId)}/surface`, { method: "DELETE" });
+
+// ---------------------------------------------------------------------------
+// Company proposals (the company-proposals plugin: routes/proposals under one organization).
+// None of these exist without the plugin — the page that calls them is mounted only while the
+// contributions carry it — and, like every organization-scoped call, they reach the machine
+// the organization runs on.
+// ---------------------------------------------------------------------------
+
+const proposalsBase = (projectId: string, orgId: string) =>
+  `${orgBase(projectId, orgId)}/proposals`;
+
+const proposalBase = (projectId: string, orgId: string, number: number) =>
+  `${proposalsBase(projectId, orgId)}/${number}`;
+
+const proposalAction = <T>(
+  projectId: string,
+  orgId: string,
+  number: number,
+  action: string,
+  body: unknown = {},
+) => apiFetch<T>(`${proposalBase(projectId, orgId, number)}/${action}`, { method: "POST", body });
+
+export const listOrgProposals = (projectId: string, orgId: string) =>
+  apiFetch<ProposalsResponse>(proposalsBase(projectId, orgId));
+
+/** The delivery repository's open PRs as a commit graph, with each node's proposal and origins. */
+export const getOrgProposalGraph = (projectId: string, orgId: string) =>
+  apiFetch<ProposalGraphResponse>(`${proposalsBase(projectId, orgId)}/graph`);
+
+/** The organization's deploy scripts: what the PR graph's node menu offers to deploy to. */
+export const getOrgDeployScripts = (projectId: string, orgId: string) =>
+  apiFetch<ProposalDeployScriptsResponse>(`${proposalsBase(projectId, orgId)}/deploy-scripts`);
+
+/** Registers a deploy script (a server admin's): the menu's "Associate …" action. */
+export const createOrgDeployScript = (
+  projectId: string,
+  orgId: string,
+  body: { id: string; command: string[]; description?: string },
+) =>
+  apiFetch<ProposalDeployScript>(`${proposalsBase(projectId, orgId)}/deploy-scripts`, {
+    method: "POST",
+    body,
+  });
+
+/** Run a deploy script on a PR head: the graph sends the PR and the head it showed, and the server refuses a head that moved. */
+export const startOrgDeploy = (
+  projectId: string,
+  orgId: string,
+  body: { script: string; pr: number; head: string; args: string[] },
+) =>
+  apiFetch<ProposalDeployStartResponse>(`${proposalsBase(projectId, orgId)}/deploys`, {
+    method: "POST",
+    body,
+  });
+
+/** A deploy run and its output from `from`. */
+export const getOrgDeployRun = (projectId: string, orgId: string, id: string, from: number) =>
+  apiFetch<ProposalDeployRunResponse>(
+    `${proposalsBase(projectId, orgId)}/deploys/${encodeURIComponent(id)}?from=${from}`,
+  );
+
+export const createOrgProposal = (projectId: string, orgId: string, body: ProposalCreateRequest) =>
+  apiFetch<ProposalItem>(proposalsBase(projectId, orgId), { method: "POST", body });
+
+export const getOrgProposal = (projectId: string, orgId: string, number: number) =>
+  apiFetch<ProposalDetail>(proposalBase(projectId, orgId, number));
+
+/** The impl branch's patch — the merge base of base and head, up to head — read from GitHub by the server. */
+export const getOrgProposalImplDiff = (projectId: string, orgId: string, number: number) =>
+  apiFetch<ProposalImplDiff>(`${proposalBase(projectId, orgId, number)}/impl/diff`);
+
+/** One revision as it was published — what the page diffs the head against after an approval. */
+export const getOrgProposalRevision = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  revision: number,
+) => apiFetch<ProposalRevision>(`${proposalBase(projectId, orgId, number)}/revisions/${revision}`);
+
+/** One file under the proposal's base, read-only (`path` relative to it). */
+export const getOrgProposalFile = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  path: string,
+) =>
+  apiFetch<ProposalFileResponse>(
+    `${proposalBase(projectId, orgId, number)}/file?path=${encodeURIComponent(path)}`,
+  );
+
+export const publishOrgProposal = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalPublishRequest,
+) => apiFetch<ProposalDetail>(proposalBase(projectId, orgId, number), { method: "PUT", body });
+
+export const readyOrgProposal = (projectId: string, orgId: string, number: number) =>
+  proposalAction<ProposalDetail>(projectId, orgId, number, "ready");
+
+export const approveOrgProposal = (projectId: string, orgId: string, number: number) =>
+  proposalAction<ProposalDetail>(projectId, orgId, number, "approve");
+
+export const rejectOrgProposal = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalRejectRequest,
+) => proposalAction<ProposalDetail>(projectId, orgId, number, "reject", body);
+
+export const mergedOrgProposal = (projectId: string, orgId: string, number: number) =>
+  proposalAction<ProposalDetail>(projectId, orgId, number, "merged");
+
+export const implementOrgProposal = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalImplementRequest,
+) => proposalAction<ProposalDetail>(projectId, orgId, number, "implement", body);
+
+/** A discussion with the owner (the implementer, else the author): the answer names its session. */
+export const discussOrgProposal = (projectId: string, orgId: string, number: number) =>
+  proposalAction<ProposalDetail & { sessionId: string }>(projectId, orgId, number, "discussions");
+
+export const addOrgProposalMaterial = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalMaterialRequest,
+) => proposalAction<ProposalDetail>(projectId, orgId, number, "materials", body);
+
+export const sendOrgProposalFeedback = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalFeedbackRequest,
+) => proposalAction<ProposalDetail>(projectId, orgId, number, "feedback", body);
+
+/** A comment on one paragraph; pending (the commenter's own) until `requestOrgProposalChanges` batches it. */
+export const commentOrgProposal = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalCommentRequest,
+) => proposalAction<ProposalDetail>(projectId, orgId, number, "comments", body);
+
+/** Every pending comment of the caller becomes one batch, and the author is told in the proposals channel. */
+export const requestOrgProposalChanges = (projectId: string, orgId: string, number: number) =>
+  proposalAction<ProposalDetail>(projectId, orgId, number, "comments/request");
+
+export const editOrgProposalComment = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  commentId: string,
+  body: ProposalCommentEditRequest,
+) =>
+  apiFetch<ProposalDetail>(
+    `${orgBase(projectId, orgId)}/proposals/${number}/comments/${encodeURIComponent(commentId)}`,
+    { method: "PATCH", body },
+  );
+
+export const deleteOrgProposalComment = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  commentId: string,
+) =>
+  apiFetch<ProposalDetail>(
+    `${orgBase(projectId, orgId)}/proposals/${number}/comments/${encodeURIComponent(commentId)}`,
+    { method: "DELETE" },
+  );
+
+export const resolveOrgProposalComment = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  commentId: string,
+  body: ProposalResolveRequest,
+) =>
+  proposalAction<ProposalDetail>(
+    projectId,
+    orgId,
+    number,
+    `comments/${encodeURIComponent(commentId)}/resolve`,
+    body,
+  );
+
+/** The reader's position: everything up to `upTo` is read, so the proposal's unread count drops to what came after. */
+export const readOrgProposal = (
+  projectId: string,
+  orgId: string,
+  number: number,
+  body: ProposalReadRequest,
+) => proposalAction<void>(projectId, orgId, number, "read", body);

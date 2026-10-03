@@ -28,7 +28,7 @@ import { parseChannelConfig, serializeCalendarEvent } from "../src/organization/
 import { DEFAULT_CHANNEL_ID, ticketPath } from "../src/organization/paths.js";
 import { zonedDate } from "../src/organization/zoned.js";
 import type { ErrorRecordArgs } from "../src/runtime/error-recorder.js";
-import { DEFAULT_EMPLOYEE_PLUGINS } from "../src/runtime/organization/deps.js";
+import { DEFAULT_EMPLOYEE_PLUGINS, channelClaimsOf } from "../src/runtime/organization/deps.js";
 import type { OrgDeps } from "../src/runtime/organization/deps.js";
 import { OrganizationScheduler } from "../src/runtime/organization/scheduler.js";
 import { OrganizationService } from "../src/runtime/organization/service.js";
@@ -2105,6 +2105,57 @@ describe("organization runtime", () => {
       ).toBe(0);
     });
 
+    it("a channel a plugin claims keeps its message — recorded, published — and wakes no desk", async () => {
+      const asked: Array<{ projectId: string; orgId: string; channelId: string }> = [];
+      deps.channelClaimed = (channel) => {
+        asked.push(channel);
+        return channel.channelId === DEFAULT_CHANNEL_ID;
+      };
+      const m = await service.sendChannelMessage(P, ORG, "alice", DEFAULT_CHANNEL_ID, {
+        text: `@${HR} over to the room`,
+      });
+      expect(m.mentions).toEqual([`agent:${HR}`]);
+      expect(started).toHaveLength(0);
+      expect(asked).toEqual([{ projectId: P, orgId: ORG, channelId: DEFAULT_CHANNEL_ID }]);
+      expect(
+        events.some(
+          (e) =>
+            e.type === "org_channel" && (e as { message?: { id: string } }).message?.id === m.id,
+        ),
+      ).toBe(true);
+      const read = await service.channelMessages(
+        P,
+        ORG,
+        { userId: "alice" },
+        DEFAULT_CHANNEL_ID,
+        {},
+      );
+      expect(read.messages.map((x) => x.id)).toContain(m.id);
+      // Unclaimed again, the channel delivers as it always did.
+      deps.channelClaimed = () => false;
+      await service.sendChannelMessage(P, ORG, "alice", DEFAULT_CHANNEL_ID, {
+        text: `@${HR} back to your desk`,
+      });
+      expect(started).toHaveLength(1);
+    });
+
+    it("a claim that throws is recorded and does not claim", () => {
+      const failures: unknown[] = [];
+      const claimed = channelClaimsOf(
+        [
+          () => {
+            throw new Error("plugin bug");
+          },
+          (c) => c.channelId === "room_a",
+        ],
+        (err) => failures.push(err),
+      );
+      expect(claimed?.({ projectId: P, orgId: ORG, channelId: "room_a" })).toBe(true);
+      expect(claimed?.({ projectId: P, orgId: ORG, channelId: "room_b" })).toBe(false);
+      expect(failures).toHaveLength(2);
+      expect(channelClaimsOf([], () => {})).toBeUndefined();
+    });
+
     it("the system's own lines and a paused organization deliver nothing", async () => {
       await service.patch(P, ORG, { status: "paused" }, "alice");
       await service.sendChannelMessage(P, ORG, "alice", DEFAULT_CHANNEL_ID, {
@@ -2133,6 +2184,68 @@ describe("organization runtime", () => {
       ceoDesk = (await service.desk(P, ORG, CEO, {})).sessionId;
       hrDesk = (await service.desk(P, ORG, HR, {})).sessionId;
       started.length = 0;
+    });
+
+    it("an unlisted room is left out of every listing, yet is read, posted to and delivers its mentions like any channel", async () => {
+      const room = await service.gatewayOpenRoom({
+        projectId: P,
+        orgId: ORG,
+        channelId: "roadmap_1",
+        name: "Queue migration",
+        purpose: "Roadmap #1",
+        by: "user:alice",
+        agentIds: [HR],
+      });
+      expect(room).toEqual({ channelId: "roadmap_1" });
+      // Not on the channel list — neither a person's nor its own employee's.
+      expect(
+        (await service.channels(P, ORG, alice)).channels.map((c) => c.channelId),
+      ).not.toContain("roadmap_1");
+      expect(
+        (await service.channels(P, ORG, asHr())).channels.map((c) => c.channelId),
+      ).not.toContain("roadmap_1");
+      // Reached by its id: the person who opened it and its employee are in it.
+      const detail = await service.channel(P, ORG, "roadmap_1", alice);
+      expect(detail.members.map((m) => m.principal)).toEqual(["user:alice", `agent:${HR}`]);
+      expect(detail.name).toBe("Queue migration");
+      const m = await service.sendChannelMessage(P, ORG, "alice", "roadmap_1", {
+        text: `@${HR} over to you`,
+      });
+      expect(m.mentions).toEqual([`agent:${HR}`]);
+      expect(started).toHaveLength(1);
+      expect(
+        (await service.channelMessages(P, ORG, alice, "roadmap_1", {})).messages.map((x) => x.id),
+      ).toContain(m.id);
+      // The flag is on disk, and survives a membership change.
+      await service.addChannelMember(P, ORG, "roadmap_1", `agent:${CEO}`, alice);
+      const stored = await store.readChannel(orgDir(), "roadmap_1");
+      expect(stored?.parsed.ok && stored.parsed.value.unlisted).toBe(true);
+      expect(
+        (await service.channels(P, ORG, alice)).channels.map((c) => c.channelId),
+      ).not.toContain("roadmap_1");
+    });
+
+    it("refuses a room over a taken id, an id that is not a channel id, and an Agent that is not an employee", async () => {
+      const open = (channelId: string, agentIds: string[]) =>
+        service.gatewayOpenRoom({
+          projectId: P,
+          orgId: ORG,
+          channelId,
+          name: "Room",
+          purpose: "",
+          by: "user:alice",
+          agentIds,
+        });
+      await open("roadmap_2", [HR]);
+      await expect(open("roadmap_2", [HR])).rejects.toMatchObject({
+        status: 409,
+        code: "channel_exists",
+      });
+      await expect(open("Bad Id", [HR])).rejects.toMatchObject({ status: 400 });
+      await expect(open("roadmap_3", ["stranger"])).rejects.toMatchObject({
+        status: 400,
+        code: "not_an_employee",
+      });
     });
 
     it("a new channel holds only its creator; the all-hands channel holds everyone", async () => {
@@ -3010,6 +3123,142 @@ describe("organization runtime", () => {
       });
       // Not fatal: the calendar and the caches behind it in the pass still ran.
       expect(await service.list(P)).toHaveLength(1);
+    });
+  });
+
+  describe("the plugin gateway", () => {
+    it("reads the organization as a plugin sees it, and attributes a write the routes' way", async () => {
+      await createOrg();
+      await service.hire(P, ORG, { newAgent: { agentId: HR }, title: "HR", reportsTo: CEO });
+      const view = await service.gatewayView(P, ORG);
+      expect(view).toMatchObject({
+        projectId: P,
+        orgId: ORG,
+        name: "Acme",
+        status: "active",
+        language: "en",
+        userIds: ["alice"],
+        machineId: null,
+      });
+      expect(view?.employees.map((e) => [e.agentId, e.reportsTo])).toEqual([
+        [CEO, null],
+        [HR, CEO],
+      ]);
+      expect(view?.employees.every((e) => e.name !== "")).toBe(true);
+      expect(await service.gatewayView(P, "nope")).toBeNull();
+      expect(await service.gatewayPrincipal(P, ORG, { userId: "alice" })).toBe("user:alice");
+      expect(await service.gatewayPrincipal(P, ORG, { userId: "alice", agentId: HR })).toBe(
+        `agent:${HR}`,
+      );
+      // An Agent id that is nobody's employee here does not make the person an employee.
+      expect(await service.gatewayPrincipal(P, ORG, { userId: "alice", agentId: "stranger" })).toBe(
+        "user:alice",
+      );
+    });
+
+    it("delivers a plain line to an employee's desk in nobody's name, queued when busy, and refuses a paused one", async () => {
+      await createOrg();
+      await service.hire(P, ORG, { newAgent: { agentId: HR }, title: "HR", reportsTo: CEO });
+      const desk = await service.desk(P, ORG, HR, {});
+      const text =
+        "[proposal #3] approved by alice — merge the PR and run `penguin org proposal merged 3`";
+      const before = started.length;
+      expect(await service.gatewayDeliverToDesk(P, ORG, HR, text)).toEqual({
+        sessionId: desk.sessionId,
+        queued: false,
+      });
+      // The line is the input as given: no trigger block, no channel, no person's name.
+      expect(started.slice(before)).toEqual([
+        { sessionId: desk.sessionId, text, queueIfBusy: true },
+      ]);
+      expect(parseOrgTriggerMessage(started.at(-1)!.text)).toBeNull();
+      expect(
+        (await service.channels(P, ORG, { userId: "alice" })).channels.map((c) => c.channelId),
+      ).not.toContain("proposals");
+
+      busy.add(desk.sessionId);
+      expect(await service.gatewayDeliverToDesk(P, ORG, HR, text)).toMatchObject({ queued: true });
+      busy.delete(desk.sessionId);
+
+      await expect(service.gatewayDeliverToDesk(P, ORG, "stranger", text)).rejects.toMatchObject({
+        status: 400,
+        code: "not_an_employee",
+      });
+      const at = new Date(nowMs).toISOString();
+      cache.markBudget(P, ORG, HR, "2026-09", { pausedAt: at });
+      const held = started.length;
+      await expect(service.gatewayDeliverToDesk(P, ORG, HR, text)).rejects.toMatchObject({
+        status: 409,
+        code: "employee_paused",
+      });
+      cache.markBudget(P, ORG, HR, "2026-09", { pausedAt: null });
+      await service.patch(P, ORG, { status: "paused" }, "alice");
+      await expect(service.gatewayDeliverToDesk(P, ORG, HR, text)).rejects.toMatchObject({
+        status: 409,
+        code: "org_paused",
+      });
+      expect(started.length).toBe(held);
+    });
+
+    it("opens an employee's session as the organization's, titled and started on the body", async () => {
+      await createOrg();
+      await service.hire(P, ORG, { newAgent: { agentId: HR }, title: "HR", reportsTo: CEO });
+      const before = created.length;
+      const opened = await service.gatewayOpenSession({
+        projectId: P,
+        orgId: ORG,
+        agentId: HR,
+        title: "Proposal #1: batch the notices",
+        body: "Implement proposal #1.",
+      });
+      expect(created.slice(before)).toEqual([
+        { projectId: P, agentId: HR, workspace: opened.workspace, client: "org" },
+      ]);
+      expect(sessions.findById(opened.sessionId)?.title).toBe("Proposal #1: batch the notices");
+      expect(started.at(-1)).toMatchObject({
+        sessionId: opened.sessionId,
+        text: "Implement proposal #1.",
+      });
+      await expect(
+        service.gatewayOpenSession({
+          projectId: P,
+          orgId: ORG,
+          agentId: "stranger",
+          title: "x",
+          body: "y",
+        }),
+      ).rejects.toMatchObject({ status: 400, code: "not_an_employee" });
+    });
+
+    it("a session the gateway opens is not a desk: the desk is untouched, yet a write from it is the employee's", async () => {
+      await createOrg();
+      await service.hire(P, ORG, { newAgent: { agentId: HR }, title: "HR", reportsTo: CEO });
+      const desk = await service.desk(P, ORG, HR, {});
+      const before = started.length;
+      const opened = await service.gatewayOpenSession({
+        projectId: P,
+        orgId: ORG,
+        agentId: HR,
+        title: "Discussion: proposal #1 — batch the notices",
+        body: "Talk proposal #1 over with alice.",
+      });
+      expect(opened.sessionId).not.toBe(desk.sessionId);
+      // One Task, on the new session; nothing reaches the desk.
+      expect(started.slice(before).map((s) => s.sessionId)).toEqual([opened.sessionId]);
+      // Neither a desk nor a ticket session: no owner row, so the hop the open set lands nowhere
+      // and the desk's own hop is unchanged.
+      expect(cache.ownerOfSession(opened.sessionId)).toBeNull();
+      expect(cache.ownerOfSession(desk.sessionId)).toMatchObject({ kind: "desk", agentId: HR });
+      // Same Agent: a write carrying the session is attributed to the employee, as from its desk.
+      expect(
+        await service.gatewayPrincipal(P, ORG, { userId: "alice", sessionId: opened.sessionId }),
+      ).toBe(`agent:${HR}`);
+      // The conclusion goes to the desk, not back into the discussion.
+      const text = "[proposal #1] the discussion with alice concluded (session x):\n\nKeep it.";
+      expect(await service.gatewayDeliverToDesk(P, ORG, HR, text)).toMatchObject({
+        sessionId: desk.sessionId,
+      });
+      expect(started.at(-1)).toMatchObject({ sessionId: desk.sessionId, text });
     });
   });
 });
