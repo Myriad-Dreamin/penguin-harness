@@ -31,21 +31,13 @@ import type {
   TaskInputPart,
 } from "@prismshadow/penguin-server/api";
 import {
-  ActivityIcon,
   Button,
   ConfirmModal,
   CopyButton,
   Dot,
-  Dropdown,
   EmptyState,
-  GlyphIcon,
-  Heading,
-  ICONS,
-  ICON_GAP,
-  ICON_SIZE,
   Modal,
   Skeleton,
-  StatChip,
   toastError,
   toastInfo,
   toastSuccess,
@@ -61,18 +53,8 @@ import { apiErrorText } from "../../lib/api-error";
 import type { PermissionPick } from "../../lib/permission-level";
 import { configuredCompactionLimit } from "../../lib/context";
 import { useDocumentTitle } from "../../lib/use-document-title";
-import {
-  formatDateTime,
-  humanizeDuration,
-  humanizeDurationLive,
-  humanizeTokens,
-} from "../../lib/format";
+import { formatDateTime, humanizeTokens } from "../../lib/format";
 import { isOrgSession, latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
-import {
-  sessionActivity,
-  sessionActivityLabel,
-  sessionBackgroundTasks,
-} from "../../lib/session-activity";
 import { noteSessionSeen } from "../../lib/session-seen";
 import {
   approvalKey,
@@ -83,12 +65,7 @@ import {
 import type { StreamModel } from "../../lib/omni/stream-model";
 import { aggregateMemoryChanges, sameMemoryChanges } from "../../lib/omni/memory-changes";
 import type { MemoryLocateTarget } from "../../lib/omni/memory-changes";
-import {
-  bucketCostUsd,
-  liveSessionElapsedMs,
-  sessionElapsedBreakdown,
-} from "../../lib/omni/task-stats";
-import type { TaskStatsTracker } from "../../lib/omni/task-stats";
+import { bucketCostUsd } from "../../lib/omni/task-stats";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { useTheme } from "../../state/theme";
@@ -114,7 +91,7 @@ import {
 } from "../model-picker";
 import type { StagedThinkingSwitch } from "../model-picker";
 import { ChatDropRegion } from "./drop-zone";
-import { ConversationOutline, OutlineMenuButton, useOutlineRailFit } from "./conversation-outline";
+import { ConversationOutline, useOutlineRailFit } from "./conversation-outline";
 import { DraftView } from "./body/draft-view";
 import { prepareNewChatDraft } from "./new-chat";
 import { DRAFT_SESSION_ID, parkedDraftIdOf } from "./draft-sessions";
@@ -128,7 +105,6 @@ import { machineForSession } from "../../lib/session-machines";
 import { nameOnMachine } from "../../lib/workspace-machines";
 import { CHAT_DEFAULTS_CHANGED_EVENT, chatDefaultsChangedDetail } from "./chat-defaults-event";
 import { advanceCostStat, applyUsageFetch, createCostStatHold } from "./header-stats";
-import type { CostStatDisplay } from "./header-stats";
 import { buildInputHistory } from "./input-history";
 import { buildOutline } from "./outline-model";
 import { GoalStatusBanner } from "./goal-banner";
@@ -164,10 +140,9 @@ import { terminalApiSupported, subscribeTerminals } from "../terminal";
 import { advancePanelTaskScope, createPanelTaskScope } from "./panel-task-scope";
 import { useSessionDraft } from "./use-session-draft";
 import { useSessionStream } from "./use-session-stream";
-import { DockToggles } from "./dock-toggles";
-import { toneInk } from "../../lib/tone";
-import { STAT_ICONS } from "../../lib/stat-icons";
 import { exitedProcessIds, reportableProcessFailure } from "./process-list";
+import { ChatToolbar } from "./toolbar/chat-toolbar";
+import { headerStats } from "./toolbar/session-stats";
 
 /** How often the background-process list refreshes while it can still change (a run may promote a command at any time; a running process can exit on its own). */
 const PROCESS_POLL_MS = 15_000;
@@ -190,97 +165,6 @@ function SessionIdRow({ sessionId }: { sessionId: string }) {
       </div>
     </div>
   );
-}
-
-/**
- * Elapsed value for the header statistics: while a Task runs it ticks once per second over the
- * live cumulative (settled cross-Task total + the running Task's wall clock so far, see
- * liveSessionElapsedMs); when idle no timer runs and it renders exactly the settled total.
- * Whole seconds while ticking, decimals only on the settled value — same convention as
- * LiveDuration on running tool/thinking cards.
- */
-function SessionElapsed({
-  stats,
-  taskOpen,
-  taskStartLocalMs,
-}: {
-  stats: TaskStatsTracker;
-  taskOpen: boolean;
-  taskStartLocalMs: number;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!taskOpen) return;
-    // Load-bearing, not redundant: `now` still holds whatever the state last saw (mount time,
-    // or the final tick of a previous Task), and the first interval callback is a full second
-    // away. The first live render after a Task starts must not compute from that stale clock,
-    // so re-anchor immediately on entering the running state.
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [taskOpen]);
-  if (!taskOpen) return <>{humanizeDuration(stats.sessionElapsedMs)}</>;
-  return <>{humanizeDurationLive(liveSessionElapsedMs(stats, taskOpen, taskStartLocalMs, now))}</>;
-}
-
-/** The header's three statistics — the chip row and the info dropdown render these verbatim. */
-interface HeaderStats {
-  tokensText: string;
-  /** Formatted session cost; null = nothing to show yet for this session (see header-stats.ts). */
-  costText: string | null;
-  /** Server-reported "some usage had no pricing" flag riding the shown figure (the chip's `*`). */
-  costUncosted: boolean;
-  elapsedNode: ReactNode;
-  /**
-   * The elapsed time's API / tool breakdown, already parenthesised, or null when neither
-   * component has anything to report yet (a conversation that has not run shows the bare
-   * time rather than a row of zeroes).
-   */
-  elapsedSplit: string | null;
-}
-
-/**
- * Computes the header statistics, live while a Task runs:
- *   - Tokens: session cumulative (main + subagents), already advancing per completed request;
- *   - Cost: advanceCostStat's display value — the fetched session cost plus a client-settled
- *     live estimate that carries across Task boundaries, sticky once shown (semantics
- *     documented in header-stats.ts). The live estimate applies the main Model's pricing to
- *     all of the open Task's buckets (subagents may run on different models), so it can be
- *     slightly off mid-task; usage fetches reconcile it to the server-recorded value;
- *   - Elapsed: ticking cumulative while running, settled cumulative when idle (SessionElapsed).
- */
-function headerStats(model: StreamModel, cost: CostStatDisplay): HeaderStats {
-  const stats = model.stats;
-  return {
-    tokensText: humanizeTokens(stats.sessionTotal + stats.subagentTotal),
-    costText: cost.costText,
-    costUncosted: cost.costUncosted,
-    elapsedNode: (
-      <SessionElapsed
-        stats={stats}
-        taskOpen={model.taskOpen}
-        taskStartLocalMs={model.taskStartLocalMs}
-      />
-    ),
-    elapsedSplit: elapsedSplitText(stats),
-  };
-}
-
-/**
- * The parenthesised API / tool breakdown of the elapsed time, or null when both components are
- * still zero. A component that is genuinely zero beside a non-zero one still prints: "no tool
- * time" is worth reading. Unlike the total beside it this does not tick — it advances as each
- * Request and tool closes, so mid-turn it trails the running total, and the two components can
- * also overlap each other. Both are why it is rendered as two measurements, not as a split of
- * the total (see sessionElapsedBreakdown).
- */
-function elapsedSplitText(stats: TaskStatsTracker): string | null {
-  const { apiMs, toolMs } = sessionElapsedBreakdown(stats);
-  if (apiMs <= 0 && toolMs <= 0) return null;
-  return `${S.chat.statParenOpen}${S.chat.statElapsedSplit(
-    humanizeDuration(apiMs),
-    humanizeDuration(toolMs),
-  )}${S.chat.statParenClose}`;
 }
 
 /**
@@ -2174,16 +2058,6 @@ export function ChatPage() {
     />
   );
 
-  /**
-   * Header glyph state. Never unread: this is the Session on screen, so its last reply is being
-   * read right now — the read/unread split is a sidebar affordance, and passing the live marker
-   * here would only flash the unread tone for the frame before the effect above stamps it.
-   */
-  const headerActivity =
-    selected === null ? null : sessionActivity(stream.taskState, selected.hasTrace, false);
-  /** Background tasks the conversation still owns — the same live count the sidebar row's mark carries. */
-  const backgroundCount = selected === null ? 0 : sessionBackgroundTasks(selected);
-
   return (
     // data-dock-host: the docks' edge bands, drop preview and the bottom dock's height
     // ratio all measure this column (dock-drag.tsx / dock-panel.tsx).
@@ -2219,315 +2093,196 @@ export function ChatPage() {
       )}
       {/* Thin top toolbar */}
       {selected && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-3 py-2 md:px-4 dark:border-gray-800">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            {/* The page's h1 on the compact title rung: a toolbar title, not a display title. */}
-            <Heading level={5} as="h1" className="flex min-w-0">
-              <Truncated text={selected.title ?? S.chat.defaultSessionTitle} />
-            </Heading>
-            {/* Session-level state: a turning hourglass while the run is active, and nothing at
-                all once it settles — the conversation on screen is by definition read, and the
-                unread dot is a sidebar affordance for the rows you are NOT looking at. The
-                compacting state stays in the stream banner rather than being repeated here.
-                Below sm only the glyph remains so the title keeps its room. */}
-            {headerActivity === "running" && (
-              <span className="flex shrink-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                <ActivityIcon
-                  activity={headerActivity}
-                  label={sessionActivityLabel(headerActivity)}
-                />
-                <span className="hidden sm:inline">{sessionActivityLabel(headerActivity)}</span>
-              </span>
-            )}
-          </div>
-
-          {/* Panel switcher (icon-only): pinned triggers + the "create" dropdown with
-              placement actions and pin toggles. Every entry is a dock tab (features/dock)
-              — the toolbar reads and drives the dock store directly; this page only feeds
-              the pending-approval dot. */}
-          <DockToggles agentsPending={anySubagentPending} />
-
-          {/* Conversation index fallback: exactly when the gutter tick rail can't show
-              (phones without a hover pointer; a desktop window whose gutter a docked panel
-              ate) the index moves up here as a dropdown — navigation stays reachable. */}
-          {!railFit.shown && (
-            <OutlineMenuButton
-              entries={outline}
-              turnOffset={stream.outlineOffset}
-              scrollRef={streamScrollRef}
-              running={stream.taskState !== "idle"}
-            />
-          )}
-
-          {/* Details entry, at the toolbar's far right — the stats ARE the trigger: wide
-              viewports show the live chips (Token / cost / elapsed, plus the running-services
-              count while any process is alive) and clicking them opens the details card; narrow
-              viewports collapse the whole thing to the single info icon. There is no separate
-              info icon while the chips are visible. */}
-          <Dropdown
-            open={infoOpen}
-            setOpen={setInfoOpen}
-            menuClass="right-0 top-full mt-1 w-96 max-w-[calc(100vw-1.5rem)] origin-top-right"
-            button={
-              <button
-                type="button"
-                data-tooltip={S.chat.infoPanel}
-                aria-label={S.chat.infoPanel}
-                aria-expanded={infoOpen}
-                onClick={() => setInfoOpen(!infoOpen)}
-                className={`flex h-7 shrink-0 items-center rounded-md transition-colors duration-150 hover:bg-gray-100 dark:hover:bg-gray-800 ${
-                  infoOpen ? "bg-gray-100 dark:bg-gray-800" : ""
-                }`}
-              >
-                {/* Wide: the chip row (icon + tooltip per chip carries the full meaning). The
-                    row sets the chips' face and ink, and keeps each on one line. */}
-                <span className="hidden items-center gap-3 whitespace-nowrap px-2 font-mono text-xs text-gray-500 sm:flex dark:text-gray-400">
-                  <StatChip
-                    glyph={STAT_ICONS.tokens}
-                    value={hs.tokensText}
-                    label={`${S.chat.statTokens}（Token）`}
-                  />
-                  {/* When there's no cost (the Model has no pricing configured), don't render
-                      this stat at all, rather than showing a "—" — that would take up space
-                      while saying nothing, only making people think the cost is zero or
-                      something's broken. */}
-                  {hs.costText != null && (
-                    <StatChip
-                      glyph={STAT_ICONS.cost}
-                      value={`${hs.costText}${hs.costUncosted ? " *" : ""}`}
-                      label={`${S.common.cost}（${currency}）${hs.costUncosted ? ` · ${S.usage.uncostedNote}` : ""}`}
-                    />
-                  )}
-                  <StatChip
-                    glyph={STAT_ICONS.elapsed}
-                    value={hs.elapsedNode}
-                    label={`${S.chat.statElapsed}${hs.elapsedSplit ?? ""}`}
-                  />
-                  {/* Right of the time, only while the conversation still owns background
-                      work — command processes past their yield window, background subagents
-                      mid-round: their count, in the same tone, figure and glyph as the
-                      session row's mark and read live off the row. A count is what this
-                      reading is, and a glyph beside a number is how every other chip in this
-                      row says what its number counts. Bare ink like the chips beside it, not
-                      a tinted pill: this is one more reading in the stat row, not a badge
-                      that should out-weigh them. In the live-status green (`busy`), the same
-                      tone as the session row's mark: background work is work still running
-                      behind this conversation, and glyph and number wear that colour together
-                      wherever they appear; the title still names the count in words. */}
-                  {backgroundCount > 0 && (
-                    <span
-                      data-tooltip={S.chat.backgroundTasks(backgroundCount)}
-                      className={`flex shrink-0 items-center ${ICON_GAP.tight} font-mono text-xs ${toneInk.busy}`}
-                    >
-                      <GlyphIcon d={ICONS.pulse} />
-                      {backgroundCount}
-                    </span>
-                  )}
-                  {/* The Workspace's open pull request: the number is the chip, the title is
-                      the hover, and the whole thing is the link. Absent whenever there is
-                      none to show — which includes every way asking could have failed. */}
-                  {workspacePr !== null && (
-                    <a
-                      href={workspacePr.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-tooltip={S.chat.statPullRequest(workspacePr.title)}
-                      className={`flex shrink-0 items-center ${ICON_GAP.tight} font-mono text-xs text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200`}
-                    >
-                      <GlyphIcon d={STAT_ICONS.pullRequest} />#{workspacePr.number}
-                    </a>
-                  )}
-                </span>
-                {/* Narrow: the info icon alone (the chips would crowd the title out). */}
-                <span className="flex h-7 w-7 items-center justify-center text-gray-500 sm:hidden dark:text-gray-400">
-                  <GlyphIcon d={ICONS.info} size={ICON_SIZE.navRow} />
-                </span>
-              </button>
-            }
-          >
-            <div className="space-y-3 px-3.5 py-2.5 text-sm">
-              {/* Agent, above the Model: a conversation belongs to an Agent first, and the
+        <ChatToolbar
+          selected={selected}
+          taskState={stream.taskState}
+          agentsPending={anySubagentPending}
+          railShown={railFit.shown}
+          outline={outline}
+          turnOffset={stream.outlineOffset}
+          streamScrollRef={streamScrollRef}
+          infoOpen={infoOpen}
+          setInfoOpen={setInfoOpen}
+          hs={hs}
+          currency={currency}
+          workspacePr={workspacePr}
+        >
+          <div className="space-y-3 px-3.5 py-2.5 text-sm">
+            {/* Agent, above the Model: a conversation belongs to an Agent first, and the
                   Model it runs on is one of that Agent's settings. Paired the same way as the
                   Model row — the id the API speaks, then the display name, which is dropped
                   when the Agent has none of its own and the two would simply repeat. */}
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {S.chat.agent}
-                </p>
-                <p className="truncate text-xs">
-                  <span className="font-mono">{selected.agentId}</span>
-                  {sessionAgentName !== null && (
-                    <span className="ml-1.5 text-gray-400 dark:text-gray-500">
-                      {sessionAgentName}
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {S.chat.model}
-                </p>
-                {/* Paired display: upstream model_id + provider name (two separate fields on the Session DTO). */}
-                <p className="truncate text-xs">
-                  <span className="font-mono">{selected.modelId}</span>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{S.chat.agent}</p>
+              <p className="truncate text-xs">
+                <span className="font-mono">{selected.agentId}</span>
+                {sessionAgentName !== null && (
                   <span className="ml-1.5 text-gray-400 dark:text-gray-500">
-                    {providerInfo(selected.provider)?.label ?? selected.provider}
+                    {sessionAgentName}
                   </span>
-                </p>
-              </div>
-              <SessionIdRow sessionId={selected.sessionId} />
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {S.chat.workspace}
-                </p>
-                {/* The machine too: a path names a directory only together with the
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{S.chat.model}</p>
+              {/* Paired display: upstream model_id + provider name (two separate fields on the Session DTO). */}
+              <p className="truncate text-xs">
+                <span className="font-mono">{selected.modelId}</span>
+                <span className="ml-1.5 text-gray-400 dark:text-gray-500">
+                  {providerInfo(selected.provider)?.label ?? selected.provider}
+                </span>
+              </p>
+            </div>
+            <SessionIdRow sessionId={selected.sessionId} />
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {S.chat.workspace}
+              </p>
+              {/* The machine too: a path names a directory only together with the
                     filesystem it is on, and the same path exists on more than one of them. */}
-                <p className="break-all font-mono text-xs leading-5">
-                  {nameOnMachine(selected.workspace, machineNameOf(selected.sessionId))}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {S.common.created}
-                </p>
-                <p className="font-mono text-xs">{formatDateTime(selected.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {S.chat.sessionStats}
-                </p>
-                {/* A bulleted list, one stat per line. The tokens bullet carries the cache
+              <p className="break-all font-mono text-xs leading-5">
+                {nameOnMachine(selected.workspace, machineNameOf(selected.sessionId))}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {S.common.created}
+              </p>
+              <p className="font-mono text-xs">{formatDateTime(selected.createdAt)}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                {S.chat.sessionStats}
+              </p>
+              {/* A bulleted list, one stat per line. The tokens bullet carries the cache
                     hit rate in parentheses (cacheRead ÷ all recorded input); the rate comes
                     from the usage fetch, so it can trail the live total mid-run and
                     reconciles on idle. No-cost sessions omit the cost bullet entirely, as
                     the chip does. */}
-                <ul className="list-inside list-disc space-y-1 font-mono text-xs">
+              <ul className="list-inside list-disc space-y-1 font-mono text-xs">
+                <li>
+                  {S.chat.statTotalTokens} {hs.tokensText}
+                  {cacheHitRate !== null &&
+                    `${S.chat.statParenOpen}${S.chat.statCacheHit(cacheHitRate)}${S.chat.statParenClose}`}
+                </li>
+                {hs.costText != null && (
                   <li>
-                    {S.chat.statTotalTokens} {hs.tokensText}
-                    {cacheHitRate !== null &&
-                      `${S.chat.statParenOpen}${S.chat.statCacheHit(cacheHitRate)}${S.chat.statParenClose}`}
+                    {S.common.cost} {hs.costText}
+                    {hs.costUncosted ? " *" : ""}
                   </li>
-                  {hs.costText != null && (
-                    <li>
-                      {S.common.cost} {hs.costText}
-                      {hs.costUncosted ? " *" : ""}
-                    </li>
-                  )}
-                  <li>
-                    {S.chat.statElapsed} {hs.elapsedNode}
-                    {hs.elapsedSplit}
-                  </li>
-                </ul>
-              </div>
-              {/* Background processes the conversation started (e.g. a dev server on
+                )}
+                <li>
+                  {S.chat.statElapsed} {hs.elapsedNode}
+                  {hs.elapsedSplit}
+                </li>
+              </ul>
+            </div>
+            {/* Background processes the conversation started (e.g. a dev server on
                   localhost:3000): live rows carry a stop button — the kill signals the whole
                   process group and the row drops on the follow-up refresh; exited rows keep
                   their "exited" label and carry a remove button that deletes the entry from
                   the list (#312), and the heading carries one action removing every exited
                   row at once. A command too long for its row shows whole in a tooltip. Hidden
                   entirely while there are none. */}
-              {processes.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      {S.chat.processList}
-                    </p>
-                    {/* Only while something has exited. Words rather than a glyph, in the quiet
+            {processes.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    {S.chat.processList}
+                  </p>
+                  {/* Only while something has exited. Words rather than a glyph, in the quiet
                         text-action style of the memory card's "Open memory list": the same
                         text size as the heading beside it, so the heading row keeps its height
                         when the first process exits. The same no-confirm tidy-up as a single
                         row's Remove, and its hint, like that button's, says what leaves with
                         the rows. */}
-                    {exitedIds.length > 0 && (
-                      <button
-                        type="button"
-                        data-tooltip={S.chat.processClearExitedHint}
-                        disabled={procBusy !== null}
-                        onClick={() => void onClearExitedProcesses()}
-                        className="shrink-0 cursor-pointer whitespace-nowrap text-xs text-gray-400 transition-colors duration-150 hover:text-gray-600 disabled:cursor-default disabled:opacity-60 dark:text-gray-500 dark:hover:text-gray-300"
-                      >
-                        {S.chat.processClearExited}
-                      </button>
-                    )}
-                  </div>
-                  <ul className="mt-1 space-y-1.5">
-                    {processes.map((p) => (
-                      <li key={p.processId} className="flex items-center gap-2">
-                        {p.running ? (
-                          <Dot tone="success" pulse />
-                        ) : (
-                          <span
-                            aria-hidden
-                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600"
-                          />
-                        )}
-                        <span className="min-w-0 flex-1">
-                          <Truncated text={p.cmd} className="font-mono text-xs" codeTooltip />
-                          <span className="block truncate text-xs text-gray-400 dark:text-gray-500">
-                            {formatDateTime(p.startedAt)}
-                            {p.pid !== null && ` · pid ${p.pid}`}
-                            {/* Detected service URL (output scan or port probe), running rows
+                  {exitedIds.length > 0 && (
+                    <button
+                      type="button"
+                      data-tooltip={S.chat.processClearExitedHint}
+                      disabled={procBusy !== null}
+                      onClick={() => void onClearExitedProcesses()}
+                      className="shrink-0 cursor-pointer whitespace-nowrap text-xs text-gray-400 transition-colors duration-150 hover:text-gray-600 disabled:cursor-default disabled:opacity-60 dark:text-gray-500 dark:hover:text-gray-300"
+                    >
+                      {S.chat.processClearExited}
+                    </button>
+                  )}
+                </div>
+                <ul className="mt-1 space-y-1.5">
+                  {processes.map((p) => (
+                    <li key={p.processId} className="flex items-center gap-2">
+                      {p.running ? (
+                        <Dot tone="success" pulse />
+                      ) : (
+                        <span
+                          aria-hidden
+                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600"
+                        />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <Truncated text={p.cmd} className="font-mono text-xs" codeTooltip />
+                        <span className="block truncate text-xs text-gray-400 dark:text-gray-500">
+                          {formatDateTime(p.startedAt)}
+                          {p.pid !== null && ` · pid ${p.pid}`}
+                          {/* Detected service URL (output scan or port probe), running rows
                                 only — an exited process serves nothing to open. Scheme dropped
                                 at this size; the tooltip and the link carry the full URL. */}
-                            {p.running && p.serviceUrl !== undefined && (
-                              <>
-                                {" · "}
-                                <a
-                                  href={p.serviceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  data-tooltip={p.serviceUrl}
-                                  className="text-gray-500 underline decoration-gray-300 underline-offset-2 transition-colors duration-150 hover:text-gray-700 hover:decoration-gray-500 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200"
-                                >
-                                  {p.serviceUrl.replace(/^https?:\/\//i, "")}
-                                </a>
-                              </>
-                            )}
-                          </span>
+                          {p.running && p.serviceUrl !== undefined && (
+                            <>
+                              {" · "}
+                              <a
+                                href={p.serviceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-tooltip={p.serviceUrl}
+                                className="text-gray-500 underline decoration-gray-300 underline-offset-2 transition-colors duration-150 hover:text-gray-700 hover:decoration-gray-500 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200"
+                              >
+                                {p.serviceUrl.replace(/^https?:\/\//i, "")}
+                              </a>
+                            </>
+                          )}
                         </span>
-                        {p.running ? (
-                          <button
-                            type="button"
-                            disabled={procBusy !== null}
-                            onClick={() => setProcToKill(p)}
-                            className="shrink-0 whitespace-nowrap rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                          >
-                            {procBusy?.includes(p.processId)
-                              ? S.common.loading
-                              : S.chat.processStop}
-                          </button>
-                        ) : (
-                          <>
-                            <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
-                              {S.chat.processExited}
-                            </span>
-                            {/* The row is the only handle on that process's captured
+                      </span>
+                      {p.running ? (
+                        <button
+                          type="button"
+                          disabled={procBusy !== null}
+                          onClick={() => setProcToKill(p)}
+                          className="shrink-0 whitespace-nowrap rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                        >
+                          {procBusy?.includes(p.processId) ? S.common.loading : S.chat.processStop}
+                        </button>
+                      ) : (
+                        <>
+                          <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                            {S.chat.processExited}
+                          </span>
+                          {/* The row is the only handle on that process's captured
                                 output — removing the entry drops it from the runtime
                                 registry, so the model can no longer be asked to read it
                                 (input_command answers "unknown process_id"). No confirm
                                 step for a one-click tidy-up of a dead row, but the title
                                 says what leaves with it. */}
-                            <button
-                              type="button"
-                              data-tooltip={S.chat.processRemoveHint}
-                              disabled={procBusy !== null}
-                              onClick={() => void onRemoveProcess(p.processId)}
-                              className="shrink-0 whitespace-nowrap rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                            >
-                              {procBusy?.includes(p.processId)
-                                ? S.common.loading
-                                : S.chat.processRemove}
-                            </button>
-                          </>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </Dropdown>
-        </div>
+                          <button
+                            type="button"
+                            data-tooltip={S.chat.processRemoveHint}
+                            disabled={procBusy !== null}
+                            onClick={() => void onRemoveProcess(p.processId)}
+                            className="shrink-0 whitespace-nowrap rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                          >
+                            {procBusy?.includes(p.processId)
+                              ? S.common.loading
+                              : S.chat.processRemove}
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </ChatToolbar>
       )}
 
       {/* The state the dock panels' bodies read (chat-dock-context.tsx): one provider over
