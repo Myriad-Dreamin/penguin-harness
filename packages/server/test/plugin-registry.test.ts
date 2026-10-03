@@ -243,7 +243,9 @@ describe("the builtin catalogue and the packages it lists", () => {
       const pkg = packages.get(entry.name);
       expect(pkg, `${entry.name} is listed but is no package in plugins/`).toBeDefined();
       expect(entry.categories, entry.name).toHaveLength(1);
-      expect(["sandbox", "surface", "chat-bot", "languages"], entry.name).toContain(entry.categories![0]);
+      expect(["sandbox", "surface", "chat-bot", "languages"], entry.name).toContain(
+        entry.categories![0],
+      );
       expect(pkg!.manifest.version, entry.name).toBe(entry.version);
       expect(pkg!.manifest.description, entry.name).toBe(entry.description);
       expect(pkg!.manifest.license, entry.name).toBe(entry.license);
