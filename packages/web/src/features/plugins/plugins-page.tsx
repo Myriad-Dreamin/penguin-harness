@@ -73,6 +73,7 @@ import { draftKey, loadDraft, saveDraft } from "../chat/draft-cache";
 import { prepareNewChatDraft } from "../chat/new-chat";
 import { localizedText } from "../chat/skill-use";
 import { usePluginRepair } from "./plugin-repair";
+import { viewedMachine } from "./viewed-machine";
 import { SettingsDialog } from "../settings/settings-dialog";
 import { pickDefaultAgent } from "../ai-create";
 import { toneInk } from "../../lib/tone";
@@ -226,8 +227,22 @@ export function PluginsPage() {
   const [pickedMachine, setPickedMachine] = useState<string | null>(null);
   useEffect(() => setPickedMachine(null), [projectId]);
   const selfId = deployment?.machineId;
+  const nameOf = (machineId: string) =>
+    machineId === selfId ? S.plugins.thisServer : (machineLabels.get(machineId) ?? machineId);
+  // The picker offers this server, then the machines this Project reaches and any a table
+  // names; a deployment with neither has one machine, and no picker.
+  const otherMachines = [
+    ...new Set([...machineIds, ...(deployment?.plugins ?? []).flatMap((p) => p.machines ?? [])]),
+  ].filter((id) => id !== selfId);
+  const machineChoices: MachineChoice[] = (
+    selfId === undefined ? [] : [selfId, ...otherMachines]
+  ).map((id) => ({ value: id, label: nameOf(id) }));
   /** The machine the page shows and edits — undefined only until this server's id is read. */
-  const viewMachine = pickedMachine ?? selfId;
+  const viewMachine = viewedMachine(
+    pickedMachine,
+    machineChoices.map((c) => c.value),
+    selfId,
+  );
   /** What the viewed machine answered itself — or why it could not — when it is not this server. */
   const [remote, setRemote] = useState<
     | { machineId: string; res: InstalledPluginsResponse }
@@ -248,22 +263,12 @@ export function PluginsPage() {
       cancelled = true;
     };
   }, [projectId, viewMachine, selfId, deployment]);
-  const nameOf = (machineId: string) =>
-    machineId === selfId ? S.plugins.thisServer : (machineLabels.get(machineId) ?? machineId);
   const view: PluginView | undefined =
     viewMachine === undefined
       ? undefined
       : { machineId: viewMachine, remote: remote !== null && "res" in remote ? remote.res : null };
   /** Whether the machine in view is this server itself. */
   const viewingHere = viewMachine === selfId;
-  // The picker offers this server, then the machines this Project reaches and any a table
-  // names; a deployment with neither has one machine, and no picker.
-  const otherMachines = [
-    ...new Set([...machineIds, ...(deployment?.plugins ?? []).flatMap((p) => p.machines ?? [])]),
-  ].filter((id) => id !== selfId);
-  const machineChoices: MachineChoice[] = (
-    selfId === undefined ? [] : [selfId, ...otherMachines]
-  ).map((id) => ({ value: id, label: nameOf(id) }));
 
   // The registry, fetched on page entry and again after an import or a delete.
   useEffect(() => {

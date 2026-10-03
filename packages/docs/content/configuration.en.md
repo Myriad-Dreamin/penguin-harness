@@ -198,7 +198,7 @@ The default model is not part of this block: it stays the top-level `default_mod
 
 ### Plugins
 
-The `[plugins]` table lists the [server plugins](/skills#server-plugins) the Project asks for. It is managed on the **Plugins** page. Each key is a package name, and each value is a requirement in the shape of Cargo's `[dependencies]`:
+The `[plugins]` table lists the [server plugins](/skills#server-plugins) the Project asks for. It is shared by all machines and is read-only on the **Plugins** page; that page installs and removes entries in the viewed machine's `[plugins.<machineId>]` table. Each key is a package name, and each value is a requirement in the shape of Cargo's `[dependencies]`:
 
 ```toml
 [plugins]

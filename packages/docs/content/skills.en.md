@@ -162,6 +162,8 @@ To upload a zip file:
 
 ## Server plugins
 
+The Plugins page views one machine at a time, this server by default. Its picker lists this server and the machines the Project reaches or names in a plugin table; when a selected machine leaves the choices, the page returns to this server. Installed includes the viewed machine's `[plugins.<machineId>]` table and the shared `[plugins]` table. Install and Remove write only that machine's own table. Shared rows are tagged **Shared by all machines** and cannot be removed on the page, including a package pinned in both tables: removing its machine-specific entry would leave it running. Agents and the API can still edit the shared table. Available lists packages neither table asks that machine to run.
+
 A server plugin extends the server itself rather than an agent: it is an npm package of server modules, such as an Agent Sandbox backend. It is installed on the whole server and shared by every Project: a Project asks for the server plugins it needs, and the server runs every plugin that any of its Projects asks for, so what a plugin contributes is available to every Project.
 
 On the **Plugins** page, a server plugin has a card like any other. The four Agent Sandbox backends are in the **Agent Sandbox** category: `sandbox-bwrap` for Linux, `sandbox-seatbelt` for macOS, `sandbox-wsl` for Windows, and `sandbox-dsh` for all three, which confines file writes only. A server plugin's details show its package name, with a button to copy it, and the package's README.
@@ -175,7 +177,7 @@ To remove one, select **Remove** and confirm. The plugin leaves the Project's li
 
 Only admins see **Install** and **Remove**; everyone else sees the cards and their details. A plugin that ships with PenguinHarness installs without a download. A change applies without restarting the server: the server rebuilds its business surface around the new list, which is why runs in progress stop. Afterwards the card's status reads **Installed**, **Restart to load** when the server could not apply the change without a restart, or **Failed to load**, with the reason when you point at it.
 
-The list is the `[plugins]` table of the Project's config; see [Configuration Reference](/configuration#plugins). For the routes, see [Server API](/server-api#plugin-registry-and-project-plugins), and for how the server loads plugins, see [Server Boot and Subsystems](/server-boot#re-assembly).
+The lists are the `[plugins]` and `[plugins.<machineId>]` tables of the Project's config; see [Configuration Reference](/configuration#plugins). For the routes, see [Server API](/server-api#plugin-registry-and-project-plugins), and for how the server loads plugins, see [Server Boot and Subsystems](/server-boot#re-assembly).
 
 ## Import and export plugins
 

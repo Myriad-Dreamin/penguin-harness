@@ -667,3 +667,33 @@ describe("a plugin's MCP servers", () => {
     ]);
   });
 });
+
+describe("a shared plugin's accessible removal", () => {
+  const row = (_installed: boolean, shared?: boolean) => {
+    const r = moduleRow("active");
+    if (shared) Object.assign(r.module!, { shared: true, removeBlocked: en.plugins.sharedHint });
+    return card(r, true);
+  };
+  /** The opening tag of the row's Remove button. */
+  const removeButton = (html: string) =>
+    new RegExp(`<button[^>]*aria-label="${en.plugins.uninstall} sandbox-bwrap"[^>]*>`).exec(
+      html,
+    )?.[0] ?? "";
+
+  it("describes a shared row's disabled Remove by its tag and hint", () => {
+    const html = row(true, true);
+    const button = removeButton(html);
+    expect(button).toContain('disabled=""');
+    const ids = /aria-describedby="([^"]+)"/.exec(button)?.[1]?.split(" ") ?? [];
+    const textOf = (id: string) =>
+      new RegExp(`id="${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>([^<]*)<`).exec(html)?.[1];
+    expect(ids.map(textOf)).toEqual([en.plugins.sharedTag, en.plugins.sharedHint]);
+  });
+
+  it("leaves an own row's Remove enabled and undescribed", () => {
+    const button = removeButton(row(true));
+    expect(button).not.toBe("");
+    expect(button).not.toContain('disabled=""');
+    expect(button).not.toContain("aria-describedby");
+  });
+});

@@ -24,7 +24,7 @@
  * a zip another server imports, for any member whenever its package is on this server — and,
  * for an admin, Delete on a package an admin installed on the server.
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import type { AgentSummary, PluginItem, QuickStartItem } from "@prismshadow/penguin-server/api";
 import {
@@ -138,6 +138,7 @@ export interface PluginCardProps {
 export function PluginCard(props: PluginCardProps) {
   const { row, status, usage, categoryTitle, agents, installed } = props;
   const { locale } = useLocale();
+  const sharedId = useId();
   const plugin = row.library;
   const [detailOpen, setDetailOpen] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
@@ -288,6 +289,9 @@ export function PluginCard(props: PluginCardProps) {
             aria-busy={props.busy}
             title={install ? label : (mod.removeBlocked ?? label)}
             data-tooltip-extra={!install && mod.removeBlocked !== undefined}
+            aria-describedby={
+              !install && mod.shared === true ? `${sharedId}-tag ${sharedId}-hint` : undefined
+            }
             disabled={props.busy || props.blocked || (!install && mod.removeBlocked !== undefined)}
             onClick={() => props.onModuleApply(install)}
           >
@@ -360,7 +364,7 @@ export function PluginCard(props: PluginCardProps) {
   }
   if (row.module?.shared === true) {
     tags.push(
-      <PluginTag key="shared" title={S.plugins.sharedHint}>
+      <PluginTag key="shared" id={`${sharedId}-tag`} title={S.plugins.sharedHint}>
         {S.plugins.sharedTag}
       </PluginTag>,
     );
@@ -422,6 +426,11 @@ export function PluginCard(props: PluginCardProps) {
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">{tags}</div>
         )}
       </button>
+      {row.module?.shared === true && (
+        <span id={`${sharedId}-hint`} className="sr-only">
+          {S.plugins.sharedHint}
+        </span>
+      )}
       {cardActions.length > 0 && (
         <div className="flex shrink-0 items-center justify-center gap-1.5">{cardActions}</div>
       )}

@@ -198,7 +198,7 @@ deepseek 条目不存 key，使用分组密钥；openrouter 条目发往其分�
 
 ### 插件
 
-`[plugins]` 表列出 Project 要求的[服务端插件](/skills#服务端插件)，在**插件市场**页面管理。每个键是一个包名，值是形如 Cargo `[dependencies]` 的要求：
+`[plugins]` 表列出 Project 要求的[服务端插件](/skills#服务端插件)，供所有机器共用，在**插件市场**页面只读；页面安装与移除写入所看机器的 `[plugins.<machineId>]` 表。每个键是一个包名，值是形如 Cargo `[dependencies]` 的要求：
 
 ```toml
 [plugins]
