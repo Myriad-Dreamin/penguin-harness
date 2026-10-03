@@ -5,7 +5,7 @@
  * The fold and the pin choices persist (nav-state.ts). A row's name and glyph are its page's
  * data (shell/page-table.ts), its dot a nav badge contributed for its key.
  */
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { useLocation } from "react-router";
 import {
@@ -24,6 +24,7 @@ import {
   initialNavGroupCollapsed,
   initialNavPinOverrides,
   isNavPinned,
+  navChildKeysFor,
   navEntryKeysFor,
   splitNavEntries,
   storeNavGroupCollapsed,
@@ -177,16 +178,44 @@ export function PageNav({
   );
   const pinnedNavPages = navSplit.pinned.flatMap((key) => pageByKey.get(key) ?? []);
   const collapsibleNavPages = navSplit.collapsible.flatMap((key) => pageByKey.get(key) ?? []);
+  /** The pages each entry carries below it (nav-state.ts): drawn indented under it, wherever it is. */
+  const childKeys = navChildKeysFor(nav.navPages, user?.isAdmin === true);
+
+  /** A page under an entry: a plain indented row — no pin choice and no drag of its own. */
+  const renderChildRow = (page: ShellPage) => (
+    <div key={page.key} className="ps-5">
+      <NavRow
+        surface="muted"
+        label={pageTitle(page, locale)}
+        glyph={glyphOf(page.icon)}
+        href={page.path}
+        active={isCurrentPath(page.path, location.pathname)}
+        renderLink={renderRouterLink}
+        onClick={() => onNavigate?.()}
+      />
+    </div>
+  );
+
+  /** One development-mode page entry: its own row, then the pages it carries, indented. */
+  const renderNavEntry = (page: ShellPage) => (
+    <Fragment key={page.key}>
+      {renderEntryRow(page)}
+      {(childKeys.get(page.key) ?? []).flatMap((k) => {
+        const child = pageByKey.get(k);
+        return child === undefined ? [] : [renderChildRow(child)];
+      })}
+    </Fragment>
+  );
 
   /**
-   * One development-mode page entry: the package's pinnable nav row, bound to its route, its
+   * An entry's own row: the package's pinnable nav row, bound to its route, its
    * badge trail, its pin choice and its drag. Four entries sit on a badge trail — Agents (an
    * outdated kernel, fixed on the Agent settings page two clicks down), Plugins, Models and the
    * Cost Center (each cleared on the page itself). The row's own label is visible, so the hint
    * only adds what the dot means, and the accessible name keeps the label as its prefix. The dot
    * hangs at the row's right edge, vertically centred on the row.
    */
-  const renderNavEntry = (page: ShellPage) => {
+  const renderEntryRow = (page: ShellPage) => {
     const key = page.key;
     const to = page.path;
     const label = pageTitle(page, locale);

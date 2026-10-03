@@ -19,7 +19,7 @@ import { S } from "../../lib/strings";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
 import { NEW_CHAT_ICON, glyphOf } from "../../lib/nav-icons";
-import { navKeysFor } from "./nav-state";
+import { navChildKeysFor, navKeysFor } from "./nav-state";
 import { navPagesOf, pageTitle, useShellPages } from "../index";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
@@ -45,6 +45,7 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
   const { user } = useAuth();
   const { locale } = useLocale();
   const navPages = navPagesOf(useShellPages());
+  const childKeys = navChildKeysFor(navPages, user?.isAdmin === true);
   const navigate = useNavigate();
   const { currentProject, setCurrentAgentId } = useProject();
   const { sessions, loading } = useSessions();
@@ -90,6 +91,8 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
     /** A name in the UI package's icon registry. */
     icon: string;
     note: string | null;
+    /** The routes of the pages the entry carries (nav-state.ts): the rail draws none of them, and lights the entry while one is open. */
+    childPaths?: readonly string[];
   }> =
     current >= 0
       ? modeStates[current]!.navItems.map((item) => ({ ...item, note: null }))
@@ -104,6 +107,9 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
                   label: pageTitle(page, locale),
                   icon: page.icon ?? "",
                   note: notes.get(key) ?? null,
+                  childPaths: (childKeys.get(key) ?? []).flatMap(
+                    (k) => navPages.find((p) => p.key === k)?.path ?? [],
+                  ),
                 },
               ];
         });
@@ -251,7 +257,12 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
             glyph={glyphOf(item.icon)}
             href={item.to ?? ""}
             disabled={item.to === null}
-            active={item.to !== null && isCurrentPath(item.to, location.pathname)}
+            active={
+              item.to !== null &&
+              [item.to, ...(item.childPaths ?? [])].some((to) =>
+                isCurrentPath(to, location.pathname),
+              )
+            }
             renderLink={renderRouterLink}
             {...(item.note !== null ? { badge: <UpdateDot /> } : {})}
           />

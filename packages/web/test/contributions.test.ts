@@ -6,7 +6,8 @@
  *   the user just left is dropped; signing out clears it.
  * - The merge appends iframe pages after the compiled ones; a compiled page wins a key or
  *   path clash; a builtin renderer is skipped (this build carries none); an entry without a
- *   key, a path or an iframe src is skipped.
+ *   key, a path or an iframe src is skipped. A page's title, Chinese title, glyph and parent
+ *   are kept when they are strings, and its frame is named by its title.
  * - A merged iframe page is routed at its path and draws a sandboxed frame of its src.
  * - Safe mode is the one switch: the provider tells the store nobody is signed in, so the table
  *   is the compiled one with nothing in flight; off again, the signed-in user's request is due.
@@ -65,8 +66,9 @@ const COMPILED: ShellPage[] = [
 
 const frame = (src: string) => ({ iframe: { src, namespace: "hello" } });
 
-function answer(pages: ContributionsResponse["pages"]): ContributionsResponse {
-  return { pages, agentTabs: [], sessionTabs: [] };
+/** An answer as the server might send it: entries the app must check, malformed ones included. */
+function answer(pages: readonly object[]): ContributionsResponse {
+  return { pages: pages as ContributionsResponse["pages"], agentTabs: [], sessionTabs: [] };
 }
 
 /** A fetch whose answers the test hands out by hand, in order. */
@@ -163,6 +165,52 @@ describe("contributedPagesOf", () => {
       released: true,
       order: 101,
     });
+  });
+
+  it("keeps a page's nav name, glyph and parent when they are strings, and names its frame by its title", () => {
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => undefined });
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
+    const merged = contributedPagesOf(
+      COMPILED,
+      answer([
+        {
+          id: "a",
+          from: "x",
+          key: "a",
+          path: "/a",
+          nav: "main",
+          parent: "agents",
+          title: "Hello World",
+          titleZh: "你好世界",
+          icon: "sparkle",
+          renderer: frame("/a.html"),
+        },
+        {
+          id: "b",
+          from: "x",
+          key: "b",
+          path: "/b",
+          parent: 7,
+          title: null,
+          icon: [],
+          renderer: frame("/b.html"),
+        },
+      ]),
+    );
+    expect(merged[2]).toMatchObject({
+      key: "a",
+      parent: "agents",
+      title: "Hello World",
+      titleZh: "你好世界",
+      icon: "sparkle",
+    });
+    expect(merged[3]).not.toHaveProperty("parent");
+    expect(merged[3]).not.toHaveProperty("title");
+    expect(merged[3]).not.toHaveProperty("icon");
+    const html = renderToStaticMarkup(
+      createElement(ThemeProvider, null, createElement(merged[2]!.Component)),
+    );
+    expect(html).toContain('title="Hello World"');
   });
 
   it("a compiled page wins a key or a path clash, and the first of two contributed ones wins", () => {
