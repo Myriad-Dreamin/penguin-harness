@@ -72,7 +72,13 @@ describe("quick start", () => {
       .filter((name) => fs.existsSync(path.join(pluginsRoot, name, "src", "index.ts")));
     expect(modulePlugins.length).toBeGreaterThan(0);
     for (const name of modulePlugins) {
-      const source = fs.readFileSync(path.join(pluginsRoot, name, "src", "index.ts"), "utf8");
+      // The modules' manifests may sit in any source file of the package, not only its index.
+      const src = path.join(pluginsRoot, name, "src");
+      const source = fs
+        .readdirSync(src)
+        .filter((f) => f.endsWith(".ts"))
+        .map((f) => fs.readFileSync(path.join(src, f), "utf8"))
+        .join("\n");
       expect(source, name).toContain('"WebModule.quickStarts"');
     }
   });
