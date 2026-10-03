@@ -48,7 +48,8 @@ const ALLOWLIST: Readonly<Record<string, readonly [number, string]>> = {
   "features/settings/shortcuts-section.tsx": [1, "W10"],
   "features/terminal/terminal-keybar.tsx": [3, "W10"],
   "features/traces/trace-event-row.tsx": [1, "W4"],
-  "shell/sidebar/sidebar.tsx": [2, "W7"],
+  "lib/nav-icons.ts": [1, "W7"],
+  "shell/sidebar/sidebar.tsx": [1, "W7"],
 };
 
 /** SVG path data: a moveto, then only path commands, numbers and separators. */

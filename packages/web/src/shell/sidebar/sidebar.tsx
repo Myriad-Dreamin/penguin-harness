@@ -42,7 +42,7 @@
  * status is a small mark, never a block of colour.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent as ReactDragEvent, ReactNode } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router";
 import type {
   SessionCategory,
@@ -68,11 +68,9 @@ import {
   MenuSeparator,
   Modal,
   MoreRow,
-  NAV_FILL,
   NavRow,
   SearchInput,
   Segmented,
-  SessionRow,
   SidebarAccountButton,
   SidebarControl,
   SidebarFrame,
@@ -86,7 +84,6 @@ import {
   UserAvatar,
   toastError,
   toastInfo,
-  toastSuccess,
 } from "@prismshadow/penguin-ui";
 import type { SidebarDropTarget } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
@@ -94,12 +91,7 @@ import { S } from "../../lib/strings";
 import { formatRelativeShort } from "../../lib/format";
 import { onCommand } from "../../lib/shortcuts/dispatcher";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
-import {
-  sessionActivityLabel,
-  sessionBackgroundTasks,
-  sessionRowActivity,
-} from "../../lib/session-activity";
-import type { SessionActivity } from "../../lib/session-activity";
+import { sessionBackgroundTasks, sessionRowActivity } from "../../lib/session-activity";
 import { forgetSession, noteSessionSeen, useSessionSeen } from "../../lib/session-seen";
 import { apiErrorText } from "../../lib/api-error";
 import { useAuth } from "../../state/auth";
@@ -178,9 +170,7 @@ import {
   orderGroups,
   saveGroupOrder,
 } from "../../lib/group-order";
-import { HOVER_ROW_ACTIONS, contextMenuActions, sessionRowActions } from "../../components/ui/session-row-menu";
-import type { SessionRowAction } from "../../components/ui/session-row-menu";
-import { NAV_ICONS } from "../../lib/nav-icons";
+import { NAV_ICONS, NEW_CHAT_ICON } from "../../lib/nav-icons";
 import {
   GROUP_MODE_ICONS,
   SORT_MODE_ICONS,
@@ -191,8 +181,11 @@ import {
   storeGroupMode,
 } from "../../components/ui/group-list";
 import type { GroupMode } from "../../components/ui/group-list";
-import { writeClipboard } from "../../lib/clipboard";
-import { Truncated } from "../../components/ui/truncated";
+import { DraftRow } from "../../features/session-list/draft-row";
+import { GroupBlock } from "../../features/session-list/group-block";
+import { GroupOverflowMenu } from "../../features/session-list/group-overflow-menu";
+import { GroupPinButton } from "../../features/session-list/group-pin-button";
+import { SidebarSessionRow } from "../../features/session-list/session-row";
 import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
 import { MessagingBindingModal } from "../../features/messaging/messaging-binding-modal";
 import { WorkspaceSelect } from "../../features/chat/workspace-select";
@@ -206,7 +199,10 @@ import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
 import { prepareNewChatDraft } from "../../features/chat/new-chat";
 import { docksOnScreen, openPanel } from "../../features/dock/dock-state";
 import { dockWorkspace } from "../../features/dock/dock-terminal";
-import { CreateProjectDialog, ProjectSettingsDialog } from "../../components/layout/project-dialogs";
+import {
+  CreateProjectDialog,
+  ProjectSettingsDialog,
+} from "../../components/layout/project-dialogs";
 import { UserMenu } from "./user-menu";
 import { PinnedBalanceBadge } from "../../features/models/group-balance";
 import { isCurrentPath, renderRouterLink } from "./router-link";
@@ -226,20 +222,6 @@ import {
   parseOrgKey,
 } from "../../features/company/company-nav";
 import type { WorkMode } from "../../features/company/company-nav";
-
-/** New-chat pencil (the pinned "New chat" button and the collapsed rail share it). */
-export const NEW_CHAT_ICON = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z";
-
-/** The workspace group's overflow-menu trigger: three FILLED dots (the stroke version read too faint at this size). */
-function EllipsisGlyph({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="19" cy="12" r="2" />
-    </svg>
-  );
-}
 
 /**
  * Private drag payload type of a manual session reorder. Deliberately NOT `text/plain`:
@@ -2809,335 +2791,5 @@ export function Sidebar({
         </>
       )}
     </SidebarFrame>
-  );
-}
-
-/** Single parked-draft row: first line of the unsent text + hover delete (opening resumes the draft at `/chat/<draft-id>`). */
-function DraftRow({
-  entry,
-  active,
-  onOpen,
-  onDelete,
-}: {
-  entry: DraftSessionEntry;
-  active: boolean;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const title = draftSessionTitle(entry) || S.chat.draftUntitled;
-  return (
-    <li>
-      <div
-        // Same truncated-title scroll reveal as the session rows (#309).
-        data-title-reveal
-        className={`group flex items-center rounded-md pr-1 transition-colors duration-150 ${
-          active ? NAV_FILL.selected : NAV_FILL.hover
-        }`}
-      >
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left"
-        >
-          <Truncated
-            scrollReveal
-            text={title}
-            // The conversation rows' inks (SessionRow), so a parked draft reads as one of them.
-            className={`min-w-0 flex-1 font-sans text-sm ${
-              active ? "font-medium text-fg" : "text-fg/80"
-            }`}
-          />
-        </button>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            data-tooltip={S.chat.deleteDraft}
-            aria-label={S.chat.deleteDraft}
-            onClick={onDelete}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-[opacity,background-color,color] duration-150 hover:bg-gray-300/60 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-red-400"
-          >
-            <Icon d={ICONS.trash} size={14} />
-          </button>
-        </div>
-      </div>
-    </li>
-  );
-}
-
-/**
- * One group's block — its header and body — carrying the manual group order's drop
- * indicator: a thin accent line in the gap the drop would land in, drawn against the
- * WHOLE group rather than its header, so "below" reads as "after this group and its
- * conversations" instead of "between the header and its own first row".
- *
- * The line is absolutely positioned and `inset-x-1` (matching the header's `px-1`), so
- * it consumes no layout width and cannot push the header's up-to-three action buttons
- * out of a narrow drawer.
- */
-function GroupBlock({
-  dropEdge,
-  children,
-}: {
-  /** Which edge of this group a drop would land on while a group drag hovers it. */
-  dropEdge: "above" | "below" | null;
-  children: ReactNode;
-}) {
-  return (
-    <div className="relative pt-2.5">
-      {dropEdge !== null && (
-        <div
-          aria-hidden
-          className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-accent ${
-            dropEdge === "above" ? "top-1" : "-bottom-1"
-          }`}
-        />
-      )}
-      {children}
-    </div>
-  );
-}
-
-/**
- * Group-header pin toggle, shared by both grouping modes: revealed on header hover (or
- * keyboard focus) while unpinned; once pinned it stays visible, doubling as the subtle
- * pinned indicator. The header row carries the `group/header` scope so the reveal only
- * reacts to its own row, not to the session rows' plain `group` scope.
- * The accessible name stays STATIC and aria-pressed alone carries the state (the toggle
- * pattern the grouping-mode buttons use) — a name that swaps Pin/Unpin alongside
- * aria-pressed reads as "Unpin group, pressed", saying the state twice in conflicting
- * ways. The title tooltip may still swap: it is presentation for pointer users and does
- * not feed the accessible name while aria-label is present.
- */
-function GroupPinButton({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      data-tooltip={pinned ? S.nav.unpinGroup : S.nav.pinGroup}
-      aria-label={S.nav.pinGroup}
-      aria-pressed={pinned}
-      onClick={onToggle}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-[opacity,background-color,color] duration-150 hover:bg-fg/7 hover:text-fg ${
-        pinned
-          ? "text-fg-muted"
-          : "text-fg-subtle opacity-0 focus-visible:opacity-100 group-hover/header:opacity-100"
-      }`}
-    >
-      <Icon d={ICONS.pin} size={ICON_SIZE.groupHeaderAction} />
-    </button>
-  );
-}
-
-/**
- * One conversation row: the package's `SessionRow`, bound to this Session. The row itself — the
- * title with its marks, the trailing slot that swaps the last-active time for archive and the
- * "more" button on hover or focus, and the context menu a right-click, Shift+F10 or a
- * press-and-hold opens — is the package's; this container says which actions each surface
- * carries (session-row-menu.tsx), what each one does, and in which words the marks name
- * themselves.
- *
- * The hover pair is the affordance every release up to v0.2.2 shipped (archive as a direct icon
- * button), the rest of the set one click further; the full set stays one right-click away.
- *
- * A truncated title scrolls its tail into view while the row is hovered or keyboard-focused
- * (#309; Truncated's scrollReveal, keyed on the row's `data-title-reveal`). No `title` tooltip
- * comes with it: it would sit over the very text scrolling past underneath. Under
- * prefers-reduced-motion nothing scrolls and the conditional hint returns instead.
- */
-function SidebarSessionRow({
-  s,
-  active,
-  activity,
-  background,
-  scheduled,
-  pinned,
-  canPin = false,
-  lastActive,
-  locale,
-  agentHint,
-  draggable = false,
-  dropEdge = null,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onOpen,
-  onTogglePin,
-  onRename,
-  onMessaging,
-  onDelete,
-  onToggleArchive,
-}: {
-  s: SessionInfo;
-  active: boolean;
-  /** Busy / settled-read / settled-unread / never-ran, already resolved by sessionRowActivity. */
-  activity: SessionActivity;
-  /** Background tasks the Session still owns (sessionBackgroundTasks); 0 draws no mark. */
-  background: number;
-  /** A scheduled task still to fire is bound to this Session (pendingScheduleSessions); false draws no mark. */
-  scheduled: boolean;
-  /** Row is pinned (bubbled to its group's top; small pin glyph on the title). */
-  pinned: boolean;
-  /** Whether pinning can actually reorder this row — active-list rows only; folder rows hide the action (see renderRows). */
-  canPin?: boolean;
-  /** Preformatted compact last-active time ("" hides the slot's resting text). */
-  lastActive: string;
-  /** Interface language: decides the fixed width the time slot reserves (SessionRow's `timeSlot`). */
-  locale: "zh" | "en";
-  /** Agent display name; when set (workspace mode) a small avatar keeps the Agent context visible on the row. */
-  agentHint?: string;
-  /** Manual sort: the row can be drag-reordered (the sidebar wires the handlers below). */
-  draggable?: boolean;
-  /** Drop indicator edge while another row hovers over this one (a thin accent line above/below). */
-  dropEdge?: "above" | "below" | null;
-  onDragStart?: (e: ReactDragEvent) => void;
-  onDragEnd?: () => void;
-  onDragOver?: (e: ReactDragEvent) => void;
-  onDragLeave?: () => void;
-  onDrop?: (e: ReactDragEvent) => void;
-  onOpen: (s: SessionInfo) => void;
-  onTogglePin: (s: SessionInfo) => void;
-  onRename: (s: SessionInfo) => void;
-  onMessaging: (s: SessionInfo) => void;
-  onDelete: (s: SessionInfo) => void;
-  onToggleArchive: (s: SessionInfo) => void;
-}) {
-  /** Run one action on this Session (the row has closed its menu first). */
-  const run = (action: SessionRowAction) => {
-    const handler: Record<SessionRowAction, (x: SessionInfo) => void> = {
-      pin: onTogglePin,
-      rename: onRename,
-      // The copy affordance's feedback normally rides on the button itself (copy-button.tsx),
-      // which a menu row cannot do: the row acts and the panel closes under it. A toast is
-      // the confirmation that survives that, and it says the same word — once the write
-      // has landed.
-      copy: (x) => {
-        void writeClipboard(x.sessionId).then((ok) => ok && toastSuccess(S.common.copied));
-      },
-      messaging: onMessaging,
-      archive: onToggleArchive,
-      delete: onDelete,
-    };
-    handler[action](s);
-  };
-  const rowState = { archived: s.archived, pinned };
-  return (
-    <SessionRow
-      sessionId={s.sessionId}
-      renderTitle={(className) => (
-        <Truncated
-          scrollReveal
-          text={s.title ?? S.chat.defaultSessionTitle}
-          className={className}
-        />
-      )}
-      active={active}
-      archived={s.archived}
-      {...(agentHint !== undefined ? { agent: { id: s.agentId, name: agentHint } } : {})}
-      // Four marks for the row's STANDING arrangements, all in one dim cluster: how the row is
-      // filed (pinned — only where pinning reorders anything), where it can be reached from (the
-      // messaging relay, named by its channel), whether it runs on its own (a scheduled task still
-      // to fire; a paused or ended one draws nothing) and whether it owns work that outlives the
-      // turn (background tasks, live via session_background).
-      {...(pinned && canPin ? { pinnedLabel: S.chat.pinnedSession } : {})}
-      {...(s.messagingChannel !== undefined
-        ? { relayLabel: S.messaging.enabledIndicator[s.messagingChannel] }
-        : {})}
-      {...(scheduled ? { scheduledLabel: S.chat.sessionScheduled } : {})}
-      background={{ count: background, label: S.chat.backgroundTasks(background) }}
-      activity={
-        activity === null ? null : { state: activity, label: sessionActivityLabel(activity) }
-      }
-      approvals={{
-        count: s.pendingApprovalCount,
-        label: S.chat.pendingApprovals(s.pendingApprovalCount),
-      }}
-      time={lastActive}
-      // Sized for the widest compact time each language produces — 「12月31日」 and 「59 分钟前」 in
-      // zh, "Nov 30" in en.
-      timeSlot={locale === "zh" ? "wide" : "narrow"}
-      hoverActions={sessionRowActions(HOVER_ROW_ACTIONS, rowState, run)}
-      menuActions={sessionRowActions(contextMenuActions(canPin), rowState, run)}
-      moreLabel={S.chat.moreActions}
-      onOpen={() => onOpen(s)}
-      draggable={draggable}
-      dropEdge={dropEdge}
-      {...(onDragStart ? { onDragStart } : {})}
-      {...(onDragEnd ? { onDragEnd } : {})}
-      {...(onDragOver ? { onDragOver } : {})}
-      {...(onDragLeave ? { onDragLeave } : {})}
-      {...(onDrop ? { onDrop } : {})}
-    />
-  );
-}
-
-/**
- * A workspace group's overflow (… to the right of the header's "+"): 打开文件浏览, then — for a
- * registry-backed group — 重命名工作区 / 删除工作区, as small Menu rows like the session row's
- * menu. Sits among the header's action buttons — outside the header's collapse toggle, so
- * opening it never expands/collapses the group. Body-portaled like every menu inside the
- * scroller.
- */
-function GroupOverflowMenu({
-  onBrowse,
-  onRename,
-  onDelete,
-}: {
-  onBrowse: () => void;
-  onRename?: () => void;
-  onDelete?: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  /** Close first, then act (the rename modal opens on top; the delete is immediate). */
-  const item = (fn: () => void) => () => {
-    setOpen(false);
-    fn();
-  };
-  return (
-    <Dropdown
-      open={open}
-      setOpen={setOpen}
-      portal={{ direction: "down", align: "right" }}
-      menuClass="w-max min-w-32"
-      className="shrink-0"
-      button={
-        /* No hover pill on this trigger (user: color, not background, should carry the
-           hover hint) — feedback is the glyph deepening in light / brightening in dark,
-           the session-row ellipsis treatment. Geometry: the same h-7 w-7 square as the
-           sibling "+" and the LAST action in the header, flush at GroupHeader's px-1
-           inset — which equals the session rows' pr-1, so with the row trigger's 16px
-           glyph the dot columns line up with the rows' trailing slot below. */
-        <button
-          type="button"
-          data-tooltip={S.chat.workspaceMenu}
-          aria-label={S.chat.workspaceMenu}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-colors duration-150 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100"
-        >
-          <EllipsisGlyph size={16} />
-        </button>
-      }
-    >
-      <Menu density="sm">
-        <MenuItem
-          glyph={ICONS.folderOpen}
-          label={S.chat.browseWorkspaceFiles}
-          onSelect={item(onBrowse)}
-        />
-        {onRename !== undefined && (
-          <MenuItem glyph={ICONS.pencil} label={S.chat.renameWorkspace} onSelect={item(onRename)} />
-        )}
-        {onDelete !== undefined && (
-          <MenuItem
-            glyph={ICONS.trash}
-            label={S.chat.deleteWorkspace}
-            danger
-            onSelect={item(onDelete)}
-          />
-        )}
-      </Menu>
-    </Dropdown>
   );
 }
