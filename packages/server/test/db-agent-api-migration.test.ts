@@ -4,7 +4,9 @@ import { appliedMigrations, migrate, rollbackTo } from "../src/db/migrations/ind
 import { openFresh, shape, sqlite, stampThrough } from "./db-migrations-fixtures.js";
 function open13(): DatabaseSync {
   const db = openFresh();
-  db.exec("DROP INDEX IF EXISTS idx_agent_api_keys_agent; DROP TABLE IF EXISTS agent_api_keys; DROP TABLE IF EXISTS agent_api;");
+  db.exec(
+    "DROP INDEX IF EXISTS idx_agent_api_keys_agent; DROP TABLE IF EXISTS agent_api_keys; DROP TABLE IF EXISTS agent_api;",
+  );
   stampThrough(db, "browser-extensions");
   db.exec("PRAGMA user_version = 13");
   return db;
