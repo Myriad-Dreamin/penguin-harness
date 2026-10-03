@@ -17,6 +17,7 @@ import table from "./ifaces.json";
 import { ShellModule } from "./shell/module";
 import type { Shell } from "./shell/module";
 import type { AppRouterProps } from "./shell/router";
+import { SessionsModule } from "./state/sessions.module";
 import { ChatModule } from "./features/chat/module";
 import { AgentsModule } from "./features/agents/module";
 import { ModelsModule } from "./features/models/module";
@@ -29,10 +30,15 @@ import { DashboardModule } from "./features/dashboard/module";
 import { TerminalModule } from "./features/terminal/module";
 import { WorkflowsModule } from "./features/workflows/module";
 import { CompanyModule } from "./features/company/module";
+import { BuiltinBrowserModule } from "./features/builtin-browser/module";
+import { PaletteModule } from "./features/palette/module";
+import { SettingsModule } from "./features/settings/module";
+import { SchedulesModule } from "./features/schedules/module";
 
 @Module({
   children: [
     ShellModule,
+    SessionsModule,
     ChatModule,
     AgentsModule,
     ModelsModule,
@@ -45,6 +51,10 @@ import { CompanyModule } from "./features/company/module";
     TerminalModule,
     WorkflowsModule,
     CompanyModule,
+    BuiltinBrowserModule,
+    PaletteModule,
+    SettingsModule,
+    SchedulesModule,
   ],
 })
 export class WebRoot {}
