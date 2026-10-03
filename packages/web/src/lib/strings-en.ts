@@ -312,7 +312,6 @@ export const en: Strings = {
   },
 
   builtinBrowser: {
-    panelTitle: "Browser",
     tabs: "Tabs",
     newTab: "New tab",
     closeTab: "Close tab",
@@ -3210,9 +3209,6 @@ Scenarios:
     historyLoadFailed: "Failed to load history",
     statsLabel: "Stats",
     removeImage: "Remove image",
-    openAgents: "Agents panel",
-    /** Panel switcher (chat toolbar top-right): the "create" dropdown and its pin toggles. */
-    workspacePanel: "Files",
     filesInMessage: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
     imagesInMessage: (n: number) => `${n} ${n === 1 ? "image" : "images"}`,
     openPreview: "Click to preview",
@@ -3222,7 +3218,6 @@ Scenarios:
     memoryScopeWorkspace: (key: string) => `Workspace memory (${key})`,
     memoryOpWrite: "Wrote",
     memoryOpEdit: "Edited",
-    memoryViewTitle: "Memory",
     memoryChangedMark: "Changed in this conversation",
     memoryContentUnavailable: "Content unavailable (the file may have been moved or deleted)",
     memoryRowOpen: "View content",
@@ -3709,7 +3704,6 @@ Scenarios:
    * `qq` / `wechat` / `discord`).
    */
   messaging: {
-    panelTitle: "Remote control",
     /** Session-row context-menu action. */
     bindAction: "Remote control",
     dialogTitle: "Remote control",
