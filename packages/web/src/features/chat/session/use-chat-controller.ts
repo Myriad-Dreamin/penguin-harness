@@ -2,7 +2,8 @@
  * The chat page's controller: from the route to the conversation on screen — selection, the
  * direct lookup and auto-select, the stream and the composer's draft, usage and background
  * processes, sending and handoffs, the model and thinking-level switches — and the dock panels'
- * jump commands. The toolbar, the body, the dialogs and the panel bodies read what it returns.
+ * jump commands. The toolbar, the body and the dialogs read what it returns; the dock panels read
+ * it through session/chat-session-context.tsx.
  *
  * The sub-hooks are consecutive stretches of what was one component, called in that component's
  * order: effects that depend on one another (the session-switch reset before the usage fetch
@@ -18,7 +19,6 @@ import { conversationMode } from "../../company/company-nav";
 import { useCompany } from "../../company";
 import { promotedPricing, sameModelRef } from "../../models/model-grouping";
 import type { StagedThinkingSwitch } from "../../model-picker";
-import { useWorkflowTabs } from "../../workflows/workflow-tabs";
 // importing it also registers the global Ctrl+` hotkey with the app bundle
 import { setDockCwd } from "../../dock/dock-terminal";
 import { dockVersion, isTabShown, openPanel, subscribeDock } from "../../dock/dock-state";
@@ -113,15 +113,6 @@ export function useChatController() {
    * that conversation on the placeholder for good, with nothing to say why.
    */
   const pageAgentId = selected?.agentId ?? agentId;
-  // The tabs beside a conversation are its OWN Agent's, asked of the server that Agent's
-  // workflows live on: a Session on a machine runs a copy of the Agent there, and the workflows
-  // it built are in that copy. The current Agent is always one of this server's, so going by
-  // it listed the wrong Agent's workflows (or none) for every Session on a machine.
-  const workflowTabs = useWorkflowTabs(
-    projectId,
-    pageAgentId,
-    selected === null ? null : machineForSession(selected.sessionId),
-  );
   // `?file=<Workspace path>` on arrival — a proposal's scope row, a link from another page —
   // brings the Files tab up on that file, once; the parameter is consumed so a reload does
   // not reopen it and the history keeps a clean conversation URL.
@@ -342,7 +333,6 @@ export function useChatController() {
     modelSwitchAsk,
     setModelSwitchAsk,
     pageAgentId,
-    workflowTabs,
     activeModelRef,
     stream,
     sessionDraft,

@@ -17,11 +17,12 @@
  * created. The Session list and the new-chat entry point live in the global sidebar.
  */
 import { Skeleton } from "@prismshadow/penguin-ui";
-import { WorkflowFrame, WorkflowTabStrip } from "../workflows/workflow-tabs";
 import { DockPanel } from "../dock/dock-panel";
 import { useDockMount } from "../dock/use-dock-mount";
 import { closedDockView, dockViews } from "../dock/dock-state";
 import { terminalApiSupported } from "../terminal";
+import { machineForSession } from "../../lib/session-machines";
+import { chatDeps } from "./deps";
 import { useChatController } from "./session/use-chat-controller";
 import { SessionDialogs } from "./session/session-dialogs";
 import { ChatSessionProvider } from "./session/chat-session-context";
@@ -33,6 +34,7 @@ import { ChatBody } from "./body/chat-body";
 
 export function ChatPage() {
   const chat = useChatController();
+  const { sessionTabs } = chatDeps.useDeps();
   const {
     projectId,
     pageAgentId,
@@ -40,7 +42,6 @@ export function ChatPage() {
     currency,
     selected,
     stream,
-    workflowTabs,
     outline,
     railFit,
     streamScrollRef,
@@ -94,32 +95,17 @@ export function ChatPage() {
   return (
     <ChatSessionProvider controller={chat}>
       <div data-dock-host className="relative flex h-full flex-col bg-canvas">
-        {/* Workflow tabs: the Agent's own pages beside the chat. A workflow tab covers the
-          chat (which stays mounted, so its state survives a look at the page) below the
-          strip; the strip is absent when the Agent has no workflow with a UI. */}
-        <WorkflowTabStrip
-          tabs={workflowTabs.tabs}
-          notices={workflowTabs.notices}
-          active={workflowTabs.active}
-          onSelect={workflowTabs.setActive}
-        />
-        {workflowTabs.activeTab !== null && projectId !== null && pageAgentId !== null && (
-          <div className="absolute inset-x-0 bottom-0 top-9 z-10">
-            <WorkflowFrame
-              // Per tab: the frame keeps this workflow's history fold, its error and its
-              // armed Remove, and none of that belongs to the next tab.
-              key={workflowTabs.activeTab.tabId}
-              projectId={projectId}
-              agentId={pageAgentId}
-              tab={workflowTabs.activeTab}
-              onChanged={() => void workflowTabs.refresh()}
-              onRemoved={() => {
-                workflowTabs.setActive(null);
-                void workflowTabs.refresh();
-              }}
-            />
-          </div>
-        )}
+        {/* Tabs beside the conversation (`ChatModule.sessionTabs`): the Agent's workflow pages.
+          They are its OWN Agent's, asked of the server that Agent runs on: a Session on a
+          machine runs a copy of the Agent there, and what it built is in that copy. */}
+        {sessionTabs.map(({ id, Tab }) => (
+          <Tab
+            key={id}
+            projectId={projectId}
+            agentId={pageAgentId}
+            machineId={selected === null ? null : machineForSession(selected.sessionId)}
+          />
+        ))}
         {/* Thin top toolbar */}
         {selected && (
           <ChatToolbar

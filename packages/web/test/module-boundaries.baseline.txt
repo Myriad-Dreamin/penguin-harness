@@ -11,7 +11,6 @@ cycle: features/chat -> features/proposals
 cycle: features/chat -> features/schedules
 cycle: features/chat -> features/settings
 cycle: features/chat -> features/skills
-cycle: features/chat -> features/workflows
 cycle: features/company -> features/chat
 cycle: features/company -> features/model-picker
 cycle: features/company -> features/models
@@ -37,7 +36,6 @@ cycle: features/terminal -> features/dock
 cycle: features/todos -> features/models
 cycle: features/todos -> features/usage
 cycle: features/usage -> features/todos
-cycle: features/workflows -> features/chat
 cycle: shell -> features/chat
 features/agents/agents-page.tsx -> features/ai-create/ai-create-buttons.tsx
 features/agents/agents-page.tsx -> features/semantic-id/semantic-id-field.tsx
@@ -75,7 +73,6 @@ features/chat/chat-input.tsx -> features/skills/skill-selection.ts
 features/chat/chat-page.tsx -> features/dock/dock-panel.tsx
 features/chat/chat-page.tsx -> features/dock/dock-state.ts
 features/chat/chat-page.tsx -> features/dock/use-dock-mount.ts
-features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
 features/chat/message-item.tsx -> features/proposals/proposal-links.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
@@ -86,7 +83,6 @@ features/chat/session/use-chat-controller.ts -> features/dock/dock-state.ts
 features/chat/session/use-chat-controller.ts -> features/dock/dock-terminal.ts
 features/chat/session/use-chat-controller.ts -> features/models/model-grouping.ts
 features/chat/session/use-chat-controller.ts -> features/terminal/terminal-list.ts
-features/chat/session/use-chat-controller.ts -> features/workflows/workflow-tabs.tsx
 features/chat/session/use-model-switches.ts -> features/models/model-grouping.ts
 features/chat/session/use-panel-requests.ts -> features/dock/dock-state.ts
 features/chat/session/use-project-models.ts -> features/models/model-grouping.ts
