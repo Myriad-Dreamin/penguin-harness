@@ -14,13 +14,8 @@
  *   never repeats a character of the match.
  */
 import { describe, expect, it } from "vitest";
-import {
-  findMatches,
-  matchAll,
-  matchSnippet,
-  stepMatchIndex,
-  type FindQuery,
-} from "../src/lib/find-text";
+import { findMatches, matchAll, matchSnippet, stepMatchIndex } from "../src/lib/find-text";
+import type { FindQuery } from "../src/lib/find-text";
 
 /** A case-insensitive query, the default the find bar opens with. */
 const q = (text: string, caseSensitive = false): FindQuery => ({ text, caseSensitive });

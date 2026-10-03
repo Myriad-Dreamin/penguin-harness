@@ -19,8 +19,8 @@
  * tools table's `call_description` included. A snapshot import asks before it replaces the
  * Agent State.
  */
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import type {
   AgentConfigDto,
@@ -58,24 +58,16 @@ import {
   toastError,
   toastSuccess,
   useFormDraft,
-  type OptionMenuChoice,
 } from "@prismshadow/penguin-ui";
-
+import type { OptionMenuChoice } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { useProject } from "../../state/project";
-import {
-  normalizeRuntime,
-  runtimeDraftOf,
-  runtimeErrors,
-  runtimeUpdateOf,
-  type RuntimeDraft,
-  type RuntimeNumberField,
-} from "./runtime-form";
-
+import { normalizeRuntime, runtimeDraftOf, runtimeErrors, runtimeUpdateOf } from "./runtime-form";
+import type { RuntimeDraft, RuntimeNumberField } from "./runtime-form";
 import {
   hasDescriptionProperty,
   normalizeTools,
@@ -83,10 +75,8 @@ import {
   toolsErrors,
   toolsUpdateOf,
   withCallDescription,
-  type ToolNumberField,
-  type ToolRowDraft,
 } from "./tools-form";
-
+import type { ToolNumberField, ToolRowDraft } from "./tools-form";
 import { SkillsTab } from "./skills-tab";
 import { WorkbenchesTab } from "./workbenches-tab";
 import { HooksTab } from "./hooks-tab";

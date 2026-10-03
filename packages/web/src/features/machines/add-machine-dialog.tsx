@@ -50,8 +50,8 @@ import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { toneInk } from "../../lib/tone";
-import { ADD_TABS, addPlan, hostRows, type AddTab, type HostRow } from "./add-machine-view";
-
+import { ADD_TABS, addPlan, hostRows } from "./add-machine-view";
+import type { AddTab, HostRow } from "./add-machine-view";
 import { highlightSegments } from "./machines-match";
 import {
   HostFields,
@@ -62,11 +62,8 @@ import {
   normalizeHostForm,
   shownErrors,
   validateHostForm,
-  type HostErrors,
-  type HostField,
-  type HostForm,
-  type SignIn,
 } from "./ssh-host-dialog";
+import type { HostErrors, HostField, HostForm, SignIn } from "./ssh-host-dialog";
 
 export interface AddMachineBodyProps {
   tab: AddTab;

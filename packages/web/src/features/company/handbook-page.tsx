@@ -23,15 +23,8 @@
  * handbook's own scope), and a route change, an organization switch or a reload (the app's
  * router blocker and unload guard, which find the editor registered).
  */
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
-
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import type { OrgHandbookFile, OrgHandbookFileResponse } from "@prismshadow/penguin-server/api";
 import {
   Badge,
@@ -53,9 +46,8 @@ import {
   useFormDraft,
   useGuardedClose,
   useUnsavedChanges,
-  type TreeToggle,
 } from "@prismshadow/penguin-ui";
-
+import type { TreeToggle } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";

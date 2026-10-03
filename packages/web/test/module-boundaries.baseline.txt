@@ -75,8 +75,5 @@ cycle: features/terminal -> features/dock
 features/terminal/terminal-list.ts -> features/dock/dock-state.ts
 features/terminal/terminal-view-pool.tsx -> features/dock/dock-state.ts
 lib/strings.ts -> features/models/model-sort.ts
-state/company.tsx -> features/company/channel-list.ts
-state/company.tsx -> features/company/company-beta.tsx
-state/company.tsx -> features/company/org-sessions.ts
 state/sessions.tsx -> features/builtin-browser/browser-events.ts
 state/sessions.tsx -> features/schedules/schedule-store.ts

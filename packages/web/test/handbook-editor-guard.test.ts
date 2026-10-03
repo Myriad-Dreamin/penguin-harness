@@ -20,8 +20,8 @@ import { UnsavedPrompt } from "../src/lib/unsaved/unsaved-prompt";
 import { HandbookPage } from "../src/features/company/handbook-page";
 import { OrgContext } from "../src/features/company/org-layout";
 import { LocaleProvider } from "../src/state/locale";
-import { apiError, json, stubFetch, type FakeFetch } from "./helpers/fetch";
-
+import { apiError, json, stubFetch } from "./helpers/fetch";
+import type { FakeFetch } from "./helpers/fetch";
 import {
   button,
   click,

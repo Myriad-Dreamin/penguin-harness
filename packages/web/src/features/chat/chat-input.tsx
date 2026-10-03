@@ -80,13 +80,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type ClipboardEvent,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
 } from "react";
-
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent, ReactNode, RefObject } from "react";
 import type {
   AgentSummary,
   ApprovalMode,
@@ -125,10 +120,8 @@ import {
   noAutofill,
   toastError,
   toastInfo,
-  type MenuSelectOption,
-  type TagInputChip,
 } from "@prismshadow/penguin-ui";
-
+import type { MenuSelectOption, TagInputChip } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { formatBytes, humanizeTokens } from "../../lib/format";
 import { fitTextarea } from "../../lib/textarea-fit";
@@ -138,7 +131,6 @@ import { agentDisplayName } from "../../state/project";
 import { PermissionSelect } from "./permission-select";
 import type { PermissionPick } from "../../lib/permission-level";
 import { SkillIcon, SkillPickList, toggleSkillName } from "../skills";
-
 import { sameModelRef } from "../models";
 import { filterAgents, stagedSendRoute } from "./agent-handoff";
 import { employeesLast, isEmployee } from "../agents";
@@ -162,9 +154,8 @@ import {
   caretOnLastLine,
   historyStepBack,
   historyStepForward,
-  type HistoryStep,
 } from "./input-history";
-
+import type { HistoryStep } from "./input-history";
 import { isStopAction, midRunAction } from "./composer-send";
 import { PAPERCLIP_ICON } from "./attached-files-banner";
 import { FileDropZone } from "./drop-zone";
