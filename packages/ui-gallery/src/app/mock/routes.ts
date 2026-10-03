@@ -31,6 +31,7 @@ import type {
   BenchmarksResponse,
   CaseMaterial,
   ChatDefaultsDto,
+  ContributionsResponse,
   CommandPolicyDto,
   DefaultModelResponse,
   DesktopTrayStatusResponse,
@@ -2063,6 +2064,12 @@ router
   .delete("/api/projects/:projectId/agents/:agentId/workflows/:workflowId", () =>
     notFound("Workflow"),
   )
+  // The demo server runs no plugin: nothing beyond the app's own pages.
+  .get("/api/contributions", (): ContributionsResponse => ({
+    pages: [],
+    agentTabs: [],
+    sessionTabs: [],
+  }))
   .get(
     "/api/projects/:projectId/plugins/installed",
     ({ store }): InstalledPluginsResponse => store.f.installedPlugins,
