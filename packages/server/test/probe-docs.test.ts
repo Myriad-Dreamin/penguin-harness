@@ -22,7 +22,10 @@ describe("probe reference", () => {
   });
 
   it("gives every probe a one-sentence summary in each language", () => {
-    const { en, zh } = probeSummaries();
+    const summaries = probeSummaries();
+    const en = summaries.en ?? {};
+    const zh = summaries.zh ?? {};
+    expect(Object.keys(en).length).toBeGreaterThan(0);
     expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());
     for (const lang of [en, zh]) {
       for (const [name, summary] of Object.entries(lang)) {

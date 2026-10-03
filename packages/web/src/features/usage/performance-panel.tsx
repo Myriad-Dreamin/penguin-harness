@@ -3,6 +3,8 @@
  * probe, how many samples and their p50 / p95 / max — narrowed to one Session on request.
  * Server probes (`http.request`, `boot.*`, `session.messages`, `trace.read`, …) and the
  * browser's (`web.*`, sent by lib/perf) sit in the same buffer, so they list side by side.
+ * Every column sorts; the table opens on p95, slowest first — the tail is what a slow
+ * complaint is about, and a probe that is slow once in twenty does not show in its median.
  *
  * Unlike the rest of the page it is whole-server, not per Project: the buffer is one per
  * process, and its read route is admin only — so the page renders this panel for an admin
@@ -20,7 +22,7 @@ import type {
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
-import { Button, InfoPopover, Select } from "@prismshadow/penguin-ui";
+import { Button, ChevronDown, ICON_SIZE, InfoPopover, Select } from "@prismshadow/penguin-ui";
 import { Empty } from "./usage-charts";
 import { toneInk } from "../../lib/tone";
 import { pageProbeSites, pageProbeSummaries, probeLink, probeSummary } from "../../lib/perf/sites";
@@ -32,14 +34,89 @@ export function formatDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)} s`;
 }
 
-/** Browser probes after the server's, each side alphabetical: the two halves read as two blocks. */
-export function orderProbes(probes: readonly TelemetryProbeSummary[]): TelemetryProbeSummary[] {
-  const side = (p: TelemetryProbeSummary) => (p.probe.startsWith("web.") ? 1 : 0);
-  return [...probes].sort((a, b) => side(a) - side(b) || a.probe.localeCompare(b.probe));
+/** A column the table sorts by, and which way. */
+export type ProbeSortKey = "name" | "count" | "p50" | "p95" | "max";
+export interface ProbeSort {
+  key: ProbeSortKey;
+  dir: "asc" | "desc";
 }
 
-function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <th className={`py-1.5 pr-2 font-medium ${className}`}>{children}</th>;
+/** What the table opens on: p95, slowest first. */
+export const DEFAULT_PROBE_SORT: ProbeSort = { key: "p95", dir: "desc" };
+
+const sortValue: Record<
+  Exclude<ProbeSortKey, "name">,
+  (p: TelemetryProbeSummary) => number | null
+> = {
+  count: (p) => p.count,
+  p50: (p) => p.p50Ms,
+  p95: (p) => p.p95Ms,
+  max: (p) => p.maxMs,
+};
+
+/**
+ * The probes in `sort`'s order, ties by name. A probe with no duration (its samples carry
+ * none) sorts last either way: a dash is no figure, not a small one.
+ */
+export function sortProbes(
+  probes: readonly TelemetryProbeSummary[],
+  sort: ProbeSort,
+): TelemetryProbeSummary[] {
+  const sign = sort.dir === "asc" ? 1 : -1;
+  const byName = (a: TelemetryProbeSummary, b: TelemetryProbeSummary) =>
+    a.probe.localeCompare(b.probe);
+  if (sort.key === "name") return [...probes].sort((a, b) => sign * byName(a, b));
+  const value = sortValue[sort.key];
+  return [...probes].sort((a, b) => {
+    const x = value(a);
+    const y = value(b);
+    if (x === null || y === null) return x === y ? byName(a, b) : x === null ? 1 : -1;
+    return sign * (x - y) || byName(a, b);
+  });
+}
+
+/** The sort a header click asks for: the same column turns around, a new one starts at its natural end. */
+export function nextProbeSort(current: ProbeSort, key: ProbeSortKey): ProbeSort {
+  if (current.key === key) return { key, dir: current.dir === "asc" ? "desc" : "asc" };
+  return { key, dir: key === "name" ? "asc" : "desc" };
+}
+
+/** A sortable header: the label is the button, `aria-sort` says the current order. */
+function SortTh({
+  label,
+  column,
+  sort,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  column: ProbeSortKey;
+  sort: ProbeSort;
+  onSort: (sort: ProbeSort) => void;
+  className?: string;
+}) {
+  const active = sort.key === column;
+  const numeric = column !== "name";
+  return (
+    <th
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      className={`py-1.5 pr-2 font-medium ${className}`}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(nextProbeSort(sort, column))}
+        className={`inline-flex items-center gap-1 hover:text-gray-600 dark:hover:text-gray-300 ${
+          numeric ? "flex-row-reverse" : ""
+        } ${active ? "text-gray-600 dark:text-gray-300" : ""}`}
+      >
+        {label}
+        <ChevronDown
+          size={ICON_SIZE.chevronDense}
+          className={`${active ? "" : "invisible"} ${sort.dir === "asc" && active ? "rotate-180" : ""}`}
+        />
+      </button>
+    </th>
+  );
 }
 
 /**
@@ -83,9 +160,17 @@ function ProbeName({
 }
 
 /** The table itself, from one read: pure so it renders in a test without a fetch. */
-export function PerformanceTable({ data }: { data: TelemetryResponse }) {
+export function PerformanceTable({
+  data,
+  sort = DEFAULT_PROBE_SORT,
+  onSort = () => {},
+}: {
+  data: TelemetryResponse;
+  sort?: ProbeSort;
+  onSort?: (sort: ProbeSort) => void;
+}) {
   if (!data.enabled) return <Empty text={S.usage.perfOff} />;
-  const probes = orderProbes(data.probes ?? []);
+  const probes = sortProbes(data.probes ?? [], sort);
   if (probes.length === 0) return <Empty text={S.usage.perfEmpty} />;
   // A `web.*` probe is recorded by this page, so it is found in the page's own table, at the
   // page's commit; every other probe in the server's, which comes with the read.
@@ -97,11 +182,24 @@ export function PerformanceTable({ data }: { data: TelemetryResponse }) {
       <table className="w-full min-w-[560px] table-fixed text-xs">
         <thead className="text-left text-gray-400 dark:text-gray-500">
           <tr>
-            <Th>{S.usage.perfColName}</Th>
-            <Th className="w-20 text-right">{S.usage.perfColCount}</Th>
-            <Th className="w-24 text-right">p50</Th>
-            <Th className="w-24 text-right">p95</Th>
-            <Th className="w-24 text-right">{S.usage.perfColMax}</Th>
+            <SortTh label={S.usage.perfColName} column="name" sort={sort} onSort={onSort} />
+            {(
+              [
+                ["count", S.usage.perfColCount, "w-20"],
+                ["p50", "p50", "w-24"],
+                ["p95", "p95", "w-24"],
+                ["max", S.usage.perfColMax, "w-24"],
+              ] as const
+            ).map(([column, label, width]) => (
+              <SortTh
+                key={column}
+                label={label}
+                column={column}
+                sort={sort}
+                onSort={onSort}
+                className={`${width} text-right`}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -135,6 +233,7 @@ export function PerformanceTable({ data }: { data: TelemetryResponse }) {
 /** The panel: a Session filter and a refresh above the table. Mounted for an admin only (see the file header). */
 export function PerformancePanel() {
   const [session, setSession] = useState("");
+  const [sort, setSort] = useState<ProbeSort>(DEFAULT_PROBE_SORT);
   const [tick, setTick] = useState(0);
   const [data, setData] = useState<TelemetryResponse | null>(null);
   const [sessions, setSessions] = useState<TelemetrySessionSummary[]>([]);
@@ -211,7 +310,7 @@ export function PerformancePanel() {
       {error ? (
         <p className={`text-xs ${toneInk.danger}`}>{error}</p>
       ) : data ? (
-        <PerformanceTable data={data} />
+        <PerformanceTable data={data} sort={sort} onSort={setSort} />
       ) : null}
     </div>
   );
