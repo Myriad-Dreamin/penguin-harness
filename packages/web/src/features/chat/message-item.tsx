@@ -23,6 +23,7 @@ import { formatMessageTime } from "../../lib/format";
 import { splitAttachments } from "../../lib/attachments";
 import type { ChatItem, ReconnectItem } from "../../lib/omni/stream-model";
 import { MessageFilesCard } from "./message-files-card";
+import { ReplyTrailer } from "./reply-files-provider";
 import { MemoryChangesCard } from "./memory-changes-card";
 import { SessionThinking } from "./thinking-block";
 import { SessionToolCall } from "./tool-call-card";
@@ -305,21 +306,24 @@ export function MessageItem({ item, ctx }: { item: ChatItem; ctx: StreamRenderCo
       // which is more useful than copying segment by segment.
       // The body (Markdown, caret, the theme's reveal) is AssistantText; the stop reason and a
       // nested reply's files card follow the text once it is fully revealed.
+      // ReplyTrailer: a linked Workspace file's renderer below its paragraph (reply-files-provider.tsx).
       return (
-        <AssistantText text={item.text} streaming={item.streaming}>
-          {item.stopReason && item.stopReason !== "completed" && (
-            <span className="ml-1 font-mono text-xs text-gray-400">[{item.stopReason}]</span>
-          )}
-          {/* Nested models don't produce task_stats, so preserve their existing message-level file summaries. The root conversation renders one aggregated card from task_stats instead. */}
-          {ctx.origin.length > 0 && !item.streaming && ctx.onOpenFile && ctx.statFiles && (
-            <MessageFilesCard
-              text={item.text}
-              workspace={ctx.workspace ?? null}
-              statFiles={ctx.statFiles}
-              onOpenFile={ctx.onOpenFile}
-            />
-          )}
-        </AssistantText>
+        <ReplyTrailer>
+          <AssistantText text={item.text} streaming={item.streaming}>
+            {item.stopReason && item.stopReason !== "completed" && (
+              <span className="ml-1 font-mono text-xs text-gray-400">[{item.stopReason}]</span>
+            )}
+            {/* Nested models don't produce task_stats, so preserve their existing message-level file summaries. The root conversation renders one aggregated card from task_stats instead. */}
+            {ctx.origin.length > 0 && !item.streaming && ctx.onOpenFile && ctx.statFiles && (
+              <MessageFilesCard
+                text={item.text}
+                workspace={ctx.workspace ?? null}
+                statFiles={ctx.statFiles}
+                onOpenFile={ctx.onOpenFile}
+              />
+            )}
+          </AssistantText>
+        </ReplyTrailer>
       );
     case "thinking":
       return <SessionThinking item={item} />;

@@ -28,6 +28,7 @@ import {
 import { shellDeps } from "../src/shell/deps";
 import type { ShellDeps } from "../src/shell/deps";
 import { setSafeMode } from "../src/rescue/safe-mode";
+import { useFileRendererRules } from "../src/lib/file-renderers";
 import type { ShellPage } from "../src/shell";
 import { ThemeProvider } from "../src/state/theme";
 
@@ -68,7 +69,12 @@ const frame = (src: string) => ({ iframe: { src, namespace: "hello" } });
 
 /** An answer as the server might send it: entries the app must check, malformed ones included. */
 function answer(pages: readonly object[]): ContributionsResponse {
-  return { pages: pages as ContributionsResponse["pages"], agentTabs: [], sessionTabs: [] };
+  return {
+    pages: pages as ContributionsResponse["pages"],
+    fileRenderers: [],
+    agentTabs: [],
+    sessionTabs: [],
+  };
 }
 
 /** A fetch whose answers the test hands out by hand, in order. */
@@ -289,10 +295,11 @@ describe("safe mode", () => {
   function firstRender(): string {
     function Probe() {
       const pages = useShellPages();
+      const rules = useFileRendererRules();
       return createElement(
         "p",
         null,
-        `${pages.map((p) => p.key).join(",")} pending=${String(useShellPagesPending())}`,
+        `${pages.map((p) => p.key).join(",")} pending=${String(useShellPagesPending())} rules=${rules.length}`,
       );
     }
     const Root = shellDeps.provide({ pages: COMPILED } as unknown as ShellDeps, () =>
@@ -303,13 +310,13 @@ describe("safe mode", () => {
 
   it("skips every contribution: the table is the compiled one and nothing is in flight", () => {
     setSafeMode(true);
-    expect(firstRender()).toBe("<p>agents,terminal pending=false</p>");
+    expect(firstRender()).toBe("<p>agents,terminal pending=false rules=0</p>");
   });
 
   it("leaving it makes the signed-in user's request due again", () => {
     setSafeMode(true);
     firstRender();
     setSafeMode(false);
-    expect(firstRender()).toBe("<p>agents,terminal pending=true</p>");
+    expect(firstRender()).toBe("<p>agents,terminal pending=true rules=0</p>");
   });
 });

@@ -2067,6 +2067,7 @@ router
   // The demo server runs no plugin: nothing beyond the app's own pages.
   .get("/api/contributions", (): ContributionsResponse => ({
     pages: [],
+    fileRenderers: [],
     agentTabs: [],
     sessionTabs: [],
   }))

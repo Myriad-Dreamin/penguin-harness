@@ -89,7 +89,8 @@ import { MessagingDockPanel } from "../src/features/messaging/messaging-dock-pan
 import { ScheduleDockPanel } from "../src/features/schedules/schedule-dock-panel";
 import { BuiltinBrowserPanel } from "../src/features/builtin-browser/browser-panel";
 import { ChatModule } from "../src/features/chat/module";
-import { sessionTabsOf } from "../src/features/chat/deps";
+import { fileRenderersOf, sessionTabsOf } from "../src/features/chat/deps";
+import { AudioFile } from "../src/features/audio/audio-file";
 import { WorkflowSessionTab } from "../src/features/workflows/session-tab";
 
 let pages: readonly ShellPage[] = [];
@@ -101,6 +102,7 @@ let rows: RowExtensions | null = null;
 let sessionListSection: unknown = null;
 let dockPanels: readonly Contributed[] = [];
 let sessionTabs: readonly Contributed[] = [];
+let fileRenderers: readonly Contributed[] = [];
 
 /** The dock double's stand-in for the provider that carries the panel table. */
 function PanelTableDouble({ children }: { children: ReactNode }) {
@@ -154,6 +156,7 @@ beforeAll(async () => {
   const chat = Object.assign(new ChatModule(), {
     setup({ contributions }: ClassCtx) {
       sessionTabs = contributions.sessionTabs ?? [];
+      fileRenderers = contributions.fileRenderers ?? [];
       chat.page = () => null;
       chat.chat = {};
     },
@@ -373,5 +376,10 @@ describe("the booted chat slot", () => {
   it("the chat page receives the workflow tab strip", () => {
     expect(sessionTabsOf(sessionTabs).map(({ Tab }) => Tab)).toEqual([WorkflowSessionTab]);
     expect(sessionTabs.map((c) => c.from)).toEqual(["WorkflowsModule"]);
+  });
+
+  it("the chat page's file renderer registry holds the audio module's player as `audio`", () => {
+    expect([...fileRenderersOf(fileRenderers)]).toEqual([["audio", AudioFile]]);
+    expect(fileRenderers.map((c) => c.from)).toEqual(["AudioModule"]);
   });
 });

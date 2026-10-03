@@ -39,6 +39,7 @@ import { DockModule } from "./features/dock/module";
 import { WorkspaceModule } from "./features/workspace/module";
 import { TracesModule } from "./features/traces/module";
 import { TodosModule } from "./features/todos/module";
+import { AudioModule } from "./features/audio/module";
 
 @Module({
   children: [
@@ -65,6 +66,7 @@ import { TodosModule } from "./features/todos/module";
     TodosModule,
     WorkspaceModule,
     TracesModule,
+    AudioModule,
   ],
 })
 export class WebRoot {}

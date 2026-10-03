@@ -16,9 +16,14 @@
  * is nothing to draw it with. A compiled page wins over a contributed one with the same key or
  * path: a plugin adds pages here, it does not shadow the app's own.
  *
+ * The same answer carries file renderer rules: which Workspace file extensions take which of this
+ * build's named file renderers (lib/file-renderers.ts). Only `builtin` renderers are read; a file
+ * renderer drawn in an iframe has no contributor yet and no agreed size inside a reply, so such a
+ * rule is skipped like any malformed one.
+ *
  * Safe mode (rescue/safe-mode.ts) is the one switch over all of it: while it is on, the store is
- * told nobody is signed in, so nothing is asked and the table is the compiled one; leaving it
- * asks again.
+ * told nobody is signed in, so nothing is asked, the table is the compiled one and there are no
+ * file renderer rules; leaving it asks again.
  */
 import {
   createContext,
@@ -31,6 +36,8 @@ import {
 import type { ReactNode } from "react";
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
+import { FileRendererRulesContext } from "../lib/file-renderers";
+import type { FileRendererRule } from "../lib/file-renderers";
 import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -146,6 +153,34 @@ export function contributedPagesOf(
   return out;
 }
 
+/**
+ * The answer's file renderer rules this build can read, in the server's order: extensions are
+ * strings, dropped of a leading dot and lowercased (empty ones dropped), and the renderer is a
+ * `builtin` name. Anything else — no extensions left, an iframe renderer, a missing field, an
+ * answer from a server that sends no such list — is skipped. Whether the name is in this build's
+ * registry is the conversation's question, not this one's.
+ */
+export function fileRendererRulesOf(
+  answer: ContributionsResponse | null,
+): readonly FileRendererRule[] {
+  const entries: unknown = answer?.fileRenderers;
+  if (!Array.isArray(entries)) return NO_RULES;
+  const rules: FileRendererRule[] = [];
+  for (const entry of entries as Array<Record<string, unknown> | null>) {
+    if (entry === null || typeof entry !== "object" || typeof entry.id !== "string") continue;
+    const builtin = (entry.renderer as { builtin?: unknown } | undefined)?.builtin;
+    if (typeof builtin !== "string" || builtin === "" || !Array.isArray(entry.extensions)) continue;
+    const extensions = (entry.extensions as unknown[])
+      .filter((e): e is string => typeof e === "string")
+      .map((e) => e.replace(/^\./, "").toLowerCase())
+      .filter((e) => e !== "");
+    if (extensions.length > 0) rules.push({ id: entry.id, extensions, builtin });
+  }
+  return rules;
+}
+
+const NO_RULES: readonly FileRendererRule[] = [];
+
 interface ShellPagesValue {
   pages: readonly ShellPage[];
   pending: boolean;
@@ -153,7 +188,10 @@ interface ShellPagesValue {
 
 const PagesContext = createContext<ShellPagesValue | null>(null);
 
-/** Holds the signed-in user's contributions and the merged page table, for everything under the router. */
+/**
+ * Holds the signed-in user's contributions — the merged page table and the file renderer rules —
+ * for everything under the router.
+ */
 export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const { pages: compiled } = shellDeps.useDeps();
   const signedIn = useAuth().user?.userId ?? null;
@@ -170,7 +208,14 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
     () => ({ pages: parentedPagesOf(contributedPagesOf(compiled, answer)), pending }),
     [compiled, answer, pending],
   );
-  return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
+  const rules = useMemo(() => fileRendererRulesOf(answer), [answer]);
+  return (
+    <PagesContext.Provider value={value}>
+      <FileRendererRulesContext.Provider value={rules}>
+        {children}
+      </FileRendererRulesContext.Provider>
+    </PagesContext.Provider>
+  );
 }
 
 function usePagesValue(): ShellPagesValue {
