@@ -5,7 +5,7 @@ import type { ChatDockState } from "./main-dock-context";
 import { terminalApiSupported } from "../../terminal";
 import type { useMainChatActions } from "./main-chat-actions";
 
-/** Exact consecutive main ChatPage statements 164..169; called once, in original order. */
+/** Exact consecutive main ChatPage statements 165..170; called once, in original order. */
 export function useMainChatDock(scope: ReturnType<typeof useMainChatActions>) {
   const {
     navigate,

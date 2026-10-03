@@ -11,7 +11,7 @@ import { useSessionDraft } from "../use-session-draft";
 import { useSessionStream } from "../use-session-stream";
 import type { useMainChatRouting } from "./main-chat-routing";
 
-/** Exact consecutive main ChatPage statements 61..74; called once, in original order. */
+/** Exact consecutive main ChatPage statements 62..75; called once, in original order. */
 export function useMainChatTranscript(scope: ReturnType<typeof useMainChatRouting>) {
   const { projectId, setTitle, routeSessionId, selected } = scope;
 
