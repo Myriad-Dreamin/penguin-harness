@@ -1,5 +1,5 @@
 /**
- * The sidebar's nav entries and how they fold (lib/nav-group-collapse.ts): every entry — New
+ * The sidebar's nav entries and how they fold (shell/sidebar/nav-state.ts): every entry — New
  * chat, then the viewer's pages — is pinned (always shown) or collapsible (inside the area the
  * chevron folds away), and the fold and the pin choices each persist in one global
  * localStorage key.
@@ -36,8 +36,8 @@ import {
   storeNavPinOverrides,
   visibleNavKeys,
   withNavPinned,
-} from "../src/lib/nav-group-collapse";
-import type { NavCollapseStorage, NavPage, NavPinOverrides } from "../src/lib/nav-group-collapse";
+} from "../src/shell/sidebar/nav-state";
+import type { NavCollapseStorage, NavPage, NavPinOverrides } from "../src/shell/sidebar/nav-state";
 import { zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import { blockedStorage, memoryStorage } from "./helpers/storage";

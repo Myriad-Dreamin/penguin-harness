@@ -24,41 +24,41 @@ import {
   UpdateDot,
   UserAvatar,
 } from "@prismshadow/penguin-ui";
-import * as api from "../../api/endpoints";
-import { nagsAboutInitialPassword } from "../../lib/account-menu";
-import { S } from "../../lib/strings";
-import { onCommand } from "../../lib/shortcuts/dispatcher";
-import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
-import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
-import { navKeysFor } from "../../lib/nav-group-collapse";
-import { navPagesOf, useShellLayers, useShellPages } from "../../shell";
-import { navNoteFor, useUpdateBadges } from "../../features/todos";
-import { useAuth } from "../../state/auth";
-import { useProject } from "../../state/project";
-import { useSessions } from "../../state/sessions";
-import { useCompletionNotifications } from "../../state/use-completion-notifications";
-import { useTrayLocale } from "../../state/use-tray-locale";
-import { NAV_ICONS } from "../../lib/nav-icons";
-import { useCompany } from "../../features/company";
-import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
-import { ChannelRailRows, DefaultChannelRailRow } from "../../features/company/channel-sidebar";
-import { DeskRailRows, TempSessionRailRows } from "../../features/company/org-session-groups";
+import * as api from "../api/endpoints";
+import { nagsAboutInitialPassword } from "../lib/account-menu";
+import { S } from "../lib/strings";
+import { onCommand } from "../lib/shortcuts/dispatcher";
+import { useShortcutTitle } from "../lib/shortcuts/use-keymap";
+import { latestConversation, withoutOrgSessions } from "../lib/session-grouping";
+import { navKeysFor } from "./sidebar/nav-state";
+import { navPagesOf, useShellLayers, useShellPages } from "./index";
+import { navNoteFor, useUpdateBadges } from "../features/todos";
+import { useAuth } from "../state/auth";
+import { useProject } from "../state/project";
+import { useSessions } from "../state/sessions";
+import { useCompletionNotifications } from "../state/use-completion-notifications";
+import { useTrayLocale } from "../state/use-tray-locale";
+import { NAV_ICONS } from "../lib/nav-icons";
+import { useCompany } from "../features/company";
+import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../features/company/company-nav-icons";
+import { ChannelRailRows, DefaultChannelRailRow } from "../features/company/channel-sidebar";
+import { DeskRailRows, TempSessionRailRows } from "../features/company/org-session-groups";
 import {
   COMPANY_NAV_KEYS,
   ORG_PAGE_RENDERERS,
   orgPagePath,
   orgPageRows,
   parseOrgKey,
-} from "../../features/company/company-nav";
-import { useOrgPages } from "../../features/company/use-org-pages";
-import { NEW_CHAT_ICON, Sidebar } from "./sidebar";
-import { UserMenu } from "./user-menu";
-import { isCurrentPath, renderRouterLink } from "./router-link";
-import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
-import { useNewChat } from "../../features/chat/use-new-chat";
-import { ChangePasswordDialog } from "../account/change-password-dialog";
-import { AppInfoDialog } from "../account/app-info-dialog";
-import { setDockScope } from "../../features/dock/dock-state";
+} from "../features/company/company-nav";
+import { useOrgPages } from "../features/company/use-org-pages";
+import { NEW_CHAT_ICON, Sidebar } from "./sidebar/sidebar";
+import { UserMenu } from "./sidebar/user-menu";
+import { isCurrentPath, renderRouterLink } from "./sidebar/router-link";
+import { DRAFT_SESSION_ID } from "../features/chat/chat-page";
+import { useNewChat } from "../features/chat/use-new-chat";
+import { ChangePasswordDialog } from "../components/account/change-password-dialog";
+import { AppInfoDialog } from "../components/account/app-info-dialog";
+import { setDockScope } from "../features/dock/dock-state";
 
 /**
  * Whether the pinned sidebar (or its rail) is on screen: the shell's navigation column is
