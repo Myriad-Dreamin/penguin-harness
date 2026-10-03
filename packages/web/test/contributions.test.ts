@@ -90,6 +90,7 @@ function answer(pages: readonly object[]): ContributionsResponse {
   return {
     pages: pages as ContributionsResponse["pages"],
     fileRenderers: [],
+    pageRemovals: [],
     agentTabs: [],
     sessionTabs: [],
     quickStarts: [],
