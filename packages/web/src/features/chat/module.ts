@@ -1,6 +1,6 @@
-/** The chat page. */
+/** The chat page: the conversation, or a surface Session's page (chat-route.tsx). */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
-import { ChatPage } from "./chat-page";
+import { ChatRoute } from "./chat-route";
 
 @Module({
   contributes: {
@@ -19,5 +19,5 @@ import { ChatPage } from "./chat-page";
   },
 })
 export class ChatModule {
-  @Bind("chat.page") page = ChatPage;
+  @Bind("chat.page") page = ChatRoute;
 }
