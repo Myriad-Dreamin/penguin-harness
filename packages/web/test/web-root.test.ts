@@ -24,9 +24,11 @@
  *   files".
  * - The dock receives the seven panels in their menu order — agents and memory from chat, the
  *   files from workspace, the trace, messaging, schedules and the built-in browser from theirs —
- *   with the names the dictionary held and a glyph in the icon registry; the panel table reaches
- *   the docks as the innermost provider of the signed-in session.
+ *   with the names the dictionary held and a glyph in the icon registry, which the dock module
+ *   registers in its panel registry at boot.
+ * - The chat page receives the workflow tab strip beside the conversation.
  */
+import type { ReactElement } from "react";
 import { bootModules, moduleDefOf } from "@prismshadow/penguin-core/kernel";
 import type {
   ClassCtx,
@@ -100,6 +102,9 @@ import { MessagingDockPanel } from "../src/features/messaging/messaging-dock-pan
 import { ScheduleDockPanel } from "../src/features/schedules/schedule-dock-panel";
 import { BuiltinBrowserModule } from "../src/features/builtin-browser/module";
 import type { DockPanelData } from "../src/features/dock/iface";
+import { ChatModule } from "../src/features/chat/module";
+import { sessionTabsOf } from "../src/features/chat/deps";
+import { WorkflowSessionTab } from "../src/features/workflows/session-tab";
 
 let pages: readonly ShellPage[] = [];
 let sessionProviders: readonly Contributed[] = [];
@@ -109,15 +114,16 @@ let sidebarSlots: Readonly<Record<string, readonly Contributed[]>> = {};
 let rows: RowExtensions | null = null;
 let sessionListSection: unknown = null;
 let dockPanels: readonly Contributed[] = [];
+let sessionTabs: readonly Contributed[] = [];
 
 /** A slot's code halves in the order the shell mounts them. */
 const codeByOrder = (list: readonly Contributed[]): unknown[] =>
   [...list].sort((a, b) => (a.data.order as number) - (b.data.order as number)).map((c) => c.code);
 
 /**
- * Boots the real tree as bootWeb does, with the shell, the sidebar, the session list and the dock
- * standing in by doubles that keep their slots' contributions instead of binding them into components
- * (which need a browser to render).
+ * Boots the real tree as bootWeb does, with the shell, the sidebar, the session list, the dock and
+ * the chat page standing in by doubles that keep their slots' contributions instead of binding
+ * them into components (which need a browser to render).
  */
 beforeAll(async () => {
   const shell = Object.assign(new ShellModule(), {
@@ -153,6 +159,12 @@ beforeAll(async () => {
       dock.dock = {};
     },
   });
+  const chat = Object.assign(new ChatModule(), {
+    setup(ctx: ClassCtx) {
+      sessionTabs = ctx.contributions.sessionTabs ?? [];
+      ChatModule.prototype.setup.call(chat, ctx);
+    },
+  });
   await bootModules(
     moduleDefOf(WebRoot, {
       manifests: table.modules as unknown as ManifestTable,
@@ -161,6 +173,7 @@ beforeAll(async () => {
         [SidebarModule, sidebar],
         [SessionListModule, sessionList],
         [DockModule, dock],
+        [ChatModule, chat],
       ]),
     }),
     {
@@ -235,7 +248,10 @@ describe("the booted page table", () => {
 
   it("routes chat, the dashboard and one machine's ports through their modules", () => {
     const page = (key: string) => pages.find((p) => p.key === key);
-    expect(page("chat")?.Component).toBe(ChatRoute);
+    // Chat binds its page under its deps' provider (lib/module-deps.tsx), wrapping the route.
+    const chatRoot = page("chat")?.Component as
+      ((props: object) => ReactElement<{ children: ReactElement }>) | undefined;
+    expect(chatRoot?.({}).props.children.type).toBe(ChatRoute);
     expect(page("dashboard")).toMatchObject({ path: "/dashboard", frame: "shell", nav: "none" });
     expect(page("dashboard")?.admin).toBe(false);
     expect(page("dashboard")?.Component).toBe(DashboardPage);
@@ -411,5 +427,12 @@ describe("the booted dock slot", () => {
       schedules: "SchedulesModule",
       "builtin-browser": "BuiltinBrowserModule",
     });
+  });
+});
+
+describe("the booted chat slot", () => {
+  it("the chat page receives the workflow tab strip", () => {
+    expect(sessionTabsOf(sessionTabs).map(({ Tab }) => Tab)).toEqual([WorkflowSessionTab]);
+    expect(sessionTabs.map((c) => c.from)).toEqual(["WorkflowsModule"]);
   });
 });
