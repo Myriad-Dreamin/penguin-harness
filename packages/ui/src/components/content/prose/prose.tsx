@@ -24,7 +24,9 @@
  * it by specificity, whichever of the two a bundle happens to emit first.
  *
  * Links open in a new tab unless a `ProseLinksProvider` above decides otherwise — the Web App's
- * conversation sends a link to a Workspace file to its Files panel that way.
+ * conversation sends a link to a Workspace file to its Files panel that way. A
+ * `ProseBlockTrailerProvider` above may add something below a paragraph or a list item from the
+ * links inside it, once the text has settled (block-trailer.tsx).
  *
  * Two optional props open the renderer to a surface with its own nodes — the channel message body,
  * which keeps `@mentions` as chips — without a second copy of the pipeline drifting from this one.
@@ -38,6 +40,7 @@ import type { Components, ExtraProps, Options } from "react-markdown";
 import { A2uiBlock } from "../a2ui/a2ui-block";
 import { MermaidBlock } from "../a2ui/mermaid-block";
 import { CodeBlock } from "../code-block/code-block";
+import { MdListItem, MdParagraph } from "./block-trailer";
 import { NO_REHYPE_PLUGINS, REHYPE_PLUGINS, REMARK_PLUGINS } from "./markdown-plugins";
 import "katex/dist/katex.min.css";
 import "./prose.css";
@@ -144,7 +147,8 @@ function MdLink({
  * closes over, so one frozen map per value is enough; the single flip between them happens on
  * the settle render, which re-parses the message anyway — the same render the rehype stage
  * flips on. The `a` adapter closes over nothing — its resolver comes from context, not from a
- * closure — so both maps share the one `MdLink` reference.
+ * closure — so both maps share the one `MdLink` reference. The block adapters, which add a
+ * block trailer, are in the settled map alone: a trailer is never asked about a half-written link.
  */
 const STREAMING_COMPONENTS: Components = {
   pre: (props) => <MdPre streaming>{props.children}</MdPre>,
@@ -153,6 +157,8 @@ const STREAMING_COMPONENTS: Components = {
 const SETTLED_COMPONENTS: Components = {
   pre: (props) => <MdPre streaming={false}>{props.children}</MdPre>,
   a: MdLink,
+  p: MdParagraph,
+  li: MdListItem,
 };
 
 /**
