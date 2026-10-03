@@ -47,10 +47,10 @@ import {
 import type { ForwardFact, ShellSession } from "./ssh-session.js";
 import { dialThroughSocks } from "./socks.js";
 import { inLane } from "./lane.js";
-import { tallyHandshake, timingsSink } from "./timings.js";
 import { scpArgs, sshArgs } from "../commands.js";
 import type { ExecResult } from "./exec.js";
 import type { ForwardSpec, RemoteTarget } from "../commands.js";
+import { timedDial } from "./timings.js";
 
 /**
  * The verbs a caller speaks to a machine with — what install-server.ts is written against,
@@ -132,17 +132,10 @@ export class MachineConnection implements MachineChannel {
   async dial(remotePort: number): Promise<net.Socket> {
     const opened = await this.open();
     if (!opened.ok) throw new Error(opened.detail);
-    // Timed from here, not from the ask: bringing the session up is `machine.ssh.open`'s.
-    const t0 = timingsSink() === null ? null : performance.now();
-    if (t0 === null) return dialThroughSocks(opened.session.socksPort, "127.0.0.1", remotePort);
-    try {
-      const socket = await dialThroughSocks(opened.session.socksPort, "127.0.0.1", remotePort);
-      tallyHandshake(this.address, performance.now() - t0, true);
-      return socket;
-    } catch (err) {
-      tallyHandshake(this.address, performance.now() - t0, false);
-      throw err;
-    }
+    // Timed from here, not from the ask: bringing the session up is the connect's `hold` stage.
+    return timedDial(this.address, () =>
+      dialThroughSocks(opened.session.socksPort, "127.0.0.1", remotePort),
+    );
   }
 
   /** An http.Agent whose every socket is a dial through the session — for node:http callers. */

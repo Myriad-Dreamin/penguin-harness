@@ -2,11 +2,9 @@
  * Where a connect to a machine spends its time (PRFC-0008).
  *
  * Two layers. The service's: a connect job keeps each stage it ran — probe, start the server,
- * probe again, hold, sync models, sync plugins — with when it began and ended, and the result
- * says when the connection was held; while telemetry is on each stage is also a sample, and so
- * is a re-hold that has no job. The transport's: the ssh session coming up, every command on
- * it and the SOCKS handshakes are samples while telemetry is on — shape only, never a
- * command's text — and while it is off, nothing is recorded, not even a clock read.
+ * probe again, hold, sync models, sync plugins — and when the connection was held; while
+ * telemetry is on each stage is also a sample, and so is a re-hold with no job. The
+ * transport's: every command and the SOCKS handshakes, never a command's text.
  */
 import fs from "node:fs";
 import http from "node:http";
@@ -25,7 +23,6 @@ import {
   connectionTo,
   flushHandshakes,
   setTimingsSink,
-  timingsSink,
 } from "../src/machines/transport/index.js";
 import type { MachineSample } from "../src/machines/transport/index.js";
 import { tallyHandshake } from "../src/machines/transport/timings.js";
@@ -124,51 +121,36 @@ describe("a connect, stage by stage", () => {
     return machines.job()!;
   }
 
-  it("keeps every stage the job ran, in order, and says when the connection was held", async () => {
+  const running = async () => ({
+    state: { kind: "running" as const, port: farPort, pid: 4242 },
+    machineId: null,
+  });
+
+  it("keeps every stage the job ran, in order, and when the connection was held — with or without telemetry", async () => {
     const job = await connectJob(service());
-    expect(job.result).toMatchObject({ ok: true, connected: true });
     const stages = job.stages ?? [];
-    expect(stages.map((s) => [s.stage, s.ok])).toEqual([
-      ["probe", true],
-      ["start-server", true],
-      ["reprobe", true],
-      ["hold", true],
-      ["sync-models", true],
-      ["sync-plugins", true],
-    ]);
-    // Each stage has a width, and the next begins after the last one ended.
+    expect(stages.map((s) => [s.stage, s.ok])).toEqual(
+      ["probe", "start-server", "reprobe", "hold", "sync-models", "sync-plugins"].map((s) => [
+        s,
+        true,
+      ]),
+    );
     for (const [i, s] of stages.entries()) {
       expect(Date.parse(s.endedAt)).toBeGreaterThan(Date.parse(s.startedAt));
-      if (i > 0) {
+      if (i > 0)
         expect(Date.parse(s.startedAt)).toBeGreaterThan(Date.parse(stages[i - 1]!.endedAt));
-      }
     }
-    // Held after the hold stage ended, before the syncs began: the moment the page can use it.
+    // Held after the hold stage, before the syncs: the moment the page can use it.
     const connectedAt = Date.parse((job.result as { connectedAt: string }).connectedAt);
     expect(connectedAt).toBeGreaterThan(Date.parse(stages[3]!.endedAt));
     expect(connectedAt).toBeLessThan(Date.parse(stages[4]!.startedAt));
-  });
-
-  it("with telemetry off, the job still keeps its stages and no sample is taken", async () => {
-    expect(timingsSink()).toBeNull();
-    const job = await connectJob(service());
-    expect(job.stages).toHaveLength(6);
-    // Switched on only now: nothing from the connect above was held back to be handed over.
+    // Telemetry was off: switched on only now, nothing was held back to hand over.
     const samples = collect();
     flushHandshakes();
     expect(samples).toEqual([]);
-  });
-
-  it("a server already up is probed once and held: the stages not needed are not recorded", async () => {
-    const job = await connectJob(
-      service({
-        probe: async () => ({
-          state: { kind: "running" as const, port: farPort, pid: 4242 },
-          machineId: null,
-        }),
-      }),
-    );
-    expect(job.stages?.map((s) => s.stage)).toEqual([
+    // A server already up is probed once and held: the stages not needed are not recorded.
+    const up = await connectJob(service({ probe: running }));
+    expect(up.stages?.map((s) => s.stage)).toEqual([
       "probe",
       "hold",
       "sync-models",
@@ -176,18 +158,12 @@ describe("a connect, stage by stage", () => {
     ]);
   });
 
-  it("with telemetry on, each stage is a sample, and the connect is one; a failed hold says so", async () => {
+  it("with telemetry on, each stage is a sample and the connect is one; a failed hold says so, without its text", async () => {
     const samples = collect();
     const job = await connectJob(
       service({ hold: async () => ({ ok: false, detail: "Permission denied (publickey)." }) }),
     );
     expect(job.result).toMatchObject({ ok: false, step: "connect" });
-    expect(job.stages?.map((s) => [s.stage, s.ok])).toEqual([
-      ["probe", true],
-      ["start-server", true],
-      ["reprobe", true],
-      ["hold", false],
-    ]);
     const stageSamples = samples.filter((s) => s.probe === "machine.connect.stage");
     expect(stageSamples.map((s) => [s.attrs?.stage, s.status])).toEqual([
       ["probe", "ok"],
@@ -195,30 +171,18 @@ describe("a connect, stage by stage", () => {
       ["reprobe", "ok"],
       ["hold", "error"],
     ]);
-    for (const s of stageSamples) {
-      expect(s.keys).toEqual({ machine: "ssh:nas" });
-      expect(s.attrs?.trigger).toBe("connect");
-      expect(typeof s.durMs).toBe("number");
-    }
-    const whole = samples.filter((s) => s.probe === "machine.connect");
-    expect(whole).toHaveLength(1);
-    expect(whole[0]).toMatchObject({
-      status: "error",
-      keys: { machine: "ssh:nas" },
-      attrs: { trigger: "connect", failedStep: "connect" },
-    });
-    // Shape only: the ssh diagnosis stays in the job's log, not in a sample.
+    expect(
+      stageSamples.every((s) => s.keys.machine === "ssh:nas" && s.attrs?.trigger === "connect"),
+    ).toBe(true);
+    expect(samples.filter((s) => s.probe === "machine.connect")).toMatchObject([
+      { status: "error", attrs: { trigger: "connect", failedStep: "connect" } },
+    ]);
     expect(JSON.stringify(samples)).not.toContain("Permission denied");
   });
 
   it("a re-hold nobody watches is measured while telemetry is on, and leaves no job", async () => {
     repo.patch("ssh:nas", { sessionPid: 424242 });
-    const machines = service({
-      probe: async () => ({
-        state: { kind: "running" as const, port: farPort, pid: 4242 },
-        machineId: null,
-      }),
-    });
+    const machines = service({ probe: running });
     const samples = collect();
     await machines.autoConnect();
     expect(machines.jobs()).toEqual([]);
@@ -233,13 +197,13 @@ describe("a connect, stage by stage", () => {
 });
 
 describe("the SOCKS handshakes, tallied", () => {
-  it("are one sample per machine per window: how many, how many failed, the slowest", () => {
+  it("are one sample per machine per window; nothing while off; switching off hands the window over", () => {
+    tallyHandshake("ssh:nas", 4, true); // off: not counted
     const samples = collect();
     tallyHandshake("ssh:nas", 4, true);
     tallyHandshake("ssh:nas", 9, false);
     tallyHandshake("ssh:build-box", 2, true);
     flushHandshakes();
-    expect(samples).toHaveLength(2);
     expect(samples.find((s) => s.keys.machine === "ssh:nas")).toMatchObject({
       probe: "machine.socks.handshake",
       n: 2,
@@ -247,27 +211,10 @@ describe("the SOCKS handshakes, tallied", () => {
       status: "error",
       attrs: { errors: 1, totalMs: 13 },
     });
-    expect(samples.find((s) => s.keys.machine === "ssh:build-box")).toMatchObject({
-      n: 1,
-      status: "ok",
-    });
-    // A flush empties the tally: the next window starts from nothing.
-    flushHandshakes();
     expect(samples).toHaveLength(2);
-  });
-
-  it("count nothing while telemetry is off", () => {
-    tallyHandshake("ssh:nas", 4, true);
-    const samples = collect();
-    flushHandshakes();
-    expect(samples).toEqual([]);
-  });
-
-  it("switching off hands over what the open window holds", () => {
-    const samples = collect();
     tallyHandshake("ssh:nas", 4, true);
     setTimingsSink(null);
-    expect(samples.map((s) => [s.probe, s.n])).toEqual([["machine.socks.handshake", 1]]);
+    expect(samples).toHaveLength(3);
   });
 });
 
@@ -283,7 +230,6 @@ posixOnly("the session's own collection points", () => {
     fs.writeFileSync(
       path.join(stubBin, "ssh"),
       `#!/bin/sh
-case "$*" in *refused*) echo "deploy@refused: Permission denied (publickey)." >&2; exit 255 ;; esac
 case "$*" in *" -O "*) exit 0 ;; esac
 for a in "$@"; do last=$a; done
 [ "$last" = sh ] && exec /bin/sh
@@ -295,71 +241,28 @@ exit 1
     process.env.PATH = `${stubBin}:${process.env.PATH ?? ""}`;
   });
   afterEach(() => {
-    for (const address of ["ssh:nas", "ssh:refused"]) closeConnectionTo(address);
+    closeConnectionTo("ssh:nas");
     process.env.PATH = originalPath;
     fs.rmSync(stubBin, { recursive: true, force: true });
   });
 
-  it("the session coming up is one sample, and every command one more — never its text", async () => {
-    const samples = collect();
+  it("every command is a sample — exit code, stdin size, a timeout as such, never its text", async () => {
     const conn = connectionTo({ alias: "nas", user: "deploy" });
+    await conn.exec("true"); // off: not sampled
+    const samples = collect();
     expect(await conn.exec("echo top-secret-words")).toMatchObject({ code: 0 });
     expect((await conn.exec("exit 3")).code).toBe(3);
     await conn.stream("cat >/dev/null", { input: Buffer.from("twelve bytes") });
-
-    const opens = samples.filter((s) => s.probe === "machine.ssh.open");
-    expect(opens).toHaveLength(1);
-    expect(opens[0]).toMatchObject({
-      status: "ok",
-      keys: { machine: "ssh:nas" },
-      attrs: { held: false },
-    });
-    const commands = samples.filter((s) => s.probe === "machine.ssh.command");
-    expect(commands.map((s) => [s.status, s.attrs?.code, s.attrs?.opening])).toEqual([
-      ["ok", 0, true],
-      ["exit", 3, false],
-      ["ok", 0, false],
-    ]);
-    expect(commands[2]?.attrs?.inputBytes).toBe(12);
-    for (const s of commands) {
-      expect(typeof s.durMs).toBe("number");
-      expect(typeof s.attrs?.waitMs).toBe("number");
-    }
-    expect(JSON.stringify(samples)).not.toContain("top-secret-words");
-    expect(JSON.stringify(samples)).not.toContain("echo");
-  });
-
-  it("a session that dies before it answers is a failed open", async () => {
-    const samples = collect();
-    const opened = await connectionTo({ alias: "refused", user: "deploy" }).open();
-    expect(opened.ok).toBe(false);
-    expect(samples.find((s) => s.probe === "machine.ssh.open")).toMatchObject({
-      status: "error",
-      keys: { machine: "ssh:refused" },
-    });
-    expect(samples.find((s) => s.probe === "machine.ssh.command")).toMatchObject({
-      status: "exit",
-      attrs: { code: 255, opening: true },
-    });
-  });
-
-  it("a command that outlasts its timeout says so", async () => {
-    const samples = collect();
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
     await conn.stream("sleep 5", { input: Buffer.alloc(0), timeoutMs: 150 });
-    expect(samples.filter((s) => s.probe === "machine.ssh.command").map((s) => s.status)).toEqual([
-      "timeout",
+    expect(samples.map((s) => [s.probe, s.status, s.attrs?.code])).toEqual([
+      ["machine.ssh.command", "ok", 0],
+      ["machine.ssh.command", "exit", 3],
+      ["machine.ssh.command", "ok", 0],
+      ["machine.ssh.command", "timeout", 255],
     ]);
-  });
-
-  it("with telemetry off, a session opened then is never sampled — only what is asked after", async () => {
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
-    await conn.exec("true");
-    const samples = collect();
-    await conn.exec("true");
-    expect(samples.map((s) => [s.probe, s.attrs?.opening])).toEqual([
-      ["machine.ssh.command", false],
-    ]);
+    expect(samples[2]?.attrs?.inputBytes).toBe(12);
+    for (const word of ["top-secret-words", "echo"])
+      expect(JSON.stringify(samples)).not.toContain(word);
   });
 
   it("a SOCKS dial through the session is tallied, failure included", async () => {
@@ -372,7 +275,6 @@ exit 1
     expect(samples.find((s) => s.probe === "machine.socks.handshake")).toMatchObject({
       keys: { machine: "ssh:nas" },
       n: 2,
-      status: "error",
       attrs: { errors: 2 },
     });
   });

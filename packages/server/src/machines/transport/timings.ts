@@ -20,7 +20,7 @@
 export interface MachineSample {
   /** When it was recorded, epoch ms. */
   ts: number;
-  /** The collection point, named for its layer: `machine.ssh.open`, `machine.connect.stage`, … */
+  /** The collection point, named for its layer: `machine.ssh.command`, `machine.connect.stage`, … */
   probe: string;
   durMs?: number;
   n?: number;
@@ -121,4 +121,51 @@ export function flushHandshakes(): void {
 /** Milliseconds to a tenth: a sample is read by a person, and sub-ms digits are noise. */
 export function round(ms: number): number {
   return Math.round(ms * 10) / 10;
+}
+
+/** A SOCKS dial, tallied into its machine's handshake window; while telemetry is off, just dials. */
+export async function timedDial<T>(machine: string, dial: () => Promise<T>): Promise<T> {
+  if (timingsSink() === null) return dial();
+  const start = performance.now();
+  try {
+    const socket = await dial();
+    tallyHandshake(machine, performance.now() - start, true);
+    return socket;
+  } catch (err) {
+    tallyHandshake(machine, performance.now() - start, false);
+    throw err;
+  }
+}
+
+/** A command's answer when the machine said nothing before its timeout. */
+export const NO_ANSWER = "the machine did not answer in time";
+
+/**
+ * One command on a machine's session, as a `machine.ssh.command` sample: from the ask to the
+ * answer (its wait behind the session's other commands included), its exit code and how much it
+ * carried on stdin — never its text, which names paths. While telemetry is off, just runs it.
+ */
+export function timedCommand<R extends { code: number; output: string }>(
+  machine: string,
+  inputBytes: number,
+  run: () => Promise<R>,
+): Promise<R> {
+  if (timingsSink() === null) return run();
+  const start = performance.now();
+  return run().then((result) => {
+    emit({
+      ts: Date.now(),
+      probe: "machine.ssh.command",
+      durMs: round(performance.now() - start),
+      status:
+        result.code === 0
+          ? "ok"
+          : result.code === 255 && result.output === NO_ANSWER
+            ? "timeout"
+            : "exit",
+      keys: { machine },
+      attrs: { code: result.code, inputBytes },
+    });
+    return result;
+  });
 }

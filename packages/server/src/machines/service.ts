@@ -1299,35 +1299,26 @@ export class MachinesService {
     /** The connect this sync is a stage of, which times it; none for a sync on its own. */
     clock?: ConnectClock,
   ): Promise<void> {
+    const stage = <T>(name: "sync-models" | "sync-plugins", work: () => Promise<T>): Promise<T> =>
+      clock === undefined
+        ? work()
+        : clock.stage(name, work, (o) => (o as { kind?: string }).kind !== "failed");
     if (projects.length === 0) {
       say("No models synced — no Project on this server uses that machine.");
       return;
     }
-    const stage = <T>(
-      name: "sync-models" | "sync-plugins",
-      work: () => Promise<T>,
-      ok: (value: T) => boolean,
-    ): Promise<T> => (clock === undefined ? work() : clock.stage(name, work, ok));
-    // The session is minted inside the models' stage: it is the first thing that sync costs.
-    const models = await stage(
-      "sync-models",
-      async () => {
-        const session = await this.#sessionOn(target);
-        if (!("cookie" in session)) return { minted: false as const, detail: session.detail };
-        const outcome = await syncModelsToMachine({
-          api: machineApi(this.#effects.agent(target, port), port, session.cookie),
-          loadLocal: (projectId) => this.#localModels(projectId),
-          projects,
-        });
-        return { minted: true as const, session, outcome };
-      },
-      (answer) => answer.minted && answer.outcome.kind !== "failed",
-    );
-    if (!models.minted) {
-      say(`Models not synced — ${models.detail}`);
+    const session = await this.#sessionOn(target);
+    if (!("cookie" in session)) {
+      say(`Models not synced — ${session.detail}`);
       return;
     }
-    const { session, outcome } = models;
+    const outcome = await stage("sync-models", () =>
+      syncModelsToMachine({
+        api: machineApi(this.#effects.agent(target, port), port, session.cookie),
+        loadLocal: (projectId) => this.#localModels(projectId),
+        projects,
+      }),
+    );
     if (outcome.kind === "failed") {
       say(`Models not synced — ${outcome.detail}`);
       return;
@@ -1340,18 +1331,15 @@ export class MachinesService {
     // Same session, same Projects: a plugin a Project asks for has to be loaded on the
     // machine that will run its Sessions, and enabling it once per machine by hand is not
     // a path this product has (PRFC-0010).
-    const plugins = await stage(
-      "sync-plugins",
-      () =>
-        syncPluginsToMachine({
-          api: machineApi(this.#effects.agent(target, port), port, session.cookie),
-          // Asked of THIS machine: its own table joins the shared one, keyed by the id its server
-          // minted — null (no server there has reported one) reads the shared table alone.
-          loadLocal: (projectId) =>
-            this.#localPlugins(projectId, this.repo.get(address)?.machineId ?? null),
-          projects,
-        }),
-      (outcome) => outcome.kind !== "failed",
+    const plugins = await stage("sync-plugins", () =>
+      syncPluginsToMachine({
+        api: machineApi(this.#effects.agent(target, port), port, session.cookie),
+        // Asked of THIS machine: its own table joins the shared one, keyed by the id its server
+        // minted — null (no server there has reported one) reads the shared table alone.
+        loadLocal: (projectId) =>
+          this.#localPlugins(projectId, this.repo.get(address)?.machineId ?? null),
+        projects,
+      }),
     );
     if (plugins.kind === "failed") {
       say(`Plugins not synced — ${plugins.detail}`);
