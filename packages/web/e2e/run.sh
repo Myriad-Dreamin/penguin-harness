@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end verification (Playwright + mock LLM): build core/server/web and the example plugin ->
+# End-to-end verification (Playwright + mock LLM): build core/server/web and the example plugins ->
 # seed the temp data root -> start mock Anthropic SSE -> start server (temp data root) -> run the
 # specs. SKIP_BUILD=1 skips the build.
 set -uo pipefail
@@ -21,22 +21,25 @@ cleanup() {
 trap cleanup EXIT
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  echo "== build core/server/web and the example plugin =="
+  echo "== build core/server/web and the example plugins =="
   (cd "$ROOT" \
     && pnpm --filter @prismshadow/penguin-core build \
     && pnpm --filter @prismshadow/penguin-server build \
     && pnpm --filter @prismshadow/penguin-web build \
-    && pnpm --filter @penguinharness/example-hello-page build) || { echo "BUILD FAILED"; exit 1; }
+    && pnpm --filter @penguinharness/example-hello-page build \
+    && pnpm --filter @penguinharness/example-music build) || { echo "BUILD FAILED"; exit 1; }
 fi
 
 echo "== seed the data root =="
-# The example plugin (plugins/example-hello-page, plugin-page.spec.mjs) is enabled for
-# default_project by its built entry's absolute path — the loader's dev-checkout form. The
-# server adopts an existing default_project without rewriting its plugin table, and what one
-# Project lists is loaded for every user. No route can enable it instead: installing over the
-# API is limited to the plugins a build ships, and this one is never shipped.
+# The example plugins (plugins/example-hello-page for plugin-page.spec.mjs, plugins/example-music
+# for music-file.spec.mjs) are enabled for default_project by their built entries' absolute
+# paths — the loader's dev-checkout form. The server adopts an existing default_project without
+# rewriting its plugin table, and what one Project lists is loaded for every user. No route can
+# enable them instead: installing over the
+# API is limited to the plugins a build ships, and these are never shipped.
 mkdir -p "$DATA/default_project"
-printf '[plugins]\n"%s" = "*"\n' "$ROOT/plugins/example-hello-page/dist/index.js" \
+printf '[plugins]\n"%s" = "*"\n"%s" = "*"\n' \
+  "$ROOT/plugins/example-hello-page/dist/index.js" "$ROOT/plugins/example-music/dist/index.js" \
   >"$DATA/default_project/.project_config.toml"
 
 echo "== start mock LLM =="
