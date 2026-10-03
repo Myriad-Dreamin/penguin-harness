@@ -240,4 +240,3 @@ shell/sidebar/sidebar.tsx -> features/projects/index.ts
 shell/sidebar/sidebar.tsx -> features/session-list/index.ts
 shell/sidebar/sidebar.tsx -> features/todos/index.ts
 shell/sidebar/user-menu.tsx -> features/settings/settings-dialog.tsx
-shell/sidebar/user-menu.tsx -> features/settings/settings-request.ts
