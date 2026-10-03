@@ -71,9 +71,11 @@ features/benchmark/create-benchmark-modal.tsx -> features/semantic-id/semantic-i
 features/browser/browser-detach.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-actions.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-layer.tsx -> features/dock/dock-state.ts
+features/chat/body/chat-body.tsx -> features/dock/dock-launcher.tsx
 features/chat/body/draft-view.tsx -> features/dock/dock-state.ts
 features/chat/body/draft-view.tsx -> features/dock/dock-terminal.ts
 features/chat/body/draft-view.tsx -> features/models/model-grouping.ts
+features/chat/body/session-composer.tsx -> features/models/model-grouping.ts
 features/chat/chat-input.tsx -> features/models/model-grouping.ts
 features/chat/chat-input.tsx -> features/skills/skill-icon-view.tsx
 features/chat/chat-input.tsx -> features/skills/skill-pick-list.tsx
@@ -82,7 +84,6 @@ features/chat/chat-page.tsx -> features/browser/browser-tab.tsx
 features/chat/chat-page.tsx -> features/builtin-browser/browser-panel.tsx
 features/chat/chat-page.tsx -> features/company/company-nav.ts
 features/chat/chat-page.tsx -> features/company/desk-model.ts
-features/chat/chat-page.tsx -> features/dock/dock-launcher.tsx
 features/chat/chat-page.tsx -> features/dock/dock-panel.tsx
 features/chat/chat-page.tsx -> features/dock/dock-state.ts
 features/chat/chat-page.tsx -> features/dock/dock-terminal.ts
