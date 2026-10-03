@@ -38,8 +38,8 @@ import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { useProject } from "../../state/project";
-import { ModelCatalogSelect } from "../chat/model-select";
-import { WorkspaceSelect } from "../chat/workspace-select";
+import { ModelCatalogSelect } from "../model-picker";
+import { WorkspaceSelect } from "../workspace";
 import { sameModelRef } from "../models/model-grouping";
 import { itemModelRef } from "./schedule-upsert";
 

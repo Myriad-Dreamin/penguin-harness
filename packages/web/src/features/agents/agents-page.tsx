@@ -74,15 +74,14 @@ import { useLocale } from "../../state/locale";
 import { agentDisplayName, useProject } from "../../state/project";
 import { SemanticIdField } from "../semantic-id/semantic-id-field";
 import { STAT_ICONS } from "../../lib/stat-icons";
-import { DRAFT_SESSION_ID } from "../chat/chat-page";
-import { prepareNewChatDraft } from "../chat/new-chat";
+import { DRAFT_SESSION_ID, prepareNewChatDraft } from "../chat";
 import {
   SNAPSHOT_ACCEPT,
   SNAPSHOT_BUTTON_CLASS,
   agentIdFromSnapshotName,
   fileToBase64,
 } from "./snapshot-file";
-import { WorkspaceSelect } from "../chat/workspace-select";
+import { WorkspaceSelect } from "../workspace";
 import { SkillPickList } from "../skills/skill-pick-list";
 import type { PickableItem } from "../skills/skill-pick-list";
 import { addSkillNames, removeSkillNames, toggleSkillName } from "../skills/skill-selection";

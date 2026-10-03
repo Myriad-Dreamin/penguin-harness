@@ -138,7 +138,7 @@ import {
   saveExpandedProviders,
   toggleExpandedProvider,
 } from "./model-group-expansion";
-import { clearDraftModelRef } from "../chat/draft-cache";
+import { clearDraftModelRef } from "../chat";
 import { syncRowsWithCatalog } from "./catalog-sync";
 import { useUpdateBadges, dismissTodo, noticeCounts, refreshProjectTodos } from "../todos";
 import { buildImportedRows } from "./group-import";

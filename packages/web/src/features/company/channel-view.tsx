@@ -60,7 +60,7 @@ import { toneDot, toneInk } from "../../lib/tone";
 import { useAuth } from "../../state/auth";
 import { useCompany, useCompanyEvents } from "./company-state";
 import { NAV_ICONS } from "../../lib/nav-icons";
-import { createStreamFollow, stickToBottom } from "../chat/stream-follow";
+import { createStreamFollow, stickToBottom } from "../chat";
 import { useOrg } from "./org-layout";
 import { principalLabel } from "./shared";
 import { orgKey } from "./company-nav";
