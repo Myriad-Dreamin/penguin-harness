@@ -6,6 +6,7 @@
 import { GroupHeader, ICONS, ICON_SIZE, SkeletonList } from "@prismshadow/penguin-ui";
 import type { SessionCategory } from "@prismshadow/penguin-server/api";
 import { S } from "../../lib/strings";
+import { glyphOf } from "../../lib/nav-icons";
 import { partitionSessions } from "../../lib/session-grouping";
 import { nameOnMachine } from "../../lib/workspace-machines";
 import { Icon } from "../../components/ui/group-list";
@@ -34,7 +35,8 @@ export function WorkspaceGroups({ list }: { list: SessionListController }) {
     toggleGroup,
     togglePin,
     newChat,
-    browseFiles,
+    workspaceEntries,
+    runWorkspaceEntry,
     registeredKeys,
     openRenameWorkspace,
     setDeletingWorkspace,
@@ -127,13 +129,19 @@ export function WorkspaceGroups({ list }: { list: SessionListController }) {
                       <Icon d={ICONS.plus} size={ICON_SIZE.groupHeaderAction} />
                     </button>
                     {/* A group that is one directory (not the merged temporary group):
-                              the overflow right of the "+" — browse its files, and, for a
+                              the overflow right of the "+" — the contributed entries (browse its
+                              files), and, for a
                               manually-added (registry-backed) Workspace, rename the alias or
                               remove it from the sidebar (session-derived groups have no
                               registry entry for those two to act on). */}
                     {fullPath !== null && (
                       <GroupOverflowMenu
-                        onBrowse={() => browseFiles(fullPath, group.machineId)}
+                        entries={workspaceEntries.map((entry) => ({
+                          id: entry.id,
+                          label: entry.label(),
+                          glyph: glyphOf(entry.icon),
+                          onSelect: () => runWorkspaceEntry(entry, fullPath, group.machineId),
+                        }))}
                         {...(registeredKeys.has(group.key)
                           ? {
                               onRename: () => openRenameWorkspace(fullPath, group.machineId),

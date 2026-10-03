@@ -5,7 +5,8 @@
  * `layers` — so the shell imports no feature. What it provides is the root component the app
  * mounts, with the contributions bound into it (shell/deps.ts), and the user event handlers
  * the sessions module collects (state/user-events.ts), which the router hands to the session
- * list.
+ * list. The layout mounts the sidebar module's column and rail, and opens the chat module's
+ * drafts on the New chat command.
  *
  * The kernel addresses a slot by the providing MODULE's name (`ShellModule.pages`), while the
  * slot declaration hangs on the interface the module provides (`ShellSlots` beside `Shell`) —
@@ -15,6 +16,8 @@ import type { ComponentType, ReactNode } from "react";
 import { Interface, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, Contributed, Slot } from "@prismshadow/penguin-core/kernel";
 import type { UserEventHandlers } from "../state/user-events";
+import type { ChatDrafts } from "../features/chat";
+import type { Sidebar } from "./sidebar/iface";
 import { shellDeps } from "./deps";
 import type { ShellLayer, ShellSessionProvider } from "./deps";
 import { pageTableOf } from "./page-table";
@@ -56,6 +59,8 @@ function byOrder<P>(
 export class ShellModule {
   @Provide() shell!: Shell;
   @Use() userEventHandlers!: UserEventHandlers;
+  @Use() sidebar!: Sidebar;
+  @Use() drafts!: ChatDrafts;
   setup({ contributions }: ClassCtx) {
     const pages = pageTableOf(contributions.pages ?? []);
     const sessionProviders: readonly ShellSessionProvider[] = byOrder<{ children: ReactNode }>(
@@ -64,7 +69,10 @@ export class ShellModule {
     const layers: readonly ShellLayer[] = byOrder(contributions.layers ?? []);
     const userEvents = this.userEventHandlers.all();
     this.shell = {
-      Root: shellDeps.provide({ pages, sessionProviders, layers, userEvents }, AppRouter),
+      Root: shellDeps.provide(
+        { pages, sessionProviders, layers, userEvents, sidebar: this.sidebar, drafts: this.drafts },
+        AppRouter,
+      ),
     };
   }
 }

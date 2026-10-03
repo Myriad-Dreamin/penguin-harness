@@ -2,8 +2,9 @@
  * A Session row's two action surfaces (components/ui/session-row-menu.tsx): the hover buttons
  * and the right-click menu, and how each action labels itself.
  *
- * - A pinnable row's menu carries pin, rename, messaging, archive, copy and delete; a folder
- *   row's menu drops only pin, so every Session stays renamable, archivable and deletable.
+ * - A pinnable row's built-in menu carries pin, rename, archive, copy and delete (the messaging
+ *   binding is a contributed entry); a folder row's menu drops only pin, so every Session stays
+ *   renamable, archivable and deletable.
  * - Every hover action is also in the menu, so nothing is reachable by hover alone.
  * - Every action has a label and a glyph of its own, and only delete is destructive.
  * - Archive flips its label and glyph on an archived row; pin flips its label on a pinned row
@@ -27,10 +28,13 @@ afterEach(() => setActiveStrings(zh));
 const RESTING = { archived: false, pinned: false };
 const ALL: SessionRowAction[] = ["pin", "rename", "messaging", "archive", "copy", "delete"];
 
+/** The session list's built-in menu: every action but the binding, which is contributed. */
+const BUILT_IN = ALL.filter((action) => action !== "messaging");
+
 describe("contextMenuActions", () => {
-  it("a pinnable row's menu carries the whole set; a folder row's drops only pin", () => {
-    expect([...contextMenuActions(true)]).toEqual(ALL);
-    expect([...contextMenuActions(false)]).toEqual(ALL.filter((action) => action !== "pin"));
+  it("a pinnable row's menu carries the built-in set; a folder row's drops only pin", () => {
+    expect([...contextMenuActions(true)]).toEqual(BUILT_IN);
+    expect([...contextMenuActions(false)]).toEqual(BUILT_IN.filter((action) => action !== "pin"));
   });
 
   it("is a superset of the hover actions, so nothing is reachable by hover alone", () => {

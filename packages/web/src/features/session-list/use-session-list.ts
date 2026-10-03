@@ -1,10 +1,10 @@
 /**
  * The session list's controller: every piece of state the list, its groups and its dialogs read,
- * and every action they take, composed from the hooks beside it. The sidebar frame calls it, so
- * the list's state lives as long as the sidebar does — company mode does not render the list,
- * and coming back finds it as it was left.
+ * and every action they take, composed from the hooks beside it. The section's scope calls it
+ * (section.tsx), so the list's state lives as long as the sidebar does — another work mode does
+ * not render the list, and coming back finds it as it was left.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { useMatch, useNavigate } from "react-router";
 import type { SessionCategory, SessionInfo } from "@prismshadow/penguin-server/api";
@@ -30,40 +30,33 @@ import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
-import { DRAFT_SESSION_ID } from "../chat/chat-page";
-import { draftSessionTitle, useDraftSessions } from "../chat/draft-sessions";
-import { prepareNewChatDraft } from "../chat/new-chat";
-import { docksOnScreen, openPanel } from "../dock/dock-state";
-import { dockWorkspace } from "../dock/dock-terminal";
-import { pendingScheduleSessions } from "../schedules/schedule-panel-state";
-import { useProjectSchedules } from "../schedules/schedule-store";
+import type { WorkspaceGroupEntry } from "../../lib/session-row-contributions";
+import { sessionListDeps } from "./deps";
 import { useListPrefs } from "./list-prefs";
 import { useSessionGroups } from "./use-session-groups";
 import { folderKey, useGroupReveal, useRevealState } from "./use-group-reveal";
 import { useSessionDrag } from "./use-session-drag";
 import { useSessionDialogs } from "./use-session-dialogs";
 
-/** Standing "no Session is scheduled", so the first render has something to hold before any answer. */
-const NO_SCHEDULED_SESSIONS: ReadonlySet<string> = new Set();
-
 export function useSessionList({
   onNavigate,
   canDrag,
-  inCompany,
+  current,
   rootRef,
   initialSearchOpen,
 }: {
   onNavigate: (() => void) | undefined;
   /** Whether a pointer that can drag is present: manual sort and group reorder need one. */
   canDrag: boolean;
-  /** Company mode: the list is not rendered, so the search command declines. */
-  inCompany: boolean;
+  /** The list's work mode is the current one; in another the list is not rendered, so the search command declines. */
+  current: boolean;
   /** The sidebar's root: hidden (`display: none`) below the `md` breakpoint while still mounted. */
   rootRef: RefObject<HTMLDivElement | null>;
   /** Mount with the session search open and focused: the search shortcut pressed on the collapsed rail. */
   initialSearchOpen: boolean;
 }) {
   const navigate = useNavigate();
+  const { drafts, rows, useRowMarks } = sessionListDeps.useDeps();
   const { user } = useAuth();
   const { locale } = useLocale();
   const { currentProject, agents, setCurrentAgentId } = useProject();
@@ -77,18 +70,18 @@ export function useSessionList({
   const [searchOpen, setSearchOpen] = useState(initialSearchOpen);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   // The sessions.search command: open the field, or put the caret back into an open one. It
-  // declines (the browser's own key runs) when the field could not be seen: company mode has
-  // no session list, and the pinned sidebar is `display: none` below the `md` breakpoint while
-  // still mounted. Re-registered when the field opens or closes so the handler reads the state.
+  // declines (the browser's own key runs) when the field could not be seen: another work mode
+  // has no session list, and the pinned sidebar is `display: none` below the `md` breakpoint
+  // while still mounted. Re-registered when the field opens or closes so the handler reads the state.
   useEffect(
     () =>
       onCommand("sessions.search", () => {
-        if (inCompany) return false;
+        if (!current) return false;
         if (rootRef.current !== null && rootRef.current.getClientRects().length === 0) return false;
         if (searchOpen) searchInputRef.current?.focus();
         else setSearchOpen(true);
       }),
-    [searchOpen, inCompany],
+    [searchOpen, current],
   );
   const [searchQuery, setSearchQuery] = useState("");
   /** Search active = a non-blank query is live-filtering the list. */
@@ -115,31 +108,8 @@ export function useSessionList({
 
   /** This Project's read markers; re-renders the rows whenever one is stamped. */
   const sessionSeen = useSessionSeen(currentProjectId);
-  // The Project's scheduled tasks, shared with the dock's schedules panel through one store, so
-  // that neither surface can take the other's answer away. The scope is the Project, not the
-  // current Agent: this list draws every Agent's Sessions in every grouping mode, so whether a
-  // row wears the mark must not depend on which Agent is current — the chat page moves that to
-  // whatever conversation is open, and with a per-Agent list every other Agent's rows lost their
-  // marks until the user came back to them. Re-read on every navigation: opening a conversation
-  // is the moment a task may just have been created or switched off.
-  const { items: projectSchedules } = useProjectSchedules(currentProjectId, activeSessionId ?? "");
-  // The Sessions wearing the alarm clock: one bound task with a next fire time is enough. The
-  // store re-renders these rows on every refresh (a navigation, a schedule event, a turn ending,
-  // the panel's poll), and the server recomputes `nextFireAt` on each listing, so a task that
-  // fired for the last time loses its mark at the next refresh.
-  const pendingScheduled = useMemo(
-    () => (projectSchedules === null ? null : pendingScheduleSessions(projectSchedules)),
-    [projectSchedules],
-  );
-  // A null list means "this Project has not been read yet", never "this Project has no tasks":
-  // reading it as the second blanks every alarm in the list for as long as a request takes. The
-  // marks on screen stand until a real answer replaces them, which is the standing the pin and
-  // the relay glyph get for free by being fields of the row itself.
-  const lastScheduledRef = useRef<ReadonlySet<string>>(NO_SCHEDULED_SESSIONS);
-  useEffect(() => {
-    if (pendingScheduled !== null) lastScheduledRef.current = pendingScheduled;
-  }, [pendingScheduled]);
-  const scheduledSessions = pendingScheduled ?? lastScheduledRef.current;
+  /** What the contributed marks say on each row (the relay, the scheduled task; rowActions). */
+  const rowMarks = useRowMarks();
   /** Header list-settings dropdown (grouping + sort radios). */
   const [listSettingsOpen, setListSettingsOpen] = useState(false);
 
@@ -154,8 +124,8 @@ export function useSessionList({
     orderedWorkspaceGroups,
     workspaceGroupCounts: groups.workspaceGroupCounts,
   });
-  /** Parked draft conversations of this user × Project, newest first (reactive module store). */
-  const draftEntries = useDraftSessions(user?.userId ?? null, currentProjectId);
+  /** Parked draft conversations of this user × Project, newest first (reactive, the chat module's). */
+  const draftEntries = drafts.useParked(user?.userId ?? null, currentProjectId);
   const dialogs = useSessionDialogs({ prefs, byAgent, currentProjectId, activeSessionId });
 
   /** Group key a Session's FOLDERS hang off under the current mode (the archived-open state); time mode keeps one shared set for the whole Project. */
@@ -204,9 +174,7 @@ export function useSessionList({
 
   /** Parked drafts through the live search (matched on their first-line title). */
   const shownDrafts = searching
-    ? draftEntries.filter((e) =>
-        draftSessionTitle(e).toLowerCase().includes(searchQuery.trim().toLowerCase()),
-      )
+    ? draftEntries.filter((e) => e.title.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : draftEntries;
 
   /** Whether the active search hits anything anywhere (drafts included) — drives the quiet no-match line. */
@@ -256,7 +224,7 @@ export function useSessionList({
     // conversation first (a row in the list below, sendable anytime — draft-sessions.ts),
     // so this click always lands on an empty composer and never silently shelves content;
     // the selections a text-less earlier visit left behind are released with it.
-    if (user && currentProjectId) prepareNewChatDraft(user.userId, currentProjectId);
+    if (user && currentProjectId) drafts.prepareNewChat(user.userId, currentProjectId);
     if (agentId) setCurrentAgentId(agentId);
     const state = {
       ...(agentId ? { agentId } : {}),
@@ -267,26 +235,13 @@ export function useSessionList({
       // The chat page opens the dock's Files panel on arrival (a group's "Browse files").
       ...(browseFiles === true ? { browseFiles } : {}),
     };
-    navigate(`/chat/${DRAFT_SESSION_ID}`, Object.keys(state).length > 0 ? { state } : undefined);
+    navigate(`/chat/${drafts.newChatId}`, Object.keys(state).length > 0 ? { state } : undefined);
     onNavigate?.();
   };
 
-  /**
-   * A Workspace group's "Browse files": the dock's Files panel on that directory. A page already
-   * on it — the open conversation's Workspace, or the folder the draft picked, on the same
-   * machine — only brings the panel up. Anywhere else lands on a new-chat draft for the folder,
-   * the group's "+", whose Files panel is addressed by the directory itself: the dock belongs to
-   * the conversation on screen, so a folder another conversation is in has no panel here.
-   */
-  const browseFiles = (path: string, machineId: string | null) => {
-    const here = dockWorkspace();
-    if (docksOnScreen() && here !== null && here.path === path && here.machineId === machineId) {
-      openPanel("workspace");
-      onNavigate?.();
-      return;
-    }
-    newChat({ workspace: path, ...(machineId ? { machineId } : {}), browseFiles: true });
-  };
+  /** Runs a contributed Workspace-group entry on a group's directory (rowActions). */
+  const runWorkspaceEntry = (entry: WorkspaceGroupEntry, path: string, machineId: string | null) =>
+    entry.run({ path, machineId }, { newChat, ...(onNavigate ? { onNavigate } : {}) });
 
   /** What the header's create button makes, and its tooltip (the created object follows the grouping mode). */
   const newEntity = newEntityForGroupMode(groupMode);
@@ -343,11 +298,11 @@ export function useSessionList({
     hasMoreFor,
     replace,
     activeSessionId,
-    /** On the new-chat draft page: the pinned "New chat" row is lit. */
-    onDraftPage: activeSessionId === DRAFT_SESSION_ID,
     currentProjectId,
     sessionSeen,
-    scheduledSessions,
+    rowMarks,
+    sessionEntries: rows.sessionEntries,
+    workspaceEntries: rows.workspaceEntries,
     searchOpen,
     setSearchOpen,
     searchInputRef,
@@ -372,7 +327,7 @@ export function useSessionList({
     toggleArchive,
     go,
     newChat,
-    browseFiles,
+    runWorkspaceEntry,
     newEntity,
     newEntityLabel,
     addWorkspace,

@@ -1,0 +1,19 @@
+/**
+ * Keeps the dock's scope on the conversation on screen (`ShellModule.layers`, mounted once beside
+ * every page). The docks belong to the conversation they were arranged in, so switching Sessions
+ * switches the arrangement with it (dock-state.ts). The draft page's route id ("new" / a parked
+ * draft id) is a scope of its own, handed to the Session the first send creates; pages with no
+ * Session scope to a placeholder. Layout effect, not a plain one: it has to land before the chat
+ * page's docks paint, or the outgoing conversation's docks flash on the incoming one.
+ */
+import { useLayoutEffect } from "react";
+import { useMatch } from "react-router";
+import { setDockScope } from "./dock-state";
+
+export function DockScope() {
+  const scope = useMatch("/chat/:sessionId")?.params.sessionId ?? null;
+  useLayoutEffect(() => {
+    setDockScope(scope);
+  }, [scope]);
+  return null;
+}
