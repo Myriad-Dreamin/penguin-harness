@@ -8,7 +8,7 @@ import type { PluginIndexEntry } from "@prismshadow/penguin-server/api";
 import { pickIndexEntry } from "@prismshadow/penguin-server/api";
 import { availablePluginRows, indexEntryOf } from "../src/features/plugins/plugins-page";
 
-const hash = (c: string) => `sha256-${c.repeat(64)}`;
+const hash = (c: string) => `sha512-${Buffer.alloc(64, c.charCodeAt(0)).toString("base64")}`;
 const entry = (version: string, integrity?: string): PluginIndexEntry => ({
   name: "@acme/sandbox-x",
   version,

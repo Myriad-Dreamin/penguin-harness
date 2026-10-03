@@ -132,6 +132,49 @@ Agent 通过 `exec_command` 执行的一切都发生在这个容器里，用的�
 
 要给 Agent 一个 Workspace，就挂载一个目录，例如 `-v /srv/project:/srv/project`。挂载的目录必须允许 uid 1000 写入。
 
+### 在容器里为 Agent 启用沙盒
+
+镜像随包带着沙盒后端：与 CLI 安装包同一份内置插件前缀，位于 `/opt/penguin/lib/plugins`，服务器每次启动时把它导入插件仓。随包下发不等于启用：在某个 Project 从**插件市场**页面安装之前，没有任何后端会加载——Linux 上要装的是 `@penguinharness/sandbox-bwrap`——沙盒模式默认也是关闭。安装它不需要下载任何东西。
+
+bubblewrap 靠创建非特权 user namespace 来约束命令，而 Docker 的默认设置不允许这样做：默认 seccomp 配置拦截创建 namespace；在启用了 AppArmor 的主机上，默认 AppArmor 配置同样拦截；Docker 在 `/proc` 下屏蔽的路径还会让 bubblewrap 无法挂载新的 `/proc`。要让这个后端运行，用下面的参数启动容器：
+
+```yaml tab="compose.yaml"
+services:
+  penguin:
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+      - systempaths=unconfined
+```
+
+```bash tab="docker run"
+docker run -d --name penguin \
+  --security-opt seccomp=unconfined \
+  --security-opt apparmor=unconfined \
+  --security-opt systempaths=unconfined \
+  ...
+```
+
+这些参数放宽的是容器内所有进程的限制，而不只是 bubblewrap。主机内核也必须允许非特权 user namespace：Debian 上检查 `kernel.unprivileged_userns_clone`。
+
+Ubuntu 23.10 及以后的版本（包括默认的 Ubuntu 24.04）只把 user namespace 交给 AppArmor profile 允许这样做的程序（`kernel.apparmor_restrict_unprivileged_userns` 为 `1`）。`apparmor=unconfined` 让容器没有任何 profile，所以在这种主机上光靠上面三个参数不够，卡片上的原因以 `setting up uid map: Permission denied` 结尾。这时在主机上以 root 加载一份允许 user namespace 的 profile，只需一次：
+
+```bash
+sudo tee /etc/apparmor.d/penguin-userns >/dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile penguin-userns flags=(unconfined) {
+  userns,
+}
+EOF
+sudo apparmor_parser -r /etc/apparmor.d/penguin-userns
+```
+
+然后启动容器时用 `apparmor=penguin-userns` 代替 `apparmor=unconfined`，其余两个参数保留。profile 在每次开机时重新加载。另一种做法是用 `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` 对主机上所有程序解除这项限制。要在重启后保留这项设置，把同一行（去掉 `sudo sysctl -w`）写进 `/etc/sysctl.d/` 下的一个文件。
+
+容器没有放行这些时，沙盒按 fail-closed 处理：后端启动时的探测失败，[沙盒](/settings#沙盒)卡片显示 `@penguinharness/sandbox-bwrap is not in use:` 及原因（bwrap 不存在，或拒绝基础配置）；此时除关闭以外的每种模式都会拒绝 Agent 的每条命令，而不是让它不受约束地运行。关闭模式照常执行命令，容器本身就是唯一的边界。
+
 ### 给镜像添加工具
 
 镜像里没有编译器，除 Node 之外也没有其他语言运行时。在容器里执行 `apt-get install` 可以应付一次性的需要，但下一次 `docker pull` 之后装过的包就没了。长期依赖的工具，请构建一个派生镜像：
