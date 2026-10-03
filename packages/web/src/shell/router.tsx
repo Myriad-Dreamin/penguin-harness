@@ -12,7 +12,7 @@
  */
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-router";
 import { useAuth } from "../state/auth";
-import { useRuntimeLanguages } from "../features/chat/use-runtime-languages";
+import { useRuntimeLanguages } from "../lib/use-runtime-languages";
 import { ProjectProvider } from "../state/project";
 import { SessionsProvider } from "../state/sessions";
 import { CompanyProvider, useCompany } from "../state/company";
