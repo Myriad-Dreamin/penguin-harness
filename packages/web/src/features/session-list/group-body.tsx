@@ -58,7 +58,8 @@ export const renderRows = (
     commitManualDrop,
     activeSessionId,
     sessionSeen,
-    scheduledSessions,
+    rowMarks,
+    sessionEntries,
     locale,
     agentNameById,
     openSession,
@@ -66,7 +67,7 @@ export const renderRows = (
     setRenameError,
     setRenameText,
     setRenamingSession,
-    setMessagingSession,
+    setEntryDialog,
     setDeletingSession,
     toggleArchive,
   } = list;
@@ -146,7 +147,7 @@ export const renderRows = (
             // the whole transition sequence is testable without a DOM.
             activity={sessionRowActivity(s, sessionSeen, activeSessionId)}
             background={sessionBackgroundTasks(s)}
-            scheduled={scheduledSessions.has(s.sessionId)}
+            marks={rowMarks(s)}
             pinned={pinnedSessions.has(s.sessionId)}
             // Pinning is an ACTIVE-list priority: folder rows (subagent / scheduled /
             // evaluations / archived) are ordered by last activity inside their folder and
@@ -169,7 +170,8 @@ export const renderRows = (
               setRenameText(x.title ?? "");
               setRenamingSession(x);
             }}
-            onMessaging={(x) => setMessagingSession(x)}
+            entries={sessionEntries}
+            onEntry={(entry, x) => setEntryDialog({ entry, session: x })}
             onDelete={(x) => setDeletingSession(x)}
             onToggleArchive={(x) => void toggleArchive(x)}
           />

@@ -23,6 +23,7 @@ cycle: features/company -> features/models
 cycle: features/company -> features/proposals
 cycle: features/company -> features/skills
 cycle: features/company -> features/usage
+cycle: features/company -> shell
 cycle: features/dock -> features/browser
 cycle: features/dock -> features/builtin-browser
 cycle: features/dock -> features/chat
@@ -45,6 +46,7 @@ cycle: features/todos -> features/models
 cycle: features/todos -> features/usage
 cycle: features/usage -> features/todos
 cycle: features/workflows -> features/chat
+cycle: shell -> features/chat
 features/agents/agent-settings-page.tsx -> features/chat/thinking-level.ts
 features/agents/agents-page.tsx -> features/ai-create/ai-create-buttons.tsx
 features/agents/agents-page.tsx -> features/chat/chat-page.tsx
@@ -131,6 +133,7 @@ features/company/org-routes.tsx -> features/proposals/proposals-page.tsx
 features/company/org-session-groups.tsx -> features/messaging/messaging-binding-modal.tsx
 features/company/roadmap-detail.tsx -> features/proposals/activity-view.tsx
 features/company/roadmap-detail.tsx -> features/proposals/proposals-model.ts
+features/company/use-org-pages.ts -> shell/page-table.ts
 features/dashboard/dashboard-page.tsx -> features/chat/agent-topology.ts
 features/dock/dock-drag.tsx -> features/chat/use-panel-width.ts
 features/dock/dock-launcher.tsx -> features/browser/browser-tabs.ts
@@ -186,20 +189,6 @@ features/schedules/schedule-form-modal.tsx -> features/chat/model-select.tsx
 features/schedules/schedule-form-modal.tsx -> features/chat/workspace-select.tsx
 features/schedules/schedule-form-modal.tsx -> features/models/model-grouping.ts
 features/schedules/schedule-panel.tsx -> features/ai-create/ai-create-buttons.tsx
-features/session-list/draft-row.tsx -> features/chat/draft-sessions.ts
-features/session-list/session-dialogs.tsx -> features/chat/draft-sessions.ts
-features/session-list/session-dialogs.tsx -> features/messaging/messaging-binding-modal.tsx
-features/session-list/session-list.tsx -> features/chat/workspace-select.tsx
-features/session-list/use-session-dialogs.ts -> features/chat/chat-page.tsx
-features/session-list/use-session-dialogs.ts -> features/chat/draft-cache.ts
-features/session-list/use-session-dialogs.ts -> features/chat/draft-sessions.ts
-features/session-list/use-session-list.ts -> features/chat/chat-page.tsx
-features/session-list/use-session-list.ts -> features/chat/draft-sessions.ts
-features/session-list/use-session-list.ts -> features/chat/new-chat.ts
-features/session-list/use-session-list.ts -> features/dock/dock-state.ts
-features/session-list/use-session-list.ts -> features/dock/dock-terminal.ts
-features/session-list/use-session-list.ts -> features/schedules/schedule-panel-state.ts
-features/session-list/use-session-list.ts -> features/schedules/schedule-store.ts
 features/settings/appearance-section.tsx -> features/dock/dock-launcher-state.ts
 features/settings/plugins-section.tsx -> features/chat/skill-use.ts
 features/settings/plugins-section.tsx -> features/machines/machine-picker.tsx
@@ -213,30 +202,3 @@ features/todos/use-project-todos.ts -> features/usage/usage-controls.ts
 features/todos/use-update-badges.ts -> features/models/catalog-sync.ts
 features/workflows/workflow-app-page.tsx -> features/palette/app-palette.tsx
 features/workflows/workflow-tabs.tsx -> features/chat/skill-use.ts
-shell/app-layout.tsx -> features/chat/use-new-chat.ts
-shell/app-layout.tsx -> features/company/index.ts
-shell/app-layout.tsx -> features/dock/dock-state.ts
-shell/app-layout.tsx -> features/todos/index.ts
-shell/sidebar/rail.tsx -> features/chat/chat-page.tsx
-shell/sidebar/rail.tsx -> features/chat/use-new-chat.ts
-shell/sidebar/rail.tsx -> features/company/channel-sidebar.tsx
-shell/sidebar/rail.tsx -> features/company/company-nav-icons.ts
-shell/sidebar/rail.tsx -> features/company/company-nav.ts
-shell/sidebar/rail.tsx -> features/company/index.ts
-shell/sidebar/rail.tsx -> features/company/org-session-groups.tsx
-shell/sidebar/rail.tsx -> features/company/use-org-pages.ts
-shell/sidebar/rail.tsx -> features/todos/index.ts
-shell/sidebar/sidebar.tsx -> features/company/channel-sidebar.tsx
-shell/sidebar/sidebar.tsx -> features/company/company-beta.tsx
-shell/sidebar/sidebar.tsx -> features/company/company-nav-icons.ts
-shell/sidebar/sidebar.tsx -> features/company/company-nav.ts
-shell/sidebar/sidebar.tsx -> features/company/index.ts
-shell/sidebar/sidebar.tsx -> features/company/org-session-groups.tsx
-shell/sidebar/sidebar.tsx -> features/company/org-switcher.tsx
-shell/sidebar/sidebar.tsx -> features/company/roadmaps-sidebar.tsx
-shell/sidebar/sidebar.tsx -> features/company/use-org-pages.ts
-shell/sidebar/sidebar.tsx -> features/models/group-balance.tsx
-shell/sidebar/sidebar.tsx -> features/projects/index.ts
-shell/sidebar/sidebar.tsx -> features/session-list/index.ts
-shell/sidebar/sidebar.tsx -> features/todos/index.ts
-shell/sidebar/user-menu.tsx -> features/settings/settings-dialog.tsx

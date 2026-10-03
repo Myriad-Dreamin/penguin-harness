@@ -1,10 +1,13 @@
 import type { DragEvent as ReactDragEvent } from "react";
 import type { SessionInfo } from "@prismshadow/penguin-server/api";
 import { SessionRow, toastSuccess } from "@prismshadow/penguin-ui";
+import type { RowActionItem } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { sessionActivityLabel } from "../../lib/session-activity";
 import type { SessionActivity } from "../../lib/session-activity";
 import { writeClipboard } from "../../lib/clipboard";
+import { glyphOf } from "../../lib/nav-icons";
+import type { SessionRowEntry } from "../../lib/session-row-contributions";
 import {
   HOVER_ROW_ACTIONS,
   contextMenuActions,
@@ -12,14 +15,16 @@ import {
 } from "../../components/ui/session-row-menu";
 import type { SessionRowAction } from "../../components/ui/session-row-menu";
 import { Truncated } from "../../components/ui/truncated";
+import { withEntries } from "./row-actions";
+import type { RowMarks } from "./row-actions";
 
 /**
  * One conversation row: the package's `SessionRow`, bound to this Session. The row itself — the
  * title with its marks, the trailing slot that swaps the last-active time for archive and the
  * "more" button on hover or focus, and the context menu a right-click, Shift+F10 or a
  * press-and-hold opens — is the package's; this container says which actions each surface
- * carries (session-row-menu.tsx), what each one does, and in which words the marks name
- * themselves.
+ * carries (session-row-menu.tsx) with the entries other modules contribute (rowActions), what
+ * each one does, and in which words the marks name themselves.
  *
  * The hover pair is the affordance every release up to v0.2.2 shipped (archive as a direct icon
  * button), the rest of the set one click further; the full set stays one right-click away.
@@ -34,7 +39,7 @@ export function SidebarSessionRow({
   active,
   activity,
   background,
-  scheduled,
+  marks,
   pinned,
   canPin = false,
   lastActive,
@@ -50,7 +55,8 @@ export function SidebarSessionRow({
   onOpen,
   onTogglePin,
   onRename,
-  onMessaging,
+  entries,
+  onEntry,
   onDelete,
   onToggleArchive,
 }: {
@@ -60,8 +66,8 @@ export function SidebarSessionRow({
   activity: SessionActivity;
   /** Background tasks the Session still owns (sessionBackgroundTasks); 0 draws no mark. */
   background: number;
-  /** A scheduled task still to fire is bound to this Session (pendingScheduleSessions); false draws no mark. */
-  scheduled: boolean;
+  /** What the contributed marks say on this row (the relay, a scheduled task still to fire). */
+  marks: RowMarks;
   /** Row is pinned (bubbled to its group's top; small pin glyph on the title). */
   pinned: boolean;
   /** Whether pinning can actually reorder this row — active-list rows only; folder rows hide the action (see renderRows). */
@@ -84,13 +90,17 @@ export function SidebarSessionRow({
   onOpen: (s: SessionInfo) => void;
   onTogglePin: (s: SessionInfo) => void;
   onRename: (s: SessionInfo) => void;
-  onMessaging: (s: SessionInfo) => void;
+  /** The contributed menu entries, placed after rename, and what choosing one does. */
+  entries: readonly SessionRowEntry[];
+  onEntry: (entry: SessionRowEntry, s: SessionInfo) => void;
   onDelete: (s: SessionInfo) => void;
   onToggleArchive: (s: SessionInfo) => void;
 }) {
   /** Run one action on this Session (the row has closed its menu first). */
   const run = (action: SessionRowAction) => {
-    const handler: Record<SessionRowAction, (x: SessionInfo) => void> = {
+    // The built-in actions this row offers (contextMenuActions); the binding entry desk rows
+    // carry is a contribution here (`entries`).
+    const handler: Partial<Record<SessionRowAction, (x: SessionInfo) => void>> = {
       pin: onTogglePin,
       rename: onRename,
       // The copy affordance's feedback normally rides on the button itself (copy-button.tsx),
@@ -100,13 +110,19 @@ export function SidebarSessionRow({
       copy: (x) => {
         void writeClipboard(x.sessionId).then((ok) => ok && toastSuccess(S.common.copied));
       },
-      messaging: onMessaging,
       archive: onToggleArchive,
       delete: onDelete,
     };
-    handler[action](s);
+    handler[action]?.(s);
   };
   const rowState = { archived: s.archived, pinned };
+  const contributed: RowActionItem[] = entries.map((entry) => ({
+    id: entry.id,
+    label: entry.label(),
+    glyph: glyphOf(entry.icon),
+    danger: false,
+    onSelect: () => onEntry(entry, s),
+  }));
   return (
     <SessionRow
       sessionId={s.sessionId}
@@ -124,12 +140,11 @@ export function SidebarSessionRow({
       // filed (pinned — only where pinning reorders anything), where it can be reached from (the
       // messaging relay, named by its channel), whether it runs on its own (a scheduled task still
       // to fire; a paused or ended one draws nothing) and whether it owns work that outlives the
-      // turn (background tasks, live via session_background).
+      // turn (background tasks, live via session_background). The relay and the schedule are
+      // contributed marks (`marks`).
       {...(pinned && canPin ? { pinnedLabel: S.chat.pinnedSession } : {})}
-      {...(s.messagingChannel !== undefined
-        ? { relayLabel: S.messaging.enabledIndicator[s.messagingChannel] }
-        : {})}
-      {...(scheduled ? { scheduledLabel: S.chat.sessionScheduled } : {})}
+      {...(marks.relay !== undefined ? { relayLabel: marks.relay } : {})}
+      {...(marks.scheduled !== undefined ? { scheduledLabel: marks.scheduled } : {})}
       background={{ count: background, label: S.chat.backgroundTasks(background) }}
       activity={
         activity === null ? null : { state: activity, label: sessionActivityLabel(activity) }
@@ -143,7 +158,10 @@ export function SidebarSessionRow({
       // zh, "Nov 30" in en.
       timeSlot={locale === "zh" ? "wide" : "narrow"}
       hoverActions={sessionRowActions(HOVER_ROW_ACTIONS, rowState, run)}
-      menuActions={sessionRowActions(contextMenuActions(canPin), rowState, run)}
+      menuActions={withEntries(
+        sessionRowActions(contextMenuActions(canPin), rowState, run),
+        contributed,
+      )}
       moreLabel={S.chat.moreActions}
       onOpen={() => onOpen(s)}
       draggable={draggable}

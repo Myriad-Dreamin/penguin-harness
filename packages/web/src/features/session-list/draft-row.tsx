@@ -2,8 +2,7 @@ import { ICONS, NAV_FILL } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { Icon } from "../../components/ui/group-list";
 import { Truncated } from "../../components/ui/truncated";
-import { draftSessionTitle } from "../chat/draft-sessions";
-import type { DraftSessionEntry } from "../chat/draft-sessions";
+import type { ParkedDraft } from "../chat";
 
 /** Single parked-draft row: first line of the unsent text + hover delete (opening resumes the draft at `/chat/<draft-id>`). */
 export function DraftRow({
@@ -12,12 +11,12 @@ export function DraftRow({
   onOpen,
   onDelete,
 }: {
-  entry: DraftSessionEntry;
+  entry: ParkedDraft;
   active: boolean;
   onOpen: () => void;
   onDelete: () => void;
 }) {
-  const title = draftSessionTitle(entry) || S.chat.draftUntitled;
+  const title = entry.title || S.chat.draftUntitled;
   return (
     <li>
       <div

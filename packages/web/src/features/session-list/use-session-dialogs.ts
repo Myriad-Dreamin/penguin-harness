@@ -1,7 +1,7 @@
 /**
  * The session list's dialogs' state and what confirming each one does: rename and delete a
- * conversation, delete a parked draft, rename and remove a registered Workspace, and the
- * messaging binding (session-dialogs.tsx draws them).
+ * conversation, delete a parked draft, rename and remove a registered Workspace, and the dialog of
+ * a contributed row entry (session-dialogs.tsx draws them).
  */
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -15,10 +15,9 @@ import { removeFromSessionOrder, saveSessionOrder } from "../../lib/session-orde
 import { setWorkspaceAlias, unregisterWorkspace } from "../../lib/workspace-registry";
 import { useAuth } from "../../state/auth";
 import { useSessions } from "../../state/sessions";
-import { DRAFT_SESSION_ID } from "../chat/chat-page";
-import { clearDraft, sessionDraftKey } from "../chat/draft-cache";
-import { removeDraftSession } from "../chat/draft-sessions";
-import type { DraftSessionEntry } from "../chat/draft-sessions";
+import type { SessionRowEntry } from "../../lib/session-row-contributions";
+import type { ParkedDraft } from "../chat";
+import { sessionListDeps } from "./deps";
 import { removePinnedSession, savePinnedSessions } from "./pinned-sessions";
 import type { useListPrefs } from "./list-prefs";
 
@@ -34,6 +33,7 @@ export function useSessionDialogs({
   activeSessionId: string | null;
 }) {
   const navigate = useNavigate();
+  const { drafts } = sessionListDeps.useDeps();
   const { user } = useAuth();
   const { remove, replace } = useSessions();
   const {
@@ -61,14 +61,17 @@ export function useSessionDialogs({
   const [deletingSession, setDeletingSession] = useState<SessionInfo | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
   /** Parked draft conversation pending delete confirmation (null = none). */
-  const [deletingDraft, setDeletingDraft] = useState<DraftSessionEntry | null>(null);
+  const [deletingDraft, setDeletingDraft] = useState<ParkedDraft | null>(null);
   /** Session currently being renamed (null = none) and the title being typed. */
   const [renamingSession, setRenamingSession] = useState<SessionInfo | null>(null);
   const [renameText, setRenameText] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
-  /** Session whose messaging-binding dialog is open (null = none). */
-  const [messagingSession, setMessagingSession] = useState<SessionInfo | null>(null);
+  /** The contributed row entry whose dialog is open, and the Session it was chosen on (null = none). */
+  const [entryDialog, setEntryDialog] = useState<{
+    entry: SessionRowEntry;
+    session: SessionInfo;
+  } | null>(null);
 
   const confirmRename = async () => {
     if (!renamingSession) return;
@@ -100,7 +103,7 @@ export function useSessionDialogs({
       // lanes, so scheduling tricks here cannot be relied on to sequence them.
       remove(target.sessionId);
       // The session is gone, so clear its input draft too (no orphaned keys left in localStorage; keys are scoped per user, #68).
-      if (user) clearDraft(sessionDraftKey(user.userId, target.sessionId));
+      if (user) drafts.forgetSession(user.userId, target.sessionId);
       // Prune its pin and manual-order entry as well (both helpers return the same
       // reference when the id wasn't present — the write is skipped then).
       const prunedPins = removePinnedSession(pinnedSessions, target.sessionId);
@@ -139,9 +142,9 @@ export function useSessionDialogs({
   const confirmDeleteDraft = () => {
     if (!deletingDraft) return;
     if (user && currentProjectId) {
-      removeDraftSession(user.userId, currentProjectId, deletingDraft.id);
+      drafts.removeParked(user.userId, currentProjectId, deletingDraft.id);
     }
-    if (activeSessionId === deletingDraft.id) navigate(`/chat/${DRAFT_SESSION_ID}`);
+    if (activeSessionId === deletingDraft.id) navigate(`/chat/${drafts.newChatId}`);
     setDeletingDraft(null);
   };
 
@@ -205,8 +208,8 @@ export function useSessionDialogs({
     renameBusy,
     renameError,
     setRenameError,
-    messagingSession,
-    setMessagingSession,
+    entryDialog,
+    setEntryDialog,
     confirmRename,
     confirmDeleteSession,
     confirmDeleteDraft,

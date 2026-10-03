@@ -19,7 +19,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, EmptyState } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
-import { requestSettings } from "../settings/settings-request";
+import { requestSettings } from "../../lib/settings-request";
 import { isBlankUrl, isWebUrl } from "./address";
 import { BackendMenuRows, backendRowsShown } from "./backend-menu";
 import {
