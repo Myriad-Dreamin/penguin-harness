@@ -49,6 +49,7 @@ describe("the non-admin ceiling on a Session's sandbox", () => {
       confinementSupported: true,
       noNetworkSupported: true,
       localNetworkSupported: true,
+      maskPathsSupported: false,
       unavailableBackends: [],
     });
     // Under settings of "local", a non-admin may cut the network but not open it.

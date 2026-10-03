@@ -14,8 +14,9 @@
  * - Given the switch off, a new Session starts unconfined with no approval mode from the
  *   presets; a Session created while it was on keeps its own policy.
  * - The card reports whether a sandbox backend for this OS is installed — in use, or installed
- *   and failing — and which package this OS defaults to; a backend that declined (another
- *   OS's) does not count. The card names `enabled` as its switch.
+ *   and failing — and which packages this OS defaults to (Linux: bubblewrap and sandbox-dsh);
+ *   a backend that declined (another OS's) does not count. The card names `enabled` as its
+ *   switch.
  * - Every preset row, and every value a row's choice can take, carries a description in both
  *   languages, for the row's "?".
  */
@@ -31,11 +32,14 @@ import type { SandboxService } from "../src/sandbox/service.js";
 import { apiClient, createTestApp, loginAdmin, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
-/** What the server defaults to on the OS the suite runs on. */
-const RECOMMENDED: Partial<Record<NodeJS.Platform, string>> = {
-  linux: "@penguinharness/sandbox-bwrap",
-  darwin: "@penguinharness/sandbox-seatbelt",
-  win32: "@penguinharness/sandbox-wsl",
+/**
+ * What the server defaults to on the OS the suite runs on. Linux offers sandbox-dsh beside
+ * bubblewrap: it confines files through Landlock where bubblewrap is refused (a default Ubuntu).
+ */
+const RECOMMENDED: Partial<Record<NodeJS.Platform, string[]>> = {
+  linux: ["@penguinharness/sandbox-bwrap", "@penguinharness/sandbox-dsh"],
+  darwin: ["@penguinharness/sandbox-seatbelt"],
+  win32: ["@penguinharness/sandbox-wsl"],
 };
 const recommended = RECOMMENDED[process.platform];
 
@@ -391,7 +395,7 @@ describe("the sandbox switch", () => {
     });
   });
 
-  it("reports no backend for this OS, and the OS's default package, when none is installed", async () => {
+  it("reports no backend for this OS, and the OS's default packages, when none is installed", async () => {
     const { t, card } = await boot();
     apps.push(t);
     const entry = await card();
