@@ -257,7 +257,6 @@ export class FakeServer {
     probes: Json[];
     sessions: Json[];
     samples: Json[];
-    machine?: Json;
   } = {
     enabled: true,
     probes: [],
@@ -2283,7 +2282,7 @@ export class FakeServer {
         return this.json({ ok: true });
       }
       const view = url.searchParams.get("view") ?? "probes";
-      const { enabled, probes, sessions, samples, machine } = this.telemetry;
+      const { enabled, probes, sessions, samples } = this.telemetry;
       return this.json({
         enabled,
         view,
@@ -2293,11 +2292,7 @@ export class FakeServer {
             ? { samples }
             : view === "sessions"
               ? { sessions }
-              : view === "machine"
-                ? machine !== undefined
-                  ? { machine }
-                  : {}
-                : { probes }
+              : { probes }
           : {}),
       });
     }
