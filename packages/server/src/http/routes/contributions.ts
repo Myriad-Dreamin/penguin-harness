@@ -15,6 +15,8 @@ import type {
   WebFileRendererData,
   WebPageContribution,
   WebPageData,
+  WebPageRemovalContribution,
+  WebPageRemovalData,
 } from "../../api/types.js";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 
@@ -30,10 +32,10 @@ export function contributionsRoutes(deps: ContributionsRouteDeps): Hono<AppEnv> 
 
 /**
  * The frontend's slots, declared on the SERVER so a server module (or a plugin) can
- * contribute a page, a file renderer, an Agent settings tab or a Session tab as manifest data. The web
- * app reads them back through GET /api/contributions and renders the ones whose
- * renderer it knows: a `builtin` name from its own registry, or an `iframe`. No code
- * crosses this boundary — only data.
+ * contribute a page, a page removal, a file renderer, an Agent settings tab or a Session tab
+ * as manifest data. The web app reads them back through GET /api/contributions and renders
+ * the ones whose renderer it knows: a `builtin` name from its own registry, or an `iframe`.
+ * No code crosses this boundary — only data.
  */
 
 @Interface()
@@ -47,6 +49,8 @@ export interface WebShellSlots {
   pages: WebPageData;
   /** How a kind of Workspace file is drawn where a reply links it (WebFileRendererData). */
   fileRenderers: WebFileRendererData;
+  /** A page the web app drops, its own or a contributed one (WebPageRemovalData). */
+  pageRemovals: WebPageRemovalData;
   /** A tab on the Agent settings page. */
   agentTabs: { key: string; order: number; renderer: RendererRef };
   /**
@@ -100,6 +104,7 @@ export class WebModule {
     const response: ContributionsResponse = {
       pages: collect<WebPageContribution>("pages"),
       fileRenderers: collect<WebFileRendererContribution>("fileRenderers"),
+      pageRemovals: collect<WebPageRemovalContribution>("pageRemovals"),
       agentTabs: collect("agentTabs"),
       sessionTabs: collect("sessionTabs"),
       quickStarts: collect("quickStarts") as unknown as ContributionsResponse["quickStarts"],
