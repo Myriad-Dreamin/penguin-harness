@@ -256,10 +256,12 @@ export interface ServerSettings {
    * reports it so clients hide the mode switch. Organizations on disk are untouched.
    */
   companyMode: boolean;
+  /**
    * Telemetry master switch (default off; PRFC-0008). On, the server's fixed probes record
    * shape-only samples into a bounded in-memory buffer read at `GET /api/telemetry`; off, each
    * probe costs one boolean check and no buffer exists. Takes effect at once, never persisted
    * beyond the switch itself.
+   */
   telemetry: boolean;
 }
 
