@@ -145,6 +145,7 @@ import type {
   ProposalDeployScript,
   ProposalDeployScriptsResponse,
   ProposalDeployStartResponse,
+  ProposalImplDiff,
   ProposalImplementRequest,
   ProposalItem,
   ProposalMaterialRequest,
@@ -2806,6 +2807,10 @@ export const createOrgProposal = (projectId: string, orgId: string, body: Propos
 
 export const getOrgProposal = (projectId: string, orgId: string, number: number) =>
   apiFetch<ProposalDetail>(proposalBase(projectId, orgId, number));
+
+/** The impl branch's patch — the merge base of base and head, up to head — read from GitHub by the server. */
+export const getOrgProposalImplDiff = (projectId: string, orgId: string, number: number) =>
+  apiFetch<ProposalImplDiff>(`${proposalBase(projectId, orgId, number)}/impl/diff`);
 
 /** One revision as it was published — what the page diffs the head against after an approval. */
 export const getOrgProposalRevision = (
