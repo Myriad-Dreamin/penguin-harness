@@ -670,7 +670,7 @@ export const zh = {
     /** Telemetry master switch (general page, admin only; PRFC-0008). */
     telemetry: "遥测",
     telemetryInfo:
-      "可供人类与 Agent 分析的性能数据。打开后，服务端与浏览器把脱敏后的数据记进内存缓冲，可在统计中心的「性能」面板里查看，也可让 Agent 通过 API 或 CLI 读取。数据不会离开本机，也不会写入磁盘。",
+      "可供人类与 Agent 分析的性能数据。打开后，服务端与浏览器把非敏感数据记进内存缓冲，可在统计中心的「性能」面板里查看，也可让 Agent 通过 API 或 CLI 读取。数据不会离开本机，也不会写入磁盘。",
     companyModeTitle: "公司模式",
     companyModePersonal: "公司模式",
     companyModePersonalInfo:
