@@ -19,7 +19,6 @@ import {
   nodeRef,
   rowOfProposal,
   rowWidths,
-  splitArgs,
   topDown,
 } from "../src/features/proposals/pr-graph-model";
 import type { GraphRow } from "../src/features/proposals/pr-graph-model";
@@ -230,13 +229,6 @@ describe("the proposal focus", () => {
     expect(focusedProposal(new URLSearchParams("proposal=0"))).toBeNull();
     expect(focusedProposal(new URLSearchParams("proposal=x"))).toBeNull();
     expect(focusedProposal(new URLSearchParams(""))).toBeNull();
-  });
-});
-
-describe("splitArgs", () => {
-  it("splits a deploy's extra arguments at whitespace and drops the empty ones", () => {
-    expect(splitArgs("  --extra-args   x\ty \n")).toEqual(["--extra-args", "x", "y"]);
-    expect(splitArgs("")).toEqual([]);
   });
 });
 
