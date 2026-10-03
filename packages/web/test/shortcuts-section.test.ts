@@ -68,7 +68,7 @@ describe("ShortcutsSection", () => {
     setPlatformForTests("mac");
     configureKeybindingsStoreForTests({});
     const mac = render();
-    expect(mac).toContain("⌥⌘P");
+    expect(mac).toContain("⇧⌘P");
     expect(mac).toContain("⌃⌥`");
     expect(mac).toContain("⌘S");
     expect(mac).not.toContain("Ctrl");
