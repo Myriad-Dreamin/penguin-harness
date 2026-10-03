@@ -640,7 +640,8 @@ export function agentSessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
 /** Session-level entry point: /api/sessions/:sessionId/*. */
 /**
  * `GET /api/projects/:projectId/sessions/overview` — the dashboard's read: every non-archived
- * Session of the Project over every Agent, as the facts the page counts from. Its own group,
+ * Session of the Project over every Agent, less an organization's, as the facts the page
+ * counts from. Its own group,
  * since no existing prefix covers `/sessions` directly under a Project.
  */
 export function sessionOverviewRoutes(

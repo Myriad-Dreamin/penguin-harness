@@ -72,4 +72,39 @@ describe("GET /api/projects/:projectId/sessions/overview", () => {
     expect(byId.get(own)).not.toHaveProperty("source");
     expect(byId.get(child)?.source).toBe("subagent");
   });
+
+  it("leaves out an organization's Sessions by the sidebar list's rule: the client stamp, or the organization caches", async () => {
+    const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
+    const projectId = "default_project";
+    const agentId = "default_agent";
+    // A desk session stamped at creation, a ticket session only the caches name yet, and a
+    // plain one of the user's own.
+    const desk = "session-2027-01-01-09-00-00-0abc0021";
+    const ticket = "session-2027-01-01-09-30-00-0abc0022";
+    const own = "session-2027-01-01-10-00-00-0abc0023";
+    for (const [sessionId, client] of [
+      [desk, "org"],
+      [ticket, undefined],
+      [own, undefined],
+    ] as const) {
+      t.deps.sessionsRepo.insert({
+        sessionId,
+        projectId,
+        agentId,
+        provider: "custom",
+        modelId: "m-org",
+        workspace: "/tmp/w-org",
+        approvalMode: "allow-all",
+        title: null,
+        ...(client !== undefined ? { client } : {}),
+        createdAt: "2027-01-01T09:00:00.000Z",
+        lastActiveAt: "2027-01-01T09:00:00.000Z",
+      });
+    }
+    t.deps.orgCacheRepo.addTicketSession(projectId, "acme", "2026-09-02-site", ticket, agentId);
+
+    const res = await admin.get(`/api/projects/${projectId}/sessions/overview`);
+    const { sessions } = (await res.json()) as SessionsOverviewResponse;
+    expect(sessions.map((s) => s.sessionId)).toEqual([own]);
+  });
 });
