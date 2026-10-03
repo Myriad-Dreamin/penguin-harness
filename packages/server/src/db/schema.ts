@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS error_records (     -- server-side error capture (the
   message    TEXT NOT NULL,            -- truncated to 500 chars
   stack      TEXT,                     -- unexpected errors only: the first 20 lines / 4000 chars of the stack
   task_id    TEXT,                     -- the Task: the timestamp of its input message (the prompt's Trace timestamp)
-  request_id TEXT                      -- the request (x-penguin-request-id): set only while telemetry is on
+  request_id TEXT                      -- the request (telemetry's request key): set only while telemetry is on
 );
 CREATE INDEX IF NOT EXISTS idx_error_project_date ON error_records(project_id, date);
 CREATE INDEX IF NOT EXISTS idx_error_session ON error_records(session_id);
