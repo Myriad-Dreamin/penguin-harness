@@ -65,7 +65,7 @@ import { apiErrorText } from "../lib/api-error";
 import { S } from "../lib/strings";
 import { markBetaNoticeShown, shouldShowBetaNotice } from "../features/company/company-beta";
 import { channelBadgeCounts } from "../features/company/channel-list";
-import { orgKey, parseOrgKey } from "../features/company/company-nav";
+import { homePath, orgKey, parseOrgKey } from "../features/company/company-nav";
 import type { WorkMode } from "../features/company/company-nav";
 import { withDeskMessagingChannel } from "../features/company/org-sessions";
 import {
@@ -653,6 +653,8 @@ interface CompanyContextValue {
   available: boolean;
   /** The effective mode: the chosen one while company mode is available, development otherwise. */
   workMode: WorkMode;
+  /** Where `/` and an unmatched path lead in the effective mode (company-nav.ts homePath). */
+  homePath: string;
   setWorkMode: (mode: WorkMode) => void;
   setPersonalEnabled: (enabled: boolean) => void;
   organizations: OrganizationSummary[];
@@ -821,6 +823,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       personalEnabled: state.personalEnabled,
       available,
       workMode: effectiveWorkMode(state),
+      homePath: homePath(effectiveWorkMode(state)),
       setWorkMode: state.setWorkMode,
       setPersonalEnabled: state.setPersonalEnabled,
       organizations: state.organizations,
