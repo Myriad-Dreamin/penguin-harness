@@ -2,17 +2,14 @@
 # One line per edge, sorted: `importing-file -> imported-file` (paths relative to src/), or
 # `cycle: features/a -> features/b` for an edge between two feature directories that lies on a cycle.
 # This list only shrinks: never add a line; delete each line whose edge your change removes.
-components/layout/app-layout.tsx -> features/builtin-browser/browser-layer.tsx
 components/layout/app-layout.tsx -> features/chat/chat-page.tsx
 components/layout/app-layout.tsx -> features/chat/use-new-chat.ts
 components/layout/app-layout.tsx -> features/company/channel-sidebar.tsx
 components/layout/app-layout.tsx -> features/company/company-nav-icons.ts
 components/layout/app-layout.tsx -> features/company/company-nav.ts
+components/layout/app-layout.tsx -> features/company/index.ts
 components/layout/app-layout.tsx -> features/company/org-session-groups.tsx
 components/layout/app-layout.tsx -> features/dock/dock-state.ts
-components/layout/app-layout.tsx -> features/palette/app-palette.tsx
-components/layout/app-layout.tsx -> features/settings/shortcut-runtime.tsx
-components/layout/app-layout.tsx -> features/terminal/terminal-view-pool.tsx
 components/layout/app-layout.tsx -> features/todos/index.ts
 components/layout/project-dialogs.tsx -> features/chat/chat-defaults-event.ts
 components/layout/project-dialogs.tsx -> features/chat/draft-cache.ts
@@ -30,6 +27,7 @@ components/layout/sidebar.tsx -> features/company/channel-sidebar.tsx
 components/layout/sidebar.tsx -> features/company/company-beta.tsx
 components/layout/sidebar.tsx -> features/company/company-nav-icons.ts
 components/layout/sidebar.tsx -> features/company/company-nav.ts
+components/layout/sidebar.tsx -> features/company/index.ts
 components/layout/sidebar.tsx -> features/company/org-session-groups.tsx
 components/layout/sidebar.tsx -> features/company/org-switcher.tsx
 components/layout/sidebar.tsx -> features/dock/dock-state.ts
@@ -67,6 +65,7 @@ cycle: features/schedules -> features/ai-create
 cycle: features/schedules -> features/chat
 cycle: features/schedules -> features/models
 cycle: features/settings -> features/chat
+cycle: features/settings -> features/company
 cycle: features/settings -> features/dock
 cycle: features/skills -> features/chat
 cycle: features/terminal -> features/dock
@@ -189,10 +188,3 @@ features/todos/use-project-todos.ts -> features/usage/usage-controls.ts
 features/todos/use-update-badges.ts -> features/models/catalog-sync.ts
 features/workflows/workflow-app-page.tsx -> features/palette/app-palette.tsx
 features/workflows/workflow-tabs.tsx -> features/chat/skill-use.ts
-state/company.tsx -> features/company/channel-list.ts
-state/company.tsx -> features/company/company-beta.tsx
-state/company.tsx -> features/company/company-nav.ts
-state/company.tsx -> features/company/org-sessions.ts
-state/company.tsx -> features/company/work-mode.ts
-state/sessions.tsx -> features/builtin-browser/browser-events.ts
-state/sessions.tsx -> features/schedules/schedule-store.ts

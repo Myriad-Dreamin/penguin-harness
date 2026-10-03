@@ -353,19 +353,19 @@ describe("live statuses outlive the rows", () => {
   it("remembers a session_state for a Session no loaded page holds, without inventing a row", () => {
     const store = boot();
     store.setState({ sessions: [session("own")] });
-    applyUserEvent(store, stateEvent("s-desk", "running"), () => undefined);
+    applyUserEvent(store, [], stateEvent("s-desk", "running"), () => undefined);
     expect(ids(store)).toEqual(["own"]);
     expect(live(store).get("s-desk")).toBe("running");
     // The run ending is the fact no other channel reports: it must be kept, not dropped as
     // "nothing to draw".
-    applyUserEvent(store, stateEvent("s-desk", "idle"), () => undefined);
+    applyUserEvent(store, [], stateEvent("s-desk", "idle"), () => undefined);
     expect(live(store).get("s-desk")).toBe("idle");
   });
 
   it("a loaded row's own status wins over an older remembered one", () => {
     const store = boot();
     store.setState({ sessions: [] });
-    applyUserEvent(store, stateEvent("own", "running"), () => undefined);
+    applyUserEvent(store, [], stateEvent("own", "running"), () => undefined);
     // A list fetch that landed after the event carries the row as it stands now.
     store.setState({ sessions: [session("own", { status: "idle" })] });
     expect(live(store).get("own")).toBe("idle");
@@ -374,8 +374,8 @@ describe("live statuses outlive the rows", () => {
   it("a resync forgets them: the flip that ended a run may be among the ones it lost", () => {
     const store = boot();
     store.setState({ reload: vi.fn(() => Promise.resolve()) });
-    applyUserEvent(store, stateEvent("s-desk", "running"), () => undefined);
-    applyUserEvent(store, { type: "resync_required" }, () => undefined);
+    applyUserEvent(store, [], stateEvent("s-desk", "running"), () => undefined);
+    applyUserEvent(store, [], { type: "resync_required" }, () => undefined);
     expect(store.getState().liveStatuses.has("s-desk")).toBe(false);
     expect(live(store).has("s-desk")).toBe(false);
   });
@@ -386,7 +386,7 @@ describe("live statuses outlive the rows", () => {
     // The desk the chat page opened while it ran: no list fetch ever refreshes this row, so
     // after a resync its status is as stale as the forgotten entry.
     store.getState().add(session("s-desk", { client: "org", orgId: "acme", status: "running" }));
-    applyUserEvent(store, { type: "resync_required" }, () => undefined);
+    applyUserEvent(store, [], { type: "resync_required" }, () => undefined);
     expect(ids(store)).toEqual(["s-desk"]);
     expect(live(store).has("s-desk")).toBe(false);
   });
@@ -413,8 +413,8 @@ describe("events arriving from a machine", () => {
           count += 1;
         },
       });
-      applyUserEvent(store, created(projectId), () => undefined, "M1");
-      applyUserEvent(store, created(projectId), () => undefined, null);
+      applyUserEvent(store, [], created(projectId), () => undefined, "M1");
+      applyUserEvent(store, [], created(projectId), () => undefined, null);
       expect(count).toBe(reloads);
     },
   );
