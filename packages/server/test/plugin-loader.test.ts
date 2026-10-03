@@ -251,6 +251,35 @@ describe("plugin loading", () => {
     expect(result.failed.get("@nope/definitely-not-installed")).toBeTruthy();
   });
 
+  it("times each plugin it imports, a failed one as not ok, and not a reused one", async () => {
+    const good = await writePackage(
+      "@acme/timed",
+      oneModule,
+      `${thingClass}\n export default { modules: [Thing] };`,
+    );
+    await writeConfig({ plugins: [good] });
+    const seen: Array<[string, boolean]> = [];
+    const observe = (specifier: string, ms: number, ok: boolean) => {
+      expect(ms).toBeGreaterThanOrEqual(0);
+      seen.push([specifier, ok]);
+    };
+    const first = await loadPlugins(root, undefined, new Map(), null, observe);
+    expect(seen).toEqual([[good, true]]);
+    seen.length = 0;
+    await loadPlugins(
+      root,
+      undefined,
+      new Map(first.loaded.map((e) => [e.specifier, e])),
+      null,
+      observe,
+    );
+    expect(seen).toEqual([]);
+    const bad = await writePackage("@acme/untimed", oneModule, "export default 7;");
+    await writeConfig({ plugins: [bad] });
+    await loadPlugins(root, undefined, new Map(), null, observe);
+    expect(seen).toEqual([[bad, false]]);
+  });
+
   it("a default export that is not a list of classes is a load failure that says so", async () => {
     const file = await writePackage(
       "@acme/half",
