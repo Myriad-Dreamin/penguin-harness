@@ -4,7 +4,7 @@
  *
  * Nothing means the body colour alone, which in the dark theme is pure black: a window that looks
  * like a dead app for as long as that request takes. The source scan pins both guards in
- * router.tsx, because the regression is a one-word edit (`return null`) no render test of the
+ * shell/router.tsx, because the regression is a one-word edit (`return null`) no render test of the
  * component itself would notice.
  */
 import { describe, expect, it } from "vitest";
@@ -16,7 +16,7 @@ import { BootPending } from "../src/components/ui/boot-pending";
 import { setActiveStrings, zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 
-const ROUTER = fileURLToPath(new URL("../src/router.tsx", import.meta.url));
+const ROUTER = fileURLToPath(new URL("../src/shell/router.tsx", import.meta.url));
 const STYLES = fileURLToPath(new URL("../src/styles.css", import.meta.url));
 
 describe("BootPending", () => {
@@ -37,7 +37,7 @@ describe("BootPending", () => {
   });
 });
 
-describe("the auth guards in router.tsx", () => {
+describe("the auth guards in shell/router.tsx", () => {
   const source = readFileSync(ROUTER, "utf8");
 
   it("render the boot status, not nothing, while the user is unknown", () => {
