@@ -125,6 +125,8 @@ const UNCLASSIFIED_ON_PURPOSE: Record<string, string> = {
   "penguin.installId": "the marker itself — it is what the comparison reads, never swept",
   "penguin.chatRouteApplied.":
     "sessionStorage: scoped to one tab's history, so it cannot outlive a data root",
+  "penguin.safeMode":
+    "sessionStorage: safe mode lasts for one tab, so it cannot outlive a data root",
 };
 
 /**

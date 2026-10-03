@@ -15,6 +15,10 @@
  * registry, and this build carries no builtin page renderer, so such a page is skipped — there
  * is nothing to draw it with. A compiled page wins over a contributed one with the same key or
  * path: a plugin adds pages here, it does not shadow the app's own.
+ *
+ * Safe mode (rescue/safe-mode.ts) is the one switch over all of it: while it is on, the store is
+ * told nobody is signed in, so nothing is asked and the table is the compiled one; leaving it
+ * asks again.
  */
 import {
   createContext,
@@ -27,6 +31,7 @@ import {
 import type { ReactNode } from "react";
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
+import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
 import { FramePage } from "./frame-page";
@@ -144,10 +149,11 @@ const PagesContext = createContext<ShellPagesValue | null>(null);
 /** Holds the signed-in user's contributions and the merged page table, for everything under the router. */
 export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const { pages: compiled } = shellDeps.useDeps();
-  const userId = useAuth().user?.userId ?? null;
+  const signedIn = useAuth().user?.userId ?? null;
+  const userId = useSafeMode() ? null : signedIn;
   const [store] = useState(() => createContributionsStore(api.getContributions));
   useEffect(() => store.setUser(userId), [store, userId]);
-  const state = useSyncExternalStore(store.subscribe, store.current);
+  const state = useSyncExternalStore(store.subscribe, store.current, store.current);
   // Until the effect above has told the store about a new user, the state is the last user's:
   // none of it is shown, and the new user's request counts as already in flight.
   const current = state.user === userId;
