@@ -38,6 +38,8 @@ import { MachinesPage } from "./features/machines/machines-page";
 import { MachinePortsPage } from "./features/ports/machine-ports-page";
 import { DashboardPage } from "./features/dashboard/dashboard-page";
 import { WorkflowAppPage } from "./features/workflows/workflow-app-page";
+import { OrgProposalsPage } from "./features/proposals/proposals-page";
+import { orgPagesOf } from "./lib/pages";
 import type { PageEntry } from "./lib/pages";
 import { ContributionsProvider, useContributions } from "./state/contributions";
 
@@ -59,6 +61,9 @@ const BUILTIN_PAGES: Record<string, React.ComponentType> = {
   BenchmarkPage,
   BenchmarkDetailPage,
   DashboardPage,
+  // Company-mode pages a plugin contributes (`nav: "org"`): mounted under the organization
+  // layout, never at the root, so the company sidebar stays around them.
+  OrgProposalsPage,
 };
 
 function renderPage(page: PageEntry): React.ReactNode {
@@ -181,6 +186,12 @@ function RouteTree() {
           <Route path="finance" element={<FinancePage />} />
           <Route path="handbook" element={<HandbookPage />} />
           <Route path="channels/:channelId" element={<ChannelView />} />
+          {/* The company-mode pages a plugin contributes, after the organization's own:
+              their paths are relative to this layout, and the nav row beside them is the
+              sidebar's (features/company/company-nav.ts ORG_PAGE_RENDERERS). */}
+          {orgPagesOf(pages).map((page) => (
+            <Route key={page.id} path={page.path} element={renderPage(page)} />
+          ))}
           <Route path="*" element={<Navigate to="overview" replace />} />
         </Route>
         {/* Settings and user management live in the settings dialog now (see
