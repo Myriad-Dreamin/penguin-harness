@@ -80,6 +80,7 @@ Sign-in, sign-out, account claiming, and the current user's password, profile an
 | GET | `/api/me` | The current user's info |
 | PUT | `/api/me/password` | Changes the password: `{oldPassword, newPassword}` |
 | PUT | `/api/me/profile` | Sets the avatar and nickname: `{displayName?, avatar?}` → `{user}` |
+| GET | `/api/me/avatar?rev=…` | The current user's avatar image; `rev` is `user.avatarRev`, and the response is cached for good under the current `rev` |
 | GET | `/api/me/prefs` | Reads UI preferences |
 | PUT | `/api/me/prefs` | Writes UI preferences (shallow merge) |
 

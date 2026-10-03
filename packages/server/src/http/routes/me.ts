@@ -1,6 +1,6 @@
 /**
  * Current-user routes: GET /api/me, PUT /api/me/password, PUT /api/me/profile,
- * GET|PUT /api/me/prefs.
+ * GET /api/me/avatar, GET|PUT /api/me/prefs.
  * ui_prefs is free-form JSON (theme / lastProjectId / credentialGuideSeen, etc.): GET reads
  * it whole, PUT shallow-merges (PATCH semantics) — several independent writers each write
  * their own fields without clobbering each other. Free-form does not mean unbounded: a key
@@ -20,7 +20,7 @@ import type {
   UpdateProfileRequest,
   UpdateProfileResponse,
 } from "../../api/types.js";
-import { toUserInfo } from "../../auth/service.js";
+import { avatarRevOf, toUserInfo } from "../../auth/service.js";
 import { cookieOptions, sessionCookieName } from "../../auth/middleware.js";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, readJson, requireString } from "../validate.js";
@@ -207,6 +207,28 @@ export function meRoutes(deps: MeRouteDeps): Hono<AppEnv> {
       throw new HttpError(404, "not_found", "Account no longer exists.");
     }
     return c.json({ user: toUserInfo(updated) } satisfies UpdateProfileResponse);
+  });
+
+  /**
+   * The account's own avatar, as an image. `GET /api/me` names it by revision (`avatarRev`) and
+   * a surface appends that as `?rev=`, so the URL is the picture's own and is cached for good —
+   * the employee avatar's shape. Only a `rev` naming the current picture is cached for good: a
+   * stale one (or none) still loads the current picture, but must not pin it under a URL that
+   * names a different one — switching back to that picture would otherwise show this one.
+   */
+  app.get("/avatar", (c) => {
+    const avatar = c.var.user.avatar;
+    const stored = avatar === null ? null : AVATAR_DATA_URL.exec(avatar);
+    if (avatar === null || stored === null) {
+      throw new HttpError(404, "not_found", "This account has no avatar.");
+    }
+    const payload = stored[0].slice(stored[0].indexOf(",") + 1);
+    const current = c.req.query("rev") === avatarRevOf(avatar);
+    return c.body(new Uint8Array(Buffer.from(payload, "base64")), 200, {
+      "content-type": `image/${stored[1]}`,
+      "cache-control": current ? "private, max-age=31536000, immutable" : "private, no-cache",
+      "x-content-type-options": "nosniff",
+    });
   });
 
   app.get("/prefs", (c) => {

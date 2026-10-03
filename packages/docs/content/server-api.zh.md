@@ -80,6 +80,7 @@ curl -H "Authorization: Bearer $(cat ~/.penguin/data/api-token)" \
 | GET | `/api/me` | 当前用户的信息 |
 | PUT | `/api/me/password` | 修改密码：`{oldPassword, newPassword}` |
 | PUT | `/api/me/profile` | 设置头像和昵称：`{displayName?, avatar?}` → `{user}` |
+| GET | `/api/me/avatar?rev=…` | 当前用户的头像图片；`rev` 取 `user.avatarRev`，`rev` 为当前版本时响应可长期缓存 |
 | GET | `/api/me/prefs` | 读取 UI 偏好 |
 | PUT | `/api/me/prefs` | 写入 UI 偏好（浅合并） |
 
