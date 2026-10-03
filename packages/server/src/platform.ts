@@ -46,12 +46,8 @@ import { QQScanTransportProvider } from "./runtime/messaging/qq-scan.js";
 import { WeChatTransportProvider } from "./runtime/messaging/wechat-connector.js";
 import { WeChatScanTransportProvider } from "./runtime/messaging/wechat-scan.js";
 import { DiscordTransportProvider } from "./runtime/messaging/discord-connector.js";
-import {
-  PluginConfig,
-  PluginConfigAdmin,
-  PluginConfigPage,
-  PluginConfigProvider,
-} from "./plugin/config.js";
+import { PluginConfig, PluginConfigProvider } from "./plugin/config.js";
+import { PluginConfigAdmin, PluginConfigPage } from "./plugin/config-page.js";
 import {
   CoreSessionLoaders,
   DefaultTitleGenerators,
@@ -113,7 +109,8 @@ import { MemoryService } from "./services/memory-service.js";
 import { BenchmarkService } from "./services/benchmark-service.js";
 import { ProjectsRoutes } from "./http/routes/dirs.js";
 import { SandboxModule } from "./sandbox/service.js";
-import { SandboxSettings, SandboxSettingsStatus } from "./sandbox/settings-store.js";
+import { SandboxSettings } from "./sandbox/settings-store.js";
+import { SandboxSettingsStatus } from "./sandbox/settings-status.js";
 import { SchedulerRoutes } from "./http/routes/schedules.js";
 import { Machines, MachinesModule } from "./machines/service.js";
 import { PortForwardsModule } from "./port-forwards/module.js";

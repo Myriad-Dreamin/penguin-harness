@@ -9,11 +9,12 @@ import { parseManifest } from "@prismshadow/penguin-core/kernel";
 import type { PluginConfigResponse } from "../src/api/types.js";
 import {
   PluginConfigError,
-  PluginConfigPage,
   PluginConfigStore,
   applyUpdate,
   parsePluginConfiguration,
+  resolveTable,
 } from "../src/plugin/config.js";
+import { PluginConfigPage } from "../src/plugin/config-page.js";
 import { PluginHost } from "../src/plugin/host.js";
 import { apiClient, createTestApp, loginAdmin, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
@@ -86,6 +87,23 @@ describe("parsePluginConfiguration", () => {
     expect(bad({ a: { type: "string", title: "A", pattern: "(" } })).toThrow(
       /\.a\.pattern is not a valid regular expression/,
     );
+    expect(bad({ a: { type: "string", title: "A", advanced: "yes" } })).toThrow(
+      /\.a\.advanced must be a boolean/,
+    );
+  });
+
+  it("keeps a field's advanced mark, and leaves it off a field not marked", () => {
+    const schema = parsePluginConfiguration(
+      {
+        properties: {
+          basic: { type: "boolean", title: "Basic", advanced: false },
+          tuned: { type: "number", title: "Tuned", advanced: true },
+        },
+      },
+      "acme/package.json",
+    )!;
+    expect(schema.properties.tuned).toEqual({ type: "number", title: "Tuned", advanced: true });
+    expect(schema.properties.basic).toEqual({ type: "boolean", title: "Basic" });
   });
 });
 
@@ -341,5 +359,434 @@ describe("PluginConfigPage actions", () => {
     await settled;
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(saves).toEqual(["sandbox"]);
+  });
+});
+
+describe("a table field", () => {
+  const TABLE = parsePluginConfiguration(
+    {
+      properties: {
+        presets: {
+          type: "table",
+          title: "Presets",
+          columns: [
+            { name: "name", type: "string", title: "Name" },
+            { name: "enabled", type: "boolean", title: "In menu" },
+            {
+              name: "level",
+              type: "enum",
+              title: "Level",
+              options: [
+                { value: "low", title: "Low" },
+                { value: "high", title: "High" },
+              ],
+            },
+          ],
+          rows: [
+            {
+              id: "fixed",
+              values: { name: "Fixed", enabled: true, level: "high" },
+              valuesZh: { name: "固定" },
+              locked: ["level"],
+            },
+            { id: "free", values: { name: "Free", enabled: false, level: "low" } },
+          ],
+        },
+      },
+    },
+    "acme/package.json",
+  )!;
+  const field = TABLE.properties.presets!;
+
+  it("refuses a table the page could not draw, naming where", () => {
+    const bad = (presets: Record<string, unknown>) => () =>
+      parsePluginConfiguration(
+        { properties: { presets: { type: "table", title: "P", ...presets } } },
+        "acme/package.json",
+      );
+    expect(bad({ rows: [] })).toThrow(/presets\.columns must list the columns/);
+    const columns = [{ name: "on", type: "boolean", title: "On" }];
+    expect(bad({ columns, rows: [] })).toThrow(/presets\.rows must list the rows/);
+    expect(bad({ columns: [{ name: "n", type: "list", title: "N" }], rows: [] })).toThrow(
+      /columns\[0\]\.type must be one of/,
+    );
+    // Every row declares every column, with a value that fits it.
+    expect(bad({ columns, rows: [{ id: "a", values: {} }] })).toThrow(
+      /rows\[0\]\.values\.on does not fit its column/,
+    );
+    expect(bad({ columns, rows: [{ id: "a", values: { on: true }, locked: ["off"] }] })).toThrow(
+      /rows\[0\]\.locked must list columns/,
+    );
+    expect(
+      bad({
+        columns,
+        rows: [
+          { id: "a", values: { on: true } },
+          { id: "a", values: { on: false } },
+        ],
+      }),
+    ).toThrow(/rows\[1\]\.id must be a unique/);
+    expect(bad({ columns, rows: [{ id: "a", values: { on: true } }], default: {} })).toThrow(
+      /a table's rows are its defaults/,
+    );
+  });
+
+  it("reads as its declared rows when nothing is stored, and lays stored cells over them", () => {
+    expect(resolveTable(field, undefined)).toEqual([
+      {
+        id: "fixed",
+        values: { name: "Fixed", enabled: true, level: "high" },
+        valuesZh: { name: "固定" },
+        locked: ["level"],
+      },
+      { id: "free", values: { name: "Free", enabled: false, level: "low" } },
+    ]);
+    // A renamed row is called that in every language; a stored row it does not declare is left out.
+    const read = resolveTable(field, { fixed: { name: "Mine" }, gone: { name: "x" } });
+    expect(read.map((r) => r.id)).toEqual(["fixed", "free"]);
+    expect(read[0]).toEqual({
+      id: "fixed",
+      values: { name: "Mine", enabled: true, level: "high" },
+      locked: ["level"],
+    });
+  });
+
+  it("stores only the cells that differ from the declaration", () => {
+    const next = applyUpdate(
+      TABLE,
+      {},
+      {
+        presets: {
+          fixed: { name: " Mine ", enabled: true, level: "high" },
+          free: { name: "Free", enabled: true, level: "low" },
+        },
+      },
+    );
+    expect(next).toEqual({ presets: { fixed: { name: "Mine" }, free: { enabled: true } } });
+    // A cell set back to its declared value, or emptied, is dropped; nothing left, nothing stored.
+    expect(
+      applyUpdate(TABLE, next, { presets: { fixed: { name: "" }, free: { enabled: false } } }),
+    ).toEqual({});
+    // The whole field cleared: back to the declared table.
+    expect(applyUpdate(TABLE, next, { presets: null })).toEqual({});
+  });
+
+  it("checks each cell against its column and names the cell it refuses", () => {
+    const refused = (cells: unknown) => {
+      try {
+        applyUpdate(TABLE, {}, { presets: cells });
+      } catch (e) {
+        return e;
+      }
+      return null;
+    };
+    expect(refused({ free: { level: "max" } })).toEqual(
+      new PluginConfigError("presets", '"presets.free.level" must be one of low, high'),
+    );
+    expect(refused({ free: { enabled: "yes" } })).toEqual(
+      new PluginConfigError("presets", '"presets.free.enabled" must be a boolean'),
+    );
+    expect(refused({ free: { colour: "red" } })).toEqual(
+      new PluginConfigError("presets", '"presets.free.colour" is not a column of this table'),
+    );
+    expect(refused({ free: "on" })).toEqual(
+      new PluginConfigError("presets", '"presets.free" must be an object of cells'),
+    );
+    expect(refused([])).toEqual(
+      new PluginConfigError("presets", '"presets" must be an object of rows'),
+    );
+  });
+
+  it("refuses a change to a locked cell, and drops rows it does not declare", () => {
+    expect(() => applyUpdate(TABLE, {}, { presets: { fixed: { level: "low" } } })).toThrow(
+      '"presets.fixed.level" cannot be changed',
+    );
+    // Sending the locked cell's own value changes nothing, so it is not refused.
+    expect(applyUpdate(TABLE, {}, { presets: { fixed: { level: "high", name: "A" } } })).toEqual({
+      presets: { fixed: { name: "A" } },
+    });
+    expect(applyUpdate(TABLE, {}, { presets: { ghost: { name: "B" } } })).toEqual({});
+  });
+});
+
+describe("a table's row choice", () => {
+  const table = (rowChoice: unknown, options: string[]) =>
+    parsePluginConfiguration(
+      {
+        properties: {
+          rows: {
+            type: "table",
+            title: "Rows",
+            columns: [{ name: "name", type: "string", title: "Name" }],
+            rows: [
+              { id: "a", values: { name: "A" } },
+              { id: "b", values: { name: "B" } },
+            ],
+            rowChoice,
+          },
+          pick: {
+            type: "enum",
+            title: "Pick",
+            options: options.map((value) => ({ value, title: value })),
+          },
+        },
+      },
+      "acme/package.json",
+    );
+
+  it("stores into an enum of the same group whose options are the row ids", () => {
+    expect(
+      table({ field: "pick", title: "Default" }, ["b", "a"])!.properties.rows!.rowChoice,
+    ).toEqual({ field: "pick", title: "Default" });
+  });
+
+  it("refuses a choice naming no such enum, or one whose options are not the rows", () => {
+    expect(() => table({ field: "nope", title: "Default" }, ["a", "b"])).toThrow(
+      /rowChoice\.field must name an enum/,
+    );
+    expect(() => table({ field: "pick", title: "Default" }, ["a"])).toThrow(
+      /rowChoice\.field must name an enum/,
+    );
+    expect(() => table({ field: "pick" }, ["a", "b"])).toThrow(/needs a field and a title/);
+  });
+
+  it("keeps only the field and the title: the choice is a marker, not a column", () => {
+    const parsed = table(
+      { field: "pick", title: "Default", titleZh: "默认", description: "x", before: "name" },
+      ["a", "b"],
+    );
+    expect(parsed!.properties.rows!.rowChoice).toEqual({
+      field: "pick",
+      title: "Default",
+      titleZh: "默认",
+    });
+  });
+
+  it("keeps a row's and an option's description, for the row's \"?\"", () => {
+    const parsed = parsePluginConfiguration(
+      {
+        properties: {
+          rows: {
+            type: "table",
+            title: "Rows",
+            columns: [
+              { name: "name", type: "string", title: "Name" },
+              {
+                name: "level",
+                type: "enum",
+                title: "Level",
+                options: [
+                  { value: "low", title: "Low", description: "Quiet", descriptionZh: "安静" },
+                ],
+              },
+            ],
+            rows: [
+              {
+                id: "a",
+                values: { name: "A", level: "low" },
+                description: "For quiet work",
+                descriptionZh: "适合安静的工作",
+              },
+            ],
+          },
+        },
+      },
+      "acme/package.json",
+    )!;
+    const rows = parsed.properties.rows!;
+    expect(rows.rows![0]).toMatchObject({
+      description: "For quiet work",
+      descriptionZh: "适合安静的工作",
+    });
+    expect(rows.columns![1]!.options![0]).toEqual({
+      value: "low",
+      title: "Low",
+      description: "Quiet",
+      descriptionZh: "安静",
+    });
+  });
+
+  it("draws a pin only over a boolean column of the table", () => {
+    const pinned = (pin: unknown) =>
+      parsePluginConfiguration(
+        {
+          properties: {
+            rows: {
+              type: "table",
+              title: "Rows",
+              columns: [
+                { name: "name", type: "string", title: "Name" },
+                { name: "on", type: "boolean", title: "Pin" },
+              ],
+              rows: [{ id: "a", values: { name: "A", on: true } }],
+              pin,
+            },
+          },
+        },
+        "acme/package.json",
+      );
+    expect(pinned({ column: "on", on: "Pinned", off: "Not pinned" })!.properties.rows!.pin).toEqual(
+      { column: "on", on: "Pinned", off: "Not pinned" },
+    );
+    expect(() => pinned({ column: "name", on: "Pinned", off: "Not pinned" })).toThrow(
+      /pin\.column must name a boolean column/,
+    );
+    expect(() => pinned({ column: "on", on: "Pinned" })).toThrow(/needs an on and an off text/);
+  });
+});
+
+describe("a group's switch", () => {
+  const group = (sw: unknown, on: unknown = { type: "boolean", title: "Enable" }) =>
+    parsePluginConfiguration(
+      { switch: sw, properties: { on, note: { type: "string", title: "Note" } } },
+      "acme/package.json",
+    );
+
+  it("names a boolean field of the group", () => {
+    expect(group("on")!.switch).toBe("on");
+    expect(group(undefined)!.switch).toBeUndefined();
+  });
+
+  it("refuses a switch that is not a boolean field of the group", () => {
+    expect(() => group("note")).toThrow(/switch must name a boolean field/);
+    expect(() => group("nope")).toThrow(/switch must name a boolean field/);
+    expect(() => group(1)).toThrow(/switch must be a string/);
+  });
+});
+
+describe("an extensible table's save", () => {
+  const SCHEMA_X = parsePluginConfiguration(
+    {
+      properties: {
+        rows: {
+          type: "table",
+          title: "Rows",
+          columns: [
+            { name: "name", type: "string", title: "Name" },
+            {
+              name: "level",
+              type: "enum",
+              title: "Level",
+              options: [
+                { value: "low", title: "Low" },
+                { value: "high", title: "High" },
+              ],
+            },
+          ],
+          rows: [
+            { id: "a", values: { name: "A", level: "low" } },
+            { id: "b", values: { name: "B", level: "high" } },
+          ],
+          rowChoice: { field: "pick", title: "Default" },
+          extensible: { add: "Add", values: { name: "New", level: "low" } },
+        },
+        pick: {
+          type: "enum",
+          title: "Pick",
+          options: [
+            { value: "a", title: "A" },
+            { value: "b", title: "B" },
+          ],
+        },
+      },
+    },
+    "acme/package.json",
+  )!;
+  const field = SCHEMA_X.properties.rows!;
+
+  it("an extensible table keeps only well-formed added rows and an order of ids that exist", () => {
+    const next = applyUpdate(
+      SCHEMA_X,
+      {},
+      {
+        rows: {
+          $added: { mine: { name: " Mine ", level: "high" } },
+          $order: ["mine", "ghost", "b", "mine"],
+        },
+      },
+    );
+    // Stored trimmed, every column present; the order keeps each existing id once.
+    expect(next).toEqual({
+      rows: { $added: { mine: { name: "Mine", level: "high" } }, $order: ["mine", "b"] },
+    });
+    // Rows the order does not list follow it, in their own order.
+    expect(resolveTable(field, next.rows).map((r) => r.id)).toEqual(["mine", "b", "a"]);
+    expect(resolveTable(field, next.rows)[0]).toEqual({
+      id: "mine",
+      values: { name: "Mine", level: "high" },
+      added: true,
+    });
+
+    // A save refuses an added row missing a column or holding a value its column refuses.
+    const refused = (added: unknown) => () =>
+      applyUpdate(SCHEMA_X, {}, { rows: { $added: added } });
+    expect(refused({ mine: { name: "Mine" } })).toThrow(
+      '"rows.mine.level" must be one of low, high',
+    );
+    expect(refused({ mine: { name: "Mine", level: "max" } })).toThrow(
+      '"rows.mine.level" must be one of low, high',
+    );
+    expect(refused({ mine: { name: " ", level: "low" } })).toThrow(
+      '"rows.mine.name" may not be empty',
+    );
+    // A row id may not be a reserved key, nor a declared row's id.
+    expect(refused({ $order: { name: "X", level: "low" } })).toThrow(
+      '"rows.$order" is not an id a new row may take',
+    );
+    expect(refused({ $added: { name: "X", level: "low" } })).toThrow(
+      '"rows.$added" is not an id a new row may take',
+    );
+    expect(refused({ a: { name: "X", level: "low" } })).toThrow(
+      '"rows.a" is not an id a new row may take',
+    );
+    expect(() =>
+      parsePluginConfiguration(
+        {
+          properties: {
+            rows: {
+              type: "table",
+              title: "Rows",
+              columns: [{ name: "name", type: "string", title: "Name" }],
+              rows: [{ id: "$added", values: { name: "X" } }],
+            },
+          },
+        },
+        "acme/package.json",
+      ),
+    ).toThrow(/rows\[0\]\.id must be a unique lower-case id/);
+
+    // On read, a malformed added row (stored by hand, or by an older table) is dropped.
+    const read = resolveTable(field, {
+      $added: {
+        bad: { name: "Bad" },
+        worse: { name: "W", level: "max" },
+        ok: { name: "Ok", level: "low" },
+      },
+    });
+    expect(read.map((r) => r.id)).toEqual(["a", "b", "ok"]);
+  });
+
+  it("refuses a save that leaves the row choice pointing at a removed row", () => {
+    const stored = applyUpdate(
+      SCHEMA_X,
+      {},
+      { rows: { $added: { mine: { name: "Mine", level: "high" } } }, pick: "mine" },
+    );
+    expect(stored.pick).toBe("mine");
+    // Deleting the chosen row while it is chosen: refused, naming the choice.
+    expect(() => applyUpdate(SCHEMA_X, stored, { rows: { $added: {} } })).toThrow(
+      new PluginConfigError(
+        "pick",
+        '"pick" must name a row of "rows": "mine" is not one (choose another row before deleting it)',
+      ),
+    );
+    // Choosing another row first, in the same save, lets the deletion through.
+    expect(applyUpdate(SCHEMA_X, stored, { rows: { $added: {} }, pick: "a" })).toEqual({
+      pick: "a",
+    });
+    // No row chosen at all is not refused.
+    expect(applyUpdate(SCHEMA_X, {}, { rows: { a: { name: "Renamed" } } })).toEqual({
+      rows: { a: { name: "Renamed" } },
+    });
   });
 });

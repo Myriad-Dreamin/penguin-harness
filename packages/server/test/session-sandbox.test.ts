@@ -12,6 +12,7 @@ import { stampThrough } from "./db-migrations-fixtures.js";
 import { SCHEMA_SQL } from "../src/db/schema.js";
 import { SessionsRepo } from "../src/db/repos/sessions.js";
 import type { SessionRow } from "../src/db/repos/sessions.js";
+import type { SessionSandbox } from "../src/api/types.js";
 import { SandboxService } from "../src/sandbox/index.js";
 import { applySandboxPick, sessionSandboxOf } from "../src/services/session-service.js";
 
@@ -24,6 +25,70 @@ const NO_BACKEND = {
   localNetworkSupported: false,
   unavailableBackends: [],
 };
+
+/** The Sandbox card's presets table as a Session's view carries it with nothing saved. */
+const DEFAULT_PRESETS = [
+  {
+    id: "full-access",
+    name: "Full Access",
+    nameZh: "完全访问",
+    enabled: true,
+    mode: "danger-full-access",
+    network: "open",
+    approvalMode: "allow-all",
+  },
+  {
+    id: "always-ask",
+    name: "Always Ask",
+    nameZh: "每次询问",
+    enabled: true,
+    mode: "danger-full-access",
+    network: "open",
+    approvalMode: "always-ask",
+  },
+  {
+    id: "workspace-write",
+    name: "Workspace Write",
+    nameZh: "仅工作区可写",
+    enabled: true,
+    mode: "workspace-write",
+    network: "open",
+    approvalMode: "allow-all",
+  },
+  {
+    id: "read-only",
+    name: "Read Only",
+    nameZh: "只读",
+    enabled: true,
+    mode: "read-only",
+    network: "open",
+    approvalMode: "allow-all",
+  },
+  {
+    id: "workspace-write-ask",
+    name: "Workspace Write with Ask",
+    nameZh: "仅工作区可写并询问",
+    enabled: false,
+    mode: "workspace-write",
+    network: "open",
+    approvalMode: "always-ask",
+  },
+  {
+    id: "denied-all",
+    name: "Denied All",
+    nameZh: "全部拒绝",
+    enabled: false,
+    mode: "danger-full-access",
+    network: "open",
+    approvalMode: "deny-all",
+  },
+];
+
+/**
+ * What the API serves beside a policy on a server with no backend: the presets too, and the
+ * switch, which settings saved without it read as on once they confine.
+ */
+const SERVED = { ...NO_BACKEND, presets: DEFAULT_PRESETS, switchOn: true };
 
 const ROW: SessionRow = {
   sessionId: "session-1",
@@ -49,11 +114,22 @@ describe("picking a Session's sandbox from the composer", () => {
   it("keeps the snapshot's mask paths and temp choice, and lays the picks over it", () => {
     const next = applySandboxPick(settings, { mode: "read-only" }, settings, false);
     expect(next).toEqual({ ...settings, mode: "read-only" });
+    // Masked paths and a read-only temp are what no preset shows: the view says so.
     expect(sessionSandboxOf(next)).toEqual({
       mode: "read-only",
       network: "none",
       ...NO_BACKEND,
+      advanced: true,
     });
+  });
+
+  it("is advanced only while the policy holds what no preset shows, and carries the presets it is given", () => {
+    expect(sessionSandboxOf({ mode: "workspace-write" }).advanced).toBeUndefined();
+    expect(sessionSandboxOf({ mode: "workspace-write", writableTemp: false }).advanced).toBe(true);
+    expect(sessionSandboxOf({ mode: "workspace-write", maskPaths: ["/k"] }).advanced).toBe(true);
+    expect(sessionSandboxOf({ mode: "workspace-write" }).presets).toBeUndefined();
+    const view = sessionSandboxOf({ mode: "read-only" }, [], [], DEFAULT_PRESETS as never);
+    expect(view.presets).toEqual(DEFAULT_PRESETS);
   });
 
   it("says which levels the mounted backends can enforce, and none without a backend", () => {
@@ -93,59 +169,6 @@ describe("picking a Session's sandbox from the composer", () => {
         { name: "penguin-wsl", reason: "the sandbox distro is not set up; run Set up" },
       ],
     });
-  });
-
-  it("a non-admin cannot loosen past the server's settings, in either dimension", () => {
-    expect(() =>
-      applySandboxPick(settings, { mode: "danger-full-access" }, settings, false),
-    ).toThrow(/Only an administrator/);
-    expect(() => applySandboxPick(settings, { network: "open" }, settings, false)).toThrow(
-      /Only an administrator/,
-    );
-  });
-
-  it("the local level is refused where no backend supports it, and ranks between none and open", () => {
-    expect(() => applySandboxPick(settings, { network: "local" }, settings, true)).toThrow(
-      /localhost/,
-    );
-    const open: SandboxSettings = { mode: "workspace-write" };
-    const local = applySandboxPick(open, { network: "local" }, open, false, true);
-    expect(local.network).toBe("local");
-    expect(sessionSandboxOf(local, ["fs-write", "network", "network-local"])).toEqual({
-      mode: "workspace-write",
-      network: "local",
-      confinementSupported: true,
-      noNetworkSupported: true,
-      localNetworkSupported: true,
-      unavailableBackends: [],
-    });
-    // Under settings of "local", a non-admin may cut the network but not open it.
-    const localDefaults: SandboxSettings = { mode: "workspace-write", network: "local" };
-    expect(
-      applySandboxPick(localDefaults, { network: "none" }, localDefaults, false, true).network,
-    ).toBe("none");
-    expect(() =>
-      applySandboxPick(localDefaults, { network: "open" }, localDefaults, false, true),
-    ).toThrow(/Only an administrator/);
-    // Under settings of "none", "local" is already looser.
-    expect(() => applySandboxPick(settings, { network: "local" }, settings, false, true)).toThrow(
-      /Only an administrator/,
-    );
-  });
-
-  it("a non-admin who tightened may come back to the settings; an admin may go past them", () => {
-    const tightened = applySandboxPick(settings, { mode: "read-only" }, settings, false);
-    expect(applySandboxPick(tightened, { mode: "workspace-write" }, settings, false).mode).toBe(
-      "workspace-write",
-    );
-    const opened = applySandboxPick(
-      settings,
-      { mode: "danger-full-access", network: "open" },
-      settings,
-      true,
-    );
-    expect(opened.mode).toBe("danger-full-access");
-    expect(opened.network).toBeUndefined();
   });
 });
 
@@ -212,6 +235,24 @@ describe("confining under a Session's own policy", () => {
   });
 });
 
+/** A fresh app, an admin, and an owner's Project with a model, to create Sessions in. */
+async function ownerProject(id: string) {
+  const { apiClient, createTestApp, loginAdmin, provisionUser } = await import("./helpers.js");
+  const t = await createTestApp();
+  const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
+  const owner = apiClient(t.app, (await provisionUser(t.app, "owner")).cookie);
+  const projectId = (
+    (await (await owner.post("/api/projects", { projectId: id, name: "project" })).json()) as {
+      project: { projectId: string };
+    }
+  ).project.projectId;
+  await owner.put(`/api/projects/${projectId}/models`, {
+    defaultModel: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+    models: [{ provider: "anthropic", modelId: "claude-sonnet-4-6", contextWindow: 128000 }],
+  });
+  return { t, admin, owner, projectId };
+}
+
 describe("the API: settings seed new Sessions, and never reach existing ones", () => {
   it("snapshots at creation, keeps the snapshot across a settings change, and bounds non-admins", async () => {
     const { apiClient, createTestApp, loginAdmin, provisionUser } = await import("./helpers.js");
@@ -232,30 +273,42 @@ describe("the API: settings seed new Sessions, and never reach existing ones", (
       const create = async (body: Record<string, unknown> = {}) =>
         owner.post(`/api/projects/${projectId}/agents/default_agent/sessions`, body);
       type Created = { session: { sessionId: string; sandbox: unknown } };
+      /** What is served beside a policy here: the remapped presets, and the switch on. */
+      const REMAPPED = { ...SERVED, presets: expect.any(Array) };
 
-      expect((await settings({ mode: "workspace-write", network: "none" })).status).toBe(200);
+      // The default preset is what a new Session starts from: its row remapped to cut the
+      // network, so the snapshot below is not the shipped table's.
+      expect(
+        (
+          await settings({
+            enabled: true,
+            defaultPreset: "workspace-write",
+            presets: { "workspace-write": { network: "none" } },
+          })
+        ).status,
+      ).toBe(200);
       const first = (await (await create()).json()) as Created;
       expect(first.session.sandbox).toEqual({
         mode: "workspace-write",
         network: "none",
-        ...NO_BACKEND,
+        ...REMAPPED,
       });
 
       // The settings change: a new Session starts from it, the existing one does not move.
-      expect((await settings({ mode: "read-only", network: "open" })).status).toBe(200);
+      expect((await settings({ defaultPreset: "read-only" })).status).toBe(200);
       const again = (await (
         await owner.get(`/api/sessions/${first.session.sessionId}`)
       ).json()) as Created;
       expect(again.session.sandbox).toEqual({
         mode: "workspace-write",
         network: "none",
-        ...NO_BACKEND,
+        ...REMAPPED,
       });
       const second = (await (await create()).json()) as Created;
       expect(second.session.sandbox).toEqual({
         mode: "read-only",
         network: "open",
-        ...NO_BACKEND,
+        ...REMAPPED,
       });
 
       // A non-admin tightens freely, and may not loosen past the settings.
@@ -266,7 +319,7 @@ describe("the API: settings seed new Sessions, and never reach existing ones", (
       expect(((await tightened.json()) as Created).session.sandbox).toEqual({
         mode: "read-only",
         network: "none",
-        ...NO_BACKEND,
+        ...REMAPPED,
       });
       const loosened = await owner.patch(`/api/sessions/${second.session.sessionId}`, {
         sandbox: { mode: "danger-full-access" },
@@ -275,6 +328,163 @@ describe("the API: settings seed new Sessions, and never reach existing ones", (
       expect(await loosened.json()).toMatchObject({ error: { code: "sandbox_forbidden" } });
       expect((await create({ sandbox: { mode: "workspace-write" } })).status).toBe(403);
       expect((await create({ sandbox: { mode: "nope" } })).status).toBe(400);
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("carries the Sandbox card's presets, read back after a save, and says when the policy is advanced", async () => {
+    const { apiClient, createTestApp, loginAdmin, provisionUser } = await import("./helpers.js");
+    const t = await createTestApp();
+    try {
+      const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
+      const owner = apiClient(t.app, (await provisionUser(t.app, "owner")).cookie);
+      const project = (await (
+        await owner.post("/api/projects", { projectId: "owner-presets", name: "project" })
+      ).json()) as { project: { projectId: string } };
+      const projectId = project.project.projectId;
+      await owner.put(`/api/projects/${projectId}/models`, {
+        defaultModel: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+        models: [{ provider: "anthropic", modelId: "claude-sonnet-4-6", contextWindow: 128000 }],
+      });
+      type Created = { session: { sessionId: string; sandbox: SessionSandbox } };
+      const create = async () =>
+        (await (
+          await owner.post(`/api/projects/${projectId}/agents/default_agent/sessions`, {})
+        ).json()) as Created;
+      const read = async (id: string) =>
+        ((await (await owner.get(`/api/sessions/${id}`)).json()) as Created).session.sandbox;
+
+      const first = await create();
+      expect(first.session.sandbox.presets).toEqual(DEFAULT_PRESETS);
+      expect(first.session.sandbox.advanced).toBeUndefined();
+
+      // A rename, a row put in the menu and a changed cell reach a Session that already exists:
+      // the table names levels, it is not part of any Session's policy.
+      const saved = await admin.put("/api/admin/plugin-config", {
+        name: "sandbox",
+        values: {
+          presets: {
+            "read-only": { name: "Look only", network: "none" },
+            "denied-all": { enabled: true },
+          },
+        },
+      });
+      expect(saved.status).toBe(200);
+      const presets = (await read(first.session.sessionId)).presets!;
+      expect(presets.map((p) => p.id)).toEqual(DEFAULT_PRESETS.map((p) => p.id));
+      expect(presets.find((p) => p.id === "read-only")).toEqual({
+        id: "read-only",
+        name: "Look only",
+        enabled: true,
+        mode: "read-only",
+        network: "none",
+        approvalMode: "allow-all",
+      });
+      expect(presets.find((p) => p.id === "denied-all")?.enabled).toBe(true);
+      // The chat defaults a draft reads carry the same table.
+      const defaults = (await (
+        await owner.get(`/api/projects/${projectId}/chat-defaults`)
+      ).json()) as { sandbox: SessionSandbox };
+      expect(defaults.sandbox.presets).toEqual(presets);
+
+      // A Session created under masked paths holds what no preset shows.
+      await admin.put("/api/admin/plugin-config", {
+        name: "sandbox",
+        values: { maskPaths: ["/secret"] },
+      });
+      const masked = await create();
+      expect(masked.session.sandbox.advanced).toBe(true);
+      expect((await read(first.session.sessionId)).advanced).toBeUndefined();
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("a refused pick stores nothing", async () => {
+    const { t, admin, owner, projectId } = await ownerProject("owner-refused");
+    try {
+      // New Sessions start on "Workspace Write with Ask": confined, asking first.
+      await admin.put("/api/admin/plugin-config", {
+        name: "sandbox",
+        values: { enabled: true, defaultPreset: "workspace-write-ask" },
+      });
+      type Read = { session: { sessionId: string; approvalMode: string; sandbox: SessionSandbox } };
+      const created = (await (
+        await owner.post(`/api/projects/${projectId}/agents/default_agent/sessions`, {})
+      ).json()) as Read;
+      const id = created.session.sessionId;
+      expect(created.session).toMatchObject({
+        approvalMode: "always-ask",
+        sandbox: { mode: "workspace-write", network: "open" },
+      });
+      const before = t.deps.sessionsRepo.findById(id);
+
+      // A non-admin picks Full Access, renaming the Session in the same request: the sandbox
+      // half is past the server's settings, so nothing of it is stored.
+      const refused = await owner.patch(`/api/sessions/${id}`, {
+        title: "Renamed",
+        approvalMode: "allow-all",
+        sandbox: { mode: "danger-full-access", network: "open" },
+      });
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({ error: { code: "sandbox_forbidden" } });
+      const after = ((await (await owner.get(`/api/sessions/${id}`)).json()) as Read).session;
+      expect(after).toMatchObject({
+        approvalMode: "always-ask",
+        sandbox: { mode: "workspace-write", network: "open" },
+      });
+      // The row whole: no title, no approval mode, no sandbox.
+      expect(t.deps.sessionsRepo.findById(id)).toEqual(before);
+
+      // A level this server cannot enforce is refused the same way.
+      const unsupported = await owner.patch(`/api/sessions/${id}`, {
+        approvalMode: "allow-all",
+        sandbox: { network: "local" },
+      });
+      expect(unsupported.status).toBe(400);
+      expect(await unsupported.json()).toMatchObject({ error: { code: "sandbox_unsupported" } });
+      expect(t.deps.sessionsRepo.findById(id)).toEqual(before);
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("marks the presets wider than the server's settings as above the ceiling", async () => {
+    const { t, admin, owner, projectId } = await ownerProject("owner-ceiling");
+    try {
+      type Read = { session: { sessionId: string; sandbox: SessionSandbox } };
+      const aboveIds = (sandbox: SessionSandbox) =>
+        (sandbox.presets ?? []).filter((p) => p.aboveCeiling === true).map((p) => p.id);
+      const settings = (values: Record<string, unknown>) =>
+        admin.put("/api/admin/plugin-config", { name: "sandbox", values });
+
+      // On, from Workspace Write: the presets whose file mode is Off are above it.
+      expect((await settings({ enabled: true })).status).toBe(200);
+      const created = (await (
+        await owner.post(`/api/projects/${projectId}/agents/default_agent/sessions`, {})
+      ).json()) as Read;
+      const id = created.session.sessionId;
+      expect(aboveIds(created.session.sandbox)).toEqual([
+        "full-access",
+        "always-ask",
+        "denied-all",
+      ]);
+      const defaults = (await (
+        await owner.get(`/api/projects/${projectId}/chat-defaults`)
+      ).json()) as { sandbox: SessionSandbox };
+      expect(aboveIds(defaults.sandbox)).toEqual(["full-access", "always-ask", "denied-all"]);
+      // The mark is the refusal's own comparison: a marked row is refused, an unmarked one is not.
+      const pick = (sandbox: Record<string, unknown>) =>
+        owner.patch(`/api/sessions/${id}`, { sandbox });
+      expect((await pick({ mode: "danger-full-access", network: "open" })).status).toBe(403);
+      expect((await pick({ mode: "read-only", network: "open" })).status).toBe(200);
+
+      // Off: the server's settings confine nothing, so no row is above them.
+      expect((await settings({ enabled: false })).status).toBe(200);
+      const read = ((await (await owner.get(`/api/sessions/${id}`)).json()) as Read).session;
+      expect(read.sandbox.presets).toHaveLength(DEFAULT_PRESETS.length);
+      expect(aboveIds(read.sandbox)).toEqual([]);
     } finally {
       await t.cleanup();
     }

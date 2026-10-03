@@ -70,6 +70,7 @@ import {
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { UNCONFINED } from "../../lib/permission-level";
+import type { PermissionPick } from "../../lib/permission-level";
 import { formatMonthDay } from "../../lib/format";
 import { apiErrorText } from "../../lib/api-error";
 import { rememberSessionMachine } from "../../lib/session-machines";
@@ -113,6 +114,7 @@ import {
   type ChatDefaultsChangedDetail,
 } from "./chat-defaults-event";
 import { newChatAgentId } from "./new-chat";
+import { onPluginConfigSaved } from "../../lib/plugin-config-event";
 import { effectiveThinkingLevel } from "./thinking-level";
 import { WorkspaceSelect, pillClass } from "./workspace-select";
 import { FilesPanelToggle } from "./dock-toggles";
@@ -470,12 +472,10 @@ export function DraftView({
     ) {
       setWorkspace(chatDefaults.workspace);
     }
-    if (
-      chatDefaults.approvalMode !== undefined &&
-      cached.approvalMode === undefined &&
-      !touchedRef.current.approval
-    ) {
-      setApprovalMode(chatDefaults.approvalMode);
+    // The Project's own default wins; else the Sandbox card's default preset, while it is on.
+    const seeded = chatDefaults.approvalMode ?? chatDefaults.sandbox?.defaultApprovalMode;
+    if (seeded !== undefined && cached.approvalMode === undefined && !touchedRef.current.approval) {
+      setApprovalMode(seeded);
     }
   }, [chatDefaults, stateWorkspace, cached.workspace, cached.approvalMode]);
 
@@ -512,7 +512,7 @@ export function DraftView({
         setChatDefaults(d);
         touchedRef.current = { workspace: false, approval: false };
         setWorkspace(d.workspace ?? "");
-        setApprovalMode(d.approvalMode ?? "allow-all");
+        setApprovalMode(d.approvalMode ?? d.sandbox?.defaultApprovalMode ?? "allow-all");
         // The Agent a fresh mount would now start on (the new block's default while it names
         // an Agent, then default_agent, then the first).
         setAgentId(newChatAgentId(agents, d));
@@ -527,6 +527,25 @@ export function DraftView({
   /** Latest-closure mirror for the window listener (same convention as persistRef). */
   const onDefaultsChangedRef = useRef(onDefaultsChanged);
   onDefaultsChangedRef.current = onDefaultsChanged;
+  // The Sandbox card was saved (from the composer's More…, say): the permission menu reads the
+  // sandbox view again, and an approval mode nobody picked follows the new default preset.
+  useEffect(
+    () =>
+      onPluginConfigSaved("sandbox", () => {
+        void api.getChatDefaults(projectId).then(
+          (res) => {
+            setChatDefaults((prev) => ({
+              ...(prev ?? {}),
+              ...(res.sandbox !== undefined ? { sandbox: res.sandbox } : {}),
+            }));
+            const seeded = res.approvalMode ?? res.sandbox?.defaultApprovalMode;
+            if (seeded !== undefined && !touchedRef.current.approval) setApprovalMode(seeded);
+          },
+          () => undefined,
+        );
+      }),
+    [projectId],
+  );
   useEffect(() => {
     const onEvent = (e: Event) => {
       const detail = chatDefaultsChangedDetail(e, projectId);
@@ -811,12 +830,11 @@ export function DraftView({
     // home, or the next Session would be created on the machine the previous pick named.
     setWorkspaceMachine(machineId ?? null);
   }, []);
-  const changeApprovalMode = useCallback((mode: ApprovalMode) => {
+  // A preset sets both halves of the draft's level at once, as it does on a Session.
+  const changePermission = useCallback((pick: PermissionPick) => {
     touchedRef.current.approval = true;
-    setApprovalMode(mode);
-  }, []);
-  const changeSandbox = useCallback((pick: Partial<SessionSandbox>) => {
-    setSandboxPick((prev) => ({ ...prev, ...pick }));
+    setApprovalMode(pick.approvalMode);
+    setSandboxPick((prev) => ({ ...prev, ...pick.sandbox }));
   }, []);
 
   // Synchronous in-flight guard for the one send entry point (the composer): a second
@@ -1038,9 +1056,8 @@ export function DraftView({
             approvalMode={approvalMode}
             // A draft becomes an ordinary conversation, never an organization's: every mode.
             approvalModes={APPROVAL_MODES}
-            onChangeApprovalMode={changeApprovalMode}
             sandbox={{ ...(chatDefaults?.sandbox ?? UNCONFINED), ...sandboxPick }}
-            onChangeSandbox={changeSandbox}
+            onChangePermission={changePermission}
             modeSaving={false}
             autoFocus
             agents={agents}

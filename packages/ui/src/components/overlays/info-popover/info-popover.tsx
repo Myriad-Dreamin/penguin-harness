@@ -17,8 +17,13 @@
  *
  * The trigger's accessible name is the interface's "More info" (`UiStrings.moreInfo`), with the
  * subject folded in when the caller names one (`UiStrings.moreInfoAbout`).
+ *
+ * It opens on hover (after a short delay, so a pointer passing over does not flash it) and on
+ * keyboard focus, and closes when both leave — with a grace period on the pointer, so it can
+ * travel from the "?" into the panel. A click or tap still toggles it, for touch, where there is
+ * no hover; a click that lands right after the hover or focus that opened it keeps it open.
  */
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ICON_SIZE } from "../../../icon-scale";
@@ -28,6 +33,12 @@ import { ICONS } from "../../icons/icons";
 import { usePortalPanel } from "../portal-panel/use-portal-panel";
 
 const PANEL_WIDTH = 288; // w-72, the OptionMenu panel width
+
+/** How long a pointer rests on the "?" before it opens, and how long it may be away before it closes. */
+const OPEN_DELAY_MS = 100;
+const CLOSE_GRACE_MS = 150;
+/** A click this soon after a hover or focus opened the panel is the same gesture, not a toggle. */
+const SAME_GESTURE_MS = 400;
 
 export function InfoPopover({
   children,
@@ -48,8 +59,32 @@ export function InfoPopover({
   className?: string;
 }) {
   const strings = useUiStrings();
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const panelId = useId();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openedAt = useRef(0);
+  const clear = () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const setOpen = (next: boolean | ((v: boolean) => boolean)) => {
+    clear();
+    setOpenState((v) => {
+      const value = typeof next === "function" ? next(v) : next;
+      if (value && !v) openedAt.current = Date.now();
+      return value;
+    });
+  };
+  const later = (next: boolean, ms: number) => {
+    clear();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setOpen(next);
+    }, ms);
+  };
+  useEffect(() => clear, []);
+  // Hover is for a mouse or pen; a touch's synthetic enter would open it before the tap toggles.
+  const hovering = (e: { pointerType: string }) => e.pointerType !== "touch";
   const { triggerRef, panelRef, position } = usePortalPanel({
     open,
     onClose: () => setOpen(false),
@@ -64,13 +99,23 @@ export function InfoPopover({
         ref={triggerRef}
         type="button"
         aria-label={name}
-        data-tooltip={name}
         aria-expanded={open}
         aria-controls={panelId}
         // While open the panel is also the trigger's description, so a screen reader reads the
         // explanation on focus rather than only announcing that something expanded.
         aria-describedby={open ? panelId : undefined}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (open && Date.now() - openedAt.current < SAME_GESTURE_MS) return;
+          setOpen((v) => !v);
+        }}
+        onPointerEnter={(e) => {
+          if (hovering(e)) later(true, open ? 0 : OPEN_DELAY_MS);
+        }}
+        onPointerLeave={(e) => {
+          if (hovering(e)) later(false, CLOSE_GRACE_MS);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
         className={`inline-flex shrink-0 items-center justify-center rounded-full text-fg-subtle transition-colors duration-150 hover:text-fg-muted ${className}`}
       >
         <GlyphIcon d={ICONS.helpCircle} size={size} />
@@ -82,6 +127,10 @@ export function InfoPopover({
             ref={panelRef}
             id={panelId}
             role="tooltip"
+            onPointerEnter={clear}
+            onPointerLeave={(e) => {
+              if (hovering(e)) later(false, CLOSE_GRACE_MS);
+            }}
             style={{
               position: "fixed",
               top: position.topPx,
