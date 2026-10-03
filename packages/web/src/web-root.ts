@@ -37,6 +37,8 @@ import { SessionListModule } from "./features/session-list/module";
 import { ProjectsModule } from "./features/projects/module";
 import { MessagingModule } from "./features/messaging/module";
 import { DockModule } from "./features/dock/module";
+import { WorkspaceModule } from "./features/workspace/module";
+import { TracesModule } from "./features/traces/module";
 import { TodosModule } from "./features/todos/module";
 
 @Module({
@@ -63,6 +65,8 @@ import { TodosModule } from "./features/todos/module";
     MessagingModule,
     DockModule,
     TodosModule,
+    WorkspaceModule,
+    TracesModule,
   ],
 })
 export class WebRoot {}

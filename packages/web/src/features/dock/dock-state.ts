@@ -40,23 +40,11 @@ const MAX_SCOPES = 40;
 export type DockPosition = "right" | "bottom";
 
 /**
- * The singleton panel kinds. Terminals are the one multi-instance tab kind. The built-in
- * browser is one set of pages shared by every conversation, so each conversation's tab shows
- * the same browser; it exists only in the desktop app, and the menus that offer panels ask
- * features/builtin-browser whether to list it.
+ * A singleton panel's kind — its stored tab key. Terminals are the one multi-instance tab kind.
+ * The kinds are whatever the modules contribute to the dock's `panels` slot (iface.ts); the
+ * store itself knows none of them, only which are offered (definePanelKinds).
  */
-export type PanelKind =
-  "agents" | "workspace" | "memory" | "trace" | "messaging" | "schedules" | "builtin-browser";
-
-export const PANEL_KINDS: readonly PanelKind[] = [
-  "agents",
-  "workspace",
-  "memory",
-  "trace",
-  "messaging",
-  "schedules",
-  "builtin-browser",
-];
+export type PanelKind = string;
 
 export type DockTab =
   { kind: "panel"; panel: PanelKind } | { kind: "terminal"; terminalId: string };
@@ -67,11 +55,45 @@ export function tabKey(tab: DockTab): string {
 }
 
 function parseTabKey(key: string): DockTab | null {
-  if ((PANEL_KINDS as readonly string[]).includes(key))
-    return { kind: "panel", panel: key as PanelKind };
-  if (key.startsWith("terminal:") && key.length > "terminal:".length)
-    return { kind: "terminal", terminalId: key.slice("terminal:".length) };
-  return null;
+  if (key.startsWith("terminal:"))
+    return key.length > "terminal:".length
+      ? { kind: "terminal", terminalId: key.slice("terminal:".length) }
+      : null;
+  if (key === "" || (panelKinds !== null && !panelKinds.has(key))) return null;
+  return { kind: "panel", panel: key };
+}
+
+/**
+ * The panel kinds some module offers, set once the module tree has booted (DockModule); null
+ * before that, when every stored panel key reads back. Storage is read at module load, which is
+ * before the tree knows its kinds, so the stored tabs are filtered when the kinds arrive.
+ */
+let panelKinds: ReadonlySet<string> | null = null;
+
+/**
+ * Declares the panel kinds the modules contribute. A stored layout may name a kind no module
+ * offers now — written by a build with a module this one lacks: that tab is dropped, in every
+ * scope, and the dock's other tabs stay as they are (an active key that pointed at it falls back
+ * to the dock's last remaining tab, as on load). Storage is not rewritten here; the next change
+ * persists the arrangement as it then stands.
+ */
+export function definePanelKinds(kinds: readonly string[]): void {
+  const offered = new Set(kinds);
+  panelKinds = offered;
+  let changed = false;
+  const prune = (state: DockAreaState): void => {
+    const kept = state.tabs.filter((tab) => tab.kind !== "panel" || offered.has(tab.panel));
+    if (kept.length === state.tabs.length) return;
+    changed = true;
+    state.tabs = kept;
+    if (state.active !== null && !kept.some((tab) => tabKey(tab) === state.active))
+      state.active = kept.length > 0 ? tabKey(kept[kept.length - 1]!) : null;
+  };
+  for (const s of new Set([layout, ...Object.values(scopes)])) {
+    prune(s.right);
+    prune(s.bottom);
+  }
+  if (changed) notify();
 }
 
 /**

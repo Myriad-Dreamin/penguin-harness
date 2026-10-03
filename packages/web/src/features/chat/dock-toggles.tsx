@@ -28,7 +28,7 @@ import {
   toggleDock,
   type DockPosition,
 } from "../dock/dock-state";
-import { panelLabel } from "../dock/panel-meta";
+import { usePanelLabel } from "../dock";
 
 export interface DockTogglesProps {
   /** A pending approval inside a subagent: amber dot beside the agents tab's dock toggle. */
@@ -79,7 +79,7 @@ export function DockToggles({ agentsPending }: DockTogglesProps) {
  */
 export function FilesPanelToggle({ available }: { available: boolean }) {
   useSyncExternalStore(subscribeDock, dockVersion);
-  const label = panelLabel("workspace");
+  const label = usePanelLabel("workspace");
   const shown = available && isTabShown("workspace");
   return (
     <PanelsToolbar

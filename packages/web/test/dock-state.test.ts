@@ -7,7 +7,7 @@
  * - A panel opens as a right-dock tab by default and stays a singleton: opening it in the other
  *   dock moves the tab, and reopening shows it where it lives; the scheduled-tasks panel and the
  *   built-in browser open like any other. Closing a tab removes it, and the last one puts the
- *   dock away.
+ *   dock away. The kinds are the modules' contributions; the store knows none of its own.
  * - An open dock with no tabs is visible (the picker); toggling a dock closed keeps its tabs.
  * - Terminal tabs are one per shell, bottom by default, shown where they live rather than
  *   duplicated, and mix freely with panel tabs.
@@ -20,9 +20,10 @@
  *   matching key list.
  * - The terminal toggle reports no tab so the caller adopts or creates one, hides and restores,
  *   and brings the terminal to the front when a panel covers it.
- * - Each scope's arrangement round-trips across a reload (sizes are one preference); a stored
- *   tab this build does not know is dropped, not the dock, and a malformed entry reads as empty
- *   docks.
+ * - Each scope's arrangement round-trips across a reload (sizes are one preference); once the
+ *   contributed kinds are declared, a stored tab of a kind nobody contributes is dropped — in every
+ *   scope, leaving the other tabs, the active one and storage as they were — and a malformed entry
+ *   reads as empty docks.
  * - Scope switches and moves are instant (no animation); toggles animate.
  * - A detached terminal tab returns to the scope it left, unless a conversation already holds
  *   the shell again.
@@ -33,6 +34,17 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryStorage } from "./helpers/storage";
 
 let dock: typeof import("../src/features/dock/dock-state");
+
+/** The kinds the web app's modules contribute (web-root.test.ts checks the booted list). */
+const KINDS = [
+  "agents",
+  "workspace",
+  "memory",
+  "trace",
+  "messaging",
+  "schedules",
+  "builtin-browser",
+];
 
 beforeAll(async () => {
   // Not vi.stubGlobal: the package config unstubs globals before every test, and the module
@@ -76,15 +88,13 @@ describe("panel tabs", () => {
     expect(dock.dockActiveKey("bottom")).toBe("agents");
   });
 
-  it("lists the scheduled-tasks panel as a kind and opens it like any other", () => {
-    expect(dock.PANEL_KINDS).toContain("schedules");
+  it("opens the scheduled-tasks panel like any other", () => {
     dock.openPanel("schedules", "right");
     expect(dock.panelDock("schedules")).toBe("right");
     expect(dock.dockActiveKey("right")).toBe("schedules");
   });
 
-  it("lists the built-in browser as a kind and opens it like any other", () => {
-    expect(dock.PANEL_KINDS).toContain("builtin-browser");
+  it("opens the built-in browser like any other", () => {
     dock.openPanel("builtin-browser");
     expect(dock.panelDock("builtin-browser")).toBe("right");
     expect(dock.isTabShown("builtin-browser")).toBe(true);
@@ -323,9 +333,53 @@ describe("persistence", () => {
     );
     vi.resetModules();
     const reloaded = await import("../src/features/dock/dock-state");
+    reloaded.definePanelKinds(KINDS);
     reloaded.setDockScope("s");
     expect(reloaded.dockTabs("right").map(reloaded.tabKey)).toEqual(["schedules"]);
     expect(reloaded.dockActiveKey("right")).toBe("schedules");
+    expect(reloaded.isDockVisible("right")).toBe(true);
+  });
+
+  it("drops only the tabs of kinds nobody contributes, and leaves the stored layout as it was", async () => {
+    // A module this build lacks (say, one a plugin used to contribute) left its tab in two
+    // conversations' arrangements, active in one of them.
+    const stored = JSON.stringify({
+      scopes: {
+        a: {
+          right: { tabs: ["agents", "gone", "workspace"], active: "gone", open: true },
+          bottom: { tabs: ["terminal:t1", "gone-too"], active: "terminal:t1", open: true },
+          focus: "right",
+        },
+        b: { right: { tabs: ["gone"], active: "gone", open: true }, focus: "right" },
+      },
+      bottomRatio: 0.5,
+    });
+    localStorage.setItem("penguin.dock.layout", stored);
+    vi.resetModules();
+    const reloaded = await import("../src/features/dock/dock-state");
+    // Before the modules have declared their kinds, everything stored reads back.
+    reloaded.setDockScope("a");
+    expect(reloaded.dockTabs("right").map(reloaded.tabKey)).toEqual([
+      "agents",
+      "gone",
+      "workspace",
+    ]);
+
+    const before = localStorage.getItem("penguin.dock.layout");
+    expect(before).toContain(`"gone"`);
+    expect(() => reloaded.definePanelKinds(KINDS)).not.toThrow();
+    // Declaring the kinds writes nothing; the next change persists the arrangement as it stands.
+    expect(localStorage.getItem("penguin.dock.layout")).toBe(before);
+    expect(reloaded.dockTabs("right").map(reloaded.tabKey)).toEqual(["agents", "workspace"]);
+    expect(reloaded.dockActiveKey("right")).toBe("workspace"); // the last remaining tab
+    expect(reloaded.isDockVisible("right")).toBe(true);
+    expect(reloaded.dockTabs("bottom").map(reloaded.tabKey)).toEqual(["terminal:t1"]);
+    expect(reloaded.dockActiveKey("bottom")).toBe("terminal:t1");
+    expect(reloaded.bottomRatio()).toBe(0.5);
+    // The other conversation's scope is filtered too; its dock stays open, on the picker.
+    reloaded.setDockScope("b");
+    expect(reloaded.dockTabs("right")).toHaveLength(0);
+    expect(reloaded.dockActiveKey("right")).toBeNull();
     expect(reloaded.isDockVisible("right")).toBe(true);
   });
 

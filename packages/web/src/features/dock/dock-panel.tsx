@@ -5,10 +5,10 @@
  * bottom — or a single merged bottom surface below the desktop breakpoint.
  *
  * The drawing is the UI package's (`DockFrame`, `DockTabs`, `DockPicker`); this container
- * binds it to the dock store, the terminal list and the page's panel bodies.
+ * binds it to the dock store, the terminal list and the contributed panel bodies.
  *
- * Panel tabs' bodies come from the page through `renderPanel` (they need the page's
- * session/stream state); terminal tabs' bodies are the pooled xterm views
+ * Panel tabs' bodies are the modules' `panels` contributions (iface.ts), each reading the
+ * conversation it is docked beside on its own; terminal tabs' bodies are the pooled xterm views
  * (terminal-view-pool.tsx), adopted by DOM handoff so tab churn never reconnects a shell.
  * Every tab's body stays mounted while its tab is in the strip — switching tabs hides and
  * shows, and so does hiding the whole dock (which renders at zero size rather than
@@ -34,7 +34,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode } from "react";
 import {
   CloseIcon,
   ConfirmModal,
@@ -55,6 +54,9 @@ import {
 import type { DockPickerChoice, DockTabItem } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { NAV_ICONS } from "../../lib/nav-icons";
+import { DockPanelTitle } from "../../lib/dock-panel-empty";
+import { useLocale } from "../../state/locale";
+import type { Locale } from "../../state/locale";
 import { chordKeys } from "../../components/ui/chord-kbd";
 import { useDisplayedBinding, useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { useCoarsePointer } from "../../lib/use-coarse-pointer";
@@ -76,11 +78,11 @@ import { isBrowserOffered, subscribeBrowser } from "../builtin-browser/browser-s
 import { confirmClose } from "./close-guard";
 import { createShellInDock, detachTerminal, openTerminalInDock } from "./dock-terminal";
 import { DockDragOverlay, dockDropCandidate } from "./dock-drag";
-import { panelGlyph, panelGlyphPath, panelLabel } from "./panel-meta";
+import { dockDeps, panelLabel } from "./deps";
+import type { PanelEntry } from "./deps";
 import {
   DOCK_MIN_HEIGHT_PX,
   DOCK_RATIO_MAX,
-  PANEL_KINDS,
   activateTab,
   addTerminalTab,
   bottomRatio,
@@ -102,19 +104,18 @@ import {
   type DockView,
   type PanelKind,
 } from "./dock-state";
-import { persistPanelWidth, resetPanelWidth, setPanelWidth, usePanelWidthValue } from "../chat";
+import {
+  persistPanelWidth,
+  resetPanelWidth,
+  setPanelWidth,
+  usePanelWidthValue,
+} from "./use-panel-width";
 
 /**
- * The picker's order after the agents, the terminal and the built-in browser (each shown only
- * where it can run): the rest of the panels.
+ * The built-in browser's kind: it exists only in the desktop app, so the menus that offer panels
+ * ask features/builtin-browser whether to list it, and the picker puts it beside the terminal.
  */
-const PICKER_PANELS: readonly PanelKind[] = [
-  "workspace",
-  "memory",
-  "trace",
-  "messaging",
-  "schedules",
-];
+const BROWSER_KIND = "builtin-browser";
 
 /**
  * A terminal tab's body: adopts the shown terminal's pooled container. Only while shown —
@@ -151,6 +152,28 @@ function TerminalBody({ id, active }: { id: string; active: boolean }) {
   );
 }
 
+/**
+ * A panel tab's body: the contributed component, under its panel's name for the draft
+ * placeholder it may show (lib/dock-panel-empty.tsx). A tab whose kind nobody contributes does
+ * not survive loading (dock-state.ts definePanelKinds); should one appear, it renders nothing.
+ */
+function PanelBody({
+  panel,
+  active,
+  locale,
+}: {
+  panel: PanelEntry | undefined;
+  active: boolean;
+  locale: Locale;
+}) {
+  if (panel === undefined) return null;
+  return (
+    <DockPanelTitle.Provider value={panelLabel(panel, locale)}>
+      <panel.Body active={active} />
+    </DockPanelTitle.Provider>
+  );
+}
+
 /** The strip label of a terminal tab: stable seq + live title, like a tmux status line. */
 function terminalLabel(info: TerminalInfo | undefined, id: string, ordinal: number): string {
   if (!info) return `${ordinal}: ${id.slice(0, 6)}`;
@@ -159,8 +182,6 @@ function terminalLabel(info: TerminalInfo | undefined, id: string, ordinal: numb
 
 export interface DockPanelProps {
   view: DockView;
-  /** The page's panel bodies (they need its session/stream state); null hides that kind from the add menu too. */
-  renderPanel: (kind: PanelKind, active: boolean) => ReactNode;
   /** Attention dots per panel kind (the agents tab's pending-approval amber dot). */
   panelBadges?: Partial<Record<PanelKind, boolean>>;
   /** Whether the server serves the terminal API at all (an older runtime does not). */
@@ -173,7 +194,6 @@ export interface DockPanelProps {
 
 export function DockPanel({
   view,
-  renderPanel,
   panelBadges,
   terminalSupported,
   open = true,
@@ -184,6 +204,9 @@ export function DockPanel({
   const closeShortcut = useShortcutLabel("terminal.close");
   const toggleChord = useDisplayedBinding("terminal.toggle");
   const browserOffered = useSyncExternalStore(subscribeBrowser, isBrowserOffered);
+  const { panels, byKind } = dockDeps.useDeps();
+  const { locale } = useLocale();
+  const offeredPanels = panels.filter((panel) => panel.kind !== BROWSER_KIND || browserOffered);
   const terminalById = new Map(terminals.map((t) => [t.id, t]));
   const { position, merged, tabs, activeKey } = view;
   const horizontal = position === "bottom";
@@ -436,13 +459,13 @@ export function DockPanel({
       }
     >
       <Menu>
-        {PANEL_KINDS.filter((kind) => kind !== "builtin-browser" || browserOffered).map((kind) => (
+        {offeredPanels.map((panel) => (
           <MenuItem
-            key={kind}
-            data-testid={`dock-add-${kind}`}
-            glyph={panelGlyphPath(kind)}
-            label={panelLabel(kind)}
-            onSelect={() => openPanelHere(kind)}
+            key={panel.kind}
+            data-testid={`dock-add-${panel.kind}`}
+            glyph={panel.glyph}
+            label={panelLabel(panel, locale)}
+            onSelect={() => openPanelHere(panel.kind)}
           />
         ))}
         {terminalSupported && (
@@ -548,10 +571,11 @@ export function DockPanel({
   const stripTabs: DockTabItem[] = tabs.map((tab) => {
     const key = tabKey(tab);
     if (tab.kind === "panel") {
+      const panel = byKind.get(tab.panel);
       return {
         key,
-        label: panelLabel(tab.panel),
-        glyph: panelGlyph(tab.panel, ICON_SIZE.inlineGlyph),
+        label: panel === undefined ? tab.panel : panelLabel(panel, locale),
+        glyph: <GlyphIcon d={panel?.glyph ?? ""} size={ICON_SIZE.inlineGlyph} />,
         badge: panelBadges?.[tab.panel] === true,
         closeLabel: S.dock.closeTab,
       };
@@ -577,15 +601,18 @@ export function DockPanel({
   // An open dock with nothing in it yet: the picker chooses what this dock opens. The
   // terminal row adopts the newest shell no conversation holds, or starts a fresh one, and
   // names its hotkey while one is bound; the built-in browser is offered only where it can
-  // be shown (the desktop app's own window, with a shell that hosts it).
-  const pickPanel = (kind: PanelKind): DockPickerChoice => ({
-    key: kind,
-    label: panelLabel(kind),
-    glyph: panelGlyph(kind),
-    onChoose: () => openPanel(kind, merged ? undefined : position),
+  // be shown (the desktop app's own window, with a shell that hosts it). The rows run in the
+  // panels' order, with the terminal after the first and the browser beside the terminal.
+  const pickPanel = (panel: PanelEntry): DockPickerChoice => ({
+    key: panel.kind,
+    label: panelLabel(panel, locale),
+    glyph: <GlyphIcon d={panel.glyph} size={ICON_SIZE.iconButton} />,
+    onChoose: () => openPanel(panel.kind, merged ? undefined : position),
   });
+  const [leadPanel, ...restPanels] = panels.filter((panel) => panel.kind !== BROWSER_KIND);
+  const browserPanel = byKind.get(BROWSER_KIND);
   const pickerChoices: DockPickerChoice[] = [
-    pickPanel("agents"),
+    ...(leadPanel !== undefined ? [pickPanel(leadPanel)] : []),
     ...(terminalSupported
       ? [
           {
@@ -597,8 +624,8 @@ export function DockPanel({
           },
         ]
       : []),
-    ...(browserOffered ? [pickPanel("builtin-browser")] : []),
-    ...PICKER_PANELS.map(pickPanel),
+    ...(browserOffered && browserPanel !== undefined ? [pickPanel(browserPanel)] : []),
+    ...restPanels.map(pickPanel),
   ];
 
   const bodies =
@@ -615,7 +642,7 @@ export function DockPanel({
                   bodies gate their polling and their reload-on-return on this, and a
                   collapsed dock should cost nothing while it is away. */}
               {tab.kind === "panel" ? (
-                renderPanel(tab.panel, active && open)
+                <PanelBody panel={byKind.get(tab.panel)} active={active && open} locale={locale} />
               ) : (
                 <TerminalBody id={tab.terminalId} active={active && open} />
               )}

@@ -4,25 +4,18 @@
 # This list only shrinks: never add a line; delete each line whose edge your change removes.
 cycle: features/ai-create -> features/chat
 cycle: features/builtin-browser -> features/dock
-cycle: features/chat -> features/builtin-browser
 cycle: features/chat -> features/company
-cycle: features/chat -> features/dock
 cycle: features/chat -> features/model-picker
 cycle: features/chat -> features/models
 cycle: features/chat -> features/schedules
 cycle: features/chat -> features/settings
 cycle: features/chat -> features/skills
-cycle: features/chat -> features/terminal
-cycle: features/chat -> features/workflows
-cycle: features/chat -> features/workspace
 cycle: features/company -> features/chat
 cycle: features/company -> features/model-picker
 cycle: features/company -> features/models
 cycle: features/company -> features/skills
 cycle: features/company -> features/usage
-cycle: features/company -> features/workspace
 cycle: features/dock -> features/builtin-browser
-cycle: features/dock -> features/chat
 cycle: features/dock -> features/terminal
 cycle: features/model-picker -> features/models
 cycle: features/models -> features/ai-create
@@ -31,17 +24,13 @@ cycle: features/models -> features/todos
 cycle: features/schedules -> features/ai-create
 cycle: features/schedules -> features/model-picker
 cycle: features/schedules -> features/models
-cycle: features/schedules -> features/workspace
 cycle: features/settings -> features/chat
 cycle: features/settings -> features/company
-cycle: features/settings -> features/dock
 cycle: features/skills -> features/chat
 cycle: features/terminal -> features/dock
 cycle: features/todos -> features/models
 cycle: features/todos -> features/usage
 cycle: features/usage -> features/todos
-cycle: features/workflows -> features/chat
-cycle: features/workspace -> features/dock
 features/agents/agents-page.tsx -> features/ai-create/ai-create-buttons.tsx
 features/agents/agents-page.tsx -> features/semantic-id/semantic-id-field.tsx
 features/agents/agents-page.tsx -> features/skills/skill-pick-list.tsx
@@ -72,23 +61,14 @@ features/chat/chat-page.tsx -> features/dock/dock-panel.tsx
 features/chat/chat-page.tsx -> features/dock/dock-state.ts
 features/chat/chat-page.tsx -> features/dock/use-dock-mount.ts
 features/chat/chat-page.tsx -> features/terminal/terminal-list.ts
-features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
-features/chat/dock-toggles.tsx -> features/dock/panel-meta.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
-features/chat/panels/render-panel.tsx -> features/builtin-browser/browser-panel.tsx
-features/chat/panels/render-panel.tsx -> features/dock/dock-state.ts
-features/chat/panels/render-panel.tsx -> features/dock/panel-meta.tsx
-features/chat/panels/render-panel.tsx -> features/messaging/messaging-panel.tsx
-features/chat/panels/render-panel.tsx -> features/schedules/schedule-panel.tsx
-features/chat/panels/render-panel.tsx -> features/traces/trace-panel.tsx
 features/chat/permission-select.tsx -> features/settings/settings-dialog.tsx
 features/chat/session/stream-context.ts -> features/dock/dock-state.ts
-features/chat/session/use-chat-session.ts -> features/dock/dock-state.ts
-features/chat/session/use-chat-session.ts -> features/dock/dock-terminal.ts
-features/chat/session/use-chat-session.ts -> features/models/model-grouping.ts
-features/chat/session/use-chat-session.ts -> features/terminal/terminal-list.ts
-features/chat/session/use-chat-session.ts -> features/workflows/workflow-tabs.tsx
+features/chat/session/use-chat-controller.ts -> features/dock/dock-state.ts
+features/chat/session/use-chat-controller.ts -> features/dock/dock-terminal.ts
+features/chat/session/use-chat-controller.ts -> features/models/model-grouping.ts
+features/chat/session/use-chat-controller.ts -> features/terminal/terminal-list.ts
 features/chat/session/use-model-switches.ts -> features/models/model-grouping.ts
 features/chat/session/use-panel-requests.ts -> features/dock/dock-state.ts
 features/chat/session/use-project-models.ts -> features/models/model-grouping.ts

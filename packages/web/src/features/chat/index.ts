@@ -1,11 +1,11 @@
 /**
- * The chat module's public face: the drafts interface the sidebar and the session list `@Use`, the
- * new-chat draft's route and cache for the surfaces that seed it (an Agent card, a plugin's quick
- * start, "Create with AI", the Project's chat defaults), the Skill text helpers, the transcript's
- * follow-the-bottom scroller, and the dock's shared panel width.
+ * The chat module's public face: the drafts interface the sidebar and the session list `@Use`,
+ * what a `sessionTabs` contribution receives, the new-chat draft's route and cache for the
+ * surfaces that seed it (an Agent card, a plugin's quick start, "Create with AI", the Project's
+ * chat defaults), the Skill text helpers and the transcript's follow-the-bottom scroller.
  */
 export { ChatDrafts } from "./iface";
-export type { ParkedDraft } from "./iface";
+export type { ParkedDraft, SessionTabProps } from "./iface";
 export { DRAFT_SESSION_ID, parkActiveDraft } from "./draft-sessions";
 export {
   clearDraftChatDefaults,
@@ -20,10 +20,3 @@ export { dispatchChatDefaultsChanged } from "./chat-defaults-event";
 export type { ChatDefaultsChangedDetail } from "./chat-defaults-event";
 export { BOOK_ICON, filterSkills, localizedShortText, localizedText } from "./skill-use";
 export { createStreamFollow, stickToBottom } from "./stream-follow";
-export {
-  panelWidth,
-  persistPanelWidth,
-  resetPanelWidth,
-  setPanelWidth,
-  usePanelWidthValue,
-} from "./use-panel-width";

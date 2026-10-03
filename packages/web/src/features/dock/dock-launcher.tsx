@@ -55,18 +55,12 @@ import type { SpringDriver } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { NAV_ICONS } from "../../lib/nav-icons";
 import { toneInk } from "../../lib/tone";
+import { useLocale } from "../../state/locale";
 import { subscribeTerminals, terminalApiSupported } from "../terminal/terminal-list";
 import { isBrowserOffered, subscribeBrowser } from "../builtin-browser/browser-store";
 import { openTerminalInDock } from "./dock-terminal";
-import { panelGlyph, panelLabel } from "./panel-meta";
-import {
-  PANEL_KINDS,
-  dockVersion,
-  isDockVisible,
-  isNarrow,
-  openPanel,
-  subscribeDock,
-} from "./dock-state";
+import { dockDeps, panelLabel } from "./deps";
+import { dockVersion, isDockVisible, isNarrow, openPanel, subscribeDock } from "./dock-state";
 import {
   FAN_ENTRY_SIZE,
   LAUNCHER_CAPTION_HEIGHT,
@@ -158,6 +152,8 @@ function FloatingLauncher({
   /** Below the breakpoint the docks merge, so an entry names no dock and lets the store pick. */
   narrow: boolean;
 }) {
+  const { panels } = dockDeps.useDeps();
+  const { locale } = useLocale();
   const reducedMotion = usePrefersReducedMotion();
   const reducedMotionRef = useRef(reducedMotion);
   reducedMotionRef.current = reducedMotion;
@@ -414,15 +410,15 @@ function FloatingLauncher({
   // render as one merged surface, so it names none and the store lands the tab where the
   // toolbar's own panel buttons land it.
   const target = narrow ? undefined : "right";
-  const kinds = PANEL_KINDS.filter((kind) => kind !== "builtin-browser" || browserOffered);
-  const entries: FanEntry[] = kinds.map((kind) => ({
-    key: kind,
-    label: panelLabel(kind),
-    glyphAt: (size) => panelGlyph(kind, size),
-    badge: kind === "agents" && agentsPending,
-    testId: `dock-launcher-open-${kind}`,
+  const offered = panels.filter((panel) => panel.kind !== "builtin-browser" || browserOffered);
+  const entries: FanEntry[] = offered.map((panel) => ({
+    key: panel.kind,
+    label: panelLabel(panel, locale),
+    glyphAt: (size) => <GlyphIcon d={panel.glyph} size={size} />,
+    badge: panel.kind === "agents" && agentsPending,
+    testId: `dock-launcher-open-${panel.kind}`,
     // The dock becomes visible with the tab, and the launcher unmounts with it.
-    choose: () => openPanel(kind, target),
+    choose: () => openPanel(panel.kind, target),
   }));
   if (terminalSupported) {
     entries.push({
