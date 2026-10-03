@@ -1,11 +1,11 @@
 /**
- * The chat module's public face: the drafts interface the sidebar and the session list `@Use`, the
- * new-chat draft's route and cache for the surfaces that seed it (an Agent card, a plugin's quick
- * start, "Create with AI", the Project's chat defaults), the Skill text helpers and the transcript's
- * follow-the-bottom scroller.
+ * The chat module's public face: the drafts interface the sidebar and the session list `@Use`,
+ * what a `sessionTabs` contribution receives, the new-chat draft's route and cache for the
+ * surfaces that seed it (an Agent card, a plugin's quick start, "Create with AI", the Project's
+ * chat defaults), the Skill text helpers and the transcript's follow-the-bottom scroller.
  */
 export { ChatDrafts } from "./iface";
-export type { ParkedDraft } from "./iface";
+export type { ParkedDraft, SessionTabProps } from "./iface";
 export { DRAFT_SESSION_ID, parkActiveDraft } from "./draft-sessions";
 export {
   clearDraftChatDefaults,

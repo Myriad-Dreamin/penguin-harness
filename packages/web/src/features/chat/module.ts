@@ -1,13 +1,17 @@
 /**
- * The chat page, its drafts for the surfaces that start and list them (iface.ts), and the two dock
- * panels that show the conversation itself: its subagents and its memory (panels/).
+ * The chat page, with the tabs other modules contribute beside the conversation (`sessionTabs`,
+ * iface.ts); its drafts for the surfaces that start and list them; and the two dock panels that
+ * show the conversation itself: its subagents and its memory (panels/).
  */
+import type { ComponentType } from "react";
 import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel";
+import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import { ChatPage } from "./chat-page";
 import { chatDrafts } from "./chat-drafts";
 import { AgentsPanel } from "./panels/agents-panel";
 import { MemoryPanel } from "./panels/memory-panel";
-import type { ChatDrafts } from "./iface";
+import type { Chat, ChatDrafts } from "./iface";
+import { chatDeps, sessionTabsOf } from "./deps";
 
 @Module({
   contributes: {
@@ -44,8 +48,16 @@ import type { ChatDrafts } from "./iface";
   },
 })
 export class ChatModule {
-  @Bind("chat.page") page = ChatPage;
+  @Provide() chat!: Chat;
+  @Bind("chat.page") page!: ComponentType;
   @Bind("chat.agents-panel") agentsPanel = AgentsPanel;
   @Bind("chat.memory-panel") memoryPanel = MemoryPanel;
   @Provide() drafts: ChatDrafts = chatDrafts;
+  setup({ contributions }: ClassCtx) {
+    this.page = chatDeps.provide(
+      { sessionTabs: sessionTabsOf(contributions.sessionTabs ?? []) },
+      ChatPage,
+    );
+    this.chat = {};
+  }
 }

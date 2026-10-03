@@ -2,7 +2,8 @@
  * The chat page's controller: from the route to the conversation on screen — selection, the
  * direct lookup and auto-select, the stream and the composer's draft, usage and background
  * processes, sending and handoffs, the model and thinking-level switches — and the dock panels'
- * jump commands. The toolbar, the body, the dialogs and the panel bodies read what it returns.
+ * jump commands. The toolbar, the body and the dialogs read what it returns; the dock panels read
+ * it through session/chat-session-context.tsx.
  *
  * The sub-hooks are consecutive stretches of what was one component, called in that component's
  * order: effects that depend on one another (the session-switch reset before the usage fetch
@@ -15,7 +16,6 @@ import { useDocumentTitle } from "../../../lib/use-document-title";
 import { machineForSession } from "../../../lib/session-machines";
 import { promotedPricing, sameModelRef } from "../../models/model-grouping";
 import type { StagedThinkingSwitch } from "../../model-picker";
-import { useWorkflowTabs } from "../../workflows/workflow-tabs";
 // importing it also registers the global Ctrl+` hotkey with the app bundle
 import { setDockCwd } from "../../dock/dock-terminal";
 import { dockVersion, isTabShown, openPanel, subscribeDock } from "../../dock/dock-state";
@@ -41,15 +41,7 @@ import { streamRenderContext } from "./stream-context";
 
 export function useChatController() {
   const inputs = useChatInputs();
-  const {
-    routeSessionId,
-    projectId,
-    agentId,
-    agents,
-    setCurrentAgentId,
-    reloadSessions,
-    setTitle,
-  } = inputs;
+  const { routeSessionId, projectId, agents, setCurrentAgentId, reloadSessions, setTitle } = inputs;
 
   const [infoOpen, setInfoOpen] = useState(false);
   // Background processes the conversation started (the details popover list), refreshed by
@@ -84,15 +76,6 @@ export function useChatController() {
   const requests = usePanelRequests(routeSessionId);
   const route = useRoutedSession(inputs);
   const { draft, selected } = route;
-  // The tabs beside a conversation are its OWN Agent's, asked of the server that Agent's
-  // workflows live on: a Session on a machine runs a copy of the Agent there, and the workflows
-  // it built are in that copy. The current Agent is always one of this server's, so going by
-  // it listed the wrong Agent's workflows (or none) for every Session on a machine.
-  const workflowTabs = useWorkflowTabs(
-    projectId,
-    selected?.agentId ?? agentId,
-    selected === null ? null : machineForSession(selected.sessionId),
-  );
   // New shells start in this conversation's Workspace — its files are what a terminal
   // opened here is for. While drafting, the Workspace is the one picked in the draft and
   // DraftView publishes it instead (a child effect runs before this one, so this must
@@ -290,7 +273,6 @@ export function useChatController() {
     setThinkingSwitch,
     modelSwitchAsk,
     setModelSwitchAsk,
-    workflowTabs,
     activeModelRef,
     stream,
     sessionDraft,
