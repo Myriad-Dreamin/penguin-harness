@@ -2,7 +2,7 @@
 
 ## Covers
 
-Everything lives in `company.db`: a restart keeps proposals, roadmaps, runs and bindings; a run
+Everything lives in `company.db`: a restart keeps proposals, roadmaps, runs and company workflows; a run
 cut off by the process exit becomes `abandoned`.
 
 ## Setup
