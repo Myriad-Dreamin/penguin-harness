@@ -20,6 +20,36 @@ exactly `fs-write`. The sandbox service therefore never routes a `network` or
 `mask-paths` policy here, and the adaptor never has to silently drop a dimension it
 cannot honor — for those, use the bubblewrap, Seatbelt or WSL backend for your platform.
 
+## Windows: run command sessions under PowerShell
+
+The ACL restricted-token runner does not start bash, and bash is the harness's default
+session shell on Windows (Git for Windows, or the MinGit the Windows package bundles). A bare
+`bash` reaches System32's WSL launcher; an MSYS `bash.exe` or `sh.exe` aborts under the
+restricted token. So with this backend confining commands on Windows, set the session shell
+in the harness's environment and restart it:
+
+| Shell | Under the ACL runner | Setting |
+| --- | --- | --- |
+| PowerShell 7 (`pwsh`) | runs confined | `PENGUIN_SHELL=pwsh` |
+| Windows PowerShell 5.1 | runs confined | `PENGUIN_SHELL=powershell` — for hosts without PowerShell 7; it ships with Windows |
+| bash / sh (Git for Windows, MinGit) | does not start | — |
+
+Measured on GitHub's `windows-latest` (Windows Server 2025, pwsh 7.6.6, Windows PowerShell
+5.1.26100): a write inside the Workspace lands and a write outside it is denied. `cmd` also
+starts under the runner; it is not measured beyond that.
+
+Until the shell is set, the backend's load fails with a reason naming these settings, so it is
+not mounted: the Session view lists `dsh-local` among the unavailable backends with that
+reason, and the composer marks the confining tier unavailable instead of offering a tier whose
+every command would be refused. A harness whose core does not report its session shell (an
+older runtime) loads the backend as before.
+
+Each confined command is still checked on its own. A bash or sh program is refused before it
+reaches the runner: when it is the session shell, the error names the same settings; when it is
+something else — a stdio MCP Server launched through bash, which `PENGUIN_SHELL` does not
+choose — the error says only that the runner cannot start bash or sh. Nothing here changes on
+Linux or macOS, where bash runs confined as usual.
+
 ## Requirements
 
 - The DSH dependencies (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-sandbox`,
