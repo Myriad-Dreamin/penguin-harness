@@ -1370,6 +1370,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
         attachmentLimitMaxMb: 200,
       },
       companyMode: false,
+      telemetry: false,
     },
     prefs: {
       lastProjectId: IDS.project,
