@@ -12,7 +12,7 @@ Recorded once per App generation — at process start, after a hot push, and whe
 
 Is starting slow because of the database? The time to bring its schema up to date.
 
-Recorded at [`packages/server/src/hmr/platform.ts:369`](../hmr/platform.ts#L369) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:370`](../hmr/platform.ts#L370) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@ Is starting slow because of one plugin? The time to import and check that plugin
 
 `attrs.plugin` names it; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not loaded again and not recorded.
 
-Recorded at [`packages/server/src/hmr/platform.ts:469`](../hmr/platform.ts#L469) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:470`](../hmr/platform.ts#L470) <!-- probe-site -->
 
 ### boot.plugins
 
 How long did loading all plugins take? Every installed plugin together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:475`](../hmr/platform.ts#L475) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:476`](../hmr/platform.ts#L476) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@ Is starting slow because of one part of the server? The time to create that modu
 
 `attrs.module` names the module.
 
-Recorded at [`packages/server/src/hmr/platform.ts:528`](../hmr/platform.ts#L528) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:529`](../hmr/platform.ts#L529) <!-- probe-site -->
 
 ### boot.modules
 
 How long did creating the server's parts take? Every module together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:532`](../hmr/platform.ts#L532) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:533`](../hmr/platform.ts#L533) <!-- probe-site -->
 
 ### boot.create
 
@@ -56,7 +56,7 @@ How long until everything was back after a start? The time until sessions were a
 
 The App already serves while these run; a long one means machines or sessions came back late.
 
-Recorded at [`packages/server/src/platform.ts:246`](../platform.ts#L246) <!-- probe-site -->
+Recorded at [`packages/server/src/platform.ts:247`](../platform.ts#L247) <!-- probe-site -->
 
 ### hmr.park
 
@@ -244,4 +244,4 @@ Recorded at [`packages/web/src/state/sessions.tsx:743`](../../../web/src/state/s
 
 Is the page slow to connect to the server? From opening its connection to the server's first message.
 
-Recorded at [`packages/web/src/api/socket.ts:450`](../../../web/src/api/socket.ts#L450) <!-- probe-site -->
+Recorded at [`packages/web/src/api/socket.ts:467`](../../../web/src/api/socket.ts#L467) <!-- probe-site -->

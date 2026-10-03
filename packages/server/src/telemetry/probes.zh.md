@@ -12,7 +12,7 @@
 
 启动慢是不是数据库的缘故？把 schema 升到最新所用的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:369`](../hmr/platform.ts#L369) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:370`](../hmr/platform.ts#L370) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@
 
 `attrs.plugin` 是哪个插件；失败、被留在这一代之外时 `status` 为 `error`。沿用上一代的插件不再加载，也不记。
 
-记录于 [`packages/server/src/hmr/platform.ts:469`](../hmr/platform.ts#L469) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:470`](../hmr/platform.ts#L470) <!-- probe-site -->
 
 ### boot.plugins
 
 加载全部插件花了多久？所有已装插件一起的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:475`](../hmr/platform.ts#L475) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:476`](../hmr/platform.ts#L476) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@
 
 `attrs.module` 是模块名。
 
-记录于 [`packages/server/src/hmr/platform.ts:528`](../hmr/platform.ts#L528) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:529`](../hmr/platform.ts#L529) <!-- probe-site -->
 
 ### boot.modules
 
 创建服务端各部分花了多久？所有模块一起的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:532`](../hmr/platform.ts#L532) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:533`](../hmr/platform.ts#L533) <!-- probe-site -->
 
 ### boot.create
 
@@ -56,7 +56,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 这期间 App 已在服务；这一项长，说明 machine 或会话回来得晚。
 
-记录于 [`packages/server/src/platform.ts:246`](../platform.ts#L246) <!-- probe-site -->
+记录于 [`packages/server/src/platform.ts:247`](../platform.ts#L247) <!-- probe-site -->
 
 ### hmr.park
 
@@ -244,4 +244,4 @@ machine 回答命令慢吗？一条命令从发起到答复的时间。
 
 页面连上服务端慢吗？从打开连接到收到服务端第一条消息的时间。
 
-记录于 [`packages/web/src/api/socket.ts:450`](../../../web/src/api/socket.ts#L450) <!-- probe-site -->
+记录于 [`packages/web/src/api/socket.ts:467`](../../../web/src/api/socket.ts#L467) <!-- probe-site -->
