@@ -243,7 +243,9 @@ describe("the builtin catalogue and the packages it lists", () => {
       const pkg = packages.get(entry.name);
       expect(pkg, `${entry.name} is listed but is no package in plugins/`).toBeDefined();
       expect(entry.categories, entry.name).toHaveLength(1);
-      expect(["sandbox", "surface", "chat-bot", "languages"], entry.name).toContain(entry.categories![0]);
+      expect(["sandbox", "surface", "chat-bot", "languages"], entry.name).toContain(
+        entry.categories![0],
+      );
       expect(pkg!.manifest.version, entry.name).toBe(entry.version);
       expect(pkg!.manifest.description, entry.name).toBe(entry.description);
       expect(pkg!.manifest.license, entry.name).toBe(entry.license);
@@ -504,7 +506,9 @@ describe("the route's own merge", () => {
     const routes = pluginRegistryRoutes({ indexUrl: null });
     const res = await routes.request("/");
     const body = (await res.json()) as PluginIndexResponse;
-    expect(body.plugins.every((e) => e.name.startsWith("@prismshadow/"))).toBe(true);
+    // Exactly the builtin catalogue, whatever scope its packages are published under: the
+    // sandbox backends are @penguinharness/*, the rest @prismshadow/*.
+    expect(body.plugins).toEqual(await builtinPluginRegistry().index());
     expect(body.failures).toEqual([]);
   });
 });
