@@ -28,7 +28,7 @@ import {
 } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { toneSurface } from "../../lib/tone";
-import { useCompany } from "../../state/company";
+import { useCompany } from "./company-state";
 import { projectDisplayName, useProject } from "../../state/project";
 import { groupOrganizationsByProject, orgKey, orgPagePath, parseOrgKey } from "./company-nav";
 import {

@@ -34,7 +34,7 @@ import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { SEMANTIC_ID_PATTERN } from "../../lib/semantic-id";
 import { formatMoney } from "../../lib/format";
-import { useCompany } from "../../state/company";
+import { useCompany } from "./company-state";
 import { agentDisplayName, useProject } from "../../state/project";
 import { useTheme } from "../../state/theme";
 import { SkillPickList } from "../skills/skill-pick-list";
