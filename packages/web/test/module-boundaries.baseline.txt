@@ -4,7 +4,6 @@
 # This list only shrinks: never add a line; delete each line whose edge your change removes.
 cycle: features/ai-create -> features/chat
 cycle: features/builtin-browser -> features/dock
-cycle: features/chat -> features/ai-create
 cycle: features/chat -> features/builtin-browser
 cycle: features/chat -> features/company
 cycle: features/chat -> features/dock
@@ -85,7 +84,6 @@ features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
 features/chat/dock-toggles.tsx -> features/dock/panel-meta.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
-features/chat/new-chat.ts -> features/ai-create/default-agent.ts
 features/chat/permission-select.tsx -> features/settings/settings-dialog.tsx
 features/chat/stream-selection-menu.tsx -> features/builtin-browser/browser-actions.ts
 features/chat/stream-selection-menu.tsx -> features/builtin-browser/browser-store.ts
