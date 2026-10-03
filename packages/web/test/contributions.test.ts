@@ -16,18 +16,35 @@
  * - Session surfaces: the label a "New chat" entry shows follows the interface language, and
  *   the renderer names a server-contributed surface may point at are the ones the chat page's
  *   registry actually carries.
+ * - Safe mode is the one switch: the provider tells the store nobody is signed in, so the table
+ *   is the compiled one with nothing in flight; off again, the signed-in user's request is due.
  */
 import { createElement } from "react";
 import type { ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
-import { describe, expect, it, vi } from "vitest";
-import { contributedPagesOf, createContributionsStore } from "../src/shell/contributions";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  contributedPagesOf,
+  createContributionsStore,
+  ShellPagesProvider,
+  useShellPages,
+  useShellPagesPending,
+} from "../src/shell/contributions";
+import { shellDeps } from "../src/shell/deps";
+import type { ShellDeps } from "../src/shell/deps";
+import { setSafeMode } from "../src/rescue/safe-mode";
 import type { ShellPage } from "../src/shell";
 import { ThemeProvider } from "../src/state/theme";
 import { SURFACE_RENDERER_NAMES, surfaceLabel } from "../src/features/chat/session-surface-view";
 import { orgPagesOf } from "../src/features/company/use-org-pages";
+
+// The provider reads the signed-in user and asks the server through these.
+vi.mock("../src/state/auth", () => ({ useAuth: () => ({ user: { userId: "bob" } }) }));
+vi.mock("../src/api/endpoints", () => ({
+  getContributions: vi.fn(() => new Promise<never>(() => undefined)),
+}));
 
 const Blank: ComponentType = () => null;
 
@@ -343,5 +360,37 @@ describe("surfaceLabel", () => {
 describe("the surface renderer registry", () => {
   it("carries TerminalSurface, the renderer a pty-backed surface names", () => {
     expect(SURFACE_RENDERER_NAMES.has("TerminalSurface")).toBe(true);
+  });
+});
+
+describe("safe mode", () => {
+  afterEach(() => setSafeMode(false));
+
+  /** The provider's table and pending flag as its first render sees them, before any effect. */
+  function firstRender(): string {
+    function Probe() {
+      const pages = useShellPages();
+      return createElement(
+        "p",
+        null,
+        `${pages.map((p) => p.key).join(",")} pending=${String(useShellPagesPending())}`,
+      );
+    }
+    const Root = shellDeps.provide({ pages: COMPILED } as unknown as ShellDeps, () =>
+      createElement(ShellPagesProvider, null, createElement(Probe)),
+    );
+    return renderToStaticMarkup(createElement(Root));
+  }
+
+  it("skips every contribution: the table is the compiled one and nothing is in flight", () => {
+    setSafeMode(true);
+    expect(firstRender()).toBe("<p>agents,terminal pending=false</p>");
+  });
+
+  it("leaving it makes the signed-in user's request due again", () => {
+    setSafeMode(true);
+    firstRender();
+    setSafeMode(false);
+    expect(firstRender()).toBe("<p>agents,terminal pending=true</p>");
   });
 });

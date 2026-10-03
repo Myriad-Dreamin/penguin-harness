@@ -33,7 +33,6 @@ import { WorkflowsModule } from "./features/workflows/module";
 import { CompanyModule } from "./features/company/module";
 import { ProposalsModule } from "./features/proposals/module";
 import { BuiltinBrowserModule } from "./features/builtin-browser/module";
-import { PaletteModule } from "./features/palette/module";
 import { SettingsModule } from "./features/settings/module";
 import { SchedulesModule } from "./features/schedules/module";
 import { SessionListModule } from "./features/session-list/module";
@@ -63,7 +62,6 @@ import { TodosModule } from "./features/todos/module";
     CompanyModule,
     ProposalsModule,
     BuiltinBrowserModule,
-    PaletteModule,
     SettingsModule,
     SchedulesModule,
     SessionListModule,

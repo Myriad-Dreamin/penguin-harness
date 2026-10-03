@@ -1,9 +1,16 @@
 /**
  * The app's command palette: which actions exist, the shortcut that opens it (the
- * `palette.toggle` command, ⌥⌘P / Ctrl+Alt+P by default), and its words. Mounted once in
- * AppLayout. The UI package's CommandPalette is the mechanism; this file is the registry: an
- * action here, never a new global shortcut. An action opens an overlay over the current page
- * rather than navigating — closing it leaves the user exactly where they were.
+ * `palette.toggle` command, ⇧⌘P / Ctrl+Shift+P by default), and its words. The UI package's
+ * CommandPalette is the mechanism; this file is the registry: an action here, never a new
+ * global shortcut. An action opens an overlay over the current page rather than navigating —
+ * closing it leaves the user exactly where they were.
+ *
+ * It is the way back when the UI breaks — the harness history rolls the harness version back —
+ * so it mounts beside the shell's tree (app.tsx), not in it, and needs nothing the tree
+ * provides: no router, no auth or Project context. It opens over the rescue panel, on the bare
+ * routes, and over an open dialog (`palette.toggle` is the one command the dialog blocker lets
+ * through, see lib/shortcuts/dispatcher.ts). A mounted page adds its own actions through
+ * lib/palette-actions.ts.
  *
  * The palette also carries the host's commands — what the process hosting the server can do
  * on the page's behalf. Under the desktop shell that is installing the bundled `penguin`
@@ -17,18 +24,17 @@ import { useEffect, useMemo, useState } from "react";
 import type { HostCommand, HostCommandOffer } from "@prismshadow/penguin-server/api";
 import { CommandPalette, toastError, toastInfo } from "@prismshadow/penguin-ui";
 import type { PaletteAction } from "@prismshadow/penguin-ui";
+import * as api from "../api/endpoints";
+import { apiErrorText } from "../lib/api-error";
+import { useAddedPaletteActions } from "../lib/palette-actions";
 import { onCommand } from "../lib/shortcuts/dispatcher";
 import { useShortcutLabel } from "../lib/shortcuts/use-keymap";
 import { S } from "../lib/strings";
-import * as api from "../api/endpoints";
-import { apiErrorText } from "../lib/api-error";
 import { offersNewWindow } from "../lib/desktop-window";
 import { useAuth } from "../state/auth";
 import { useLocale } from "../state/locale";
 import { HarnessHistoryOverlay } from "./harness-history-overlay";
-
-/** A mount point with nothing to add shares one empty list, so the action memo stays put. */
-const NO_EXTRA: readonly PaletteAction[] = [];
+import { setSafeMode, useSafeMode } from "./safe-mode";
 
 const REPO_URL = "https://github.com/Prism-Shadow/penguin-harness";
 
@@ -88,13 +94,11 @@ export function hostCommandActions(
   });
 }
 
-/**
- * `extra` is what the mount point adds ahead of the standing actions — the full-page
- * workflow route registers its way out here, which is why it exists at all on that route.
- */
-export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteAction[] }) {
+export function RescuePalette() {
   const [open, setOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const added = useAddedPaletteActions();
+  const safe = useSafeMode();
 
   // The chord is the keymap's (lib/shortcuts): the window dispatcher matches it, calls this
   // handler and prevents the browser default once it is handled. A functional update reads
@@ -136,7 +140,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
 
   const actions = useMemo<PaletteAction[]>(
     () => [
-      ...extra,
+      ...added,
       // The shell opens the window; the page only asks (see lib/desktop-window.ts).
       ...(newWindow
         ? [
@@ -153,8 +157,14 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
       {
         id: "harness-history",
         label: S.commandPalette.harnessHistory,
-        keywords: ["harness history", "version", "hmr", "ifaces"],
+        keywords: ["harness history", "version", "hmr", "ifaces", "rollback"],
         run: () => setHistoryOpen(true),
+      },
+      {
+        id: "safe-mode",
+        label: safe ? S.rescue.leaveAction : S.rescue.enterAction,
+        keywords: ["safe mode", "contributions", "plugins"],
+        run: () => setSafeMode(!safe),
       },
       ...hostCommandActions(offers, locale).map(({ command, action }): PaletteAction => {
         return {
@@ -180,9 +190,8 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         },
       },
     ],
-    [extra, offers, locale, newWindow],
+    [added, safe, offers, locale, newWindow],
   );
-
   return (
     <>
       <CommandPalette
