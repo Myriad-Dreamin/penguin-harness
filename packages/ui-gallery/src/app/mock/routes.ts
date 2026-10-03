@@ -212,6 +212,7 @@ router.get("/api/telemetry", ({ query }): TelemetryResponse => ({
   view: query.get("view") === "sessions" ? "sessions" : "probes",
   buffered: 0,
 }));
+router.delete("/api/telemetry", () => ({ ok: true as const }));
 
 // ---------------------------------------------------------------------------------------------
 // Admin
