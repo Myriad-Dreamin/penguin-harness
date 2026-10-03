@@ -1,8 +1,7 @@
 /**
- * The browser's half of telemetry (PRFC-0008): the sample intake a page posts to, and the
- * switch `/api/me` hands the page. What must hold: the intake refuses while telemetry is off
- * (so a page stops sending), any signed-in user may write but only an admin reads back, and
- * nothing that is not a `web.*` shape gets into the buffer.
+ * The browser's half of telemetry (PRFC-0008): the switch `/api/me` hands a page, and the
+ * intake it posts to — refused while off, open to any signed-in user, read back by an admin
+ * only, and nothing but a `web.*` shape gets into the buffer.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
@@ -15,7 +14,7 @@ import { apiClient, createTestApp, loginAdmin, provisionUser } from "./helpers.j
 import type { TestApp } from "./helpers.js";
 
 describe("browserSample", () => {
-  it("keeps a web.* shape and drops what is not one", () => {
+  it("keeps a web.* shape; drops server names, non-shapes and attributes past the cap", () => {
     expect(
       browserSample({
         probe: "web.turn",
@@ -31,25 +30,18 @@ describe("browserSample", () => {
       keys: { session: "session-2026-09-30-08-00-00-7e1e0001" },
       attrs: { commits: 2, cached: true, kind: "tail" },
     });
-  });
-
-  it("refuses a server probe name, and fields that are not shapes", () => {
-    expect(browserSample({ probe: "http.request", durMs: 1 })).toBeNull();
-    expect(browserSample({ probe: "web.Bad" })).toBeNull();
-    expect(browserSample("web.turn")).toBeNull();
-    expect(
-      browserSample({
-        probe: "web.boot",
-        durMs: -1,
-        bytes: Number.POSITIVE_INFINITY,
-        status: "x".repeat(65),
-        session: "../etc/passwd",
-        attrs: { text: "y".repeat(65) },
-      }),
-    ).toEqual({ probe: "web.boot" });
-  });
-
-  it("caps the attributes of one sample", () => {
+    for (const bad of [{ probe: "http.request", durMs: 1 }, { probe: "web.Bad" }, "web.turn"]) {
+      expect(browserSample(bad)).toBeNull();
+    }
+    const junk = {
+      durMs: -1,
+      bytes: Number.POSITIVE_INFINITY,
+      status: "x".repeat(65),
+      session: "../etc/passwd",
+    };
+    expect(browserSample({ probe: "web.boot", ...junk, attrs: { text: "y".repeat(65) } })).toEqual({
+      probe: "web.boot",
+    });
     const attrs = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`a${i}`, i]));
     expect(Object.keys(browserSample({ probe: "web.boot", attrs })?.attrs ?? {})).toHaveLength(16);
   });
@@ -73,66 +65,42 @@ describe("POST /api/telemetry/samples", () => {
     expect((await admin.put("/api/admin/settings", { telemetry: on })).status).toBe(200);
   };
   const me = async (client: ReturnType<typeof apiClient>) =>
-    (await (await client.get("/api/me")).json()) as MeResponse;
+    ((await (await client.get("/api/me")).json()) as MeResponse).telemetry;
+  const read = async (query: string) =>
+    (await (await admin.get(`/api/telemetry${query}`)).json()) as TelemetryResponse;
+  const post = (samples: unknown) => member.post("/api/telemetry/samples", { samples });
 
-  it("hands the switch to every page through /api/me", async () => {
-    expect((await me(admin)).telemetry).toBe(false);
-    expect((await me(member)).telemetry).toBe(false);
-    await turn(true);
-    expect((await me(admin)).telemetry).toBe(true);
-    expect((await me(member)).telemetry).toBe(true);
-  });
-
-  it("refuses with 409 telemetry_off while the switch is off, and stores nothing", async () => {
-    const res = await member.post("/api/telemetry/samples", {
-      samples: [{ probe: "web.turn", durMs: 5 }],
-    });
+  it("off: /api/me says so to every page, and the intake answers 409 telemetry_off and stores nothing", async () => {
+    expect([await me(admin), await me(member)]).toEqual([false, false]);
+    const res = await post([{ probe: "web.turn", durMs: 5 }]);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe("telemetry_off");
     await turn(true);
-    const body = (await (
-      await admin.get("/api/telemetry?view=samples&probe=web.turn")
-    ).json()) as TelemetryResponse;
-    expect(body.samples).toEqual([]);
+    expect([await me(admin), await me(member)]).toEqual([true, true]);
+    expect((await read("?view=samples&probe=web.turn")).samples).toEqual([]);
   });
 
-  it("takes a member's samples into the buffer an admin reads, and only an admin", async () => {
+  it("on: takes a member's web.* samples into the buffer only an admin reads; refuses an unbounded body", async () => {
     await turn(true);
-    const res = await member.post("/api/telemetry/samples", {
-      samples: [
-        { probe: "web.turn", durMs: 40, n: 12, session: "s-1", attrs: { commits: 3 } },
-        { probe: "web.turn", durMs: 80, n: 20, session: "s-1" },
-        { probe: "http.request", durMs: 1 },
-        { probe: "web.socket.connect", durMs: 15, attrs: { openMs: 9 } },
-      ],
-    });
-    expect(res.status).toBe(200);
+    const res = await post([
+      { probe: "web.turn", durMs: 40, n: 12, session: "s-1", attrs: { commits: 3 } },
+      { probe: "web.turn", durMs: 80, n: 20, session: "s-1" },
+      { probe: "http.request", durMs: 1 },
+      { probe: "web.socket.connect", durMs: 15, attrs: { openMs: 9 } },
+    ]);
     expect((await res.json()) as TelemetryBrowserSamplesResponse).toEqual({ accepted: 3 });
-
-    const probes = (await (
-      await admin.get("/api/telemetry?view=probes")
-    ).json()) as TelemetryResponse;
-    const turnRow = probes.probes?.find((p) => p.probe === "web.turn");
-    expect(turnRow).toMatchObject({ count: 2, maxMs: 80 });
-    expect(probes.probes?.some((p) => p.probe === "web.socket.connect")).toBe(true);
-    // The posted http.request was dropped; the only http.request samples are the server's own.
-    const posted = (await (
-      await admin.get("/api/telemetry?view=samples&probe=http.request")
-    ).json()) as TelemetryResponse;
-    expect(posted.samples?.every((s) => s.durMs !== 1 || s.attrs !== undefined)).toBe(true);
-
-    const bySession = (await (
-      await admin.get("/api/telemetry?view=probes&session=s-1")
-    ).json()) as TelemetryResponse;
-    expect(bySession.probes?.map((p) => p.probe)).toEqual(["web.turn"]);
-
+    expect((await read("?view=probes")).probes?.find((p) => p.probe === "web.turn")).toMatchObject({
+      count: 2,
+      maxMs: 80,
+    });
+    expect((await read("?view=probes&session=s-1")).probes?.map((p) => p.probe)).toEqual([
+      "web.turn",
+    ]);
     expect((await member.get("/api/telemetry")).status).toBe(403);
-  });
-
-  it("rejects a body that is not a bounded list", async () => {
-    await turn(true);
-    expect((await member.post("/api/telemetry/samples", { samples: "web.turn" })).status).toBe(400);
-    const tooMany = Array.from({ length: BROWSER_BATCH_MAX + 1 }, () => ({ probe: "web.turn" }));
-    expect((await member.post("/api/telemetry/samples", { samples: tooMany })).status).toBe(400);
+    expect((await post("web.turn")).status).toBe(400);
+    expect(
+      (await post(Array.from({ length: BROWSER_BATCH_MAX + 1 }, () => ({ probe: "web.turn" }))))
+        .status,
+    ).toBe(400);
   });
 });

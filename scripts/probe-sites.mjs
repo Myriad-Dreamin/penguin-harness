@@ -9,11 +9,12 @@
  * uncommitted changes under the scanned directories count as dirty — those are what can move a
  * line; a deploy that patches its own scripts before building leaves the links exact.
  *
- * What counts as a probe site is the three spellings the code uses: `probe: "name"` (every
- * `record`/`emit` and the browser's samples), `timed("name", …)` (the platform's boot steps),
- * and `` probe: `prefix.${…}` `` (a family named per segment, recorded as `prefix.*`). A probe
- * spelled any other way is not found and its name shows as plain text; the scan's test lists
- * the names it must find.
+ * What counts as a probe site is the spellings the code uses: `probe: "name"` (every
+ * `record`/`emit` and the browser's samples); the name as the first string argument of a
+ * measuring call — `span`, `time`, `spanIn`, `timeIn`, `since` — however the call is wrapped
+ * over lines; and `` probe: `prefix.${…}` `` (a family named per segment, recorded as
+ * `prefix.*`). A probe spelled any other way is not found and its name shows as plain text;
+ * the scan's test lists the names it must find.
  *
  * Deterministic for identical source, like the build stamp: the HMR store addresses bundles
  * by content, so nothing here may vary between two builds of the same tree.
@@ -34,7 +35,8 @@ const CANONICAL_REPO = "https://github.com/Prism-Shadow/penguin-harness";
 
 const SITE_PATTERNS = [
   /\bprobe:\s*"([a-z][\w.-]*)"/g,
-  /\btimed\(\s*"([a-z][\w.-]*)"/g,
+  // A probe name always has a layer: `turn.tail`, never the bare segment a tally times.
+  /\b(?:span|time|spanIn|timeIn|since)\(\s*(?:[\w.?]+,\s*)?"([a-z][\w-]*\.[\w.-]+)"/g,
   /\bprobe:\s*`([a-z][\w.-]*)\.\$\{/g,
 ];
 
@@ -60,16 +62,18 @@ export function probeSites(dirs, root = ROOT) {
   const sites = {};
   for (const file of files) {
     const rel = path.relative(root, file).split(path.sep).join("/");
-    const lines = fs.readFileSync(file, "utf8").split("\n");
-    lines.forEach((line, i) => {
-      const code = line.trimStart();
-      if (code.startsWith("*") || code.startsWith("//") || code.startsWith("/*")) return;
-      SITE_PATTERNS.forEach((pattern, kind) => {
-        for (const m of line.matchAll(pattern)) {
-          const name = kind === 2 ? `${m[1]}.*` : m[1];
-          sites[name] ??= `${rel}:${i + 1}`;
-        }
-      });
+    const text = fs.readFileSync(file, "utf8");
+    const lines = text.split("\n");
+    SITE_PATTERNS.forEach((pattern, kind) => {
+      for (const m of text.matchAll(pattern)) {
+        // The line the name itself sits on: a wrapped call puts it below the call.
+        const at = m.index + m[0].lastIndexOf(m[1]);
+        const line = text.slice(0, at).split("\n").length;
+        const code = lines[line - 1].trimStart();
+        if (code.startsWith("*") || code.startsWith("//") || code.startsWith("/*")) continue;
+        const name = kind === 2 ? `${m[1]}.*` : m[1];
+        sites[name] ??= `${rel}:${line}`;
+      }
     });
   }
   return Object.fromEntries(Object.entries(sites).sort(([a], [b]) => a.localeCompare(b)));
