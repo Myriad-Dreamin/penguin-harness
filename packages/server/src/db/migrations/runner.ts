@@ -84,7 +84,8 @@ export interface MigrateResult {
  * `swapPath` marks the caller as a booting pushed platform. Expand migrations apply as
  * anywhere else; contract migrations (`swapSafe: false`) are skipped and stay pending — never
  * applied, never a reason to refuse the boot — and are returned in `deferred`. A hot push
- * therefore never fails on a migration it is not allowed to run, and never removes anything.
+ * therefore never fails on a migration it is not allowed to run, and never runs a contract.
+ * (One expand removes something all the same: see steps/company-mode-channels.ts.)
  */
 export function migrate(
   db: DatabaseSync,
