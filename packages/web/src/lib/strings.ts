@@ -3910,9 +3910,11 @@ Benchmark：
     /** The performance panel (the telemetry buffer, admin only). */
     performance: "性能",
     perfColName: "名称",
-    perfSiteTitle: (site: string): string => `记录于 ${site}，在 GitHub 上打开`,
+    /** Which language's probe reference the names link to (probes.<lang>.md). */
+    perfDocLang: "zh" as "en" | "zh",
+    perfSiteTitle: (site: string): string => `记录于 ${site}，打开它的说明`,
     perfSiteDirtyTitle: (site: string): string =>
-      `记录于 ${site}，在 GitHub 上打开；构建时有未提交的改动，行号可能对不上`,
+      `记录于 ${site}，打开它的说明；构建时有未提交的改动，行号可能对不上`,
     perfColCount: "次数",
     perfColMax: "最大",
     perfSessionFilter: "按 Session 筛选",

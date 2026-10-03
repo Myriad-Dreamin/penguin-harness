@@ -20,10 +20,10 @@ import type {
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
-import { Button, Select } from "@prismshadow/penguin-ui";
+import { Button, InfoPopover, Select } from "@prismshadow/penguin-ui";
 import { Empty } from "./usage-charts";
 import { toneInk } from "../../lib/tone";
-import { pageProbeSites, probeLink } from "../../lib/perf/sites";
+import { pageProbeSites, pageProbeSummaries, probeLink, probeSummary } from "../../lib/perf/sites";
 
 /** A duration as the table shows it: ms to one decimal under a second, seconds past it; a dash when no sample carried one. */
 export function formatDuration(ms: number | null): string {
@@ -42,22 +42,43 @@ function Th({ children, className = "" }: { children: React.ReactNode; className
   return <th className={`py-1.5 pr-2 font-medium ${className}`}>{children}</th>;
 }
 
-/** A probe's name, linked to the line that records it when its table names it. */
-function ProbeName({ probe, table }: { probe: string; table: ProbeSites | null }) {
-  const link = probeLink(probe, table);
-  if (link === null) return <>{probe}</>;
+/**
+ * A probe's name, linked to its section of the probe reference when its table locates it, and
+ * its one-sentence summary behind a "?" beside it. The reference's language follows the UI's.
+ */
+function ProbeName({
+  probe,
+  table,
+  summaries,
+}: {
+  probe: string;
+  table: ProbeSites | null;
+  summaries: ReturnType<typeof pageProbeSummaries>;
+}) {
+  const lang = S.usage.perfDocLang;
+  const link = probeLink(probe, table, lang);
+  const summary = probeSummary(probe, summaries, lang);
+  const name =
+    link === null ? (
+      <span className="truncate">{probe}</span>
+    ) : (
+      <a
+        href={link.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-tooltip={
+          link.dirty ? S.usage.perfSiteDirtyTitle(link.site) : S.usage.perfSiteTitle(link.site)
+        }
+        className="truncate underline-offset-2 hover:underline"
+      >
+        {probe}
+      </a>
+    );
   return (
-    <a
-      href={link.href}
-      target="_blank"
-      rel="noopener noreferrer"
-      data-tooltip={
-        link.dirty ? S.usage.perfSiteDirtyTitle(link.site) : S.usage.perfSiteTitle(link.site)
-      }
-      className="underline-offset-2 hover:underline"
-    >
-      {probe}
-    </a>
+    <div className="flex min-w-0 items-center gap-1">
+      {name}
+      {summary !== null && <InfoPopover label={probe}>{summary}</InfoPopover>}
+    </div>
   );
 }
 
@@ -70,6 +91,7 @@ export function PerformanceTable({ data }: { data: TelemetryResponse }) {
   // page's commit; every other probe in the server's, which comes with the read.
   const pageSites = pageProbeSites();
   const serverSites = data.sites ?? null;
+  const summaries = pageProbeSummaries();
   return (
     <div className="overflow-x-auto overflow-y-clip border-t border-gray-200 dark:border-gray-800">
       <table className="w-full min-w-[560px] table-fixed text-xs">
@@ -85,10 +107,11 @@ export function PerformanceTable({ data }: { data: TelemetryResponse }) {
         <tbody>
           {probes.map((p) => (
             <tr key={p.probe} className="border-t border-gray-100 dark:border-gray-800/60">
-              <td className="truncate py-1.5 pr-2 font-mono text-gray-600 dark:text-gray-300">
+              <td className="py-1.5 pr-2 font-mono text-gray-600 dark:text-gray-300">
                 <ProbeName
                   probe={p.probe}
                   table={p.probe.startsWith("web.") ? pageSites : serverSites}
+                  summaries={summaries}
                 />
               </td>
               <td className="py-1.5 pr-2 text-right font-mono tabular-nums">{p.count}</td>

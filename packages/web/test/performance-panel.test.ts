@@ -54,7 +54,7 @@ describe("PerformanceTable", () => {
     expect(html).toContain("—");
   });
 
-  it("links a server probe's name to the line the read's table names, and leaves an unknown one as text", () => {
+  it("links a server probe's name to its section of the reference at the read's commit, and leaves an unknown one as text", () => {
     const html = render({
       enabled: true,
       view: "probes",
@@ -72,9 +72,10 @@ describe("PerformanceTable", () => {
     });
     expect(html).toContain(S.usage.perfColName);
     expect(html).toContain(
-      'href="https://github.com/Prism-Shadow/penguin-harness/blob/abc1234/packages/server/src/http/app.ts#L257"',
+      'href="https://github.com/Prism-Shadow/penguin-harness/blob/abc1234/packages/server/src/telemetry/probes.en.md#httprequest"',
     );
-    expect(html).toContain("/blob/abc1234/packages/server/src/telemetry/turn.ts#L102");
+    // A per-segment name opens its family's section.
+    expect(html).toContain("/blob/abc1234/packages/server/src/telemetry/probes.en.md#turn");
     expect(html).not.toContain(">mystery.probe</a>");
     expect(html).toContain("mystery.probe");
   });

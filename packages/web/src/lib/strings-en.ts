@@ -3868,9 +3868,11 @@ Scenarios:
     /** The performance panel (the telemetry buffer, admin only). */
     performance: "Performance",
     perfColName: "Name",
-    perfSiteTitle: (site: string): string => `Recorded at ${site} — opens on GitHub`,
+    /** Which language's probe reference the names link to (probes.<lang>.md). */
+    perfDocLang: "en" as "en" | "zh",
+    perfSiteTitle: (site: string): string => `Recorded at ${site} — opens its description`,
     perfSiteDirtyTitle: (site: string): string =>
-      `Recorded at ${site} — opens on GitHub; built from uncommitted changes, so the line may be off`,
+      `Recorded at ${site} — opens its description; built from uncommitted changes, so the line may be off`,
     perfColCount: "Count",
     perfColMax: "Max",
     perfSessionFilter: "Filter by Session",
