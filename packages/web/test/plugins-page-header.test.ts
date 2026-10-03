@@ -69,6 +69,7 @@ describe("a module plugin's row", () => {
       blocked: false,
       onInstall: installed ? null : () => undefined,
       onRemove: installed ? () => undefined : null,
+      quickStart: { reason: "not on this server" },
     });
 
   it("offers Install on an available row, its words beside the icon", () => {
