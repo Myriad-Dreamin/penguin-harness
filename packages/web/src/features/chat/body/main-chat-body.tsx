@@ -8,7 +8,7 @@ import { GoalStatusBanner } from "../goal-banner";
 import { HistoryLoadFailed } from "../history-load-failed";
 import { DockPanel, DockLauncher } from "../../dock";
 import { measureComposer } from "../../dock/composer-height";
-import { ChatDockProvider } from "../chat-dock-context";
+import { ChatDockProvider } from "../session/main-dock-context";
 import { ArchivedSessionStub } from "../archived-session-stub";
 import type { MainChatView } from "./main-chat-view";
 
