@@ -41,6 +41,7 @@ import type {
   ModuleClass,
 } from "@prismshadow/penguin-core/kernel";
 import { beforeAll, describe, expect, it } from "vitest";
+import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
 import table from "../src/ifaces.json";
 import { bootWeb, WebRoot } from "../src/web-root";
 import { ShellModule } from "../src/shell/module";
@@ -309,7 +310,8 @@ describe("the booted page table", () => {
       pageRenderers.map((c) => [c.data.name as string, c.code as ComponentType]),
     );
     const answer = {
-      pages: remote,
+      // As the server might send it: the app checks each entry's fields itself.
+      pages: remote as readonly object[] as ContributionsResponse["pages"],
       agentTabs: [],
       sessionTabs: [],
       quickStarts: [],
