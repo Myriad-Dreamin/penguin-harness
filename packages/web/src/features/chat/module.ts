@@ -1,6 +1,11 @@
-/** The chat page: the conversation, or a surface Session's page (chat-route.tsx). */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+/**
+ * The chat page: the conversation, or a surface Session's page (chat-route.tsx); and its drafts
+ * for the surfaces that start and list them (iface.ts).
+ */
+import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel";
 import { ChatRoute } from "./chat-route";
+import { chatDrafts } from "./chat-drafts";
+import type { ChatDrafts } from "./iface";
 
 @Module({
   contributes: {
@@ -20,4 +25,5 @@ import { ChatRoute } from "./chat-route";
 })
 export class ChatModule {
   @Bind("chat.page") page = ChatRoute;
+  @Provide() drafts: ChatDrafts = chatDrafts;
 }
