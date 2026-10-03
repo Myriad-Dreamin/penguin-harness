@@ -1,21 +1,11 @@
 /**
- * The app's layout route: the UI package's `AppShell` bound to the app's state.
- * - >=md: the navigation column holds the pinned sidebar (Project / new chat / nav / Session list /
- *   user config), or the rail while it is folded, beside the page;
- * - <md: the phone's top bar (the drawer button + the product's name) above the page, and the
- *   sidebar in a drawer.
- * The shell's chrome uses solid fills and makes no stacking context (a frosted glass or a
- * transform would trap the menus it opens); the package's components say how.
+ * The navigation column folded to its rail: the sidebar's compact form, beside the page while the
+ * pinned sidebar is collapsed (app-layout.tsx swaps one for the other).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Outlet, useLocation, useMatch, useNavigate } from "react-router";
+import { useMemo, useRef, useState } from "react";
+import { useLocation, useMatch, useNavigate } from "react-router";
 import {
-  AppShell,
-  CloseIcon,
-  Drawer,
   ICONS,
-  MobileTopBar,
-  NoticeStrip,
   Rail,
   RailAccountButton,
   RailDivider,
@@ -24,21 +14,16 @@ import {
   UpdateDot,
   UserAvatar,
 } from "@prismshadow/penguin-ui";
-import * as api from "../../api/endpoints";
-import { nagsAboutInitialPassword } from "../../lib/account-menu";
 import { S } from "../../lib/strings";
-import { onCommand } from "../../lib/shortcuts/dispatcher";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
-import { navKeysFor } from "../../lib/nav-group-collapse";
-import { navPagesOf, useShellLayers, useShellPages } from "../../shell";
+import { NAV_ICONS, NEW_CHAT_ICON } from "../../lib/nav-icons";
+import { navKeysFor } from "./nav-state";
+import { navPagesOf, useShellPages } from "../index";
 import { navNoteFor, useUpdateBadges } from "../../features/todos";
 import { useAuth } from "../../state/auth";
 import { useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
-import { useCompletionNotifications } from "../../state/use-completion-notifications";
-import { useTrayLocale } from "../../state/use-tray-locale";
-import { NAV_ICONS } from "../../lib/nav-icons";
 import { useCompany } from "../../features/company";
 import { COMPANY_NAV_ICONS } from "../../features/company/company-nav-icons";
 import { ChannelRailRows } from "../../features/company/channel-sidebar";
@@ -49,24 +34,10 @@ import {
   orgPagePath,
   parseOrgKey,
 } from "../../features/company/company-nav";
-import { NEW_CHAT_ICON, Sidebar } from "./sidebar";
 import { UserMenu } from "./user-menu";
 import { isCurrentPath, renderRouterLink } from "./router-link";
 import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
 import { useNewChat } from "../../features/chat/use-new-chat";
-import { ChangePasswordDialog } from "../account/change-password-dialog";
-import { UpdateModal } from "../account/update-modal";
-import { setDockScope } from "../../features/dock/dock-state";
-
-/**
- * Whether the pinned sidebar (or its rail) is on screen: the shell's navigation column is
- * `hidden md:block`, and Tailwind's `md` is 768px at the browser's default font size — a media
- * query ignores the app's 18px root. Below it the drawer's own sidebar answers the commands while
- * it is open.
- */
-function pinnedSidebarOnScreen(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches;
-}
 
 /**
  * The folded navigation column: the unfold button on top; below it, in product-specified order,
@@ -78,7 +49,7 @@ function pinnedSidebarOnScreen(): boolean {
  * words in a styled tooltip (the package's `RailItem`). The entries' names come from the same
  * strings as the pinned nav's, so the rail follows the UI language with it.
  */
-function CollapsedRail({ onExpand }: { onExpand: () => void }) {
+export function CollapsedRail({ onExpand }: { onExpand: () => void }) {
   const { user } = useAuth();
   const navPages = navPagesOf(useShellPages());
   const navigate = useNavigate();
@@ -313,211 +284,5 @@ function CollapsedRail({ onExpand }: { onExpand: () => void }) {
         </>
       )}
     </Rail>
-  );
-}
-
-export function AppLayout() {
-  const { user, desktopMode, sessionVia } = useAuth();
-  // The docks belong to the conversation they were arranged in, so switching Sessions
-  // switches the arrangement with it (dock-state.ts). The draft page's route id ("new" /
-  // a parked draft id) is a scope of its own, handed to the Session the first send
-  // creates; pages with no Session scope to a placeholder. Layout effect, not a plain
-  // one: it has to land before the chat page's docks paint, or the outgoing
-  // conversation's docks flash on the incoming one.
-  const dockScope = useMatch("/chat/:sessionId")?.params.sessionId ?? null;
-  useLayoutEffect(() => {
-    setDockScope(dockScope);
-  }, [dockScope]);
-  // Desktop shell only (gated inside): system notification when a task finishes while
-  // the window is unfocused.
-  useCompletionNotifications();
-  // Desktop shell only: keeps the tray menu in the language this window is in.
-  useTrayLocale();
-  // The single eager owner of the update checks (use-update-badges.ts): one request per
-  // browser session, so a dot can be there on a fresh load instead of waiting for someone to
-  // open the sidebar menu. Every other anchor reads the same caches passively.
-  const badges = useUpdateBadges(true);
-  const layers = useShellLayers();
-  // The drawer holds the sidebar, so the drawer button is named after what the sidebar lists:
-  // conversations in development mode, channels in company mode.
-  const company = useCompany();
-  const drawerName =
-    company.workMode === "company" ? S.company.channels.drawerLabel : S.chat.sessionList;
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  // Initial-password banner dismissal: server-persisted per user (ui_prefs). null = prefs not
-  // hydrated yet — the banner stays unrendered until the stored answer arrives, so an already
-  // dismissed banner never flashes before disappearing. Hydration only runs when the banner
-  // would show at all; unreachable prefs fail open (treated as not dismissed, banner shows).
-  const [passwordBannerDismissed, setPasswordBannerDismissed] = useState<boolean | null>(null);
-  const passwordBannerRelevant =
-    Boolean(user?.passwordIsInitial) && nagsAboutInitialPassword({ desktopMode, sessionVia });
-  useEffect(() => {
-    if (!passwordBannerRelevant) return;
-    let cancelled = false;
-    void api
-      .getPrefs()
-      .then((res) => {
-        if (!cancelled)
-          setPasswordBannerDismissed(res.prefs.initialPasswordBannerDismissed === true);
-      })
-      .catch(() => {
-        if (!cancelled) setPasswordBannerDismissed(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [passwordBannerRelevant]);
-  const dismissPasswordBanner = () => {
-    setPasswordBannerDismissed(true);
-    // Fire-and-forget: PUT /me/prefs merges shallowly; a lost write only costs persistence,
-    // the banner is already hidden for this tab.
-    void api.putPrefs({ initialPasswordBannerDismissed: true }).catch(() => undefined);
-  };
-  // Desktop sidebar collapse (persisted): collapsed state leaves a narrow rail to expand from.
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem("penguin.sidebarCollapsed") === "1",
-  );
-  const toggleCollapsed = () =>
-    setCollapsed((v) => {
-      const next = !v;
-      localStorage.setItem("penguin.sidebarCollapsed", next ? "1" : "0");
-      return next;
-    });
-  // The commands whose surface is this layout. Each declines (returns false, so the browser's
-  // own key runs) when its effect could not be seen: the pinned sidebar exists only from the
-  // `md` breakpoint up (below it the drawer's own sidebar answers while open), and company mode
-  // has neither a session search nor a development New chat. New chat runs from here rather
-  // than from the sidebar so it works with the sidebar collapsed to its rail. The search field
-  // only exists in the expanded sidebar: with the rail showing, the command expands the sidebar
-  // with the field already open (the pinned Sidebar mounts fresh on every expand and takes the
-  // flag as its initial state); otherwise it declines and the sidebar's own handler takes it.
-  const inCompany = company.workMode === "company";
-  const newChat = useNewChat();
-  const [openSearchOnExpand, setOpenSearchOnExpand] = useState(false);
-  useEffect(() => {
-    const offs = [
-      onCommand("sidebar.toggle", () => {
-        if (!pinnedSidebarOnScreen()) return false;
-        setOpenSearchOnExpand(false);
-        toggleCollapsed();
-      }),
-      onCommand("chat.new", () => {
-        if (inCompany) return false;
-        newChat();
-      }),
-      onCommand("sessions.search", () => {
-        if (inCompany || !pinnedSidebarOnScreen() || !collapsed) return false;
-        setOpenSearchOnExpand(true);
-        toggleCollapsed();
-      }),
-    ];
-    return () => {
-      for (const off of offs) off();
-    };
-  }, [collapsed, inCompany, newChat]);
-
-  return (
-    <AppShell
-      navCollapsed={collapsed}
-      nav={
-        collapsed ? (
-          <CollapsedRail
-            onExpand={() => {
-              setOpenSearchOnExpand(false);
-              toggleCollapsed();
-            }}
-          />
-        ) : (
-          <Sidebar
-            onCollapse={() => {
-              setOpenSearchOnExpand(false);
-              toggleCollapsed();
-            }}
-            initialSearchOpen={openSearchOnExpand}
-          />
-        )
-      }
-      overlays={
-        <>
-          {/* The software-update modal, opened from the sidebar's update row and the draft
-              page's version badge alike; mounted here so it outlives both. */}
-          <UpdateModal />
-          <ChangePasswordDialog
-            open={changePasswordOpen}
-            onClose={() => setChangePasswordOpen(false)}
-          />
-          {/* Mobile: the sidebar in a drawer, on the navigation column's own fill. */}
-          <Drawer
-            open={drawerOpen}
-            side="left"
-            title={S.appName}
-            onClose={() => setDrawerOpen(false)}
-          >
-            <div className="h-full bg-surface-muted">
-              <Sidebar onNavigate={() => setDrawerOpen(false)} />
-            </div>
-          </Drawer>
-        </>
-      }
-    >
-      {/* The outermost menu on a phone: it carries a dot for EITHER trail, so its wording is
-          the combined one — naming one of two updates would point at the wrong trail. Both
-          trails continue inside the drawer's sidebar (the Agents entry, the user row's update
-          entry). */}
-      <MobileTopBar
-        title={S.appName}
-        menuLabel={badges.note !== null ? `${drawerName} · ${badges.note}` : drawerName}
-        {...(badges.note !== null ? { menuHint: badges.note } : {})}
-        {...(badges.any ? { menuBadge: <UpdateDot /> } : {})}
-        onMenu={() => setDrawerOpen(true)}
-      />
-
-      {/* Initial-password notice banner (seed/admin-set password): disappears once passwordIsInitial clears after a successful change.
-          Hidden in desktop mode — the seed password there is random and never shown, so "change it" is meaningless nagging.
-          Permanently dismissible via the X on the right (per-user ui_prefs); only rendered once
-          hydrated prefs confirm it was never dismissed, so it does not flash-then-vanish on load. */}
-      {passwordBannerRelevant && passwordBannerDismissed === false && (
-        <NoticeStrip
-          banner
-          tone="attention"
-          className="relative flex shrink-0 items-center justify-center gap-3 border-b px-8 py-1.5 text-xs"
-        >
-          <span>{S.account.initialPasswordBanner}</span>
-          <button
-            type="button"
-            className="shrink-0 font-medium underline underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100"
-            onClick={() => setChangePasswordOpen(true)}
-          >
-            {S.account.changeNow}
-          </button>
-          {/* Amber-toned twin of the shared CloseButton (same glyph + aria-label) — its hardcoded
-              gray colors would clash here. Flat: hover feedback is icon-color-only (no background
-              fill), same hover shades as the change-now link. Absolutely positioned at the right
-              edge: near-full-height hit area without growing the banner and without transform (see
-              the stacking-context note in the file header); the banner's symmetric px-8 keeps the
-              centered text clear. */}
-          <button
-            type="button"
-            aria-label={S.common.close}
-            data-tooltip={S.common.close}
-            onClick={dismissPasswordBanner}
-            className="absolute inset-y-0.5 right-1.5 flex items-center rounded-md px-1 text-amber-500 transition-colors duration-150 hover:text-amber-950 dark:text-amber-400/70 dark:hover:text-amber-100"
-          >
-            <CloseIcon size={12} />
-          </button>
-        </NoticeStrip>
-      )}
-
-      <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <Outlet />
-      </main>
-      {/* The layers modules contributed (ShellModule.layers): overlays and headless runtimes,
-          mounted once here, outside every page, so navigating never remounts or re-parents
-          one — a terminal would reconnect, a built-in browser's webview would reload. */}
-      {layers.map(({ id, Component }) => (
-        <Component key={id} />
-      ))}
-    </AppShell>
   );
 }

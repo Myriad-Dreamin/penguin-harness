@@ -28,7 +28,7 @@ import {
 import type { DropdownPortal } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { useAuth } from "../../state/auth";
-import { UpdateRow } from "../account/update-row";
+import { UpdateRow } from "../../components/account/update-row";
 import { openUpdateModal } from "../../lib/use-update-flow";
 import { SettingsDialog } from "../../features/settings/settings-dialog";
 import { onSettingsRequest } from "../../features/settings/settings-request";

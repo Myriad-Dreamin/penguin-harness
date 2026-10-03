@@ -14,7 +14,7 @@ import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-rout
 import { useAuth } from "../state/auth";
 import { ProjectProvider } from "../state/project";
 import { SessionsProvider } from "../state/sessions";
-import { AppLayout } from "../components/layout/app-layout";
+import { AppLayout } from "./app-layout";
 import { LoginPage } from "../pages/login";
 import { shellDeps } from "./deps";
 

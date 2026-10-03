@@ -35,3 +35,6 @@ export const NAV_ICONS = {
   /** The handbook, the company's knowledge base. */
   orgHandbook: ICONS.bookOpen,
 } as const;
+
+/** New-chat pencil: the pinned "New chat" row, the collapsed rail's entry and the session list's drafts and create button. */
+export const NEW_CHAT_ICON = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z";
