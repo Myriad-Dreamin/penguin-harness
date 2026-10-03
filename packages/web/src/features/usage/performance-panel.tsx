@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import type {
+  ProbeSites,
   TelemetryProbeSummary,
   TelemetryResponse,
   TelemetrySessionSummary,
@@ -22,6 +23,7 @@ import { apiErrorText } from "../../lib/api-error";
 import { Button, Select } from "@prismshadow/penguin-ui";
 import { Empty } from "./usage-charts";
 import { toneInk } from "../../lib/tone";
+import { pageProbeSites, probeLink } from "../../lib/perf/sites";
 
 /** A duration as the table shows it: ms to one decimal under a second, seconds past it; a dash when no sample carried one. */
 export function formatDuration(ms: number | null): string {
@@ -40,17 +42,38 @@ function Th({ children, className = "" }: { children: React.ReactNode; className
   return <th className={`py-1.5 pr-2 font-medium ${className}`}>{children}</th>;
 }
 
+/** A probe's name, linked to the line that records it when its table names it. */
+function ProbeName({ probe, table }: { probe: string; table: ProbeSites | null }) {
+  const link = probeLink(probe, table);
+  if (link === null) return <>{probe}</>;
+  return (
+    <a
+      href={link.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={link.dirty ? S.usage.perfSiteDirtyTitle(link.site) : S.usage.perfSiteTitle(link.site)}
+      className="underline-offset-2 hover:underline"
+    >
+      {probe}
+    </a>
+  );
+}
+
 /** The table itself, from one read: pure so it renders in a test without a fetch. */
 export function PerformanceTable({ data }: { data: TelemetryResponse }) {
   if (!data.enabled) return <Empty text={S.usage.perfOff} />;
   const probes = orderProbes(data.probes ?? []);
   if (probes.length === 0) return <Empty text={S.usage.perfEmpty} />;
+  // A `web.*` probe is recorded by this page, so it is found in the page's own table, at the
+  // page's commit; every other probe in the server's, which comes with the read.
+  const pageSites = pageProbeSites();
+  const serverSites = data.sites ?? null;
   return (
     <div className="overflow-x-auto overflow-y-clip border-t border-gray-200 dark:border-gray-800">
       <table className="w-full min-w-[560px] table-fixed text-xs">
         <thead className="text-left text-gray-400 dark:text-gray-500">
           <tr>
-            <Th>{S.usage.perfColProbe}</Th>
+            <Th>{S.usage.perfColName}</Th>
             <Th className="w-20 text-right">{S.usage.perfColCount}</Th>
             <Th className="w-24 text-right">p50</Th>
             <Th className="w-24 text-right">p95</Th>
@@ -61,7 +84,10 @@ export function PerformanceTable({ data }: { data: TelemetryResponse }) {
           {probes.map((p) => (
             <tr key={p.probe} className="border-t border-gray-100 dark:border-gray-800/60">
               <td className="truncate py-1.5 pr-2 font-mono text-gray-600 dark:text-gray-300">
-                {p.probe}
+                <ProbeName
+                  probe={p.probe}
+                  table={p.probe.startsWith("web.") ? pageSites : serverSites}
+                />
               </td>
               <td className="py-1.5 pr-2 text-right font-mono tabular-nums">{p.count}</td>
               <td className="py-1.5 pr-2 text-right font-mono tabular-nums">

@@ -54,6 +54,31 @@ describe("PerformanceTable", () => {
     expect(html).toContain("—");
   });
 
+  it("links a server probe's name to the line the read's table names, and leaves an unknown one as text", () => {
+    const html = render({
+      enabled: true,
+      view: "probes",
+      buffered: 2,
+      probes: [row("http.request"), row("turn.wait"), row("mystery.probe")],
+      sites: {
+        repo: "https://github.com/Prism-Shadow/penguin-harness",
+        commit: "abc1234",
+        dirty: false,
+        sites: {
+          "http.request": "packages/server/src/http/app.ts:257",
+          "turn.*": "packages/server/src/telemetry/turn.ts:102",
+        },
+      },
+    });
+    expect(html).toContain(S.usage.perfColName);
+    expect(html).toContain(
+      'href="https://github.com/Prism-Shadow/penguin-harness/blob/abc1234/packages/server/src/http/app.ts#L257"',
+    );
+    expect(html).toContain("/blob/abc1234/packages/server/src/telemetry/turn.ts#L102");
+    expect(html).not.toContain(">mystery.probe</a>");
+    expect(html).toContain("mystery.probe");
+  });
+
   it("says so when the buffer is on but holds nothing yet", () => {
     const html = render({ enabled: true, view: "probes", buffered: 0, probes: [] });
     expect(html).toContain(S.usage.perfEmpty);

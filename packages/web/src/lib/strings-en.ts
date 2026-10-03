@@ -4159,7 +4159,10 @@ Scenarios:
       `Deleted ${count} error record${count === 1 ? "" : "s"}`,
     /** The performance panel (the telemetry buffer, admin only). */
     performance: "Performance",
-    perfColProbe: "Probe",
+    perfColName: "Name",
+    perfSiteTitle: (site: string): string => `Recorded at ${site} — opens on GitHub`,
+    perfSiteDirtyTitle: (site: string): string =>
+      `Recorded at ${site} — opens on GitHub; built from uncommitted changes, so the line may be off`,
     perfColCount: "Count",
     perfColMax: "Max",
     perfSessionFilter: "Filter by Session",

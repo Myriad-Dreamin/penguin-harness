@@ -33,6 +33,7 @@ import { badRequest, readJson } from "../http/validate.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
 import { summarizeProbes, summarizeSessions } from "./buffer.js";
 import { BROWSER_BATCH_MAX, browserSample } from "./browser.js";
+import { probeSites } from "./sites.js";
 
 const VIEWS = ["probes", "sessions", "samples"] as const;
 type View = (typeof VIEWS)[number];
@@ -95,8 +96,10 @@ export function telemetryRoutes(telemetry: Telemetry): Hono<AppEnv> {
       // The summaries are over every match; `limit` narrows only the raw listing.
       const { limit: _limit, ...unlimited } = query;
       const matched = telemetry.samples(unlimited);
-      if (view === "probes") body.probes = summarizeProbes(matched);
-      else body.sessions = summarizeSessions(matched);
+      if (view === "probes") {
+        body.probes = summarizeProbes(matched);
+        body.sites = probeSites();
+      } else body.sessions = summarizeSessions(matched);
     }
     return c.json(body);
   });

@@ -404,6 +404,20 @@ export interface TelemetryResponse {
   probes?: TelemetryProbeSummary[];
   sessions?: TelemetrySessionSummary[];
   samples?: TelemetrySample[];
+  /** With `view=probes`: where this server's probes are recorded; null when the build has no table. */
+  sites?: ProbeSites | null;
+}
+
+/**
+ * Where each probe is recorded, as the build read it off its own source: `sites` maps a probe
+ * name to `path:line` at `commit` of `repo` (a GitHub https URL). A family named per segment is
+ * one entry, `prefix.*`. `dirty` means the build had uncommitted changes, so a line may be off.
+ */
+export interface ProbeSites {
+  repo: string;
+  commit: string;
+  dirty: boolean;
+  sites: Record<string, string>;
 }
 
 /**

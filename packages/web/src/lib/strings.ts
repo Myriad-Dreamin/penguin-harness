@@ -4235,7 +4235,10 @@ Benchmark：
     errorsClearDone: (count: number): string => `已删除 ${count} 条错误记录`,
     /** The performance panel (the telemetry buffer, admin only). */
     performance: "性能",
-    perfColProbe: "采集点",
+    perfColName: "名称",
+    perfSiteTitle: (site: string): string => `记录于 ${site}，在 GitHub 上打开`,
+    perfSiteDirtyTitle: (site: string): string =>
+      `记录于 ${site}，在 GitHub 上打开；构建时有未提交的改动，行号可能对不上`,
     perfColCount: "次数",
     perfColMax: "最大",
     perfSessionFilter: "按 Session 筛选",

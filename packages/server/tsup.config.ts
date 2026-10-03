@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 import { FAR_SIDE_SCRIPTS } from "../../scripts/far-side-scripts.mjs";
+import { probeSitesDefine } from "../../scripts/probe-sites.mjs";
 
 const jsOnly = process.env.PENGUIN_BUILD_JS_ONLY === "1";
 
@@ -51,6 +52,8 @@ export default defineConfig({
   dts: !jsOnly,
   clean: jsOnly ? ["!**/*.d.ts"] : true,
   sourcemap: true,
+  // Where each telemetry probe is recorded, for the performance panel's links (see that module).
+  define: probeSitesDefine(["packages/server/src"]),
   // The hot-update mechanism is a package for the boundary, not for npm (it is `private`):
   // inlined here so this package's published dist stays self-contained.
   noExternal: ["@prismshadow/penguin-hmr"],

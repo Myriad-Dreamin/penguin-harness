@@ -7,7 +7,7 @@
 
 [中文版](2026-09-30-usage-performance-panel.zh.md)
 
-For an admin, the cost center now has a full-width **Performance** panel below the errors panel. It reads the telemetry buffer (`GET /api/telemetry`) and lists every probe with its count, p50, p95 and maximum, server probes first and the browser's after them, and can be narrowed to one Session. While telemetry is off it says so and points to the switch; while it is on, **Clear** empties the buffer (`DELETE /api/telemetry`). Members are not shown the panel.
+For an admin, the cost center now has a full-width **Performance** panel below the errors panel. It reads the telemetry buffer (`GET /api/telemetry`) and lists every probe with its count, p50, p95 and maximum, server probes first and the browser's after them, and can be narrowed to one Session. While telemetry is off it says so and points to the switch; while it is on, **Clear** empties the buffer (`DELETE /api/telemetry`). Members are not shown the panel. Each probe's name links to the line that records it on GitHub, at the commit the build was made from: the build reads every probe site off the source and inlines the table — the server's into its bundle (returned with `GET /api/telemetry?view=probes` as `sites`), the browser's `web.*` into the page — and a build from uncommitted changes says the line may be off.
 
 An admin turns telemetry on and off under **Settings → General** (`PUT /api/admin/settings`); the tab that flips it starts or stops its own collector at once. Members do not get the row.
 

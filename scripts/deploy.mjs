@@ -44,6 +44,7 @@ import {
   saidYes,
 } from "./deploy-unsatisfied-plugins.mjs";
 import { buildGitDefine, checkoutFacts, originUrl } from "./build-git-stamp.mjs";
+import { probeSitesDefine } from "./probe-sites.mjs";
 import { ESM_CJS_BANNER } from "./esm-cjs-banner.mjs";
 import { FAR_SIDE_SCRIPTS } from "./far-side-scripts.mjs";
 import { buildBuiltinPlugins } from "./build-plugins.mjs";
@@ -224,8 +225,9 @@ async function compileEntry(entry, outfile) {
     // revision has to be inlined here or it can never be recovered: `penguin version` from
     // a hot-loaded CLI would otherwise report the bare version it was compiled from. This is
     // the same value the push records as `source`, reaching the target by a second route —
-    // in the artifact itself rather than in harness.json.
-    define: buildGitDefine(),
+    // in the artifact itself rather than in harness.json. The probe sites ride along the same
+    // way: the pushed platform is compiled here, not by tsup, so it needs its own copy.
+    define: { ...buildGitDefine(), ...probeSitesDefine(["packages/server/src"]) },
   });
 }
 
