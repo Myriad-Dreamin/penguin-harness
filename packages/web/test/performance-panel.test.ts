@@ -8,9 +8,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { TelemetryResponse } from "@prismshadow/penguin-server/api";
 import {
+  DEFAULT_PROBE_SORT,
   PerformanceTable,
   formatDuration,
-  orderProbes,
+  nextProbeSort,
+  sortProbes,
 } from "../src/features/usage/performance-panel";
 import { S, setActiveStrings, zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
@@ -20,11 +22,16 @@ afterEach(() => setActiveStrings(zh));
 const render = (data: TelemetryResponse) =>
   renderToStaticMarkup(createElement(PerformanceTable, { data }));
 
-const row = (probe: string, maxMs: number | null = 12) => ({
+const row = (
+  probe: string,
+  maxMs: number | null = 12,
+  p95Ms: number | null = 10.25,
+  count = 3,
+) => ({
   probe,
-  count: 3,
+  count,
   p50Ms: 4,
-  p95Ms: 10.25,
+  p95Ms,
   maxMs,
   bytes: null,
 });
@@ -39,22 +46,28 @@ describe("PerformanceTable", () => {
     expect(html).not.toContain("<table");
   });
 
-  it("lists count, p50, p95 and max per probe, server probes before the browser's", () => {
+  it("lists count, p50, p95 and max per probe, slowest p95 first", () => {
     const html = render({
       enabled: true,
       view: "probes",
       buffered: 9,
-      probes: [row("web.turn"), row("http.request", null), row("boot.module", 2500)],
+      probes: [
+        row("web.turn", 12, 3),
+        row("http.request", null, 10.25),
+        row("boot.module", 2500, 900),
+      ],
     });
     expect(html).toContain("<table");
     const order = ["boot.module", "http.request", "web.turn"].map((p) => html.indexOf(p));
     expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(html).toContain('aria-sort="descending"');
     expect(html).toContain("10.3 ms");
     expect(html).toContain("2.50 s");
     expect(html).toContain("—");
   });
 
   it("links a server probe's name to its section of the reference at the read's commit, and leaves an unknown one as text", () => {
+    setActiveStrings(en);
     const html = render({
       enabled: true,
       view: "probes",
@@ -94,9 +107,31 @@ describe("formatting", () => {
     expect(formatDuration(1234)).toBe("1.23 s");
   });
 
-  it("orders without mutating the read", () => {
-    const probes = [row("web.boot"), row("trace.read")];
-    expect(orderProbes(probes).map((p) => p.probe)).toEqual(["trace.read", "web.boot"]);
-    expect(probes[0]?.probe).toBe("web.boot");
+  it("opens on p95, slowest first, and leaves the read as it was", () => {
+    const probes = [row("a", 1, 5), row("b", 1, 50), row("c", 1, null)];
+    expect(DEFAULT_PROBE_SORT).toEqual({ key: "p95", dir: "desc" });
+    expect(sortProbes(probes, DEFAULT_PROBE_SORT).map((p) => p.probe)).toEqual(["b", "a", "c"]);
+    expect(probes[0]?.probe).toBe("a");
+  });
+
+  it("sorts every column, a missing duration last either way and ties by name", () => {
+    const probes = [row("b", 7, 5, 2), row("a", 7, null, 9), row("c", null, 5, 2)];
+    const by = (key: "name" | "count" | "p95" | "max", dir: "asc" | "desc") =>
+      sortProbes(probes, { key, dir }).map((p) => p.probe);
+    expect(by("name", "asc")).toEqual(["a", "b", "c"]);
+    expect(by("name", "desc")).toEqual(["c", "b", "a"]);
+    expect(by("count", "desc")).toEqual(["a", "b", "c"]);
+    expect(by("p95", "asc")).toEqual(["b", "c", "a"]);
+    expect(by("max", "desc")).toEqual(["a", "b", "c"]);
+    expect(by("max", "asc")).toEqual(["a", "b", "c"]);
+  });
+
+  it("turns the active column around, and starts a new one at its natural end", () => {
+    expect(nextProbeSort({ key: "p95", dir: "desc" }, "p95")).toEqual({ key: "p95", dir: "asc" });
+    expect(nextProbeSort({ key: "p95", dir: "asc" }, "count")).toEqual({
+      key: "count",
+      dir: "desc",
+    });
+    expect(nextProbeSort({ key: "p95", dir: "desc" }, "name")).toEqual({ key: "name", dir: "asc" });
   });
 });
