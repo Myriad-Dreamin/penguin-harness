@@ -24,7 +24,7 @@ import {
 } from "react";
 import type { ContributionsResponse, SessionSurfaceSummary } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
-import { PAGES, mergePages, type PageEntry } from "../lib/pages";
+import { PAGES, mergePages, type PageEntry } from "../shell/page-table";
 import { useAuth } from "./auth";
 import type { Locale } from "./locale";
 
