@@ -59,7 +59,7 @@ import type { Resources } from "@prismshadow/penguin-core/kernel";
 import { forwardControlArgs, sessionArgs } from "../commands.js";
 import type { ForwardSpec, RemoteTarget } from "../commands.js";
 import { run } from "./exec.js";
-import { emit, round, timingsSink } from "./timings.js";
+import { NO_ANSWER, timedCommand } from "./timings.js";
 
 /**
  * What a command in the session produced. `output` is stdout and stderr merged, with the
@@ -158,8 +158,6 @@ const COMMAND_TIMEOUT_MS = 60_000;
 
 /** Opening is a handshake to a host that may be far away or loaded. */
 const OPEN_TIMEOUT_MS = 30_000;
-/** A command's answer when the machine said nothing before its timeout. */
-const NO_ANSWER = "the machine did not answer in time";
 
 /** A held session that dropped is reopened after this long, doubling per failure up to the cap. */
 const RECONNECT_MIN_MS = 1_000;
@@ -217,11 +215,6 @@ class MachineShell {
   #forwardsApplied = false;
   /** Retires this session's registry entry; a no-op once a successor has taken it over. */
   #unregister: (() => void) | null = null;
-  /**
-   * When the current child was spawned (performance.now()), until the first command through
-   * it proves it up — then it is a `machine.ssh.open` sample. Null while telemetry is off.
-   */
-  #openedAt: number | null = null;
 
   constructor(
     private readonly target: RemoteTarget,
@@ -327,12 +320,10 @@ class MachineShell {
 
   /** Runs one command, opening the session if needed. Never throws; a dead session is a failure. */
   run(command: string, opts: ShellRunOptions = {}): Promise<ShellResult> {
-    // Asked-for time, so a command's sample can tell waiting in line from running.
-    const queuedAt = timingsSink() === null ? null : performance.now();
-    const next = this.#queue.then(() => this.#runExclusive(command, opts, queuedAt));
+    const next = this.#queue.then(() => this.#runExclusive(command, opts));
     // The queue must survive a rejection, or one failure would stall every later command.
     this.#queue = next.catch(() => undefined);
-    return next;
+    return timedCommand(this.address, opts.input?.length ?? 0, () => next);
   }
 
   /** The session while it is up — pid and SOCKS port — or null. */
@@ -382,10 +373,6 @@ class MachineShell {
   }
 
   #drop(): void {
-    if (this.#openedAt !== null) {
-      // Spawned and gone before any command came back through it: the open failed.
-      this.#sampleOpen("error");
-    }
     this.#child = null;
     this.#socksPort = null;
     this.#forwardsApplied = false;
@@ -456,55 +443,7 @@ class MachineShell {
     });
     this.#child = child;
     this.#socksPort = port;
-    this.#openedAt = timingsSink() === null ? null : performance.now();
     return child;
-  }
-
-  /** The current child's spawn, as one `machine.ssh.open` sample: up (`ok`) or gone first (`error`). */
-  #sampleOpen(status: "ok" | "error"): void {
-    const openedAt = this.#openedAt;
-    this.#openedAt = null;
-    if (openedAt === null) return;
-    emit({
-      ts: Date.now(),
-      probe: "machine.ssh.open",
-      durMs: round(performance.now() - openedAt),
-      status,
-      keys: { machine: this.address },
-      attrs: { held: this.#held },
-    });
-  }
-
-  /**
-   * One command, as a `machine.ssh.command` sample: how long it waited behind the others on
-   * this session, how long it ran, its exit code, how much it carried on stdin, and whether
-   * it was the one that brought the session up. Never its text: a command names paths.
-   */
-  #sampleCommand(
-    result: ShellResult,
-    opts: ShellRunOptions,
-    queuedAt: number,
-    startedAt: number,
-    opening: boolean,
-  ): void {
-    emit({
-      ts: Date.now(),
-      probe: "machine.ssh.command",
-      durMs: round(performance.now() - startedAt),
-      status:
-        result.code === 0
-          ? "ok"
-          : result.code === 255 && result.output === NO_ANSWER
-            ? "timeout"
-            : "exit",
-      keys: { machine: this.address },
-      attrs: {
-        code: result.code,
-        waitMs: round(startedAt - queuedAt),
-        inputBytes: opts.input?.length ?? 0,
-        opening,
-      },
-    });
   }
 
   #onData(text: string): void {
@@ -538,13 +477,8 @@ class MachineShell {
     }
   }
 
-  async #runExclusive(
-    command: string,
-    opts: ShellRunOptions,
-    queuedAt: number | null = null,
-  ): Promise<ShellResult> {
+  async #runExclusive(command: string, opts: ShellRunOptions): Promise<ShellResult> {
     if (this.#idle !== null) clearTimeout(this.#idle);
-    const opening = this.#child === null;
     let child: ChildProcessWithoutNullStreams;
     try {
       child = await this.#open();
@@ -554,8 +488,7 @@ class MachineShell {
         output: `could not start ssh: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
-    const startedAt = queuedAt === null ? null : performance.now();
-    const answered = new Promise<ShellResult>((resolve) => {
+    return new Promise<ShellResult>((resolve) => {
       const timer = setTimeout(() => {
         // A session that stopped answering is not one to keep: drop it so the next command
         // opens a fresh connection rather than queueing behind a corpse.
@@ -579,17 +512,7 @@ class MachineShell {
       child.stdin.write(
         `( ${DECODE} | ( ${command} ) ) <<'${end}' 2>&1 ; ${mark}\n${body}\n${end}\n`,
       );
-    });
-    return (
-      queuedAt === null || startedAt === null
-        ? answered
-        : answered.then((result) => {
-            this.#sampleCommand(result, opts, queuedAt, startedAt, opening);
-            return result;
-          })
-    ).finally(() => {
-      // A command came back through a child spawned for it: that child is up.
-      if (this.#child !== null && this.#openedAt !== null) this.#sampleOpen("ok");
+    }).finally(() => {
       // A command completed over a live child: whatever the last drop cost, the next starts
       // from the shortest wait again.
       if (this.#child !== null) this.#backoffMs = RECONNECT_MIN_MS;

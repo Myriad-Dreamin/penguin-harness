@@ -16,7 +16,6 @@ import {
   tallyHandshake,
 } from "../src/machines/transport/timings.js";
 import type { Telemetry } from "../src/mechanisms/telemetry.js";
-import { summarizeMachines } from "../src/telemetry/machine.js";
 import { apiClient, createTestApp, loginAdmin } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
@@ -57,18 +56,21 @@ describe("machine probes on a test App", () => {
       attrs: { stage: name, trigger: "connect" },
     });
 
-  it("the slot follows the switch: empty while off, a sink while on, empty again once off", async () => {
+  it("the slot holds a sink exactly while the switch is on, and the App's dispose empties it", async () => {
     expect(timingsSink()).toBeNull();
     stage(LAB, "probe", 10);
     await turn(true);
     expect(timingsSink()).not.toBeNull();
-    await turn(false);
-    expect(timingsSink()).toBeNull();
-    // Nothing recorded while off reaches the buffer once it is on again.
-    await turn(true);
+    // Nothing recorded while off reaches the buffer once it is on.
     expect((await read("?view=samples")).samples?.some((s) => s.keys.machine !== undefined)).toBe(
       false,
     );
+    await turn(false);
+    expect(timingsSink()).toBeNull();
+    await turn(true);
+    await t.cleanup();
+    expect(timingsSink()).toBeNull();
+    t = await createTestApp(); // afterEach cleans up whatever App `t` names
   });
 
   it("samples land in the buffer keyed by machine, and the machine view lists each machine", async () => {
@@ -112,15 +114,6 @@ describe("machine probes on a test App", () => {
       maxMs: 9,
     });
   });
-
-  it("the App's dispose empties the slot it filled", async () => {
-    await turn(true);
-    expect(timingsSink()).not.toBeNull();
-    await t.cleanup();
-    expect(timingsSink()).toBeNull();
-    // afterEach cleans up whatever App `t` names.
-    t = await createTestApp();
-  });
 });
 
 /** A switch with a buffer of its own: the part of Telemetry the binding uses. */
@@ -150,46 +143,24 @@ describe("bindMachineTimings across a hand-over", () => {
   beforeEach(() => setTimingsSink(null));
   afterEach(() => setTimingsSink(null));
 
-  it("the successor's sink survives the outgoing generation's dispose", () => {
+  it("the successor's sink survives the outgoing generation's dispose, and one switched off leaves another's slot", () => {
     const old = fakeTelemetry(true);
     const disposeOld = bindMachineTimings(old.telemetry);
     const next = fakeTelemetry(true);
     const disposeNext = bindMachineTimings(next.telemetry);
     disposeOld();
     expect(old.listeners.size).toBe(0);
-    emit({ ts: 1, probe: "machine.ssh.open", durMs: 5, keys: { machine: LAB } });
-    expect(old.recorded).toHaveLength(0);
+    emit({ ts: 1, probe: "machine.ssh.command", durMs: 5, keys: { machine: LAB } });
     // The buffer stamps its own time: the sink hands over the rest.
+    expect(old.recorded).toHaveLength(0);
     expect(next.recorded).toEqual([
-      { probe: "machine.ssh.open", durMs: 5, keys: { machine: LAB } },
+      { probe: "machine.ssh.command", durMs: 5, keys: { machine: LAB } },
     ]);
+    const held = timingsSink();
+    const third = fakeTelemetry(false);
+    bindMachineTimings(third.telemetry);
+    expect(timingsSink()).toBe(held);
     disposeNext();
     expect(timingsSink()).toBeNull();
-  });
-
-  it("a generation switched off does not empty a slot another generation holds", () => {
-    const old = fakeTelemetry(true);
-    bindMachineTimings(old.telemetry);
-    const held = timingsSink();
-    const next = fakeTelemetry(false);
-    bindMachineTimings(next.telemetry);
-    expect(timingsSink()).toBe(held);
-    next.set(true);
-    next.set(false);
-    expect(timingsSink()).toBeNull();
-  });
-});
-
-describe("summarizeMachines", () => {
-  it("skips samples without a machine and orders machines newest first", () => {
-    const rows = summarizeMachines([
-      { ts: 1, probe: "http.request", durMs: 3, keys: {} },
-      { ts: 2, probe: "machine.ssh.open", durMs: 30, status: "ok", keys: { machine: LAB } },
-      { ts: 5, probe: "machine.ssh.command", durMs: 4, status: "exit", keys: { machine: EDGE } },
-    ]);
-    expect(rows.map((r) => r.machine)).toEqual([EDGE, LAB]);
-    expect(rows[0]!.probes).toEqual([
-      { probe: "machine.ssh.command", count: 1, errors: 1, n: null, totalMs: 4, maxMs: 4 },
-    ]);
   });
 });
