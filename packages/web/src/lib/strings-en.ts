@@ -603,7 +603,7 @@ export const en: Strings = {
     /** Telemetry master switch (general page, admin only; PRFC-0008). */
     telemetry: "Telemetry",
     telemetryInfo:
-      "Server-wide, off by default. On, the server and the browser record timings (shape only, never content) into an in-memory buffer read in the cost center's performance panel. Nothing leaves this machine or reaches the disk; off drops the buffer.",
+      "Performance data for people and Agents to analyze. When on, the server and the browser record sanitized data into an in-memory buffer: view it in the cost center's Performance panel, or let an Agent read it through the API or the CLI. The data never leaves this machine and is never written to disk.",
     companyModeTitle: "Company mode",
     companyModePersonal: "Company mode",
     companyModePersonalInfo:
