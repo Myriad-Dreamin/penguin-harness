@@ -37,7 +37,7 @@ import { S } from "../../lib/strings";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { NEW_CHAT_ICON } from "../../lib/nav-icons";
 import { GROUP_MODE_ICONS, SORT_MODE_ICONS } from "../../components/ui/group-list";
-import { WorkspaceSelect } from "../chat";
+import { WorkspaceSelect } from "../workspace";
 import { DraftRow } from "./draft-row";
 import { AgentGroups } from "./group-by-agent";
 import { WorkspaceGroups } from "./group-by-workspace";

@@ -42,7 +42,7 @@ import { S } from "../../lib/strings";
 import { formatScore } from "../../lib/format";
 import { agentDisplayName, useProject } from "../../state/project";
 import { PromptFold, composeAiPrompt, pickDefaultAgent, useAiBridge } from "../ai-create";
-import { ModelCatalogSelect } from "../chat/model-select";
+import { ModelCatalogSelect } from "../model-picker";
 import { defaultTargetScore, latestScoreOfAgent } from "./benchmark-metrics";
 import { MAX_RUNS, evaluateTail, optimizeTail } from "./benchmark-prompts";
 import type { EvaluateParams, OptimizeParams } from "./benchmark-prompts";
