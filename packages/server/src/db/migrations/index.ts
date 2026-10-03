@@ -62,6 +62,7 @@ import { sessionsSandbox } from "./steps/sessions-sandbox.js";
 import { userProfile } from "./steps/user-profile.js";
 import { sessionsSurface } from "./steps/sessions-surface.js";
 import { portForwards } from "./steps/port-forwards.js";
+import { portForwardsLegacyShape } from "./steps/port-forwards-legacy-shape.js";
 import { portForwardsAdoption } from "./steps/port-forwards-adoption.js";
 import { portForwardsDirection } from "./steps/port-forwards-direction.js";
 import { modelTablesAdoption } from "./steps/model-tables-adoption.js";
@@ -72,8 +73,9 @@ export type { MigrateResult } from "./runner.js";
 
 /**
  * Every migration this build declares, in the order a database that lacks them applies them.
- * A new migration is appended; an existing one is never moved, renamed or removed while some
- * root may still lack it.
+ * A new migration is appended — unless it must run before an existing one on a root that lacks
+ * both (port-forwards-legacy-shape); on a root that ran the later one, it then runs last. An
+ * existing one is never moved, renamed or removed while some root may still lack it.
  */
 export const MIGRATIONS: readonly Migration[] = [
   messagingBindings,
@@ -90,6 +92,7 @@ export const MIGRATIONS: readonly Migration[] = [
   machinesColumns,
   browserExtensions,
   sessionsSurface,
+  portForwardsLegacyShape,
   portForwards,
   portForwardsAdoption,
   portForwardsDirection,
