@@ -32,6 +32,9 @@ import { PluginsSection } from "./plugins-section";
 import { AdminUsersSection } from "../admin/admin-users-page";
 import { CreditsSection } from "./credits-section";
 
+/** Where this browser remembers the size the dialog was dragged to (never sent to the server). */
+const DIALOG_SIZE_KEY = "penguin.settings.dialogSize";
+
 /** Rail glyphs, on the shared 24x24 stroke grid (see NAV_ICONS' conventions). */
 const SECTION_ICONS: Record<SettingsSectionKey, string> = {
   /** Person in a circle: the account's own identity, distinct from the bust used for credentials. */
@@ -152,6 +155,7 @@ export function SettingsDialog({
       groups={groups}
       active={current}
       onSelect={setActive}
+      resizable={{ storageKey: DIALOG_SIZE_KEY }}
     >
       {current === "profile" && <ProfileSection />}
       {current === "general" && <GeneralSection />}

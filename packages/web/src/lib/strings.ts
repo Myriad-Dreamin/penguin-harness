@@ -965,6 +965,9 @@ export const zh = {
     /** A pager's two steps, as their names and tooltips (the shared UI package's `Pager`). */
     previousPage: "上一页",
     nextPage: "下一页",
+    /** The handles on a resizable dialog's side and bottom borders (the shared UI package's `PagedDialog`). */
+    resizeWidth: "调整宽度",
+    resizeHeight: "调整高度",
     name: "名称",
     username: "用户名",
     role: "角色",

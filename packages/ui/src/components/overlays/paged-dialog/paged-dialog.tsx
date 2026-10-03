@@ -9,13 +9,21 @@
  * close in visual order) and the bottom-sheet posture on narrow screens — where the rail folds
  * into a horizontal scroller above the pane and group headings are dropped along with the second
  * dimension (Tabs' convention).
+ *
+ * Opt-in `resizable`: the reader drags the left, right or bottom border (or the bottom-right
+ * corner) to resize the dialog, which stays centred, and the size is remembered in browser storage
+ * under the given key (see {@link useDialogResize}). On a narrow screen a resizable dialog fills
+ * the screen instead and draws no handles.
  */
+import { useRef } from "react";
 import type { ReactNode } from "react";
 import { CloseButton } from "../../actions/close-button/close-button";
 import { ICON_GAP } from "../../../icon-scale";
 import { NavList, NavRow } from "../../navigation/nav-list/nav-list";
 import { InfoPopover } from "../info-popover/info-popover";
 import { Modal } from "../modal/modal";
+import { DialogResizeHandles } from "./dialog-resize-handles";
+import { useDialogResize } from "./use-dialog-resize";
 
 export interface PagedDialogItem<K extends string> {
   key: K;
@@ -38,6 +46,20 @@ export interface PagedDialogGroup<K extends string> {
   items: ReadonlyArray<PagedDialogItem<K>>;
 }
 
+/** Resizing by the borders; the size is remembered in browser storage under `storageKey`. */
+export interface PagedDialogResizable {
+  storageKey: string;
+}
+
+/** The dialog's sized box, by whether it can be resized: the default size is the same either way. */
+const BOX_CLASS = {
+  fixed: "flex h-[min(40rem,85vh)] flex-col sm:flex-row",
+  // Full screen on a phone (the panel is a column and the box takes its height); at `sm` the box
+  // carries the size the panel used to, so inline dimensions on it can replace it.
+  resizable:
+    "relative flex min-h-0 flex-1 flex-col sm:h-[min(40rem,85vh)] sm:w-[min(48rem,calc(100vw_-_2rem))] sm:flex-none sm:flex-row",
+} as const;
+
 export function PagedDialog<K extends string>({
   open,
   onClose,
@@ -47,6 +69,7 @@ export function PagedDialog<K extends string>({
   onSelect,
   children,
   closeLabel,
+  resizable,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,14 +82,31 @@ export function PagedDialog<K extends string>({
   children: ReactNode;
   /** The close cross's accessible name; defaults to the interface's word for "close". */
   closeLabel?: string;
+  /** Let the reader resize the dialog by its borders, remembering the size under this key. */
+  resizable?: PagedDialogResizable;
 }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const resize = useDialogResize(resizable?.storageKey, open, boxRef);
   const showGroupHeadings = groups.length > 1;
   const activeItem = groups.flatMap((g) => g.items).find((item) => item.key === active);
   const activeLabel = activeItem?.label ?? title;
 
   return (
-    <Modal open={open} onClose={onClose} title={title} headerless bare widthClass="sm:max-w-3xl">
-      <div className="flex h-[min(40rem,85vh)] flex-col sm:flex-row">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      headerless
+      bare
+      {...(resizable === undefined
+        ? { widthClass: "sm:max-w-3xl" }
+        : { widthClass: "sm:h-auto sm:w-auto sm:max-w-none", fullScreenOnPhone: true })}
+    >
+      <div
+        ref={boxRef}
+        className={BOX_CLASS[resizable === undefined ? "fixed" : "resizable"]}
+        style={resize.style}
+      >
         {/* Rail: vertical on desktop, a horizontal scroller above the pane on narrow screens. */}
         <NavList
           label={title}
@@ -109,6 +149,7 @@ export function PagedDialog<K extends string>({
             {children}
           </div>
         </div>
+        <DialogResizeHandles resize={resize} />
       </div>
     </Modal>
   );
