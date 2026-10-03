@@ -12,9 +12,17 @@
  *   pages of their own modules, off the nav, the ports page admin-only.
  * - Beside the booted table, a contributed page whose key the app owns is ignored, and the
  *   company-mode proposals page passes the renderers company mode carries.
+ * - The shell receives company's provider for the signed-in session, the four layers in their
+ *   mount order, and the user event handlers of company, the built-in browser and schedules in
+ *   their dispatch order.
  */
 import { bootModules, moduleDefOf } from "@prismshadow/penguin-core/kernel";
-import type { ClassCtx, IfaceTable, ManifestTable } from "@prismshadow/penguin-core/kernel";
+import type {
+  ClassCtx,
+  Contributed,
+  IfaceTable,
+  ManifestTable,
+} from "@prismshadow/penguin-core/kernel";
 import { beforeAll, describe, expect, it } from "vitest";
 import table from "../src/ifaces.json";
 import { bootWeb, WebRoot } from "../src/web-root";
@@ -32,17 +40,35 @@ import { ORG_PAGE_RENDERERS } from "../src/features/company/company-nav";
 import { ChatRoute } from "../src/features/chat/chat-route";
 import { DashboardPage } from "../src/features/dashboard/dashboard-page";
 import { MachinePortsPage } from "../src/features/ports/machine-ports-page";
+import { CompanyProvider, companyUserEvents } from "../src/features/company/company-state";
+import { TerminalDockRuntime } from "../src/features/terminal/terminal-view-pool";
+import { ShortcutRuntime } from "../src/features/settings/shortcut-runtime";
+import { BuiltinBrowserLayer } from "../src/features/builtin-browser/browser-layer";
+import { builtinBrowserUserEvents } from "../src/features/builtin-browser/browser-events";
+import { AppPalette } from "../src/features/palette/app-palette";
+import { scheduleUserEvents } from "../src/features/schedules/schedule-store";
+import type { UserEventHandler } from "../src/state/user-events";
 
 let pages: readonly ShellPage[] = [];
+let sessionProviders: readonly Contributed[] = [];
+let layers: readonly Contributed[] = [];
+let userEvents: readonly UserEventHandler[] = [];
+
+/** A slot's code halves in the order the shell mounts them. */
+const codeByOrder = (list: readonly Contributed[]): unknown[] =>
+  [...list].sort((a, b) => (a.data.order as number) - (b.data.order as number)).map((c) => c.code);
 
 /**
  * Boots the real tree as bootWeb does, with the shell standing in by a double that keeps the
- * page table instead of binding it into the router (which needs a browser to render).
+ * page table and the other slots' contributions instead of binding them into the router (which needs a browser to render).
  */
 beforeAll(async () => {
   const shell = Object.assign(new ShellModule(), {
     setup({ contributions }: ClassCtx) {
       pages = pageTableOf(contributions.pages ?? []);
+      sessionProviders = contributions.sessionProviders ?? [];
+      layers = contributions.layers ?? [];
+      userEvents = shell.userEventHandlers.all();
       shell.shell = { Root: () => null };
     },
   });
@@ -137,5 +163,24 @@ describe("the booted page table", () => {
       "org-proposals",
     ]);
     expect(contributedPages(pages, remote, new Set())).toEqual([]);
+  });
+});
+
+describe("the booted shell slots", () => {
+  it("company provides the signed-in session's company state", () => {
+    expect(codeByOrder(sessionProviders)).toEqual([CompanyProvider]);
+  });
+
+  it("mounts the four layers in the order the layout mounted them", () => {
+    expect(codeByOrder(layers)).toEqual([
+      TerminalDockRuntime,
+      ShortcutRuntime,
+      BuiltinBrowserLayer,
+      AppPalette,
+    ]);
+  });
+
+  it("dispatches user events to company, the built-in browser and schedules, in that order", () => {
+    expect(userEvents).toEqual([companyUserEvents, builtinBrowserUserEvents, scheduleUserEvents]);
   });
 });

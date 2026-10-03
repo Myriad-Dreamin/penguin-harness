@@ -64,17 +64,6 @@ import * as api from "../api/endpoints";
 import { ApiError } from "../api/client";
 import { probeSession } from "../api/session-probe";
 import { openMachineEvents, openUserEvents } from "../api/sse";
-import {
-  isCompanyEvent,
-  isPluginEvent,
-  publishCompanyEvent,
-  publishCompanyResync,
-} from "./company";
-import {
-  isBuiltinBrowserEvent,
-  publishBuiltinBrowserEvent,
-  publishBuiltinBrowserResync,
-} from "../features/builtin-browser/browser-events";
 import { WORKFLOW_UPDATED_EVENT } from "../lib/workflow-tabs";
 import { mergeCounts, mostRecentFirst } from "../lib/session-merge";
 import {
@@ -103,8 +92,8 @@ import {
   workspaceGroupQuery,
 } from "../lib/session-grouping";
 import type { ActivityKey, StreamPosition } from "../lib/session-grouping";
-import { noteScheduleEvent } from "../features/schedules/schedule-store";
 import { useProject } from "./project";
+import type { UserEventHandler } from "./user-events";
 
 /** A reload this server answered nothing to is tried again after this, doubling up to the ceiling. */
 const RELOAD_RETRY_MIN_MS = 2_000;
@@ -1329,10 +1318,14 @@ export type SessionsStore = ReturnType<typeof createSessionsStore>;
  * Session channel. Split out from the subscription so this routing is testable without a React
  * tree or an EventSource, neither of which exists in this package's Node test environment.
  *
- * `onWebUpdated` is the escape hatch for the one event that is not a list update at all.
+ * Every event that is not the list's own goes to `handlers` (the features' contributions to
+ * `SessionsModule.userEvents`, state/user-events.ts), in order, before the list takes whatever
+ * part of it concerns the rows. `onWebUpdated` is the escape hatch for the one event that is
+ * not a list update at all.
  */
 export function applyUserEvent(
   store: SessionsStore,
+  handlers: readonly UserEventHandler[],
   ev: ServerEvent,
   onWebUpdated: () => void,
   /** The machine the event came from; null for this server. */
@@ -1414,29 +1407,19 @@ export function applyUserEvent(
   // above were lost — away long enough and a row sits on an hourglass that will never stop.
   // Refetch once, on the event that says so, rather than polling for it. The remembered
   // statuses go too: no fetch here refreshes them, and a stale entry beats every fresh snapshot
-  // company mode reads, so those surfaces re-read their snapshots and fall back to them.
+  // company mode reads, so those surfaces re-read their snapshots and fall back to them — as
+  // does every other handler that derived something from the events.
   if (ev.type === "resync_required") {
     store.setState({ liveStatuses: new Map() });
     void store.getState().reload();
-    publishCompanyResync();
-    if (source === null) publishBuiltinBrowserResync();
+    for (const handler of handlers) handler.resync?.(source);
     return;
   }
-  // The agent browser's tabs, page requests, agent activity, backend and Chrome connection go
-  // to the browser layer in the app shell. Only this server's: the built-in pages live in the
-  // desktop shell that spawned it, the user's Chrome is paired to it, and a machine's server
-  // drives no browser on this screen.
-  if (isBuiltinBrowserEvent(ev)) {
-    if (source === null) publishBuiltinBrowserEvent(ev);
-    return;
-  }
-  // Company-mode notifications fan out to the company store and any mounted organization page
-  // (state/company.tsx). None of them is this list's affair: a work run opens a desk or ticket
+  // Every event past here goes to the features' handlers first — the built-in browser's tabs
+  // and activity, company mode's notifications, a schedule's state — each taking the types it
+  // claims; the list then answers for its own rows. A company work run opens a desk or ticket
   // Session, which the list never fetches (`excludeOrg`), so `org_run` reloads nothing here.
-  if (isCompanyEvent(ev) || isPluginEvent(ev)) {
-    publishCompanyEvent(ev);
-    return;
-  }
+  for (const handler of handlers) handler.event(ev, source);
   // A workflow of some Agent was (re)loaded: the chat page's tab strip owns that list and
   // listens on window (it is mounted per page, this provider per app).
   if (ev.type === "workflow_updated" || ev.type === "workflow_removed") {
@@ -1447,16 +1430,7 @@ export function applyUserEvent(
     );
     return;
   }
-  // A scheduled task firing may have created a new Session (new-session mode); reload the list
-  // so it appears immediately. schedule_queued doesn't change the list (the target Session
-  // already exists), so it is ignored, as is every other Session-scoped event.
-  // Either schedule event moves a task's state — nextFireAt, lastFiredAt, the queued flag, or a
-  // one-off going done — so the conversation's schedule list is stale from here. The store
-  // decides for itself whether the Project is the one on screen.
-  if (ev.type === "schedule_fired" || ev.type === "schedule_queued") {
-    noteScheduleEvent(ev.projectId);
-  }
-  // A scheduled task firing may also have created a new Session (new-session mode); reload the
+  // A scheduled task firing may have created a new Session (new-session mode); reload the
   // list so it appears immediately. schedule_queued doesn't change the list (the target Session
   // already exists), so it goes no further, as does every other Session-scoped event.
   if (ev.type !== "schedule_fired") return;
@@ -1474,7 +1448,14 @@ export function applyUserEvent(
  */
 export const OFFLINE_RECHECK_MS = 30_000;
 
-export function SessionsProvider({ children }: { children: ReactNode }) {
+export function SessionsProvider({
+  userEvents,
+  children,
+}: {
+  /** The features' user event handlers, in dispatch order (see applyUserEvent). */
+  userEvents: readonly UserEventHandler[];
+  children: ReactNode;
+}) {
   const { currentProject, agents } = useProject();
   const projectId = currentProject?.projectId ?? null;
   // Stable key for the Agent set: the list object is a new reference on every reload,
@@ -1652,7 +1633,7 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const conn = openUserEvents({
       onOmniMessage: () => undefined,
-      onServerEvent: (ev) => applyUserEvent(store, ev, () => window.location.reload()),
+      onServerEvent: (ev) => applyUserEvent(store, userEvents, ev, () => window.location.reload()),
       // This stream is the only thing an idle window has open, and the server ends it when
       // the session behind it is revoked — which EventSource reports as an ordinary fatal
       // error, indistinguishable from a dead network. Asking settles it: a session that is
@@ -1663,7 +1644,7 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
       },
     });
     return () => conn.close();
-  }, [store]);
+  }, [store, userEvents]);
 
   const { pageState, countsByAgent, machineIds } = state;
 
@@ -1685,16 +1666,17 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
       // The machine's own server event, routed exactly as its own stream's would have been:
       // `() => undefined` because a machine's web being hot-swapped is that machine's affair,
       // not a reason for this window to reload.
-      onMachineEvent: (machineId, ev) => applyUserEvent(store, ev, () => undefined, machineId),
+      onMachineEvent: (machineId, ev) =>
+        applyUserEvent(store, userEvents, ev, () => undefined, machineId),
       // The hub's own frames. `resync_required` says the tab's last event id could not be
       // honoured, so flips for an unknown number of machines are gone; the same refetch that
       // answers it locally answers it here. `hello` is the handshake and moves nothing.
       onHubEvent: (ev) => {
-        if (ev.type === "resync_required") applyUserEvent(store, ev, () => undefined);
+        if (ev.type === "resync_required") applyUserEvent(store, userEvents, ev, () => undefined);
       },
     });
     return () => conn.close();
-  }, [store, streamProjectId]);
+  }, [store, userEvents, streamProjectId]);
   const sources = useMemo<(string | null)[]>(() => [null, ...machineIds], [machineIds]);
 
   // Loaded only when EVERY source has answered: one machine's first page arriving does not

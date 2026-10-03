@@ -2,8 +2,8 @@
  * Router (react-router v7 declarative style): /login is public; every other route is a page a
  * module contributed to `ShellModule.pages` (shell/module.ts), read from the shell's bindings.
  * A "shell" page goes through the RequireAuth guard (redirects to /login when not
- * authenticated) and is wrapped in ProjectProvider + AppLayout; a "bare" page only needs the
- * user signed in.
+ * authenticated) and is wrapped in ProjectProvider + SessionsProvider, the session providers
+ * modules contributed, and AppLayout; a "bare" page only needs the user signed in.
  *
  * The app normally routes on the browser's address bar. A host that mounts it inside another
  * document (the component gallery frames it against a mocked API) passes `initialPath`
@@ -15,7 +15,7 @@ import { useAuth } from "../state/auth";
 import { useRuntimeLanguages } from "../lib/use-runtime-languages";
 import { ProjectProvider } from "../state/project";
 import { SessionsProvider } from "../state/sessions";
-import { CompanyProvider, useCompany } from "../state/company";
+import { useCompany } from "../features/company";
 import { AppLayout } from "../components/layout/app-layout";
 import { BootPending } from "../components/ui/boot-pending";
 import { LoginPage } from "../pages/login";
@@ -26,19 +26,21 @@ import { ContributedPage } from "./contributed-page";
 /** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
   const { user } = useAuth();
+  const { sessionProviders, userEvents } = shellDeps.useDeps();
   // Extension-contributed grammars, adopted once for the signed-in tree (see the hook). Called
   // before the early returns, because a hook cannot be conditional; it fetches nothing until
   // the effect runs, which is only after this component actually renders its tree.
   useRuntimeLanguages();
   if (user === undefined) return <BootPending />; // GET /api/me is still initializing
   if (user === null) return <Navigate to="/login" replace />;
+  // The contributed providers nest outermost first, inside the session list they may read.
+  const layout = sessionProviders.reduceRight<React.ReactNode>(
+    (inner, { id, Component }) => <Component key={id}>{inner}</Component>,
+    <AppLayout />,
+  );
   return (
     <ProjectProvider>
-      <SessionsProvider>
-        <CompanyProvider>
-          <AppLayout />
-        </CompanyProvider>
-      </SessionsProvider>
+      <SessionsProvider userEvents={userEvents}>{layout}</SessionsProvider>
     </ProjectProvider>
   );
 }

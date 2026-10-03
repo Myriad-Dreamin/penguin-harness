@@ -10,8 +10,9 @@
  *    (or `index.tsx`), never one of its inner files.
  * 3. No import cycle between feature directories. An edge `features/a -> features/b` is reported
  *    when it lies on a cycle, i.e. both ends sit in the same strongly connected component.
- * 4. A `module.ts` (a module class) is imported by the composition root and nothing else: a
- *    module reaches another through slots and interfaces, never through its class.
+ * 4. A `module.ts` or `<name>.module.ts` (a module class) is imported by the composition root
+ *    and nothing else: a module reaches another through slots and interfaces, never through its
+ *    class.
  *
  * The code predates the rules, so what breaks them today is listed, one line per edge, in
  * `module-boundaries.baseline.txt`. A violation missing from the baseline fails; so does a
@@ -64,7 +65,7 @@ function resolveImport(
 const COMPOSITION_ROOT = "web-root.ts";
 
 /** Whether a file declares a module class. */
-const isModuleFile = (file: string): boolean => /(^|\/)module\.ts$/.test(file);
+const isModuleFile = (file: string): boolean => /(^|\/|\.)module\.ts$/.test(file);
 
 /** `features/<name>` for a file under it, else null (the file is a library). */
 function featureOf(file: string): string | null {
@@ -210,11 +211,15 @@ describe("the import scan", () => {
     const tree: Record<string, string> = {
       "web-root.ts": [
         'import { ShellModule } from "./shell/module";',
+        'import { SessionsModule } from "./state/sessions.module";',
         'import { ChatModule } from "./features/chat/module";',
         'import { ChatPage } from "./features/chat/chat-page";',
       ].join("\n"),
-      "shell/module.ts": "",
+      "shell/module.ts": 'import type { UserEventHandlers } from "../state/user-events";',
       "shell/router.tsx": 'import type { Shell } from "./module";',
+      "state/sessions.module.ts": "",
+      "state/user-events.ts": "",
+      "state/sessions.tsx": 'import { SessionsModule } from "./sessions.module";',
       "features/chat/module.ts": 'import { ChatPage } from "./chat-page";',
       "features/chat/chat-page.tsx": 'import { ChatModule } from "./module";',
     };
@@ -226,6 +231,7 @@ describe("the import scan", () => {
     expect(result.violations).toEqual([
       "features/chat/chat-page.tsx -> features/chat/module.ts",
       "shell/router.tsx -> shell/module.ts",
+      "state/sessions.tsx -> state/sessions.module.ts",
       "web-root.ts -> features/chat/chat-page.tsx",
     ]);
   });
