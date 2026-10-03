@@ -48,7 +48,7 @@ import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { useLocale } from "../../state/locale";
 import { agentDisplayName, useProject } from "../../state/project";
-import { localizedText } from "../chat/skill-use";
+import { localizedText } from "../chat";
 import { SkillTile } from "../skills/skill-icon-view";
 import { useAiBridge } from "../ai-create";
 import { downloadArchive } from "./archive-download";

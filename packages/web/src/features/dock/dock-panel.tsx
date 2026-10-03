@@ -102,12 +102,7 @@ import {
   type DockView,
   type PanelKind,
 } from "./dock-state";
-import {
-  persistPanelWidth,
-  resetPanelWidth,
-  setPanelWidth,
-  usePanelWidthValue,
-} from "../chat/use-panel-width";
+import { persistPanelWidth, resetPanelWidth, setPanelWidth, usePanelWidthValue } from "../chat";
 
 /**
  * The picker's order after the agents, the terminal and the built-in browser (each shown only

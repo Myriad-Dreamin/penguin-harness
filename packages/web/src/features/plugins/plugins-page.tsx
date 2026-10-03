@@ -88,10 +88,15 @@ import { agentDisplayName, useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
 import { MachinePicker, type MachineChoice } from "../machines/machine-picker";
 import { NAV_ICONS } from "../../lib/nav-icons";
-import { DRAFT_SESSION_ID } from "../chat/chat-page";
-import { draftKey, loadDraft, saveDraft } from "../chat/draft-cache";
-import { prepareNewChatDraft } from "../chat/new-chat";
-import { localizedShortText, localizedText } from "../chat/skill-use";
+import {
+  DRAFT_SESSION_ID,
+  draftKey,
+  loadDraft,
+  localizedShortText,
+  localizedText,
+  prepareNewChatDraft,
+  saveDraft,
+} from "../chat";
 import { PluginDetailModal } from "./plugin-detail";
 import { SettingsDialog } from "../settings/settings-dialog";
 import { formatRelativeDate } from "../../lib/format";
