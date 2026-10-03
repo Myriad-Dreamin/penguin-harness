@@ -31,6 +31,7 @@ import { onCommand } from "../../lib/shortcuts/dispatcher";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
 import { navKeysFor } from "../../lib/nav-group-collapse";
+import { navPagesOf, useShellPages } from "../../shell";
 import { navNoteFor, useUpdateBadges } from "../../features/todos";
 import { useAuth } from "../../state/auth";
 import { useProject } from "../../state/project";
@@ -91,6 +92,7 @@ function pinnedSidebarOnScreen(): boolean {
  */
 function CollapsedRail({ onExpand }: { onExpand: () => void }) {
   const { user } = useAuth();
+  const navPages = navPagesOf(useShellPages());
   const navigate = useNavigate();
   const { currentProject, setCurrentAgentId } = useProject();
   const { sessions, loading } = useSessions();
@@ -163,7 +165,7 @@ function CollapsedRail({ onExpand }: { onExpand: () => void }) {
           };
         }),
       ]
-    : navKeysFor(user?.isAdmin === true).map((key) => ({
+    : navKeysFor(navPages, user?.isAdmin === true).map((key) => ({
         key,
         to: `/${key}`,
         label: S.nav[key],
