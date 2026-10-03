@@ -3,10 +3,13 @@
  *
  * - Given a machine that reports no backend for its OS and names defaults, every default is
  *   offered together; given one with a backend installed, no default, or no report, nothing is.
+ *   An older server naming its one default as a bare string has that package offered.
  * - Given "Don't ask again" ticked for a machine, that machine is not asked again in this
  *   browser, and every other machine still is.
  * - Given storage that throws or holds garbage, the prompt is offered (never silently
  *   dismissed) and nothing throws.
+ * - Given an install request that throws, the run stops there, reports it and resolves, so the
+ *   prompt closes and the card is read again with what did install.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -14,6 +17,7 @@ import {
   backendPromptDismissed,
   backendToOffer,
   dismissBackendPrompt,
+  installInOrder,
 } from "../src/lib/sandbox-backend-prompt";
 import type { PromptStorage } from "../src/lib/sandbox-backend-prompt";
 
@@ -43,6 +47,13 @@ describe("the default-backend prompt", () => {
     expect(backendToOffer({}, "m1", storage)).toBeNull();
   });
 
+  it("offers the one package an older server reports as a bare string, not its characters", () => {
+    const old = { backend: { installed: false, recommended: "@penguinharness/sandbox-bwrap" } };
+    expect(backendToOffer(old as never, "m1", memoryStorage())).toEqual([
+      "@penguinharness/sandbox-bwrap",
+    ]);
+  });
+
   it("remembers don't-ask-again per machine, in this browser's storage only", () => {
     const storage = memoryStorage();
     dismissBackendPrompt("m1", storage);
@@ -70,5 +81,30 @@ describe("the default-backend prompt", () => {
     expect(backendPromptDismissed("m1", garbage)).toBe(false);
     dismissBackendPrompt("m1", garbage);
     expect(backendPromptDismissed("m1", garbage)).toBe(true);
+  });
+});
+
+describe("installing the offered backends", () => {
+  it("reports each, and stops at a request that throws without rejecting", async () => {
+    const events: string[] = [];
+    const tried: string[] = [];
+    await expect(
+      installInOrder(
+        ["a", "b", "c", "d"],
+        async (pkg) => {
+          tried.push(pkg);
+          if (pkg === "b") return "load failed";
+          if (pkg === "c") throw new Error("network down");
+          return undefined;
+        },
+        {
+          installed: (pkg) => events.push(`ok ${pkg}`),
+          failed: (pkg, error) => events.push(`failed ${pkg}: ${error}`),
+          threw: (e) => events.push(`threw ${(e as Error).message}`),
+        },
+      ),
+    ).resolves.toBeUndefined();
+    expect(events).toEqual(["ok a", "failed b: load failed", "threw network down"]);
+    expect(tried).toEqual(["a", "b", "c"]);
   });
 });

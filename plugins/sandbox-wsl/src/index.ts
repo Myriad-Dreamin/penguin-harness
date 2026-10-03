@@ -119,7 +119,7 @@ export function createWslProvider(
   const node = internals.node ?? process.execPath;
   const launcher = internals.launcher ?? launcherPath();
   return {
-    dimensions: ["fs-write", "network", "mask-paths"],
+    dimensions: ["fs-write", "network", "mask-paths", "closed-temp"],
     confine(argv, policy: SandboxPolicy): ConfinedArgv {
       const state = readState();
       if (state === null) {
@@ -406,7 +406,7 @@ export class SandboxWslStatus {
       {
         id: "sandbox-wsl.provider",
         name: "penguin-wsl",
-        dimensions: ["fs-write", "network", "mask-paths"],
+        dimensions: ["fs-write", "network", "mask-paths", "closed-temp"],
       },
     ],
     "PluginConfigProvider.groups": [

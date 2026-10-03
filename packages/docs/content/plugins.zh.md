@@ -121,14 +121,14 @@ specifier 只在一处查找：`<数据根>/plugins/current` 指向的那一代�
 
 沙箱是插件系统最大的使用者，也是代码包最清楚的例子。`packages/server` 里的沙箱服务自己不持有任何后端，也不 import 任何后端：后端就是插件包，存在哪些后端由各 Project 的列表决定。每次 spawn 的策略会被路由到覆盖该策略所需维度的后端。
 
-| 包 | 平台 | `fs-write` | `network` | `network-local` | `mask-paths` |
-| --- | --- | --- | --- | --- | --- |
-| `@prismshadow/penguin-plugin-sandbox-bwrap` | Linux | 有 | 有 | — | 有 |
-| `@prismshadow/penguin-plugin-sandbox-seatbelt` | macOS | 有 | 有 | 有 | 有 |
-| `@prismshadow/penguin-plugin-sandbox-wsl` | Windows | 有 | 有 | — | 有 |
-| `@prismshadow/penguin-plugin-sandbox-dsh` | 三个平台 | 有 | — | — | — |
+| 包 | 平台 | `fs-write` | `network` | `network-local` | `mask-paths` | `closed-temp` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@prismshadow/penguin-plugin-sandbox-bwrap` | Linux | 有 | 有 | — | 有 | 有 |
+| `@prismshadow/penguin-plugin-sandbox-seatbelt` | macOS | 有 | 有 | 有 | 有 | 有 |
+| `@prismshadow/penguin-plugin-sandbox-wsl` | Windows | 有 | 有 | — | 有 | 有 |
+| `@prismshadow/penguin-plugin-sandbox-dsh` | 三个平台 | 有 | — | — | — | — |
 
-维度有 `fs-write`、`network`、`network-local` 和 `mask-paths`，后端声明自己实现其中的哪些；什么都不声明就等于只有 `fs-write`。路由按能力而非注册顺序：在覆盖策略所需全部维度的后端中，实现维度最多的那个负责，注册顺序只用于打破平局。因此原生后端负责它能覆盖的每条策略；DSH 适配器（它自己的链条按宿主分别选用 bubblewrap、Landlock、Seatbelt 或 Windows ACL 运行器）只在没有别的后端可用时负责——在 Linux 上，就是 bubblewrap 被拒绝时（默认的 Ubuntu 23.10 及以后，见 [Ubuntu 上的沙盒](/quickstart-cli#ubuntu-上的沙盒)），它通过 Landlock 约束文件写入。出于这个原因，打开沙盒时会同时提示安装 Linux 的两个后端。什么都覆盖不了的请求会**失败关闭**，并列出各后端分别覆盖什么，而不会让命令不受封禁地跑起来，也不会悄悄丢掉被要求的某个维度。
+维度有 `fs-write`、`network`、`network-local`、`mask-paths` 和 `closed-temp`（策略不放开临时目录时让它保持只读；DSH 适配器总会放开一个），后端声明自己实现其中的哪些；什么都不声明就等于只有 `fs-write`。路由按能力而非注册顺序：在覆盖策略所需全部维度的后端中，实现维度最多的那个负责，注册顺序只用于打破平局。因此原生后端负责它能覆盖的每条策略；DSH 适配器（它自己的链条按宿主分别选用 bubblewrap、Landlock、Seatbelt 或 Windows ACL 运行器）只在没有别的后端可用时负责——在 Linux 上，就是 bubblewrap 被拒绝时（默认的 Ubuntu 23.10 及以后，见 [Ubuntu 上的沙盒](/quickstart-cli#ubuntu-上的沙盒)），它通过 Landlock 约束文件写入。出于这个原因，打开沙盒时会同时提示安装 Linux 的两个后端。什么都覆盖不了的请求会**失败关闭**，并列出各后端分别覆盖什么，而不会让命令不受封禁地跑起来，也不会悄悄丢掉被要求的某个维度。
 
 Windows 由专用 WSL2 发行版里的 bubblewrap 承担，因此那里的命令实际跑在 Linux 中，Windows 互操作已关闭。三个原生后端各自声明选项——bwrap 的程序路径与探测超时、Seatbelt 的程序路径、WSL 发行版的基础 Linux、软件包、镜像源与名称，以及 Windows 磁盘是否以只读方式可见——作为 `parent` 为 `sandbox` 的分组，因此画在沙箱卡片内；DSH 适配器不带选项。`sandbox` 分组本身设置模式、网络级别、屏蔽路径以及临时目录是否保持可写。[沙盒](/settings#沙盒)讲这张卡片会问什么、每个答案是什么意思。
 
