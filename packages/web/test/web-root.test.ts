@@ -8,6 +8,10 @@
  * - The main nav is Agents, Models, Plugins, Machines, Usage, Benchmark in that order, all
  *   released, Machines alone admin-only, and every key has a nav label and an icon.
  * - A member's nav drops admin-only pages and adds nothing the admin lacks.
+ * - The chat page is the surface-aware chat route; the dashboard and one machine's ports are
+ *   pages of their own modules, off the nav, the ports page admin-only.
+ * - Beside the booted table, a contributed page whose key the app owns is ignored, and the
+ *   company-mode proposals page passes the renderers company mode carries.
  */
 import { bootModules, moduleDefOf } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, IfaceTable, ManifestTable } from "@prismshadow/penguin-core/kernel";
@@ -17,13 +21,17 @@ import { bootWeb, WebRoot } from "../src/web-root";
 import { ShellModule } from "../src/shell/module";
 import { navPagesOf } from "../src/shell";
 import type { ShellPage } from "../src/shell";
-import { pageTableOf } from "../src/shell/page-table";
+import { contributedPages, orgPagesOf, pageTableOf } from "../src/shell/page-table";
 import { navKeysFor } from "../src/lib/nav-group-collapse";
 import { zh } from "../src/lib/strings";
 import { NAV_ICONS } from "../src/lib/nav-icons";
 import { AgentsPage } from "../src/features/agents/agents-page";
 import { TerminalPage } from "../src/features/terminal/terminal-page";
 import { OrgRoutes } from "../src/features/company/org-routes";
+import { ORG_PAGE_RENDERERS } from "../src/features/company/company-nav";
+import { ChatRoute } from "../src/features/chat/chat-route";
+import { DashboardPage } from "../src/features/dashboard/dashboard-page";
+import { MachinePortsPage } from "../src/features/ports/machine-ports-page";
 
 let pages: readonly ShellPage[] = [];
 
@@ -97,5 +105,37 @@ describe("the booted page table", () => {
     expect(admin).toContain("machines");
     expect(member).not.toContain("machines");
     expect(member.every((key) => admin.includes(key))).toBe(true);
+  });
+
+  it("routes chat, the dashboard and one machine's ports through their modules", () => {
+    const page = (key: string) => pages.find((p) => p.key === key);
+    expect(page("chat")?.Component).toBe(ChatRoute);
+    expect(page("dashboard")).toMatchObject({ path: "/dashboard", frame: "shell", nav: "none" });
+    expect(page("dashboard")?.admin).toBe(false);
+    expect(page("dashboard")?.Component).toBe(DashboardPage);
+    expect(page("machine-ports")).toMatchObject({
+      path: "/machines/:machineId/ports",
+      frame: "shell",
+      nav: "none",
+      admin: true,
+    });
+    expect(page("machine-ports")?.Component).toBe(MachinePortsPage);
+  });
+
+  it("lets a contributed page in beside the table only under a key the app does not own", () => {
+    const remote = [
+      { key: "dashboard", path: "/elsewhere", renderer: { iframe: { src: "/x", namespace: "x" } } },
+      {
+        key: "org-proposals",
+        path: "proposals/:number?",
+        nav: "org",
+        renderer: { builtin: "OrgProposalsPage" },
+      },
+    ];
+    const orgRenderers = new Set(Object.keys(ORG_PAGE_RENDERERS));
+    expect(orgPagesOf(contributedPages(pages, remote, orgRenderers)).map((p) => p.key)).toEqual([
+      "org-proposals",
+    ]);
+    expect(contributedPages(pages, remote, new Set())).toEqual([]);
   });
 });
