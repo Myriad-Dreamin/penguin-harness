@@ -28,7 +28,7 @@ import { sessionThinkingLevel } from "../model-picker";
 import "./builtin-dock-panels";
 import { ChatDockProvider } from "./chat-dock-context";
 import type { ChatDockState } from "./chat-dock-context";
-import { useChatSession } from "./session/use-chat-session";
+import { useChatController } from "./session/use-chat-controller";
 import { SessionDialogs } from "./session/session-dialogs";
 import { ChatToolbar } from "./toolbar/chat-toolbar";
 import { liveHeaderStats } from "./toolbar/session-stats";
@@ -37,7 +37,7 @@ import { ProcessList } from "./toolbar/process-list";
 import { ChatBody } from "./body/chat-body";
 
 export function ChatPage() {
-  const chat = useChatSession();
+  const chat = useChatController();
   const {
     projectId,
     pageAgentId,
