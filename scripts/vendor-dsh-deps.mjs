@@ -25,6 +25,11 @@
  * npm installs from the registry, so the build needs registry access (the npm cache serves a
  * repeat build).
  *
+ * Beside the tree it writes `dist/THIRD_PARTY_NOTICES.md` (scripts/lib/third-party-notices.mjs):
+ * each carried package's license id, source and full license text, which the MIT and BSD
+ * licenses of the chain require to travel with every copy. A package without license text fails
+ * the build.
+ *
  * Usage (run by the package's build, after tsup):
  *   node scripts/vendor-dsh-deps.mjs        vendor into plugins/sandbox-dsh/dist/node_modules/
  */
@@ -34,9 +39,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { run } from "./lib/run-command.mjs";
+import { readVendoredPackages, thirdPartyNotices } from "./lib/third-party-notices.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "plugins", "sandbox-dsh", "dist", "node_modules");
+const NOTICES = path.join(ROOT, "plugins", "sandbox-dsh", "dist", "THIRD_PARTY_NOTICES.md");
+const NOTICES_MODULE = fileURLToPath(new URL("./lib/third-party-notices.mjs", import.meta.url));
 /** Beside the repository's node_modules, so the finished tree is renamed into place, not copied. */
 const CACHE = path.join(ROOT, "node_modules", ".cache");
 /** What `src/index.ts` imports; the rest of the chain follows from the lockfile. */
@@ -79,8 +87,8 @@ function lockedClosure(lock) {
 }
 
 /**
- * What the build's output depends on besides this plugin's own sources: this script and the
- * lockfile entries it reads (each carried package's `name@version` and integrity) — the cache
+ * What the build's output depends on besides this plugin's own sources: this script, the notices
+ * module it writes THIRD_PARTY_NOTICES.md with, and the lockfile entries it reads (each carried package's `name@version` and integrity) — the cache
  * key scripts/build-plugins.mjs folds in for the package whose build runs this script.
  */
 export function vendorCacheInputs() {
@@ -88,7 +96,10 @@ export function vendorCacheInputs() {
   const entries = [...lockedClosure(lock)].map(
     ([name, version]) => `${name}@${version} ${lockedIntegrity(lock, name, version)}`,
   );
-  return [fs.readFileSync(fileURLToPath(import.meta.url), "utf8"), ...entries.sort()].join("\0");
+  const sources = [fileURLToPath(import.meta.url), NOTICES_MODULE].map((f) =>
+    fs.readFileSync(f, "utf8"),
+  );
+  return [...sources, ...entries.sort()].join("\0");
 }
 
 /** The `resolution.integrity` pnpm-lock.yaml pins for `name@version`, if any. */
@@ -125,22 +136,6 @@ export function integrityMismatches(lock, closure, npmLock) {
   return problems;
 }
 
-/** `name` → `version` of every package npm installed under `dir`, nested ones included. */
-function installed(dir, into = []) {
-  for (const entry of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
-    if (entry.startsWith(".")) continue;
-    const dirs = entry.startsWith("@")
-      ? fs.readdirSync(path.join(dir, entry)).map((sub) => path.join(dir, entry, sub))
-      : [path.join(dir, entry)];
-    for (const pkg of dirs) {
-      const { name, version } = readJson(path.join(pkg, "package.json"));
-      into.push([name, version]);
-      installed(path.join(pkg, "node_modules"), into);
-    }
-  }
-  return into;
-}
-
 export async function vendorDshDeps() {
   const lock = readLock();
   const closure = lockedClosure(lock);
@@ -165,7 +160,8 @@ export async function vendorDshDeps() {
       ],
       stage,
     );
-    const tree = installed(path.join(stage, "node_modules"));
+    const packages = readVendoredPackages(path.join(stage, "node_modules"));
+    const tree = packages.map((p) => [p.name, p.version]);
     const wrong = tree.filter(([name, version]) => closure.get(name) !== version);
     const missing = [...closure.keys()].filter((name) => !tree.some(([n]) => n === name));
     if (wrong.length > 0 || missing.length > 0) {
@@ -180,10 +176,16 @@ export async function vendorDshDeps() {
         `vendor-dsh-deps: npm's tree differs from pnpm-lock.yaml by content:\n  ${mismatches.join("\n  ")}`,
       );
     }
+    // Before the old tree is replaced, so a package without license text leaves dist as it was.
+    const notices = thirdPartyNotices(packages, {
+      carrier: "@penguinharness/sandbox-dsh",
+      location: "dist/node_modules/",
+    });
     await fsp.rm(path.join(stage, "node_modules", ".bin"), { recursive: true, force: true });
     await fsp.rm(npmLockFile, { force: true });
     await fsp.rm(OUT, { recursive: true, force: true });
     await fsp.rename(path.join(stage, "node_modules"), OUT);
+    await fsp.writeFile(NOTICES, notices);
   } finally {
     await fsp.rm(stage, { recursive: true, force: true });
   }

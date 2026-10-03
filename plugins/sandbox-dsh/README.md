@@ -105,7 +105,7 @@ depend on DSH.
 That includes the native parts, for every supported host: koffi's prebuilt module for Linux
 x64/arm64, macOS x64/arm64 and Windows x64 (every platform loads it, since the chain imports
 its Windows runner statically), and the Landlock launcher for Linux x64/arm64. The tarball is
-about 3.7 MB (375 files).
+about 3.7 MB (376 files).
 
 The build checks that tree against the lockfile by content: every tarball npm installed must
 match the integrity `pnpm-lock.yaml` pins for its version. npm fetches the tree from the
@@ -132,4 +132,5 @@ never from this listing.
 
 ## License
 
-Apache-2.0.
+Apache-2.0. The package ships `dist/THIRD_PARTY_NOTICES.md` with the license id, source and full
+license text of every dependency it carries in `dist/node_modules`.
