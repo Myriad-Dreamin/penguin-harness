@@ -13,7 +13,7 @@
  */
 import { useEffect, useSyncExternalStore } from "react";
 import * as api from "../../api/endpoints";
-import { PAGES, mergePages, type PageEntry } from "../../lib/pages";
+import { PAGES, mergePages, type PageEntry } from "../../shell/page-table";
 import { useAuth } from "../../state/auth";
 import { ORG_PAGE_RENDERERS } from "./company-nav";
 

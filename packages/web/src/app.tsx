@@ -21,7 +21,7 @@ import {
 import { LocaleProvider, LocaleScope } from "./state/locale";
 import { ThemeProvider } from "./state/theme";
 import { AuthProvider } from "./state/auth";
-import { AppRouter } from "./router";
+import { AppRouter } from "./shell/router";
 import { writeClipboard } from "./lib/clipboard";
 import { guardWindowDragOver, guardWindowDrop } from "./lib/file-drop";
 import { highlightCode } from "./lib/highlight/code-highlight";
