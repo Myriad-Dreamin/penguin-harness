@@ -3930,7 +3930,7 @@ export interface UsageErrorItem {
   sessionId: string | null;
   /** The Task it happened in: the timestamp of the Task's input message (its prompt's Trace timestamp). */
   taskId: string | null;
-  /** The request (telemetry's request key, `x-penguin-request-id`): set only while telemetry was on. */
+  /** The request (telemetry's request key): set only while telemetry was on. */
   requestId: string | null;
   status: number | null;
   /** Unexpected errors only: the first lines of the stack. */
