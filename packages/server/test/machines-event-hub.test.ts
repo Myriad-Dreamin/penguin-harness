@@ -159,15 +159,20 @@ class Tap {
 function setup() {
   const lines: string[] = [];
   const log = (line: string) => lines.push(line);
-  const sockets = new MachineSockets(log, { dialTimeoutMs: 250 });
+  /** What went into the error table beside the log (MachineFault). */
+  const faults: { machineId: string; code: string }[] = [];
+  const fault = ({ machineId, code }: { machineId: string; code: string }) =>
+    void faults.push({ machineId, code });
+  const sockets = new MachineSockets(log, { dialTimeoutMs: 250, fault });
   const hub = new MachineEventHub(sockets, log, {
     heartbeatMs: 40,
     openTimeoutMs: 250,
     reissueMinMs: 15,
     reissueMaxMs: 40,
+    fault,
   });
-  const relay = new MachineSocketRelay(log, { sockets, events: hub });
-  return { lines, log, sockets, hub, relay };
+  const relay = new MachineSocketRelay(log, { sockets, events: hub, fault });
+  return { lines, faults, log, sockets, hub, relay };
 }
 
 const targetOf = (port: number) => ({
@@ -248,7 +253,7 @@ describe("the machine event hub", () => {
   it("ends an upstream that misses two beats and re-subscribes it from the machine's last event id", async () => {
     const m = await machine();
     stops.push(m.close);
-    const { lines, relay } = setup();
+    const { lines, faults, relay } = setup();
     const target = targetOf(m.port);
 
     const res = await relay.stream("m1", target, { path: "/api/events", lastEventId: null });
@@ -268,6 +273,8 @@ describe("the machine event hub", () => {
     expect(lines.some((line) => line.includes("re-subscribing it from its last event id"))).toBe(
       true,
     );
+    // Not only a log line: the silence is filed into the error table too.
+    expect(faults).toContainEqual({ machineId: "m1", code: "machine_stream_silent" });
     // The reader keeps its stream — the hub repaired the hop under it — and hears what comes next.
     expect(tap.closed).toBe(false);
     m.emit("3-3", { type: "credentials_updated" });

@@ -5,24 +5,52 @@
  *   penguin telemetry [--by probe|session] [--samples] [--probe <name>] [--session <id>]
  *                     [--all] [--limit <n>] [--json] [--server <url>]
  *   penguin telemetry on | off | clear [--server <url>]
+ *   penguin telemetry errors [--session <id>] [--all] [--request <id>] [--kind <kind>]
+ *                            [--limit <n>] [--project-id <id>] [--json] [--server <url>]
  *
  * Default prints the per-probe summary (count, p50, p95, max, bytes); `--by session` the
  * per-session one; `--samples` the samples themselves, oldest first. Run inside a session
  * (PENGUIN_SESSION_ID set), the view is narrowed to that session unless `--session` names
  * another or `--all` lifts it — a filter for reading, not a boundary: the route answers admins
  * only, whatever is asked. `on` / `off` flip the system setting, `clear` empties the buffer.
+ *
+ * `errors` reads the other half, the always-on error table (GET /api/projects/:p/usage/errors),
+ * whether telemetry is on or not: newest first, with the Task, the first 8 characters of the
+ * request id (set only while telemetry was on) and the stack's first frame beside each message.
+ * Inside a session it is narrowed to that session the same way.
  */
 import type { Command } from "commander";
 import type {
   ServerSettingsResponse,
   TelemetryResponse,
   TelemetrySample,
+  UsageErrorsPage,
 } from "@prismshadow/penguin-server/api";
-import { resolveConnection, ServerClient } from "../client.js";
+import { resolveConnection, resolveProjectId, ServerClient } from "../client.js";
 import { renderTable } from "../table.js";
 import type { Messages } from "../i18n.js";
 
 const BYS = ["probe", "session"] as const;
+const ERROR_KINDS = ["unexpected", "expected"] as const;
+
+/** The first frame of a stack that is not the message line itself: where it was thrown. */
+function stackHead(stack: string | null): string | undefined {
+  if (stack === null) return undefined;
+  return stack
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("at "));
+}
+
+/** Inside a session, its own by default (a reading filter, not a boundary). */
+function sessionFilter(opts: { session?: unknown; all?: unknown }): string | undefined {
+  const ownSession = process.env.PENGUIN_SESSION_ID;
+  return opts.session !== undefined
+    ? String(opts.session)
+    : opts.all !== true && ownSession !== undefined && ownSession !== ""
+      ? ownSession
+      : undefined;
+}
 
 function formatMs(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return "-";
@@ -87,13 +115,7 @@ export function registerTelemetryCommand(program: Command, t: Messages): void {
         }
       }
       // Inside a session, its own samples by default (a reading filter, not a boundary).
-      const ownSession = process.env.PENGUIN_SESSION_ID;
-      const session =
-        opts.session !== undefined
-          ? String(opts.session)
-          : opts.all !== true && ownSession !== undefined && ownSession !== ""
-            ? ownSession
-            : undefined;
+      const session = sessionFilter(opts);
       const view = opts.samples === true ? "samples" : by === "session" ? "sessions" : "probes";
       const params = new URLSearchParams({ view });
       if (opts.probe !== undefined) params.set("probe", String(opts.probe));
@@ -210,6 +232,80 @@ export function registerTelemetryCommand(program: Command, t: Messages): void {
     .description(t.telemetry.offDesc)
     .option("--server <url>", t.common.server)
     .action(async (opts) => setSwitch(opts.server, false));
+  cmd
+    .command("errors")
+    .description(t.telemetry.errorsDesc)
+    .option("--session <id>", t.telemetry.session)
+    .option("--all", t.telemetry.all)
+    .option("--request <id>", t.telemetry.errorsRequest)
+    .option("--kind <kind>", t.telemetry.errorsKind)
+    .option("--limit <n>", t.telemetry.limit)
+    .option("--project-id <id>", t.common.projectId)
+    .option("--json", t.common.json)
+    .option("--server <url>", t.common.server)
+    .action(async (opts) => {
+      if (opts.kind !== undefined && !(ERROR_KINDS as readonly string[]).includes(opts.kind)) {
+        process.stderr.write(`${t.error(t.telemetry.kindInvalid(String(opts.kind)))}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      let limit = 20;
+      if (opts.limit !== undefined) {
+        limit = Number(opts.limit);
+        if (!Number.isInteger(limit) || limit <= 0) {
+          process.stderr.write(`${t.error(t.telemetry.limitInvalid(String(opts.limit)))}\n`);
+          process.exitCode = 1;
+          return;
+        }
+      }
+      const session = sessionFilter(opts);
+      const params = new URLSearchParams({ offset: "0", limit: String(limit) });
+      if (session !== undefined) params.set("sessionId", session);
+      if (opts.request !== undefined) params.set("requestId", String(opts.request));
+      if (opts.kind !== undefined) params.set("kind", String(opts.kind));
+      const projectId = resolveProjectId(opts.projectId);
+      const client = new ServerClient(await resolveConnection({ server: opts.server }, t), t);
+      const res = await client.request<UsageErrorsPage>(
+        "GET",
+        `/api/projects/${encodeURIComponent(projectId)}/usage/errors?${params.toString()}`,
+      );
+      if (opts.json === true) {
+        process.stdout.write(`${JSON.stringify(res)}\n`);
+        return;
+      }
+      const out = process.stdout;
+      if (session !== undefined && opts.session === undefined) {
+        out.write(`${t.telemetry.scopedTo(session)}\n`);
+      }
+      if (res.items.length === 0) out.write(`${t.telemetry.errorsEmpty()}\n`);
+      else {
+        out.write(
+          renderTable(
+            [
+              t.telemetry.colTime(),
+              t.telemetry.colSource(),
+              t.telemetry.colCode(),
+              t.telemetry.colTask(),
+              t.telemetry.colRequest(),
+              t.telemetry.colMessage(),
+            ],
+            res.items.map((e) => {
+              const where = stackHead(e.stack);
+              return [
+                e.ts,
+                e.source,
+                e.code,
+                e.taskId ?? "-",
+                e.requestId !== null ? e.requestId.slice(0, 8) : "-",
+                where !== undefined ? `${e.message}  [${where}]` : e.message,
+              ];
+            }),
+          ),
+        );
+      }
+      const dropped = (res.suppressed ?? []).reduce((n, s) => n + s.count, 0);
+      if (dropped > 0) out.write(`${t.telemetry.suppressed(dropped)}\n`);
+    });
   cmd
     .command("clear")
     .description(t.telemetry.clearDesc)

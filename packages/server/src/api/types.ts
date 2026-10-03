@@ -3729,6 +3729,23 @@ export interface UsageErrorItem {
   count: number;
   /** The earliest of them; equal to `ts` for a single record. */
   firstTs: string;
+  agentId: string | null;
+  sessionId: string | null;
+  /** The Task it happened in: the timestamp of the Task's input message (its prompt's Trace timestamp). */
+  taskId: string | null;
+  /** The request (telemetry's request key): set only while telemetry was on. */
+  requestId: string | null;
+  status: number | null;
+  /** Unexpected errors only: the first lines of the stack. */
+  stack: string | null;
+}
+
+/** What the short-window dedup dropped for one key — counted in the server's memory, never stored. */
+export interface UsageErrorSuppressed {
+  source: string;
+  code: string;
+  sessionId: string | null;
+  count: number;
 }
 
 /**
@@ -3769,7 +3786,45 @@ export interface UsageErrorsPage {
   total: number;
   /** Filtered row count (records folded per {@link UsageErrorItem}), so the caller knows when it has reached the end. */
   rows: number;
+  /**
+   * The repeats the dedup dropped for this Project (and Session, when one is asked for), per
+   * source · code · Session. In memory since the process started — a restart zeroes it — and
+   * not narrowed by the date, kind or request filters, which a dropped repeat has no row for.
+   */
+  suppressed: UsageErrorSuppressed[];
 }
+
+/**
+ * POST /api/errors/browser — what a browser reports that the server cannot see: a render
+ * error, an unhandled rejection, a network-level failure (status 0), the API socket's
+ * timeouts and silences. JSON only; accepted whether telemetry is on or off. At most
+ * {@link BROWSER_ERRORS_MAX_BATCH} reports per request.
+ */
+export interface BrowserErrorReport {
+  /** What happened, as the browser names it: `render`, `rejection`, `window`, `network`, `socket`. */
+  kind: string;
+  /** A lower-case code (`[a-z0-9_]`, at most 64 characters): `network_error`, `socket_call_no_answer`, … */
+  code: string;
+  message: string;
+  stack?: string;
+  /** Kept only when the caller can enter that Project; otherwise the row is unattributed (admin-only). */
+  projectId?: string;
+  /** Kept only together with a kept projectId. */
+  sessionId?: string;
+}
+
+export interface BrowserErrorsRequest {
+  reports: BrowserErrorReport[];
+}
+
+export interface BrowserErrorsResponse {
+  /** Reports handed to the recorder (which may still drop a repeat, see UsageErrorsPage.suppressed). */
+  accepted: number;
+  /** Reports refused because this user is over the per-minute cap. */
+  dropped: number;
+}
+
+export const BROWSER_ERRORS_MAX_BATCH = 20;
 
 /**
  * DELETE /api/projects/:projectId/usage/errors — empties the error table for the filter the
