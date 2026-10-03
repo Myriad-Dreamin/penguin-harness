@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "lint": "oxlint",
     "gen:ifaces": "node scripts/gen-ifaces.mjs --project packages/server/tsconfig.json --out packages/server/src/ifaces.json",
+    "gen:probe-docs": "node scripts/gen-probe-docs.mjs",
     "ifaces:page": "pnpm gen:ifaces && node scripts/iface-page.mjs --in packages/server/src/ifaces.json --out dist-ifaces",
     "typecheck": "pnpm gen:ifaces && pnpm -r typecheck",
     "test": "pnpm -r test",
