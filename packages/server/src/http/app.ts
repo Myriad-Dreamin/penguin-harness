@@ -12,11 +12,15 @@ import { HttpError, handleError } from "./errors.js";
 import { attributedProjectId } from "./attribution.js";
 import { bodyLimitBytes } from "../services/attachment-limits.js";
 import { declined } from "../hmr/hono-seam.js";
+import { telemetryRequests } from "../telemetry/http.js";
 import { hostOnly, requestAuthority } from "../services/preview-token.js";
 import type { Auth, Users } from "../mechanisms/identity.js";
 import type { Access } from "../mechanisms/projects.js";
 import type { Errors } from "../mechanisms/observability.js";
 import type { Settings } from "../mechanisms/settings.js";
+import type { Telemetry } from "../mechanisms/telemetry.js";
+
+/** The request id header (PRFC-0008): answered on every sampled request, and reused when a request arrives carrying one — the machine proxy forwards it, so both servers' samples share the id. */
 
 /**
  * The assembled business surface: one request in, one response (or a decline) out.
@@ -92,6 +96,7 @@ export class HttpModule {
   @Use() private readonly settings!: Settings;
   @Use() private readonly access!: Access;
   @Use() private readonly users!: Users;
+  @Use() private readonly telemetry?: Telemetry;
   @Provide() http!: Http;
   setup({ contributions }: ClassCtx) {
     const routes = [...(contributions.routes ?? [])]
@@ -208,6 +213,9 @@ export class HttpModule {
         return host.app.fetch(c.req.raw);
       });
     }
+    // Telemetry's http.request, on both surfaces, after the hosts (a host of its own serves
+    // content that is not the App's). While the switch is off it is one boolean check.
+    if (this.telemetry !== undefined) app.use("*", telemetryRequests(this.telemetry));
     let capped: { size: number; mw: MiddlewareHandler } | null = null;
     app.use("/api/*", (c, next) => {
       // The upgrade channel streams a push into the blob store and buffers nothing, and the
