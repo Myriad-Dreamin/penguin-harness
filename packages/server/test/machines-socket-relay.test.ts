@@ -12,7 +12,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import { MachineSocketRelay } from "../src/machines/socket-relay.js";
-import { dialThroughSocks } from "../src/machines/transport/socks.js";
 
 /** A machine's socket endpoint the test scripts: `answer` decides what a call frame gets. */
 async function machine(answer: (ws: WebSocket, frame: { id: number }) => void) {
@@ -188,34 +187,23 @@ describe("the machine socket relay", () => {
   });
 
   it("hears at once, in the transport's words, over a closed channel", async () => {
-    // The dial goes through a SOCKS server that does what OpenSSH's -D does for a port with
-    // nothing listening over there: close the connection with no reply. That must fail the
-    // dial now — before, it never settled, and every later stream to the machine waited
-    // behind it.
+    // The dial fails the way the ssh kind's does when its SOCKS server does what OpenSSH's -D
+    // does for a port with nothing listening over there — close the connection with no reply
+    // (plugins/machine-ssh, whose test plays the SOCKS side). That must fail the stream now —
+    // before, the dial never settled, and every later stream to the machine waited behind it.
     let connects = 0;
-    const socks = net.createServer((client) => {
-      let greeted = false;
-      client.on("data", (chunk: Buffer) => {
-        if (!greeted) {
-          greeted = true;
-          client.write(Buffer.from([5, 0]));
-          if (chunk.length <= 3) return;
-        }
-        connects += 1;
-        client.end();
-      });
-    });
-    await new Promise<void>((resolve) => socks.listen(0, "127.0.0.1", resolve));
-    stop = () => new Promise<void>((resolve) => socks.close(() => resolve()));
-    const socksPort = (socks.address() as net.AddressInfo).port;
     const agent = new http.Agent();
     (agent as unknown as { createConnection: unknown }).createConnection = (
       _options: unknown,
       callback: (err: Error | null, socket?: net.Socket) => void,
     ) => {
-      dialThroughSocks(socksPort, "127.0.0.1", 7364).then(
-        (socket) => callback(null, socket),
-        (err: Error) => callback(err),
+      connects += 1;
+      setImmediate(() =>
+        callback(
+          new Error(
+            "the session closed the channel to 127.0.0.1:7364 before answering — nothing is listening there, or the session is going down",
+          ),
+        ),
       );
     };
     const lines: string[] = [];

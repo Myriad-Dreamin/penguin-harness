@@ -1,8 +1,7 @@
 /**
- * The I/O half of `~/.ssh/config` (transport/targets.ts), against the real file system under
- * a temporary HOME. The route suite hands these four functions to the service as stand-ins,
- * so this file is the only place `Include` expansion, the `~`/absolute resolution, the modes
- * a first write creates and the append's leading newline ever meet a disk.
+ * The I/O half of `~/.ssh/config` (src/config.ts), against the real file system under a
+ * temporary HOME: `Include` expansion, the `~`/absolute resolution, the modes a first write
+ * creates and the append's leading newline.
  *
  * HOME is moved rather than any function injected: `os.homedir()` reads HOME (USERPROFILE on
  * Windows), which is exactly how these functions find the config when the server runs.
@@ -11,13 +10,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderHostBlock } from "../src/machines/ssh-config.js";
 import {
   appendHostBlock,
   listHostAliases,
   readSshConfig,
+  renderHostBlock,
   writeSshConfig,
-} from "../src/machines/transport/targets.js";
+} from "../src/config.js";
 
 /** Windows has no POSIX mode bits to assert on; everything else runs there too. */
 const posixOnly = it.skipIf(process.platform === "win32");

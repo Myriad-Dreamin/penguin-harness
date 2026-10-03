@@ -1,7 +1,7 @@
 /**
  * A SOCKS5 CONNECT, the way this server reaches any TCP port on a machine.
  *
- * The one ssh session per machine is opened with `-D <local port>` (ssh-session.ts): ssh
+ * The one ssh session per machine is opened with `-D <local port>` (index.ts): ssh
  * listens on that loopback port as a SOCKS server, and every connection accepted there
  * becomes a `direct-tcpip` channel inside the session — the SSH protocol's own
  * multiplexing, over the one TCP connection already up. Reaching the machine's API, its
@@ -19,7 +19,8 @@ import net from "node:net";
 /**
  * How long the SOCKS handshake itself may take; the request behind it sets its own after.
  * Opening a channel is one round trip over a session already up, so this is generous — and
- * it stays under the proxy's answer deadline (proxy.ts), so a stalled session is answered in
+ * it stays under the host's proxy answer deadline (FORWARD_ANSWER_TIMEOUT_MS,
+ * packages/server/src/machines/proxy.ts), so a stalled session is answered in
  * this layer's own words before anything above it gives up.
  */
 export const SOCKS_HANDSHAKE_TIMEOUT_MS = 8_000;
