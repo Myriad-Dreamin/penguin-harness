@@ -25,10 +25,7 @@ import type { PageEntry } from "./page-table";
 import { ContributionsProvider, useContributions } from "../state/contributions";
 import { shellDeps } from "./deps";
 
-/**
- * The renderers the manifest may name. A page is a module.json entry plus one line here;
- * a server-contributed page renders only when its `builtin` is in this registry.
- */
+/** The renderers a server-contributed page may name: it renders only when its `builtin` is here. */
 const BUILTIN_PAGES: Record<string, React.ComponentType> = {
   // Company-mode pages a plugin contributes (`nav: "org"`): mounted under the organization
   // layout, never at the root, so the company sidebar stays around them.
@@ -116,14 +113,13 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
 }
 
 /**
- * The routes: the pages the modules contributed (the shell's bindings), plus the local
- * manifest and what the server contributes (state/contributions.tsx) — so a page a plugin adds
- * mounts once the contributions have loaded, and the local pages are there from the first
- * render.
+ * The routes: the pages the modules contributed (the shell's bindings), plus what the server
+ * contributes (state/contributions.tsx) — so a page a plugin adds mounts once the
+ * contributions have loaded, and the app's own pages are there from the first render.
  */
 function RouteTree() {
   const { pages } = shellDeps.useDeps();
-  const { pages: manifestPages } = useContributions();
+  const { pages: contributed } = useContributions();
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
@@ -150,7 +146,7 @@ function RouteTree() {
           .map(({ id, path, Component }) => (
             <Route key={id} path={path} element={<Component />} />
           ))}
-        {manifestPages.map((page) => (
+        {contributed.map((page) => (
           <Route key={page.id} path={page.path} element={renderPage(page)} />
         ))}
         {/* Settings and user management live in the settings dialog now (see
