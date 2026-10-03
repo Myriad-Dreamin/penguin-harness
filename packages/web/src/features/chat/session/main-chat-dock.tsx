@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { sessionThinkingLevel } from "../../model-picker";
 import { useDockMount, closedDockView, dockViews } from "../../dock";
-import type { ChatDockState } from "../chat-dock-context";
+import type { ChatDockState } from "./main-dock-context";
 import { terminalApiSupported } from "../../terminal";
 import type { useMainChatActions } from "./main-chat-actions";
 
