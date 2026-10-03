@@ -12,8 +12,7 @@
  * What counts as a probe site is the spellings the code uses: `probe: "name"` (every
  * `record`/`emit` and the browser's samples); the name as the first string argument of a
  * measuring call — `span`, `time`, `spanIn`, `timeIn`, `since` — however the call is wrapped
- * over lines; and `` probe: `prefix.${…}` `` (a family named per segment, recorded as
- * `prefix.*`). A probe spelled any other way is not found and its name shows as plain text;
+ * over lines. A probe spelled any other way is not found and its name shows as plain text;
  * the scan's test lists the names it must find.
  *
  * Deterministic for identical source, like the build stamp: the HMR store addresses bundles
@@ -35,9 +34,8 @@ const CANONICAL_REPO = "https://github.com/Prism-Shadow/penguin-harness";
 
 const SITE_PATTERNS = [
   /\bprobe:\s*"([a-z][\w.-]*)"/g,
-  // A probe name always has a layer: `turn.tail`, never the bare segment a tally times.
+  // A probe name always has a layer (`trace.read`), which sets it apart from other strings.
   /\b(?:span|time|spanIn|timeIn|since)\(\s*(?:[\w.?]+,\s*)?"([a-z][\w-]*\.[\w.-]+)"/g,
-  /\bprobe:\s*`([a-z][\w.-]*)\.\$\{/g,
 ];
 
 function* sourceFiles(dir) {
@@ -64,17 +62,16 @@ export function probeSites(dirs, root = ROOT) {
     const rel = path.relative(root, file).split(path.sep).join("/");
     const text = fs.readFileSync(file, "utf8");
     const lines = text.split("\n");
-    SITE_PATTERNS.forEach((pattern, kind) => {
+    for (const pattern of SITE_PATTERNS) {
       for (const m of text.matchAll(pattern)) {
         // The line the name itself sits on: a wrapped call puts it below the call.
         const at = m.index + m[0].lastIndexOf(m[1]);
         const line = text.slice(0, at).split("\n").length;
         const code = lines[line - 1].trimStart();
         if (code.startsWith("*") || code.startsWith("//") || code.startsWith("/*")) continue;
-        const name = kind === 2 ? `${m[1]}.*` : m[1];
-        sites[name] ??= `${rel}:${line}`;
+        sites[m[1]] ??= `${rel}:${line}`;
       }
-    });
+    }
   }
   return Object.fromEntries(Object.entries(sites).sort(([a], [b]) => a.localeCompare(b)));
 }

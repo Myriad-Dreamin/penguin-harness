@@ -72,14 +72,13 @@ describe("PerformanceTable", () => {
       enabled: true,
       view: "probes",
       buffered: 2,
-      probes: [row("http.request"), row("turn.wait"), row("mystery.probe")],
+      probes: [row("http.request"), row("mystery.probe")],
       sites: {
         repo: "https://github.com/Prism-Shadow/penguin-harness",
         commit: "abc1234",
         dirty: false,
         sites: {
           "http.request": "packages/server/src/http/app.ts:257",
-          "turn.*": "packages/server/src/telemetry/turn.ts:102",
         },
       },
     });
@@ -87,8 +86,6 @@ describe("PerformanceTable", () => {
     expect(html).toContain(
       'href="https://github.com/Prism-Shadow/penguin-harness/blob/abc1234/packages/server/src/telemetry/probes.en.md#httprequest"',
     );
-    // A per-segment name opens its family's section.
-    expect(html).toContain("/blob/abc1234/packages/server/src/telemetry/probes.en.md#turn");
     expect(html).not.toContain(">mystery.probe</a>");
     expect(html).toContain("mystery.probe");
   });

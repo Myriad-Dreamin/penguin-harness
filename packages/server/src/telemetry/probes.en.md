@@ -108,7 +108,7 @@ Which API calls are slow? The time to answer one HTTP request.
 
 Recorded at [`packages/server/src/telemetry/http.ts:29`](http.ts#L29) <!-- probe-site -->
 
-## Sessions and turns
+## Sessions
 
 ### sessions.list.sql
 
@@ -154,7 +154,7 @@ Is sending a message slow to be accepted? The time from the send to the server's
 
 It includes waiting for the session's lock; `attrs.queued` is whether the message waited behind a running turn.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:1161`](../runtime/session-manager.ts#L1161) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:1160`](../runtime/session-manager.ts#L1160) <!-- probe-site -->
 
 ### session.load
 
@@ -162,7 +162,7 @@ Is a session slow to start working? The time to load one that was not in memory,
 
 `attrs.messages` is how many history messages it was loaded with. A session already in memory is not recorded.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2096`](../runtime/session-manager.ts#L2096) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2082`](../runtime/session-manager.ts#L2082) <!-- probe-site -->
 
 ### session.memory
 
@@ -170,29 +170,7 @@ Which session uses the most memory? One sample per loaded session, as `attrs.mem
 
 It adds up what the session holds: the history it was loaded with, the recent events kept so a page that reconnects can catch up, and the replies still streaming. Recorded whenever telemetry is read.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:938`](../runtime/session-manager.ts#L938) <!-- probe-site -->
-
-### turn.badge
-
-Is updating a session's state slow? The time to tell every page that the session changed state.
-
-Recorded at [`packages/server/src/runtime/session-manager.ts:2523`](../runtime/session-manager.ts#L2523) <!-- probe-site -->
-
-### turn.run
-
-Is a turn slow, and is it the model? The whole of one turn on the server.
-
-`attrs.modelMs` is how much of it was the model; `attrs.messages` how many messages it streamed. What remains is the server's and the tools' time.
-
-Recorded at [`packages/server/src/telemetry/turn.ts:121`](turn.ts#L121) <!-- probe-site -->
-
-### turn.*
-
-Where in the server does a turn spend its time besides the model? One part of its per-message work, summed over the turn.
-
-The parts are `turn.tail`, `turn.fanout`, `turn.errors` and `turn.usage`; `attrs.messages` is how many messages that part handled.
-
-Recorded at [`packages/server/src/telemetry/turn.ts:127`](turn.ts#L127) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:937`](../runtime/session-manager.ts#L937) <!-- probe-site -->
 
 ## Machines
 

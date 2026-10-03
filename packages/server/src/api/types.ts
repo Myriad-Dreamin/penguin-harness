@@ -415,8 +415,8 @@ export interface TelemetryResponse {
 
 /**
  * Where each probe is recorded, as the build read it off its own source: `sites` maps a probe
- * name to `path:line` at `commit` of `repo` (a GitHub https URL). A family named per segment is
- * one entry, `prefix.*`. `dirty` means the build had uncommitted changes, so a line may be off.
+ * name to `path:line` at `commit` of `repo` (a GitHub https URL). `dirty` means the build had
+ * uncommitted changes, so a line may be off.
  */
 export interface ProbeSites {
   repo: string;
