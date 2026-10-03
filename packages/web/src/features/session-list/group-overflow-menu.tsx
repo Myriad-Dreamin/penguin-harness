@@ -14,18 +14,19 @@ function EllipsisGlyph({ size = 16 }: { size?: number }) {
 }
 
 /**
- * A workspace group's overflow (… to the right of the header's "+"): 打开文件浏览, then — for a
- * registry-backed group — 重命名工作区 / 删除工作区, as small Menu rows like the session row's
- * menu. Sits among the header's action buttons — outside the header's collapse toggle, so
+ * A workspace group's overflow (… to the right of the header's "+"): the entries other modules
+ * contribute (rowActions: 打开文件浏览), then — for a registry-backed group — 重命名工作区 /
+ * 删除工作区, as small Menu rows like the session row's menu. Sits among the header's action buttons — outside the header's collapse toggle, so
  * opening it never expands/collapses the group. Body-portaled like every menu inside the
  * scroller.
  */
 export function GroupOverflowMenu({
-  onBrowse,
+  entries,
   onRename,
   onDelete,
 }: {
-  onBrowse: () => void;
+  /** The contributed entries, first: label, glyph (path data) and what choosing one does. */
+  entries: ReadonlyArray<{ id: string; label: string; glyph: string; onSelect: () => void }>;
   onRename?: () => void;
   onDelete?: () => void;
 }) {
@@ -63,11 +64,14 @@ export function GroupOverflowMenu({
       }
     >
       <Menu density="sm">
-        <MenuItem
-          glyph={ICONS.folderOpen}
-          label={S.chat.browseWorkspaceFiles}
-          onSelect={item(onBrowse)}
-        />
+        {entries.map((entry) => (
+          <MenuItem
+            key={entry.id}
+            glyph={entry.glyph}
+            label={entry.label}
+            onSelect={item(entry.onSelect)}
+          />
+        ))}
         {onRename !== undefined && (
           <MenuItem glyph={ICONS.pencil} label={S.chat.renameWorkspace} onSelect={item(onRename)} />
         )}

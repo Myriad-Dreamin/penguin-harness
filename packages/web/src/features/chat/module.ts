@@ -1,6 +1,8 @@
-/** The chat page. */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+/** The chat page, and its drafts for the surfaces that start and list them (iface.ts). */
+import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel";
 import { ChatPage } from "./chat-page";
+import { chatDrafts } from "./chat-drafts";
+import type { ChatDrafts } from "./iface";
 
 @Module({
   contributes: {
@@ -20,4 +22,5 @@ import { ChatPage } from "./chat-page";
 })
 export class ChatModule {
   @Bind("chat.page") page = ChatPage;
+  @Provide() drafts: ChatDrafts = chatDrafts;
 }

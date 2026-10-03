@@ -16,6 +16,7 @@ import type { IfaceTable, ManifestTable, Resources } from "@prismshadow/penguin-
 import table from "./ifaces.json";
 import { ShellModule } from "./shell/module";
 import type { Shell } from "./shell/module";
+import { SidebarModule } from "./shell/sidebar/module";
 import type { AppRouterProps } from "./shell/router";
 import { SessionsModule } from "./state/sessions.module";
 import { ChatModule } from "./features/chat/module";
@@ -32,10 +33,16 @@ import { BuiltinBrowserModule } from "./features/builtin-browser/module";
 import { PaletteModule } from "./features/palette/module";
 import { SettingsModule } from "./features/settings/module";
 import { SchedulesModule } from "./features/schedules/module";
+import { SessionListModule } from "./features/session-list/module";
+import { ProjectsModule } from "./features/projects/module";
+import { MessagingModule } from "./features/messaging/module";
+import { DockModule } from "./features/dock/module";
+import { TodosModule } from "./features/todos/module";
 
 @Module({
   children: [
     ShellModule,
+    SidebarModule,
     SessionsModule,
     ChatModule,
     AgentsModule,
@@ -51,6 +58,11 @@ import { SchedulesModule } from "./features/schedules/module";
     PaletteModule,
     SettingsModule,
     SchedulesModule,
+    SessionListModule,
+    ProjectsModule,
+    MessagingModule,
+    DockModule,
+    TodosModule,
   ],
 })
 export class WebRoot {}

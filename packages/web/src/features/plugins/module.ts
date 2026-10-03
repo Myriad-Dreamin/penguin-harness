@@ -15,6 +15,9 @@ import { PluginDetailPage } from "./plugin-detail-page";
         admin: false,
         released: true,
         order: 40,
+        title: "Plugins",
+        titleZh: "插件市场",
+        icon: "puzzle",
       },
       {
         id: "plugins.detail",

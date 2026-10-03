@@ -25,6 +25,10 @@ export interface PageData {
   released: boolean;
   /** The page's place in the table, and so in the nav. */
   order: number;
+  /** A main-nav page's row: its name in English and in Chinese, and its glyph's name in the UI package's icon registry (`ICONS`). */
+  title?: string;
+  titleZh?: string;
+  icon?: string;
 }
 
 /** A page with the component its feature bound. */
@@ -42,6 +46,11 @@ export function pageTableOf(contributions: readonly Contributed[]): readonly She
       Component: c.code as ComponentType,
     }))
     .sort((a, b) => a.order - b.order);
+}
+
+/** A page's nav name in the given language; the key stands in for a page that names none. */
+export function pageTitle(page: PageData, locale: "zh" | "en"): string {
+  return (locale === "zh" ? page.titleZh : page.title) ?? page.title ?? page.key;
 }
 
 /** The main nav's pages, in table order — offered or not, for any role. */

@@ -4,7 +4,7 @@ import type { ShellLayer } from "./deps";
 import type { ShellPage } from "./page-table";
 
 export type { PageData, ShellPage } from "./page-table";
-export { navPagesOf } from "./page-table";
+export { navPagesOf, pageTitle } from "./page-table";
 
 /** Every page the modules contributed, by `order`. */
 export function useShellPages(): readonly ShellPage[] {
