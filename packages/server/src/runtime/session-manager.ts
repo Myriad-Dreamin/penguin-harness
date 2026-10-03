@@ -112,8 +112,7 @@ import type { Settings } from "../mechanisms/settings.js";
 import type { MessagingBindings } from "../mechanisms/messaging.js";
 import type { OrgCache } from "../mechanisms/organization.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
-import { turnTimer } from "../telemetry/turn.js";
-import { spanIn, timeIn } from "../telemetry/measure.js";
+import { spanIn } from "../telemetry/measure.js";
 import { enabledMessagingChannel } from "./messaging/enabled-channel.js";
 import { MODELSCOPE_PROVIDER_ID } from "@prismshadow/penguin-core/model-catalog";
 
@@ -457,8 +456,8 @@ export interface SessionManagerDeps {
    */
   onHumanInput?: (sessionId: string) => void;
   /**
-   * Telemetry's per-turn probes (PRFC-0008): task.accept, session.load, turn.* and
-   * turn.badge. Optional; without it — or with its switch off — nothing is timed.
+   * Telemetry's task.accept and session.load (PRFC-0008). Optional; without it — or with its
+   * switch off — nothing is timed. A turn's own timings are in its Trace.
    */
   telemetry?: Telemetry;
 }
@@ -1301,9 +1300,7 @@ export class SessionManager {
         signal: ac.signal,
       });
       // The objective doubles as the title material (same role as a task's input text).
-      entry.running = this.driveTraced(entry, () =>
-        this.drive(entry, gen, { userExcerpt: objective }),
-      );
+      entry.running = this.drive(entry, gen, { userExcerpt: objective });
       return { sessionId: entry.sessionId };
     });
   }
@@ -1433,18 +1430,7 @@ export class SessionManager {
       .filter(isPlainText("user"))
       .map((m) => m.payload.text)
       .join("\n");
-    entry.running = this.driveTraced(entry, () => this.drive(entry, gen, { userExcerpt }));
-  }
-
-  /**
-   * Runs a drive inside telemetry's scope for this run: the session and a fresh task id join
-   * the keys every sample it records inherits (the request that started it is already in the
-   * scope — drive is started synchronously from the route). While off, just runs it.
-   */
-  private driveTraced(entry: RuntimeEntry, run: () => Promise<void>): Promise<void> {
-    const telemetry = this.deps.telemetry;
-    if (telemetry === undefined || !telemetry.on()) return run();
-    return telemetry.within({ session: entry.sessionId, task: randomUUID() }, run) as Promise<void>;
+    entry.running = this.drive(entry, gen, { userExcerpt });
   }
 
   /**
@@ -1495,7 +1481,7 @@ export class SessionManager {
       entry.lastActivityMs = Date.now();
       this.publishState(entry, "compacting");
       const gen = entry.session.compact({ signal: ac.signal });
-      entry.running = this.driveTraced(entry, () => this.drive(entry, gen));
+      entry.running = this.drive(entry, gen);
       return { sessionId: entry.sessionId };
     });
   }
@@ -2276,13 +2262,8 @@ export class SessionManager {
     // exist) — the latter is cleaned up when the parent-level tool_call_output settles;
     // if the call is still in the queue at that point, it never produced a session_meta.
     const subagentPrompts = new Map<string, string>();
-    // Telemetry's per-turn segments: one tally per run while the switch is on (decided at run
-    // start), handed over as a few samples when the run ends — never one per message.
-    const tally = turnTimer(this.deps.telemetry);
-    let runStatus: "ok" | "error" = "ok";
     try {
       for await (const msg of gen) {
-        tally.message(msg);
         // A parent-level (no origin) run_subagent call: record its prompt for the child
         // session_meta that arrives later to use as its title.
         if (!msg.origin || msg.origin.length === 0) {
@@ -2374,14 +2355,14 @@ export class SessionManager {
         // Live-tail bookkeeping in the same synchronous tick as the publish below: the
         // messages endpoint captures "channel cursor + open fragments" between two
         // publishes, so the pair is always a consistent snapshot (see live-tail.ts).
+        this.liveTail.observe(entry.sessionId, msg);
         // Re-fetch the channel before every publish (matches publishEvent): the channel
         // may have been recycled and recreated during a long wait on approval, and
         // holding a stale reference would send output to an orphaned, detached channel.
-        tally.time("tail", () => this.liveTail.observe(entry.sessionId, msg));
-        tally.time("fanout", () => this.deps.channels.get(entry.sessionId).publish(msg));
-        if (watcher !== null) tally.time("errors", () => watcher.observe(msg));
+        this.deps.channels.get(entry.sessionId).publish(msg);
+        watcher?.observe(msg);
         try {
-          await tally.timeAsync("usage", () => this.deps.recorder.record(ctx, msg));
+          await this.deps.recorder.record(ctx, msg);
         } catch (err) {
           this.log(`[usage] Insert failed: ${err instanceof Error ? err.message : String(err)}`);
           this.deps.errors?.record({ source: "usage", err, ctx, code: "usage_insert_failed" });
@@ -2394,7 +2375,6 @@ export class SessionManager {
         `[session] Run failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
       this.deps.errors?.record({ source: "session", err, ctx, code: "session_run_failed" });
-      runStatus = "error";
     } finally {
       // Wrap-up: persist any still-pending LLM failure and clear the tool-name cache (the watcher's state doesn't carry across runs).
       watcher?.close();
@@ -2422,7 +2402,6 @@ export class SessionManager {
         entry.pendingSteering = [];
       }
       entry.lastActivityMs = Date.now();
-      tally.finish(runStatus);
       // Run-end stamp (see the run-start counterpart at the top of drive). Guarded like
       // every other write in this finally: what follows — the idle broadcast and the
       // auto-start of queued follow-ups (this is its only call site) — must not be
@@ -2539,14 +2518,7 @@ export class SessionManager {
     }
   }
 
-  /** turn.badge: one state flip on both channels — the list row's badge and task_state. */
   private publishState(entry: RuntimeEntry, state: SessionStatus): void {
-    timeIn(this.deps.telemetry, "turn.badge", { session: entry.sessionId }, () =>
-      this.publishStateNow(entry, state),
-    );
-  }
-
-  private publishStateNow(entry: RuntimeEntry, state: SessionStatus): void {
     // Every state flip also reports the queued follow-up count, the undelivered steering
     // mirror, and the live subagent children, so subscribers can render all three hints
     // without a dedicated event type.
@@ -2773,7 +2745,7 @@ export class SessionsModule {
   @Use() private readonly messagingRepo!: MessagingBindings;
   /** Company-mode caches: which organization owns a Session (read at every command spawn). */
   @Use() private readonly orgCache!: OrgCache;
-  /** Telemetry's per-turn and session-list probes, and the per-session report (PRFC-0008); narrow trees omit it. */
+  /** Telemetry's task, session-load and session-list probes, and the session.memory snapshot (PRFC-0008); narrow trees omit it. */
   @Use() private readonly telemetry?: Telemetry;
   @Provide() manager!: Sessions;
   @Provide() sessionService!: SessionServiceIface;
