@@ -5,8 +5,9 @@
  * The table is read off the source while the build runs, because only then are the lines and
  * the commit known together — a bundle sitting in `<root>/hmr/store/` has neither. The commit,
  * the dirty flag and the origin come from the same checkout facts the build stamp uses
- * (build-git-stamp.mjs), so the lines always belong to the commit they are linked at; a build
- * from uncommitted changes says so, and the panel warns that the line may be off.
+ * (build-git-stamp.mjs), so the lines always belong to the commit they are linked at. Only
+ * uncommitted changes under the scanned directories count as dirty — those are what can move a
+ * line; a deploy that patches its own scripts before building leaves the links exact.
  *
  * What counts as a probe site is the three spellings the code uses: `probe: "name"` (every
  * `record`/`emit` and the browser's samples), `timed("name", …)` (the platform's boot steps),
@@ -19,6 +20,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { git } from "../packages/core/src/internal/git-facts.ts";
 import { checkoutFacts, originUrl } from "./build-git-stamp.mjs";
 
 /** The identifier the bundlers replace; telemetry/sites.ts and lib/perf/sites.ts read it. */
@@ -73,6 +75,12 @@ export function probeSites(dirs, root = ROOT) {
   return Object.fromEntries(Object.entries(sites).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+/** Whether tracked files under `dirs` differ from HEAD; true when git cannot say. */
+function sourceChanged(dirs) {
+  const out = git(ROOT, ["status", "--porcelain", "--untracked-files=no", "--", ...dirs]);
+  return out === null ? git(ROOT, ["rev-parse", "HEAD"]) === null : out.length > 0;
+}
+
 /** An origin remote as a GitHub https URL, or the canonical repository when it is not one. */
 export function githubRepo(origin) {
   const m = /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(origin ?? "");
@@ -90,7 +98,7 @@ export function probeSitesDefine(dirs) {
   const table = {
     repo: githubRepo(originUrl()),
     commit: facts.commit,
-    dirty: facts.dirty === true,
+    dirty: facts.dirty === true && sourceChanged(dirs),
     sites: probeSites(dirs),
   };
   return { [PROBE_SITES_DEFINE]: JSON.stringify(JSON.stringify(table)) };
