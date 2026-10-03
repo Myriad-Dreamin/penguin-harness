@@ -11,6 +11,11 @@ export const companyModeChannels: Migration = {
   // (the scan cursor) or one pass of "everything looks unread" (the read cursor). A
   // predecessor build reads neither table's shape, only its own writes, so this is
   // swap-safe.
+  //
+  // By the expand / contract rule (migration.ts) the two DROPs are a contract, and this is the
+  // one expand that removes anything on the swap path. It stays an expand because it is frozen
+  // and cannot be deferred: the same step creates the channel tables a pushed platform needs.
+  // A new change of this kind is split into an expand and a later contract instead.
   swapSafe: true,
   up(db) {
     db.exec(`

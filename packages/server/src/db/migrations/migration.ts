@@ -24,7 +24,13 @@ interface MigrationBase {
   down: ((db: DatabaseSync) => void) | null;
 }
 
-/** EXPAND: strictly additive, or a superset the previous platform still reads and writes. */
+/**
+ * EXPAND: strictly additive, or a superset the previous platform still reads and writes.
+ *
+ * `company-mode-channels` is the one exception, kept because it is frozen: it drops two tables
+ * in the step that creates their replacements (see its file). No new migration may follow it —
+ * a removal is a contract.
+ */
 interface ExpandMigration extends MigrationBase {
   swapSafe: true;
 }
