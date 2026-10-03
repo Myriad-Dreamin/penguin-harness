@@ -136,6 +136,7 @@ import { HmrRoutes } from "./hmr/routes.js";
 import { EventsRoutes } from "./http/routes/events.js";
 import { PluginRegistryRoutes, PluginRoutes } from "./http/routes/plugins.js";
 import { InstalledPluginRoutes } from "./http/routes/plugins-installed.js";
+import { PluginUiRoutes } from "./http/routes/plugin-ui.js";
 import { SuggestIdRoutes } from "./http/routes/suggest-id.js";
 import { LanguageRoutes } from "./http/routes/languages.js";
 import { Languages, LanguagesModule } from "./languages/service.js";
@@ -474,6 +475,7 @@ export class CompanyModule {}
     PluginRoutes,
     PluginRegistryRoutes,
     InstalledPluginRoutes,
+    PluginUiRoutes,
     SuggestIdRoutes,
     LanguagesModule,
     LanguageRoutes,
