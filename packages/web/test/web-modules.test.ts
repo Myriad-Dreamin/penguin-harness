@@ -25,6 +25,12 @@ const TESTS = fileURLToPath(new URL(".", import.meta.url));
 /** Dictionaries that may mount a module's `strings.ts` fragment. */
 const APP_DICTIONARIES = new Set(["lib/strings", "lib/strings-en"]);
 
+/**
+ * The composition root and its test, which list each module's class (`module.ts`) to boot the
+ * tree; nothing else may import one (module-boundaries.test.ts).
+ */
+const COMPOSITION_ROOTS = new Set(["web-root", "../test/web-root.test"]);
+
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -113,6 +119,7 @@ describe("web modules", () => {
         for (const { specifier, target } of refs) {
           if (target === null || !target.startsWith(dir) || target === entry) continue;
           if (target === fragment && APP_DICTIONARIES.has(from)) continue;
+          if (target === `${dir}module` && COMPOSITION_ROOTS.has(from)) continue;
           violations.push(`${from} → ${specifier}`);
         }
       }
