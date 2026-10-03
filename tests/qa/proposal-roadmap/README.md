@@ -25,6 +25,7 @@ Run the tasks in order; later tasks reuse what earlier ones created.
 | [10-read-latency](10-read-latency.md) | read routes answer fast on a warm server |
 | [11-web-pages](11-web-pages.md) | proposals page, Activity view, roadmap column, PR graph menu |
 | [12-restart-durability](12-restart-durability.md) | data and runs survive a server restart; an open run becomes `abandoned` |
+| [13-organization-delete](13-organization-delete.md) | deleting a used organization releases its store first; a recreated id starts empty |
 
 Reference: the plugins' READMEs (`plugins/company-proposals/README.md`,
 `plugins/company-roadmaps/README.md`) list every route, Action key and subject form.
