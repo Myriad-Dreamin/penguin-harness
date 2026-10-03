@@ -36,7 +36,7 @@
  *   which is why the page fetches both lists per Agent. Uninstall takes the plugin apart the
  *   same way: one DELETE per skill and one for the hook package.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import type {
   AgentSummary,
@@ -93,6 +93,7 @@ import { prepareNewChatDraft } from "../chat/new-chat";
 import { localizedShortText, localizedText } from "../chat/skill-use";
 import { PluginDetailModal } from "./plugin-detail";
 import { usePluginRepair } from "./plugin-repair";
+import { viewedMachine } from "./viewed-machine";
 import { SettingsDialog } from "../settings/settings-dialog";
 import { formatRelativeDate } from "../../lib/format";
 import { SkillTile } from "../skills/skill-icon-view";
@@ -281,8 +282,22 @@ export function PluginsPage() {
   const [pickedMachine, setPickedMachine] = useState<string | null>(null);
   useEffect(() => setPickedMachine(null), [projectId]);
   const selfId = deployment?.machineId;
+  const nameOf = (machineId: string) =>
+    machineId === selfId ? S.plugins.thisServer : (machineLabels.get(machineId) ?? machineId);
+  // The picker offers this server, then the machines this Project reaches and any a table
+  // names; a deployment with neither has one machine, and no picker.
+  const otherMachines = [
+    ...new Set([...machineIds, ...(deployment?.plugins ?? []).flatMap((p) => p.machines ?? [])]),
+  ].filter((id) => id !== selfId);
+  const machineChoices: MachineChoice[] = (
+    selfId === undefined ? [] : [selfId, ...otherMachines]
+  ).map((id) => ({ value: id, label: nameOf(id) }));
   /** The machine the page shows and edits — undefined only until this server's id is read. */
-  const viewMachine = pickedMachine ?? selfId;
+  const viewMachine = viewedMachine(
+    pickedMachine,
+    machineChoices.map((c) => c.value),
+    selfId,
+  );
   /** What the viewed machine answered itself — or why it could not — when it is not this server. */
   const [remote, setRemote] = useState<
     | { machineId: string; res: InstalledPluginsResponse }
@@ -303,22 +318,12 @@ export function PluginsPage() {
       cancelled = true;
     };
   }, [projectId, viewMachine, selfId, deployment]);
-  const nameOf = (machineId: string) =>
-    machineId === selfId ? S.plugins.thisServer : (machineLabels.get(machineId) ?? machineId);
   const view: PluginView | undefined =
     viewMachine === undefined
       ? undefined
       : { machineId: viewMachine, remote: remote !== null && "res" in remote ? remote.res : null };
   /** Whether the machine in view is this server itself. */
   const viewingHere = viewMachine === selfId;
-  // The picker offers this server, then the machines this Project reaches and any a table
-  // names; a deployment with neither has one machine, and no picker.
-  const otherMachines = [
-    ...new Set([...machineIds, ...(deployment?.plugins ?? []).flatMap((p) => p.machines ?? [])]),
-  ].filter((id) => id !== selfId);
-  const machineChoices: MachineChoice[] = (
-    selfId === undefined ? [] : [selfId, ...otherMachines]
-  ).map((id) => ({ value: id, label: nameOf(id) }));
 
   // The registry, fetched once on page entry.
   useEffect(() => {
@@ -1433,14 +1438,20 @@ function Tag({
   children,
   quiet,
   title,
+  id,
 }: {
   children: React.ReactNode;
   /** What the plugin carries or is keyed by, rather than what it is: the outlined weight. */
   quiet?: boolean;
   title?: string;
+  id?: string;
 }) {
   return (
-    <Badge variant={quiet ? "outline" : "soft"} tooltip={title}>
+    <Badge
+      variant={quiet ? "outline" : "soft"}
+      tooltip={title}
+      {...(id !== undefined ? { id } : {})}
+    >
       {children}
     </Badge>
   );
@@ -1828,6 +1839,9 @@ export function ModuleRow({
   onRepair?: (() => void) | null;
 }) {
   const { locale } = useLocale();
+  // A shared row's disabled Remove is described by its visible tag and the hint the tag's
+  // tooltip shows, so a screen reader learns why it is unavailable without hovering.
+  const sharedId = useId();
   const stateText =
     state === "active"
       ? S.plugins.stateActive
@@ -1922,7 +1936,11 @@ export function ModuleRow({
         {(entry?.categories ?? []).map((category) => (
           <Tag key={category}>{category}</Tag>
         ))}
-        {shared === true && <Tag title={S.plugins.sharedHint}>{S.plugins.sharedTag}</Tag>}
+        {shared === true && (
+          <Tag id={`${sharedId}-tag`} title={S.plugins.sharedHint}>
+            {S.plugins.sharedTag}
+          </Tag>
+        )}
         {shipped && <Tag title={S.plugins.builtinHint}>{S.plugins.builtin}</Tag>}
         {(entry?.keywords ?? []).map((keyword) => (
           <Tag key={keyword} quiet>
@@ -1996,6 +2014,7 @@ export function ModuleRow({
                 aria-label={`${S.plugins.uninstall} ${specifier}`}
                 aria-busy={busy}
                 title={shared === true ? S.plugins.sharedHint : S.plugins.uninstall}
+                aria-describedby={shared === true ? `${sharedId}-tag ${sharedId}-hint` : undefined}
                 disabled={busy || blocked || shared === true}
                 onClick={onRemove}
               >
@@ -2007,6 +2026,11 @@ export function ModuleRow({
                 <span className="hidden @3xl:inline">{S.plugins.uninstall}</span>
               </Button>
             )}
+        {shared === true && (
+          <span id={`${sharedId}-hint`} className="sr-only">
+            {S.plugins.sharedHint}
+          </span>
+        )}
       </div>
     </div>
   );
