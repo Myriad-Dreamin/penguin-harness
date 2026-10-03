@@ -59,10 +59,7 @@ const ANSWER_DEADLINE_MS = 10_000;
 function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new ApiError(0, "network_error", S.errors.networkError)),
-      ms,
-    );
+    timer = setTimeout(() => reject(new ApiError(0, "network_error", S.errors.networkError)), ms);
   });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
@@ -315,10 +312,7 @@ export function DashboardPage() {
         )}
         {rows === null && error === null && <SkeletonList rows={4} />}
         {rows !== null && rows.length === 0 && (
-          <EmptyState
-            title={emptyTitle}
-            description={S.dashboard.emptyHint}
-          />
+          <EmptyState title={emptyTitle} description={S.dashboard.emptyHint} />
         )}
         {rows !== null && rows.length > 0 && (
           <ul className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-gray-950">
