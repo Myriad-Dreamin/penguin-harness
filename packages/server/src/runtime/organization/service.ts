@@ -66,6 +66,7 @@ import type {
   Projects,
 } from "../../mechanisms/projects.js";
 import type { MessagingBindings } from "../../mechanisms/messaging.js";
+import type { SessionSurfaces } from "../session-surfaces.js";
 import type { SessionIndex } from "../../mechanisms/sessions.js";
 import type { Settings } from "../../mechanisms/settings.js";
 import type { Errors, UsageQueries } from "../../mechanisms/observability.js";
@@ -124,8 +125,9 @@ import {
   employeePlugins,
   runsOn,
 } from "./deps.js";
-import type { OrgDeps } from "./deps.js";
+import type { OrgDeps, OrgRetirement } from "./deps.js";
 import { isMirrorPath, mirrorManifest, pullMirror, readMirrorFile } from "./mirror.js";
+import { retireAndTrash } from "./retire.js";
 import type { OrgMirrorEntry } from "./mirror.js";
 import { loadOrg, orgEmployeeNames, projectUserIds, sharedWorkspace } from "./model.js";
 import type { LoadedOrg } from "./model.js";
@@ -218,7 +220,11 @@ export class OrganizationService {
   constructor(
     private readonly deps: OrgDeps,
     private readonly scheduler: OrganizationScheduler,
-  ) {}
+  ) {
+    // The delete's marks live on the deps every reader of the files shares (loadOrg), so a
+    // test that binds none still gets the marks the delete relies on.
+    deps.deleting ??= new Set();
+  }
 
   private now(): number {
     return this.deps.now?.() ?? Date.now();
@@ -802,12 +808,18 @@ export class OrganizationService {
    * deleting conversations along with a company.
    *
    * Under the organization's lock, so a pass in flight finishes first and the next one finds
-   * no directory — the same state a hand-removed directory always was.
+   * no directory — the same state a hand-removed directory always was. Before the move the
+   * organization is marked as being deleted, the plugins release what they hold of it and its
+   * sessions are stopped (retire.ts); a move that fails answers 409 `organization_busy`.
    */
   async delete(projectId: string, orgId: string): Promise<void> {
     await this.requireOrg(projectId, orgId);
     await this.scheduler.withLock(projectId, orgId, async () => {
-      await this.deps.store.trash(projectId, orgId, new Date(this.now()).toISOString());
+      // Read again under the lock: a delete queued behind another finds nothing to delete.
+      const org = await this.requireOrg(projectId, orgId);
+      await retireAndTrash({ ...this.deps, deleting: this.deps.deleting! }, org, {
+        now: this.now(),
+      });
       this.deps.cache.deleteOrg(projectId, orgId);
     });
     this.deps.log?.(`[organization] ${projectId}/${orgId} deleted (moved to the trash)`);
@@ -3180,6 +3192,7 @@ export class OrganizationModule {
   @Use() private readonly settings!: Settings;
   @Use() private readonly machines!: Machines;
   @Use() private readonly messagingRepo!: MessagingBindings;
+  @Use() private readonly surfaces!: SessionSurfaces;
   @Provide() orgService!: OrgService;
   @Provide() orgScheduler!: OrgScheduler;
   @Provide() orgGateway!: OrgGateway;
@@ -3202,6 +3215,12 @@ export class OrganizationModule {
           ctx: { projectId: channel.projectId },
         }),
     );
+    // What plugins release when an organization is deleted (OrgGatewaySlots.retirements).
+    const retirements: OrgRetirement[] = (contributions.retirements ?? []).map((c) => ({
+      id: c.id,
+      retire: c.code as OrgRetirement["retire"],
+    }));
+    const surfaces = this.surfaces;
     const deps: OrgDeps = {
       root: this.config.root,
       store: new OrgStore(this.config.root),
@@ -3249,6 +3268,17 @@ export class OrganizationModule {
       },
       companyModeEnabled: () => this.settings.getCompanyMode(),
       ...(channelClaimed !== undefined ? { channelClaimed } : {}),
+      deleting: new Set(),
+      retirements,
+      // A deleted organization's session: its Task, its background commands (a Claude Code
+      // run among them) and its surface, all stopped and none awaited.
+      stopSession: (sessionId) => {
+        runner.abortTask(sessionId);
+        for (const p of runner.listProcesses(sessionId)) {
+          if (p.running) runner.killProcess(sessionId, p.processId);
+        }
+        surfaces.close(sessionId);
+      },
       machines: {
         ownId: () => this.machines.ownId(),
         api: async (machineId) => {
