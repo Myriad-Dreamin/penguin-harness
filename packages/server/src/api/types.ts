@@ -3894,6 +3894,10 @@ export interface PluginIndexEntry {
   categories?: string[];
   /** Unix timestamp (seconds) of the entry's last update. */
   updatedAt?: number;
+  /** npm's `dist.integrity` of the published tarball; an entry without one cannot be installed. */
+  integrity?: string;
+  /** A yanked entry stays in its source as a record and is left out of the listing. */
+  yanked?: boolean;
 }
 
 /** GET /api/plugins/registry: the merged index of every configured registry (currently the builtin one). */
@@ -3929,8 +3933,8 @@ export interface LanguageSummary {
   displayName: string;
   /** Alternative fence info strings, needed BEFORE the grammar loads (it is what decides to load it). */
   aliases?: string[];
-  /** File plugins without the dot, for the Workspace file viewer. */
-  plugins?: string[];
+  /** File extensions without the dot, for the Workspace file viewer. */
+  extensions?: string[];
 }
 
 /** GET /api/languages: every language this App's plugins contributed, by id. */
