@@ -14,21 +14,21 @@
 
 推送来的平台自带迁移，这是应用它们的耗时；留给运行时下次重启的迁移不计在内。
 
-记录于 [`packages/server/src/hmr/platform.ts:405`](../hmr/platform.ts#L405) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:361`](../hmr/platform.ts#L361) <!-- probe-site -->
 
 ### plugin.load
 
-启动时加载某一个插件的某一步所用的时间。
+启动时导入并检查一个插件所用的时间。
 
-`attrs.step` 是哪一步，`attrs.plugin` 是哪个插件；这一步失败、插件被留在这一代之外时 `status` 为 `error`。
+`attrs.plugin` 是哪个插件；失败、被留在这一代之外时 `status` 为 `error`。沿用上一代的插件不再导入，也不记录。
 
-记录于 [`packages/server/src/hmr/platform.ts:505`](../hmr/platform.ts#L505) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:461`](../hmr/platform.ts#L461) <!-- probe-site -->
 
 ### boot.plugins
 
 启动时加载全部已装插件的总时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:511`](../hmr/platform.ts#L511) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:467`](../hmr/platform.ts#L467) <!-- probe-site -->
 
 ### boot.module
 
@@ -36,13 +36,13 @@
 
 `attrs.module` 是模块名。这里慢的，是构造或启动时就做了实事、拖住 App 开始服务的模块。
 
-记录于 [`packages/server/src/hmr/platform.ts:564`](../hmr/platform.ts#L564) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:520`](../hmr/platform.ts#L520) <!-- probe-site -->
 
 ### boot.modules
 
 创建整棵模块树的总时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:568`](../hmr/platform.ts#L568) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:524`](../hmr/platform.ts#L524) <!-- probe-site -->
 
 ### boot.create
 
@@ -50,7 +50,7 @@
 
 涵盖上面几步（迁移、插件、模块）以及它们之间的一切。
 
-记录于 [`packages/server/src/hmr/platform.ts:684`](../hmr/platform.ts#L684) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:99`](boot.ts#L99) <!-- probe-site -->
 
 ### boot.quiet
 
@@ -58,7 +58,7 @@
 
 这期间 App 已在服务；这一项长，意味着 machine 或被接管的会话回来得晚。
 
-记录于 [`packages/server/src/platform.ts:248`](../platform.ts#L248) <!-- probe-site -->
+记录于 [`packages/server/src/platform.ts:243`](../platform.ts#L243) <!-- probe-site -->
 
 ### hmr.park
 
@@ -66,7 +66,7 @@
 
 以上一代为键（`keys.generation`）。由新一代记录，因为旧一代的缓冲随它一起没了。
 
-记录于 [`packages/server/src/hmr/platform.ts:690`](../hmr/platform.ts#L690) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:104`](boot.ts#L104) <!-- probe-site -->
 
 ### hmr.dispose
 
@@ -74,7 +74,7 @@
 
 与 `hmr.park` 一样以上一代为键。
 
-记录于 [`packages/server/src/hmr/platform.ts:693`](../hmr/platform.ts#L693) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:106`](boot.ts#L106) <!-- probe-site -->
 
 ### hmr.generation
 
@@ -82,7 +82,7 @@
 
 `n` 是代号。`attrs.cause` 为 `boot`、`push` 或 `reassemble`；`attrs.creates` 是同一个包的创建次数，同一个构建被再次创建（重复推送）时 `attrs.repeat` 为 true。
 
-记录于 [`packages/server/src/hmr/platform.ts:697`](../hmr/platform.ts#L697) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:110`](boot.ts#L110) <!-- probe-site -->
 
 ### process.memory
 
@@ -90,7 +90,7 @@
 
 `bytes` 是常驻内存（RSS），`attrs` 带 `heapUsed`、`heapTotal`、`external`。要跨代对比着看：每推一次只涨不落，说明有某一代没有被释放。
 
-记录于 [`packages/server/src/hmr/platform.ts:703`](../hmr/platform.ts#L703) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:121`](boot.ts#L121) <!-- probe-site -->
 
 ### hmr.admit
 
@@ -98,7 +98,7 @@
 
 这是推送来的一代在被换上之前收到的第一个请求；`attrs.code` 是它回答的状态码。
 
-记录于 [`packages/server/src/hmr/platform.ts:728`](../hmr/platform.ts#L728) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:148`](boot.ts#L148) <!-- probe-site -->
 
 ## 请求
 
@@ -106,9 +106,9 @@
 
 回答一个 HTTP 请求所用的时间，从请求到达到响应交回。
 
-`attrs.method` 与 `attrs.route` 以路由模式（从不是路径）标明路由，`attrs.code` 是状态码，`bytes` 是响应大小——流式响应边写边计——`attrs.requestBytes` 是请求体大小。`keys.request` 是页面发来的请求 id，页面上慢的一次操作可以据此对上它的请求。
+`attrs.method` 与 `attrs.route` 以路由模式（从不是路径）标明路由，`attrs.code` 是状态码，`bytes` 是响应自己声明的大小，`attrs.requestBytes` 是请求体大小。`keys.request` 是为这个请求生成的 id，它运行期间记下的样本（一次 `session.messages`、其中的 `trace.read`）可据此对上它。
 
-记录于 [`packages/server/src/http/app.ts:240`](../http/app.ts#L240) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/http.ts:29`](http.ts#L29) <!-- probe-site -->
 
 ## 会话与轮次
 
@@ -116,9 +116,9 @@
 
 会话列表为一个 Agent 查数据库所用的时间。
 
-`n` 是返回的行数。会话列表一次读取分三段，另两段是 `sessions.list.reconcile` 与 `sessions.list.rows`。
+`n` 是返回的行数。与 `sessions.list.reconcile` 同属一次会话列表读取；列表请求剩下的时间是逐行的处理。
 
-记录于 [`packages/server/src/services/session-service.ts:447`](../services/session-service.ts#L447) <!-- probe-site -->
+记录于 [`packages/server/src/services/session-service.ts:438`](../services/session-service.ts#L438) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
@@ -126,55 +126,47 @@
 
 `n` 是找到的 Trace 数。稳定状态下这一步会跳过；经常出现，说明不断有未分类的行进来。
 
-记录于 [`packages/server/src/services/session-service.ts:467`](../services/session-service.ts#L467) <!-- probe-site -->
-
-### sessions.list.rows
-
-把会话列表的行转成页面收到的条目所用的时间。
-
-`n` 是分类或转换过的行数。
-
-记录于 [`packages/server/src/services/session-service.ts:491`](../services/session-service.ts#L491) <!-- probe-site -->
+记录于 [`packages/server/src/services/session-service.ts:463`](../services/session-service.ts#L463) <!-- probe-site -->
 
 ### trace.reconcile
 
 一次把 Trace 索引与磁盘上的文件对齐所用的时间。
 
-跑这一遍的调用 `status` 为 `led`，等着一遍已在进行中的调用为 `shared`；强制的一遍 `attrs.force` 为 true。
+强制的一遍 `attrs.force` 为 true。加入一遍已在进行中的调用，记下自己等待的时间，`attrs.shared` 为 true。
 
-记录于 [`packages/server/src/services/trace-index.ts:179`](../services/trace-index.ts#L179) <!-- probe-site -->
+记录于 [`packages/server/src/services/trace-index.ts:162`](../services/trace-index.ts#L162) <!-- probe-site -->
 
 ### trace.read
 
 从磁盘读一个 Trace 文件所用的时间。
 
-`n` 是读出的消息数，`bytes` 是文件大小。`attrs.shard` 是文件路径的哈希，从不是路径本身。在 `session.messages` 的读取里，它带上那个会话的键。
+`n` 是读出的消息数。在 `session.messages` 的读取里，它带上那个会话的键。
 
-记录于 [`packages/server/src/services/trace-service.ts:378`](../services/trace-service.ts#L378) <!-- probe-site -->
+记录于 [`packages/server/src/services/trace-service.ts:356`](../services/trace-service.ts#L356) <!-- probe-site -->
 
 ### session.messages
 
 为页面读一个会话的一窗消息所用的时间。
 
-`n` 是返回的消息数，`bytes` 是从磁盘读的量；`attrs.shards` 是读了几个 Trace 文件，`attrs.kind` 是请求的是哪一窗，`attrs.reachesEnd` 是否读到了最新一条。
+`n` 是返回的消息数；`attrs.kind` 是请求的是哪一窗，`attrs.reachesEnd` 是否读到了最新一条。它读过的 Trace 文件就是同一会话、同一请求下的 `trace.read` 样本。
 
-记录于 [`packages/server/src/services/trace-service.ts:675`](../services/trace-service.ts#L675) <!-- probe-site -->
+记录于 [`packages/server/src/services/trace-service.ts:642`](../services/trace-service.ts#L642) <!-- probe-site -->
 
 ### task.accept
 
-接收发给会话的一条消息所用的时间，从调用到答复。
+接收发给会话的一条消息所用的时间，从调用到答复，含等会话锁的时间。
 
-`attrs.lockMs` 是其中等会话锁的部分，`attrs.queued` 是这条消息是否排在一轮正在运行的之后。
+`attrs.queued` 是这条消息是否排在一轮正在运行的之后。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:1184`](../runtime/session-manager.ts#L1184) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:1165`](../runtime/session-manager.ts#L1165) <!-- probe-site -->
 
-### session.ensure
+### session.load
 
-让一个会话准备好运行所用的时间：已在内存、载入或重新载入。
+载入一个不在内存里的会话所用的时间，含它的历史。
 
-`attrs.outcome` 为 `hit`（已在内存）、`load` 或 `reload`（建于 Agent 上次改配置之前）；载入时另有 `attrs.loadMs`，`n` 是会话恢复时带的历史消息数。
+`n` 是会话恢复时带的历史消息数。已在内存里的会话不记录。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:2094`](../runtime/session-manager.ts#L2094) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:2100`](../runtime/session-manager.ts#L2100) <!-- probe-site -->
 
 ### turn.badge
 
@@ -182,7 +174,7 @@
 
 `attrs.state` 是发布的状态。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:2598`](../runtime/session-manager.ts#L2598) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:2529`](../runtime/session-manager.ts#L2529) <!-- probe-site -->
 
 ### turn.run
 
@@ -190,7 +182,7 @@
 
 `n` 是流式消息数。`attrs.modelMs` 是各次模型请求从开始到结束的时间，`attrs.requests` 是请求次数，`attrs.serverMs` 是各 `turn.*` 段之和。剩下的是引擎自己的时间：工具调用、MCP、写 Trace。
 
-记录于 [`packages/server/src/telemetry/turn.ts:95`](turn.ts#L95) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/turn.ts:126`](turn.ts#L126) <!-- probe-site -->
 
 ### turn.*
 
@@ -198,7 +190,7 @@
 
 各段为 `turn.tail`（实时尾部）、`turn.fanout`（发布到页面的通道）、`turn.errors`（流错误观察）与 `turn.usage`（用量记录）。`n` 是这一段处理的消息数，`attrs.maxMs` 是最慢的一条。
 
-记录于 [`packages/server/src/telemetry/turn.ts:102`](turn.ts#L102) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/turn.ts:133`](turn.ts#L133) <!-- probe-site -->
 
 ## Machine
 
@@ -218,21 +210,13 @@
 
 记录于 [`packages/server/src/machines/connect-stages.ts:54`](../machines/connect-stages.ts#L54) <!-- probe-site -->
 
-### machine.ssh.open
-
-建起到 machine 的 ssh 会话、直到第一条命令返回所用的时间。
-
-会话在任何命令回答之前就断了时 `status` 为 `error`；`attrs.held` 是它是否为常驻的那条连接。
-
-记录于 [`packages/server/src/machines/transport/ssh-session.ts:470`](../machines/transport/ssh-session.ts#L470) <!-- probe-site -->
-
 ### machine.ssh.command
 
-经 ssh 会话在 machine 上跑一条命令所用的时间。
+经 ssh 会话在 machine 上跑一条命令所用的时间，从发起到答复，含排在其他命令之后等待的时间。
 
-`attrs.waitMs` 是排在其他命令之后等待的时间，`attrs.code` 是退出码，`attrs.inputBytes` 是经 stdin 送的量，`attrs.opening` 是这条命令是否顺带建起了会话。machine 一直没回答时 `status` 为 `timeout`。命令文本从不记录。
+`attrs.code` 是退出码，`attrs.inputBytes` 是经 stdin 送的量。machine 一直没回答时 `status` 为 `timeout`。命令文本从不记录。
 
-记录于 [`packages/server/src/machines/transport/ssh-session.ts:492`](../machines/transport/ssh-session.ts#L492) <!-- probe-site -->
+记录于 [`packages/server/src/machines/transport/timings.ts:158`](../machines/transport/timings.ts#L158) <!-- probe-site -->
 
 ### machine.socks.handshake
 

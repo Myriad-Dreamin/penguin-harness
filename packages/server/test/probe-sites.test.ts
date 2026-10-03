@@ -1,13 +1,14 @@
 /**
- * The build-time probe-site scan (scripts/probe-sites.mjs): the table the performance panel
- * links each probe's name through. Run over the real source, so a probe whose call is reshaped
- * past the three spellings the scan knows shows up here as a missing name.
+ * The build-time probe-site scan (scripts/probe-sites.mjs) and the probe reference it keeps
+ * current (scripts/gen-probe-docs.mjs), run over the real source: a probe whose call is
+ * reshaped past the spellings the scan knows shows up here as a missing name.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { githubRepo, probeSites } from "../../../scripts/probe-sites.mjs";
+import { probeSummaries, renderProbeDocs } from "../../../scripts/gen-probe-docs.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -22,6 +23,7 @@ describe("probe sites", () => {
       "boot.create",
       "plugin.load",
       "session.messages",
+      "session.load",
       "trace.read",
       "sessions.list.sql",
       "turn.run",
@@ -65,5 +67,17 @@ describe("probe sites", () => {
     );
     expect(githubRepo("penguin-harness")).toBe("https://github.com/Prism-Shadow/penguin-harness");
     expect(githubRepo(null)).toBe("https://github.com/Prism-Shadow/penguin-harness");
+  });
+
+  it("has a reference that covers every probe in both languages, with current site lines and a summary each", () => {
+    for (const [rel, content] of Object.entries(renderProbeDocs())) {
+      expect(fs.readFileSync(path.join(ROOT, rel), "utf8"), `${rel}: run pnpm gen:probe-docs`).toBe(
+        content,
+      );
+    }
+    const { en = {}, zh = {} } = probeSummaries();
+    expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());
+    for (const summary of [...Object.values(en), ...Object.values(zh)])
+      expect(summary).not.toBe("");
   });
 });

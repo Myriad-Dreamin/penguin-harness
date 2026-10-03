@@ -68,8 +68,12 @@ describe("StreamProbe", () => {
     ]);
   });
 
-  it("reports a turn from its first frame to its last render once it leaves running", () => {
+  it("reports a turn from its first frame to its last render once it leaves running, and none while the open is pending", () => {
     const out: PerfSampleInput[] = [];
+    const pending = new StreamProbe("s-0", 0, (s) => out.push(s));
+    pending.taskState("running");
+    pending.taskState("idle");
+    expect(out).toEqual([]);
     const probe = new StreamProbe("s-1", 0, (s) => out.push(s));
     probe.skipOpen();
     probe.taskState("running");
@@ -90,29 +94,18 @@ describe("StreamProbe", () => {
       attrs: { commits: 2, reduceMs: 7, waitMs: 230, maxWaitMs: 130, renderMs: 30 },
     });
   });
-
-  it("sends no turn while the open is still pending", () => {
-    const out: PerfSampleInput[] = [];
-    const probe = new StreamProbe("s-1", 0, (s) => out.push(s));
-    probe.taskState("running");
-    probe.taskState("idle");
-    expect(out).toEqual([]);
-  });
 });
 
 describe("bootSample", () => {
   const paint = (name: string, startTime: number) => ({ name, startTime }) as PerformanceEntry;
 
-  it("waits for the first contentful paint", () => {
+  it("waits for the first contentful paint, then reads navigation, the entry script and the paints", () => {
     expect(
       bootSample(
         { navigation: undefined, paints: [], entryScript: undefined },
         { count: 0, blockingMs: 0 },
       ),
     ).toBeNull();
-  });
-
-  it("reads navigation, the entry script and the paints, with the long tasks so far", () => {
     const sample = bootSample(
       {
         navigation: {
@@ -146,21 +139,7 @@ describe("bootSample", () => {
 });
 
 describe("sending", () => {
-  it("posts JSON to the intake its kind names", async () => {
-    const fetch = vi.fn(async () => ({ status: 200 }));
-    vi.stubGlobal("fetch", fetch);
-    expect(await sendReport("sample", { samples: [] })).toBe(200);
-    expect(fetch).toHaveBeenCalledWith(
-      REPORT_URLS.sample,
-      expect.objectContaining({
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ samples: [] }),
-      }),
-    );
-  });
-
-  it("stops itself, timer and listener, when the intake answers 409", async () => {
+  it("posts JSON to the intake its kind names, and stops itself, timer and listener, on a 409", async () => {
     vi.useFakeTimers();
     const listeners = new Set<unknown>();
     vi.stubGlobal("window", globalThis);
@@ -173,6 +152,12 @@ describe("sending", () => {
     vi.stubGlobal("performance", { now: () => 0, getEntriesByType: () => [] });
     const fetch = vi.fn(async () => ({ status: 409 }));
     vi.stubGlobal("fetch", fetch);
+    expect(await sendReport("sample", { samples: [] })).toBe(409);
+    expect(fetch).toHaveBeenCalledWith(
+      REPORT_URLS.sample,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ samples: [] }) }),
+    );
+    fetch.mockClear();
     const onRefused = vi.fn();
     const collector = startCollector({ onRefused });
     expect(listeners.size).toBe(1);

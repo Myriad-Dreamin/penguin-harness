@@ -14,21 +14,21 @@ Time to bring the database schema up to date when the platform boots.
 
 A pushed platform carries its own migrations; this is how long applying them took. Migrations deferred to the runtime's next restart are not included.
 
-Recorded at [`packages/server/src/hmr/platform.ts:405`](../hmr/platform.ts#L405) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:361`](../hmr/platform.ts#L361) <!-- probe-site -->
 
 ### plugin.load
 
-Time for one step of loading one plugin at boot.
+Time to import and check one plugin at boot.
 
-`attrs.step` names the step and `attrs.plugin` the plugin; `status` is `error` when the step failed and the plugin was left out.
+`attrs.plugin` names the plugin; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not imported again and not recorded.
 
-Recorded at [`packages/server/src/hmr/platform.ts:505`](../hmr/platform.ts#L505) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:461`](../hmr/platform.ts#L461) <!-- probe-site -->
 
 ### boot.plugins
 
 Time to load every installed plugin at boot, all steps together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:511`](../hmr/platform.ts#L511) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:467`](../hmr/platform.ts#L467) <!-- probe-site -->
 
 ### boot.module
 
@@ -36,13 +36,13 @@ Time to create one module of the server's module tree.
 
 `attrs.module` names the module. A slow one here is a module whose constructor or start does real work before the App can serve.
 
-Recorded at [`packages/server/src/hmr/platform.ts:564`](../hmr/platform.ts#L564) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:520`](../hmr/platform.ts#L520) <!-- probe-site -->
 
 ### boot.modules
 
 Time to create the whole module tree, every module together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:568`](../hmr/platform.ts#L568) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:524`](../hmr/platform.ts#L524) <!-- probe-site -->
 
 ### boot.create
 
@@ -50,7 +50,7 @@ Time from the start of the App's creation to the point it can serve.
 
 This spans the steps above (migrations, plugins, modules) plus everything between them.
 
-Recorded at [`packages/server/src/hmr/platform.ts:684`](../hmr/platform.ts#L684) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:99`](boot.ts#L99) <!-- probe-site -->
 
 ### boot.quiet
 
@@ -58,7 +58,7 @@ Time after boot until the background sweeps settle: session adoption and machine
 
 The App already serves while these run; a long one means machines or adopted sessions come back late.
 
-Recorded at [`packages/server/src/platform.ts:248`](../platform.ts#L248) <!-- probe-site -->
+Recorded at [`packages/server/src/platform.ts:243`](../platform.ts#L243) <!-- probe-site -->
 
 ### hmr.park
 
@@ -66,7 +66,7 @@ Time the previous generation spent parking its state for a hot update.
 
 Keyed by the previous generation (`keys.generation`). Recorded by the new generation, because the old one's buffer went with it.
 
-Recorded at [`packages/server/src/hmr/platform.ts:690`](../hmr/platform.ts#L690) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:104`](boot.ts#L104) <!-- probe-site -->
 
 ### hmr.dispose
 
@@ -74,7 +74,7 @@ Time the previous generation took to shut down after a hot update.
 
 Keyed by the previous generation, like `hmr.park`.
 
-Recorded at [`packages/server/src/hmr/platform.ts:693`](../hmr/platform.ts#L693) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:106`](boot.ts#L106) <!-- probe-site -->
 
 ### hmr.generation
 
@@ -82,7 +82,7 @@ One App generation was created: why, and how many times this bundle has been cre
 
 `n` is the generation number. `attrs.cause` is `boot`, `push` or `reassemble`; `attrs.creates` counts creates of the same bundle, and `attrs.repeat` is true when the same build was created again (a repeated push).
 
-Recorded at [`packages/server/src/hmr/platform.ts:697`](../hmr/platform.ts#L697) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:110`](boot.ts#L110) <!-- probe-site -->
 
 ### process.memory
 
@@ -90,7 +90,7 @@ The process's memory right after a generation was created.
 
 `bytes` is the resident set size; `attrs` carries `heapUsed`, `heapTotal` and `external`. Read it across generations: memory that only grows with each push is a generation that is not let go.
 
-Recorded at [`packages/server/src/hmr/platform.ts:703`](../hmr/platform.ts#L703) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:121`](boot.ts#L121) <!-- probe-site -->
 
 ### hmr.admit
 
@@ -98,7 +98,7 @@ Time the new generation took to answer a hot push's admission check.
 
 This is the first request a pushed generation receives, before it is swapped in; `attrs.code` is the status it answered.
 
-Recorded at [`packages/server/src/hmr/platform.ts:728`](../hmr/platform.ts#L728) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:148`](boot.ts#L148) <!-- probe-site -->
 
 ## Requests
 
@@ -106,9 +106,9 @@ Recorded at [`packages/server/src/hmr/platform.ts:728`](../hmr/platform.ts#L728)
 
 Time to answer one HTTP request, from arrival to the response being handed back.
 
-`attrs.method` and `attrs.route` name the route by its pattern (never the path), `attrs.code` is the status, `bytes` the response size — counted as it is written for a streamed answer — and `attrs.requestBytes` the request body. `keys.request` is the request id the page sends, so a slow page action can be matched to its request.
+`attrs.method` and `attrs.route` name the route by its pattern (never the path), `attrs.code` is the status, `bytes` the response size when the response declares one, and `attrs.requestBytes` the request body. `keys.request` is an id minted for the request, so the samples recorded while it runs (a `session.messages`, its `trace.read`) can be matched to it.
 
-Recorded at [`packages/server/src/http/app.ts:240`](../http/app.ts#L240) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/http.ts:29`](http.ts#L29) <!-- probe-site -->
 
 ## Sessions and turns
 
@@ -116,9 +116,9 @@ Recorded at [`packages/server/src/http/app.ts:240`](../http/app.ts#L240) <!-- pr
 
 Time for the session list's database query for one Agent.
 
-`n` is the number of rows it returned. One of three segments of a session-list read, with `sessions.list.reconcile` and `sessions.list.rows`.
+`n` is the number of rows it returned. With `sessions.list.reconcile`, part of one session-list read; the rest of the list request is the per-row work.
 
-Recorded at [`packages/server/src/services/session-service.ts:447`](../services/session-service.ts#L447) <!-- probe-site -->
+Recorded at [`packages/server/src/services/session-service.ts:438`](../services/session-service.ts#L438) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
@@ -126,55 +126,47 @@ Time to reconcile the Trace index while listing sessions, when some rows are not
 
 `n` is the number of Traces found. In the steady state this pass is skipped; seeing it often means rows keep arriving unclassified.
 
-Recorded at [`packages/server/src/services/session-service.ts:467`](../services/session-service.ts#L467) <!-- probe-site -->
-
-### sessions.list.rows
-
-Time to turn the session list's rows into the entries the page receives.
-
-`n` is the number of rows classified or converted.
-
-Recorded at [`packages/server/src/services/session-service.ts:491`](../services/session-service.ts#L491) <!-- probe-site -->
+Recorded at [`packages/server/src/services/session-service.ts:463`](../services/session-service.ts#L463) <!-- probe-site -->
 
 ### trace.reconcile
 
 Time for one pass that brings the Trace index up to date with the files on disk.
 
-`status` is `led` for the call that ran the pass and `shared` for a call that waited on a pass already running; `attrs.force` is true for a forced pass.
+`attrs.force` is true for a forced pass. A call that joined a pass already running records its own wait, with `attrs.shared` true.
 
-Recorded at [`packages/server/src/services/trace-index.ts:179`](../services/trace-index.ts#L179) <!-- probe-site -->
+Recorded at [`packages/server/src/services/trace-index.ts:162`](../services/trace-index.ts#L162) <!-- probe-site -->
 
 ### trace.read
 
 Time to read one Trace file from disk.
 
-`n` is the number of messages read and `bytes` the file size. `attrs.shard` is a hash of the file's path, never the path itself. Inside a `session.messages` read it carries that session's key.
+`n` is the number of messages read. Inside a `session.messages` read it carries that session's key.
 
-Recorded at [`packages/server/src/services/trace-service.ts:378`](../services/trace-service.ts#L378) <!-- probe-site -->
+Recorded at [`packages/server/src/services/trace-service.ts:356`](../services/trace-service.ts#L356) <!-- probe-site -->
 
 ### session.messages
 
 Time to read one window of a session's messages for the page.
 
-`n` is the number of messages returned and `bytes` what was read from disk; `attrs.shards` counts the Trace files read, `attrs.kind` says which window was asked for and `attrs.reachesEnd` whether it reached the newest message.
+`n` is the number of messages returned; `attrs.kind` says which window was asked for and `attrs.reachesEnd` whether it reached the newest message. The Trace files it read are its `trace.read` samples, under the same session and request.
 
-Recorded at [`packages/server/src/services/trace-service.ts:675`](../services/trace-service.ts#L675) <!-- probe-site -->
+Recorded at [`packages/server/src/services/trace-service.ts:642`](../services/trace-service.ts#L642) <!-- probe-site -->
 
 ### task.accept
 
-Time to accept a message sent to a session, from the call to its answer.
+Time to accept a message sent to a session, from the call to its answer, the wait for the session's lock included.
 
-`attrs.lockMs` is the share spent waiting for the session's lock and `attrs.queued` whether the message was queued behind a running turn.
+`attrs.queued` is whether the message was queued behind a running turn.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:1184`](../runtime/session-manager.ts#L1184) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:1165`](../runtime/session-manager.ts#L1165) <!-- probe-site -->
 
-### session.ensure
+### session.load
 
-Time to get a session ready to run: found in memory, loaded, or reloaded.
+Time to load a session that was not in memory, its history included.
 
-`attrs.outcome` is `hit` (already in memory), `load`, or `reload` (built before the Agent's last configuration change); a load adds `attrs.loadMs`, and `n` is the number of history messages the session was resumed with.
+`n` is the number of history messages the session was resumed with. A session already loaded is not recorded.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2094`](../runtime/session-manager.ts#L2094) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2100`](../runtime/session-manager.ts#L2100) <!-- probe-site -->
 
 ### turn.badge
 
@@ -182,7 +174,7 @@ Time to publish one change of a session's state: the list badge and the task sta
 
 `attrs.state` is the state published.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2598`](../runtime/session-manager.ts#L2598) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2529`](../runtime/session-manager.ts#L2529) <!-- probe-site -->
 
 ### turn.run
 
@@ -190,7 +182,7 @@ The whole of one turn on the server, with the model's share of it.
 
 `n` is the number of streamed messages. `attrs.modelMs` is the time between the model requests' begin and end, `attrs.requests` their count, and `attrs.serverMs` the sum of the `turn.*` segments. What remains is the engine's own time: tool calls, MCP, Trace writes.
 
-Recorded at [`packages/server/src/telemetry/turn.ts:95`](turn.ts#L95) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/turn.ts:126`](turn.ts#L126) <!-- probe-site -->
 
 ### turn.*
 
@@ -198,7 +190,7 @@ One segment of a turn's per-message work outside the model, summed over the turn
 
 The segments are `turn.tail` (the live tail), `turn.fanout` (publishing to the page's channel), `turn.errors` (the stream error watcher) and `turn.usage` (the usage recorder). `n` is how many messages the segment handled and `attrs.maxMs` the slowest one.
 
-Recorded at [`packages/server/src/telemetry/turn.ts:102`](turn.ts#L102) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/turn.ts:133`](turn.ts#L133) <!-- probe-site -->
 
 ## Machines
 
@@ -218,21 +210,13 @@ Time for one stage of connecting to a machine.
 
 Recorded at [`packages/server/src/machines/connect-stages.ts:54`](../machines/connect-stages.ts#L54) <!-- probe-site -->
 
-### machine.ssh.open
-
-Time to bring up an ssh session to a machine, until its first command came back.
-
-`status` is `error` when the session went away before any command answered; `attrs.held` says whether it was the held connection.
-
-Recorded at [`packages/server/src/machines/transport/ssh-session.ts:470`](../machines/transport/ssh-session.ts#L470) <!-- probe-site -->
-
 ### machine.ssh.command
 
-Time to run one command on a machine over its ssh session.
+Time to run one command on a machine over its ssh session, from the ask to the answer — its wait behind the session's other commands included.
 
-`attrs.waitMs` is the time spent queued behind other commands, `attrs.code` the exit code, `attrs.inputBytes` what it carried on stdin and `attrs.opening` whether it brought the session up. `status` is `timeout` when the machine never answered. The command's text is never recorded.
+`attrs.code` is the exit code and `attrs.inputBytes` what it carried on stdin. `status` is `timeout` when the machine never answered. The command's text is never recorded.
 
-Recorded at [`packages/server/src/machines/transport/ssh-session.ts:492`](../machines/transport/ssh-session.ts#L492) <!-- probe-site -->
+Recorded at [`packages/server/src/machines/transport/timings.ts:158`](../machines/transport/timings.ts#L158) <!-- probe-site -->
 
 ### machine.socks.handshake
 
