@@ -84,7 +84,7 @@ Recorded at [`packages/server/src/telemetry/boot.ts:94`](boot.ts#L94) <!-- probe
 
 ### process.memory
 
-How much 内存 does the server use? The process's total, as `attrs.memoryCost` in bytes.
+How much memory does the server use? The process's total, as `attrs.memoryCost` in bytes.
 
 Recorded after each creation and whenever telemetry is read. Read it across generations: a total that only grows with each hot push means an old generation was not let go.
 
@@ -166,7 +166,7 @@ Recorded at [`packages/server/src/runtime/session-manager.ts:2096`](../runtime/s
 
 ### session.memory
 
-Which session uses the most 内存? One sample per loaded session, as `attrs.memoryCost` in bytes.
+Which session uses the most memory? One sample per loaded session, as `attrs.memoryCost` in bytes.
 
 It adds up what the session holds: the history it was loaded with, the recent events kept so a page that reconnects can catch up, and the replies still streaming. Recorded whenever telemetry is read.
 
