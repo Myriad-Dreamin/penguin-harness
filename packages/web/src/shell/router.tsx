@@ -32,7 +32,7 @@ import {
 } from "react-router";
 import { NavigationGuard } from "../lib/unsaved/navigation-guard";
 import { useAuth } from "../state/auth";
-import { useRuntimeLanguages } from "../features/chat/use-runtime-languages";
+import { useRuntimeLanguages } from "../lib/use-runtime-languages";
 import { ProjectProvider } from "../state/project";
 import { MachinesProvider } from "../state/machines";
 import { SessionsProvider } from "../state/sessions";
