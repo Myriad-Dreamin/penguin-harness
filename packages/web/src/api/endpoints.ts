@@ -195,11 +195,12 @@ import type {
   SessionPatchRequest,
   SessionProcessesResponse,
   SessionResponse,
-  PluginIndexResponse,
+  PluginIndexEntry,
   PluginConfigResponse,
   PluginConfigActionResponse,
   PluginConfigUpdateRequest,
   LanguageIndexResponse,
+  PluginContentsResponse,
   PluginReadmeResponse,
   SessionsResponse,
   SessionsOverviewResponse,
@@ -1640,13 +1641,19 @@ export const installAgentPlugins = (projectId: string, agentId: string, names: s
   );
 
 /** Plugin index (available to any logged-in user): the merged index of every configured registry. */
-export const getPluginIndex = () => apiFetch<PluginIndexResponse>("/api/plugins/registry");
+export const getPluginIndex = () => apiFetch<PluginIndexEntry[]>("/api/plugins/registry");
 
 /** Languages plugins contributed; the grammars themselves are fetched by the highlighter. */
 export const getLanguages = () => apiFetch<LanguageIndexResponse>("/api/languages");
 
 export const getPluginReadme = (name: string) =>
   apiFetch<PluginReadmeResponse>(`/api/plugins/registry/readme?name=${encodeURIComponent(name)}`);
+
+/** Every content the index lists under one name, for its detail page. */
+export const getPluginContents = (name: string) =>
+  apiFetch<PluginContentsResponse>(
+    `/api/plugins/registry/contents?name=${encodeURIComponent(name)}`,
+  );
 
 export const getAgentSkills = (projectId: string, agentId: string) =>
   apiFetch<AgentSkillsResponse>(

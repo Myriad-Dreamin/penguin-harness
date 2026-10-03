@@ -4062,10 +4062,9 @@ export interface SkillArchiveInstallRequest {
 
 /**
  * One published version of a plugin — the index entry format every plugin registry
- * speaks (modeled on the typst/packages `index.json` schema: a flat array of
- * per-version entries; a plugin published at several versions appears once per
- * version). Installation is out of scope here: an entry's `name` is the package
- * specifier a Project's plugin list names.
+ * speaks: a flat array of per-version entries, so a plugin published at several
+ * versions appears once per version. Installation is out of scope here: an entry's
+ * `name` is the package specifier a Project's plugin list names.
  */
 export interface PluginIndexEntry {
   /** Package specifier — the string a Project's plugin list names. */
@@ -4085,17 +4084,15 @@ export interface PluginIndexEntry {
   categories?: string[];
   /** Unix timestamp (seconds) of the entry's last update. */
   updatedAt?: number;
-}
-
-/** GET /api/plugins/registry: the merged index of every configured registry (currently the builtin one). */
-export interface PluginIndexResponse {
-  plugins: PluginIndexEntry[];
   /**
-   * Sources that could not be read, by `source` and reason. Present and empty when every
-   * source answered. A remote index that is down shortens the listing rather than emptying
-   * it, so the page needs to be able to say so instead of silently showing less.
+   * `sha256-<64 hex digits>`: the entry's content, with the same algorithm as the plugin
+   * store's key (the deterministic archive of the package — scripts/plugin-entry.mjs). A
+   * fetched package is compared with it before it enters the store; an entry without one is
+   * listed and cannot be installed.
    */
-  failures: { source: string; error: string }[];
+  integrity?: string;
+  /** A yanked entry stays in its source as a record and is left out of the listing. */
+  yanked?: boolean;
 }
 
 /** GET /api/plugins/registry/readme — long-form docs for one entry; `readme` is null when none exists. */
@@ -4103,6 +4100,27 @@ export interface PluginReadmeResponse {
   name: string;
   /** Markdown, rendered by the Web App. Null when this entry has no readme. */
   readme: string | null;
+}
+
+/** One content of a plugin name, as its detail page lists it. */
+export interface PluginContent {
+  version: string;
+  /** `sha256-<hex>`; absent for an index entry that names none. */
+  integrity?: string;
+  /** In this machine's plugin store. */
+  stored: boolean;
+  /** Linked by the current generation, i.e. what this machine runs under the name. */
+  linked: boolean;
+}
+
+/**
+ * GET /api/plugins/registry/contents?name=… — every content the merged index lists under one
+ * name, highest version first. The Plugins page shows a name as one row; this is where the
+ * contents behind it are listed.
+ */
+export interface PluginContentsResponse {
+  name: string;
+  contents: PluginContent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -6874,3 +6892,6 @@ export interface DesktopBrowserEventMessage {
   type: "desktop-browser-event";
   event: DesktopBrowserEvent;
 }
+
+// The rule an install picks an index entry by, shared with the Plugins page (see plugin-pick.ts).
+export { compareVersions, pickIndexEntry, satisfies } from "./plugin-pick.js";

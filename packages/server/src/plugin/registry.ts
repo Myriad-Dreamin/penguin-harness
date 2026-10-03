@@ -1,25 +1,27 @@
 /**
  * Plugin registries: WHERE plugin index entries come from. A registry is one source
- * of `PluginIndexEntry` rows — the shared index format every registry speaks (see
- * api/types.ts; the schema follows typst/packages' `index.json`: a flat array of
- * per-version entries). Discovery only: a Project asks for an entry on the Plugins page
- * (http/routes/plugins-installed.ts), and nothing here imports plugin code.
+ * of `PluginIndexEntry` rows — the shared index format every registry speaks, a flat
+ * array of per-version entries (see api/types.ts). Discovery only: a Project asks for an
+ * entry on the Plugins page (http/routes/plugins-installed.ts), and nothing here imports
+ * plugin code.
  *
- * Two implementations, one contract:
- *   - the builtin registry serves the index embedded in this package
- *     (builtin-index.json — the four sandbox backends the workspace ships);
- *   - the HTTP registry fetches an `index.json` URL and runs it through the same
- *     validator, so a remote index is trusted no further than the embedded one.
- *
- * A deployment's list is the builtin registry plus the published index (see
- * NIGHTLY_INDEX_URL), merged in http/routes/plugins.ts.
+ * Three sources, one shape — every entry names its content (`integrity`, the plugin store's
+ * key), and `GET /api/plugins/registry` lists the three merged (`mergeIndexes`):
+ *   - the builtin registry serves the index the running BUILD carries: rebuilt by
+ *     scripts/build-plugins.mjs from the store-shaped tree of what it packed, shipped beside
+ *     the packages (`plugins/index.json` in a push's assets, or in the installation);
+ *   - the store registry serves what this machine's plugin store holds, read off its tree
+ *     (plugin/store.ts);
+ *   - the HTTP registry fetches the published `index.json` (see NIGHTLY_INDEX_URL), which the
+ *     index repository rebuilds from the same tree shape, and runs it through the same
+ *     validator — a remote index is trusted no further than the build's own.
  */
 import type { PluginIndexEntry } from "../api/types.js";
-import builtinIndex from "./builtin-index.json" with { type: "json" };
-import fs from "node:fs/promises";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { resolvePluginPackage } from "./loader.js";
 import type { PluginBase } from "./loader.js";
+import { readShippedIndex, readStore } from "./store.js";
 
 /** One source of plugin index entries; `source` identifies it for display and errors. */
 export interface PluginRegistry {
@@ -58,8 +60,20 @@ function asIndexEntry(value: unknown): PluginIndexEntry | null {
     if (e[key] !== undefined && !isStringArray(e[key])) return null;
   }
   if (e.updatedAt !== undefined && typeof e.updatedAt !== "number") return null;
+  // Optional, so an index from before it still lists — but a present one must be a key the
+  // store can use: a malformed integrity is a broken artifact, not an unpinned entry.
+  if (
+    e.integrity !== undefined &&
+    (typeof e.integrity !== "string" || !INTEGRITY.test(e.integrity))
+  ) {
+    return null;
+  }
+  if (e.yanked !== undefined && typeof e.yanked !== "boolean") return null;
   return value as PluginIndexEntry;
 }
+
+/** `sha256-<64 lowercase hex digits>`: an entry's content, the plugin store's key. */
+export const INTEGRITY = /^sha256-[0-9a-f]{64}$/;
 
 /**
  * Validates a whole index document. Strict, not per-entry-tolerant: an index is one
@@ -81,31 +95,57 @@ export function parsePluginIndex(data: unknown, source: string): PluginIndexEntr
 }
 
 export const BUILTIN_REGISTRY_SOURCE = "builtin";
+export const STORE_REGISTRY_SOURCE = "store";
+
+/** A package's own README.md, from wherever it is on this machine; null when it is not. */
+async function readmeOf(name: string, bases: readonly PluginBase[]): Promise<string | null> {
+  const found = resolvePluginPackage(name, bases);
+  if (found === null) return null;
+  try {
+    return await fsp.readFile(path.join(found.dir, "README.md"), "utf8");
+  } catch {
+    return null;
+  }
+}
 
 /**
- * The registry embedded in this package: the workspace's own plugin packages. The index is
- * the listing; a readme is the package's own README.md, read from wherever the package is on
- * this machine (`bases`: the shipped prefix, the data root's, the installation) — the file
- * npm shipped with it, never a second copy. A listed package that is not on this machine
+ * The index the running build carries (plugin/store.ts `readShippedIndex`): a push's before the
+ * installation's. Empty when neither has one: a run from source ships no prefix.
+ */
+export async function shippedIndex(assetsDir: string | null): Promise<PluginIndexEntry[]> {
+  const shipped = await readShippedIndex(assetsDir);
+  return shipped === null ? [] : parsePluginIndex(shipped.entries, BUILTIN_REGISTRY_SOURCE);
+}
+
+/**
+ * The registry of the running build: the index scripts/build-plugins.mjs rebuilt from what it
+ * packed (`shippedIndex`). A readme is the package's own README.md, read from wherever the
+ * package is on this machine (`bases`: the current generation, the shipped prefixes) — the
+ * file npm shipped with it, never a second copy. A listed package that is not on this machine
  * has none to show.
  */
 export function builtinPluginRegistry(
   bases: () => readonly PluginBase[] = () => [],
+  assetsDir: () => string | null = () => null,
 ): PluginRegistry {
   return {
     source: BUILTIN_REGISTRY_SOURCE,
-    // Validated like any other source: a broken embedded index should fail loudly
-    // in tests rather than serve garbage.
-    index: () => Promise.resolve(parsePluginIndex(builtinIndex, BUILTIN_REGISTRY_SOURCE)),
-    readme: async (name) => {
-      const found = resolvePluginPackage(name, bases());
-      if (found === null) return null;
-      try {
-        return await fs.readFile(path.join(found.dir, "README.md"), "utf8");
-      } catch {
-        return null;
-      }
-    },
+    // Validated like any other source: a broken shipped index fails loudly rather than
+    // serving garbage.
+    index: () => shippedIndex(assetsDir()),
+    readme: (name) => readmeOf(name, bases()),
+  };
+}
+
+/** The registry of this machine's plugin store: what it holds, read off its tree. */
+export function storePluginRegistry(
+  root: string,
+  bases: () => readonly PluginBase[] = () => [],
+): PluginRegistry {
+  return {
+    source: STORE_REGISTRY_SOURCE,
+    index: async () => parsePluginIndex(await readStore(root), STORE_REGISTRY_SOURCE),
+    readme: (name) => readmeOf(name, bases()),
   };
 }
 
@@ -275,46 +315,35 @@ export function cachedRegistry(
 }
 
 /**
- * Merge several registries into one listing, tolerating a source that fails.
+ * Merge several registries into one flat index, tolerating a source that fails.
  *
  * Deliberately unlike the within-document rule: a malformed row still kills its own index,
  * because that index is one publisher's single artifact, but a source that is unreachable,
- * misconfigured or serving garbage must not empty the page of everything else. The failure is
- * reported alongside the entries rather than swallowed, so the Web App can say which source is
- * down instead of quietly showing a shorter list.
+ * misconfigured or serving garbage must not empty the listing of everything else. A failed
+ * source is logged and leaves the listing shorter.
  *
- * On a name collision the FIRST source wins, and the builtin registry is listed first: what this
- * deployment actually ships is the truth about it, and a published index claiming the same
- * specifier does not get to describe a package the operator already has.
+ * An entry is one CONTENT: name, version and integrity. When several sources list the same
+ * content the FIRST one's entry is kept — the registries are in precedence order (the build,
+ * the store, the published index), so what this deployment ships is the truth about it. Two
+ * contents under one name and version are two entries. A yanked entry is left out.
  */
 export async function mergeIndexes(
   registries: readonly PluginRegistry[],
-): Promise<{ entries: PluginIndexEntry[]; failures: { source: string; error: string }[] }> {
+  log: (line: string) => void = console.warn,
+): Promise<PluginIndexEntry[]> {
   const settled = await Promise.all(
-    registries.map(async (r) => {
-      try {
-        return { source: r.source, entries: await r.index(), error: null };
-      } catch (err) {
-        return {
-          source: r.source,
-          entries: [] as PluginIndexEntry[],
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-    }),
+    registries.map((r) =>
+      r.index().catch((err: unknown) => {
+        log(`[plugins] ${r.source}: ${err instanceof Error ? err.message : String(err)}`);
+        return [] as PluginIndexEntry[];
+      }),
+    ),
   );
-  const seen = new Set<string>();
-  const entries: PluginIndexEntry[] = [];
-  for (const result of settled) {
-    for (const entry of result.entries) {
-      const key = `${entry.name}@${entry.version}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      entries.push(entry);
-    }
+  const merged = new Map<string, PluginIndexEntry>();
+  for (const entry of settled.flat()) {
+    if (entry.yanked === true) continue;
+    const key = `${entry.name}@${entry.version}#${entry.integrity ?? ""}`;
+    if (!merged.has(key)) merged.set(key, entry);
   }
-  const failures = settled
-    .filter((r) => r.error !== null)
-    .map((r) => ({ source: r.source, error: r.error! }));
-  return { entries, failures };
+  return [...merged.values()];
 }

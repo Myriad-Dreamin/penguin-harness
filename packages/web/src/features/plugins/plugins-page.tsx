@@ -48,6 +48,7 @@ import type {
   QuickStartItem,
   SkillMetadataItem,
 } from "@prismshadow/penguin-server/api";
+import { pickIndexEntry } from "@prismshadow/penguin-server/api";
 import {
   AgentAvatar,
   Button,
@@ -93,7 +94,7 @@ import { PluginDetailModal } from "./plugin-detail";
 import { SettingsDialog } from "../settings/settings-dialog";
 import { formatRelativeDate } from "../../lib/format";
 import { SkillTile } from "../skills/skill-icon-view";
-import { toneInk, toneSurface } from "../../lib/tone";
+import { toneInk } from "../../lib/tone";
 
 /**
  * What one Agent has installed, by name → the installed copy's version (`YYYY.MM.DD.N`, or ""
@@ -250,7 +251,6 @@ export function PluginsPage() {
    * instead of emptying it (the server merges tolerantly), so the page has to say so — a
    * silently shorter list reads as "that plugin does not exist".
    */
-  const [indexFailures, setIndexFailures] = useState<{ source: string; error: string }[]>([]);
   /** The specifier whose install or removal is running: the list is written one verb at a time. */
   const [pendingSpecifier, setPendingSpecifier] = useState<string | null>(null);
   const isAdmin = user?.isAdmin === true;
@@ -326,8 +326,7 @@ export function PluginsPage() {
     api.getPluginIndex().then(
       (res) => {
         if (cancelled) return;
-        setIndex(res.plugins);
-        setIndexFailures(res.failures ?? []);
+        setIndex(res);
       },
       () => {
         if (!cancelled) setIndex([]);
@@ -744,11 +743,6 @@ export function PluginsPage() {
               onDismiss={() => dismissTodo(projectId, "plugins", todo.signature)}
             />
           )}
-          {indexFailures.length > 0 && (
-            <Notice tone="attention" className="mt-4">
-              {S.pluginRegistry.sourceUnavailable(indexFailures.length)}
-            </Notice>
-          )}
           {remote !== null && "error" in remote && remote.machineId === viewMachine && (
             <Notice tone="attention" className="mt-4">
               {S.plugins.machineUnreadable(nameOf(remote.machineId), remote.error)}
@@ -1126,7 +1120,7 @@ export function installedPluginRows(
     rows.push({
       kind: "module",
       specifier: listed.specifier,
-      entry: index.find((e) => e.name === listed.specifier),
+      entry: indexEntryOf(index, listed.specifier),
       ...stateIn(listed, view, deployment?.machineId),
       shipped:
         listed.builtin || (view.remote ?? deployment)?.shipped.includes(listed.specifier) === true,
@@ -1141,8 +1135,22 @@ export function installedPluginRows(
 }
 
 /**
- * What could be asked for: the registry's entries this Project does not list yet, and what
- * the build ships that the registry does not know (offered with no description — the build
+ * The index entry a name's one row is shown by: the entry an install of it takes — the
+ * server's own rule (`pickIndexEntry`: the highest version with an integrity, the build's
+ * first within one version) — or, when no entry can be installed, the first one listed. Every
+ * other content under the name is on its detail page.
+ */
+export function indexEntryOf(
+  index: readonly PluginIndexEntry[],
+  name: string,
+): PluginIndexEntry | undefined {
+  const pick = pickIndexEntry(index, name, {});
+  return "refused" in pick ? index.find((e) => e.name === name) : pick;
+}
+
+/**
+ * What could be asked for: the index's entries this Project does not list yet, and what
+ * the build ships that the index does not know (offered with no description — the build
  * has it, so it is installable without a download).
  */
 export function availablePluginRows(
@@ -1161,9 +1169,10 @@ export function availablePluginRows(
   const shippedList = (view.remote ?? deployment)?.shipped ?? [];
   const seen = new Set<string>();
   const rows: ModulePluginRow[] = [];
-  for (const entry of index) {
-    if (listed.has(entry.name) || seen.has(entry.name)) continue;
-    seen.add(entry.name);
+  for (const { name } of index) {
+    if (listed.has(name) || seen.has(name)) continue;
+    seen.add(name);
+    const entry = indexEntryOf(index, name)!;
     rows.push({
       kind: "module",
       specifier: entry.name,
@@ -1804,6 +1813,12 @@ export function ModuleRow({
   const meta = [entry === undefined ? null : `v${entry.version}`, updated]
     .filter((v): v is string => v !== null)
     .join(" · ");
+  // An index entry that names no integrity: listed, but neither the build nor this machine's
+  // store has it, and a download could not be checked — Install says so instead of failing.
+  const cannotInstall =
+    state === "none" && !shipped && entry !== undefined && entry.integrity === undefined
+      ? S.plugins.cannotInstallHere
+      : null;
   const body = (
     <>
       <div className="flex items-center gap-3">
@@ -1856,6 +1871,9 @@ export function ModuleRow({
           {error}
         </p>
       )}
+      {cannotInstall !== null && (
+        <p className={`mt-1 text-xs ${toneInk.attention}`}>{cannotInstall}</p>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
         {(entry?.categories ?? []).map((category) => (
           <Tag key={category}>{category}</Tag>
@@ -1900,8 +1918,8 @@ export function ModuleRow({
                 className="h-8 shrink-0"
                 aria-label={`${busy ? S.plugins.installing : S.plugins.install} ${specifier}`}
                 aria-busy={busy}
-                title={busy ? S.plugins.installing : S.plugins.install}
-                disabled={busy || blocked}
+                title={cannotInstall ?? (busy ? S.plugins.installing : S.plugins.install)}
+                disabled={busy || blocked || cannotInstall !== null}
                 onClick={onInstall}
               >
                 {busy ? (

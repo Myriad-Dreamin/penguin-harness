@@ -2227,6 +2227,9 @@ export const zh = {
     stateActive: "运行中",
     builtin: "内置",
     builtinHint: "随本次构建自带：安装它不需要下载，但仍需你点安装才会加载。",
+    /** An index entry this machine cannot install, and why: the channels it is missing from. */
+    cannotInstallHere:
+      "此处无法安装：本次构建和本机插件仓里都没有它，索引条目也没有给出可用于校验下载的 integrity。",
     installedRestart: "待重启",
     stateFailed: "加载失败",
     replacesLabel: "替换",
@@ -2382,17 +2385,21 @@ export const zh = {
     readme: "说明文档",
     noReadme: "该插件暂无说明文档。",
     notFound: "找不到这个插件。",
-    /** Shown above the list when a source answered with nothing, so a short list is not read as a complete one. */
-    sourceUnavailable: (count: number): string =>
-      count === 1
-        ? "有 1 个插件来源无法访问，下面的列表可能不完整。"
-        : `有 ${count} 个插件来源无法访问，下面的列表可能不完整。`,
     repository: "源码仓库",
     homepage: "主页",
     authors: "作者",
     license: "许可证",
     copySpecifier: "复制包名",
     installHint: "在插件市场页安装：该行的「安装」按钮会为当前 Project 要求它。",
+    /** The contents listed under one name: the list shows only the one an install takes. */
+    contents: "全部内容",
+    contentsHint: "这个名字下列出的每一份内容。插件市场只显示一行，即安装会取的那一份。",
+    contentVersion: "版本",
+    contentIntegrity: "integrity（前 16 位）",
+    contentStored: "在本机仓",
+    contentLinked: "当前这一代链接",
+    contentNoIntegrity: "无",
+    yes: "是",
   },
 
   skills: {
