@@ -40,31 +40,15 @@ describe("StreamProbe", () => {
     vi.stubGlobal("performance", { now: () => times[Math.min(i++, times.length - 1)] });
   };
 
-  it("times the open from its start to the first version rendered after the history", () => {
+  it("times the open from its start to the first render after the history, with the request's own time", () => {
     const out: PerfSampleInput[] = [];
     const probe = new StreamProbe("s-1", 0, (s) => out.push(s));
     probe.fetched(30);
-    probe.frame(40, 45);
-    clock([160, 175]); // commit at 160, rendered at 175
-    probe.commit();
+    clock([175]);
     probe.loaded();
     probe.rendered();
     expect(out).toEqual([
-      {
-        probe: "web.session.open",
-        durMs: 175,
-        n: 1,
-        session: "s-1",
-        attrs: {
-          fetchMs: 30,
-          commits: 1,
-          reduceMs: 5,
-          waitMs: 120,
-          maxWaitMs: 120,
-          renderMs: 15,
-          maxRenderMs: 15,
-        },
-      },
+      { probe: "web.session.open", durMs: 175, session: "s-1", attrs: { fetchMs: 30 } },
     ]);
   });
 
@@ -77,63 +61,27 @@ describe("StreamProbe", () => {
     const probe = new StreamProbe("s-1", 0, (s) => out.push(s));
     probe.skipOpen();
     probe.taskState("running");
-    probe.frame(1000, 1002);
-    probe.frame(1010, 1011);
-    clock([1130, 1140, 1300, 1320]);
-    probe.commit();
+    clock([1000, 1140, 1320]); // the first frame, then two renders
+    probe.frame();
+    probe.frame();
     probe.rendered();
-    probe.frame(1200, 1204);
-    probe.commit();
     probe.rendered();
     probe.taskState("idle");
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({
-      probe: "web.turn",
-      durMs: 320,
-      n: 3,
-      attrs: { commits: 2, reduceMs: 7, waitMs: 230, maxWaitMs: 130, renderMs: 30 },
-    });
+    expect(out).toEqual([{ probe: "web.turn", durMs: 320, session: "s-1" }]);
   });
 });
 
 describe("bootSample", () => {
   const paint = (name: string, startTime: number) => ({ name, startTime }) as PerformanceEntry;
 
-  it("waits for the first contentful paint, then reads navigation, the entry script and the paints", () => {
-    expect(
-      bootSample(
-        { navigation: undefined, paints: [], entryScript: undefined },
-        { count: 0, blockingMs: 0 },
-      ),
-    ).toBeNull();
-    const sample = bootSample(
-      {
-        navigation: {
-          responseStart: 20,
-          domInteractive: 300,
-          domContentLoadedEventEnd: 310,
-          loadEventEnd: 0,
-        } as PerformanceNavigationTiming,
-        paints: [paint("first-paint", 400), paint("first-contentful-paint", 850)],
-        entryScript: { responseEnd: 250, transferSize: 0 } as PerformanceResourceTiming,
-      },
-      { count: 2, blockingMs: 90 },
-    );
-    expect(sample).toEqual({
+  it("waits for the first contentful paint, then says when it came and when the first byte did", () => {
+    expect(bootSample({ navigation: undefined, paints: [] })).toBeNull();
+    const navigation = { responseStart: 20 } as PerformanceNavigationTiming;
+    const paints = [paint("first-paint", 400), paint("first-contentful-paint", 850)];
+    expect(bootSample({ navigation, paints })).toEqual({
       probe: "web.boot",
       durMs: 850,
-      attrs: {
-        fcpMs: 850,
-        fpMs: 400,
-        longTasks: 2,
-        blockingMs: 90,
-        ttfbMs: 20,
-        domInteractiveMs: 300,
-        dclMs: 310,
-        entryMs: 250,
-        entryToPaintMs: 600,
-        entryCached: true,
-      },
+      attrs: { ttfbMs: 20 },
     });
   });
 });

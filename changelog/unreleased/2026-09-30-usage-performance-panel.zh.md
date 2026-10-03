@@ -13,10 +13,11 @@
 
 页面现在也记自己那一半。`/api/me` 带上 `telemetry`；为真时页面加载一小段采集代码，把只记形状的样本发到新的接收口 `POST /api/telemetry/samples`：
 
-- `web.session.open` 与 `web.turn`：会话历史的加载与之后每个 turn，从 socket 帧到渲染提交——reducer 用时、合并点的等待、渲染用时，打开那一次另记历史请求本身。
-- `web.socket.connect`：API socket 从握手到首条应答。
-- `web.sessions.fanout`：一次 session 列表刷新发出的请求数与最慢一条的用时。
-- `web.boot`（每页一次）与 `web.longtasks`：导航、入口脚本的下载、首次绘制与首次内容绘制（取自浏览器自己的计时），以及长任务与阻塞时长。
+- `web.session.open`：从打开会话到它的历史出现在屏幕上，另记历史请求本身的时间（`fetchMs`）。
+- `web.turn`：一条回复，从第一段流式内容到最后一次渲染。
+- `web.socket.connect`：API socket 从打开到收到服务端第一条消息。
+- `web.sessions.fanout`：一次会话列表刷新，另记其中最慢的请求（`slowestMs`）。
+- `web.boot`（每页一次）：到首次内容绘制，另记到服务端第一个字节的时间（`ttfbMs`）；`web.longtasks`：主线程上超过 50 ms 的阻塞，记次数与最长一次。
 
 接收口收任何已登录用户的样本，但只收 `web.*` 采集点、数字与短字符串，每次至多 200 条；开关关着时答 `409 telemetry_off`，页面的采集随之停下。遥测关着时页面不加载采集代码，也不加观察器、监听、定时器或请求。
 

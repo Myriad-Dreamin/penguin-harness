@@ -435,7 +435,6 @@ export interface TelemetryBrowserSamplesRequest {
     probe: string;
     durMs?: number;
     bytes?: number;
-    n?: number;
     status?: string;
     session?: string;
     attrs?: Record<string, string | number | boolean>;

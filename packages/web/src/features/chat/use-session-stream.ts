@@ -188,7 +188,7 @@ export function useSessionStream(
   const rafRef = useRef<number | null>(null);
   const throttleRef = useRef<number | null>(null);
   const lastBumpAtRef = useRef(0);
-  /** Telemetry's view of this session's frames and commits (lib/perf); null while it is off. */
+  /** Telemetry's view of this session's open and turns (lib/perf); null while it is off. */
   const probeRef = useRef<StreamProbe | null>(null);
 
   // Coalesce high-frequency deltas: multiple pushes within one frame trigger only a single
@@ -202,7 +202,6 @@ export function useSessionStream(
     if (rafRef.current !== null || throttleRef.current !== null) return;
     const commit = () => {
       lastBumpAtRef.current = Date.now();
-      probeRef.current?.commit();
       setVersion((v) => v + 1);
     };
     const wait = lastBumpAtRef.current + BUMP_MIN_INTERVAL_MS - Date.now();
@@ -284,11 +283,8 @@ export function useSessionStream(
     const timedFrame =
       <A extends unknown[]>(handle: (...args: A) => void) =>
       (...args: A) => {
-        const probe = probeRef.current;
-        if (probe === null) return handle(...args);
-        const start = performance.now();
+        probeRef.current?.frame();
         handle(...args);
-        probe.frame(start, performance.now());
       };
 
     const controller = createStreamController({
@@ -371,7 +367,7 @@ export function useSessionStream(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // The render segment ends here: React has committed this version to the DOM.
+  // A render ends here: React has committed this version to the DOM.
   useLayoutEffect(() => {
     probeRef.current?.rendered();
   }, [version]);

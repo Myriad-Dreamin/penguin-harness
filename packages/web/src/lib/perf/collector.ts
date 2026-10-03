@@ -25,7 +25,6 @@ export interface PerfSampleInput {
   probe: string;
   durMs?: number;
   bytes?: number;
-  n?: number;
   status?: string;
   session?: string;
   attrs?: Record<string, string | number | boolean>;
@@ -65,30 +64,14 @@ const LONG_TASK_BUDGET_MS = 50;
 const round = (ms: number): number => Math.round(ms * 10) / 10;
 
 /**
- * One session's timings: its history load, then every turn, split into the segments the page
- * spends between a socket frame and what is on screen.
- *
- * - reduce: time inside the stream controller's handlers (the frame's reducer work);
- * - wait: from the first frame after a commit to the next commit — the coalescing point's
- *   delay (one animation frame, and at least 120 ms between commits);
- * - render: from that commit to React's layout effect for it — rendering the new model.
- *
- * The open sample adds `fetchMs`, the history request itself. A turn runs from the first
- * frame after the session goes `running` to the last render before it leaves it.
+ * One session's timings in the page: opening it (from the start to the first render after its
+ * history arrived, with the history request's own time as `fetchMs`), and each turn (from its
+ * first streamed frame to its last render).
  */
 export class StreamProbe {
   #open: { at: number; fetchMs: number } | null;
-  #frames = 0;
-  #reduceMs = 0;
-  #waitMs = 0;
-  #maxWaitMs = 0;
-  #renderMs = 0;
-  #maxRenderMs = 0;
-  #commits = 0;
   #firstFrameAt: number | null = null;
   #lastRenderAt: number | null = null;
-  #pendingFrameAt: number | null = null;
-  #commitAt: number | null = null;
   #inTurn = false;
   #loaded = false;
 
@@ -105,38 +88,26 @@ export class StreamProbe {
     if (this.#open !== null) this.#open.fetchMs += ms;
   }
 
-  /** One socket frame through the controller: `start`/`end` bracket its reducer work. */
-  frame(start: number, end: number): void {
-    this.#frames += 1;
-    this.#reduceMs += end - start;
-    this.#firstFrameAt ??= start;
-    this.#pendingFrameAt ??= start;
+  /** A socket frame arrived for this session. */
+  frame(): void {
+    this.#firstFrameAt ??= performance.now();
   }
 
-  /** The coalescing point committed a new model version. */
-  commit(): void {
-    const now = performance.now();
-    if (this.#pendingFrameAt !== null) {
-      const wait = now - this.#pendingFrameAt;
-      this.#waitMs += wait;
-      this.#maxWaitMs = Math.max(this.#maxWaitMs, wait);
-      this.#pendingFrameAt = null;
-    }
-    this.#commitAt ??= now;
-  }
-
-  /** React ran the layout effects of a committed version. */
+  /** React rendered a new version of the session's messages. */
   rendered(): void {
-    if (this.#commitAt === null) return;
     const now = performance.now();
-    const render = now - this.#commitAt;
-    this.#commitAt = null;
-    this.#commits += 1;
-    this.#renderMs += render;
-    this.#maxRenderMs = Math.max(this.#maxRenderMs, render);
     this.#lastRenderAt = now;
     // The open ends with the first version rendered after the history arrived.
-    if (this.#open !== null && this.#loaded) this.#finishOpen(now);
+    if (this.#open !== null && this.#loaded) {
+      this.add({
+        probe: "web.session.open",
+        durMs: round(now - this.#open.at),
+        session: this.sessionId,
+        attrs: { fetchMs: round(this.#open.fetchMs) },
+      });
+      this.#open = null;
+      this.#reset();
+    }
   }
 
   /** The probe arrived after the history had loaded: no open sample, turns only. */
@@ -157,101 +128,40 @@ export class StreamProbe {
       this.#inTurn = true;
     } else if (state !== "running" && this.#inTurn) {
       this.#inTurn = false;
-      if (this.#open === null) this.#finishTurn();
+      if (this.#open !== null) return;
+      if (this.#firstFrameAt !== null && this.#lastRenderAt !== null) {
+        this.add({
+          probe: "web.turn",
+          durMs: round(this.#lastRenderAt - this.#firstFrameAt),
+          session: this.sessionId,
+        });
+      }
+      this.#reset();
     }
   }
 
-  #finishOpen(now: number): void {
-    const open = this.#open;
-    if (open === null) return;
-    this.add({
-      probe: "web.session.open",
-      durMs: round(now - open.at),
-      n: this.#frames,
-      session: this.sessionId,
-      attrs: {
-        fetchMs: round(open.fetchMs),
-        ...this.#segments(),
-      },
-    });
-    this.#open = null;
-    this.#reset();
-  }
-
-  #finishTurn(): void {
-    if (this.#firstFrameAt === null || this.#lastRenderAt === null) return this.#reset();
-    this.add({
-      probe: "web.turn",
-      durMs: round(this.#lastRenderAt - this.#firstFrameAt),
-      n: this.#frames,
-      session: this.sessionId,
-      attrs: this.#segments(),
-    });
-    this.#reset();
-  }
-
-  #segments(): Record<string, number> {
-    return {
-      commits: this.#commits,
-      reduceMs: round(this.#reduceMs),
-      waitMs: round(this.#waitMs),
-      maxWaitMs: round(this.#maxWaitMs),
-      renderMs: round(this.#renderMs),
-      maxRenderMs: round(this.#maxRenderMs),
-    };
-  }
-
   #reset(): void {
-    this.#frames = 0;
-    this.#reduceMs = 0;
-    this.#waitMs = 0;
-    this.#maxWaitMs = 0;
-    this.#renderMs = 0;
-    this.#maxRenderMs = 0;
-    this.#commits = 0;
     this.#firstFrameAt = null;
     this.#lastRenderAt = null;
-    this.#pendingFrameAt = null;
   }
 }
 
-/** The boot figures the browser already holds, as one sample; null until the first contentful paint is known. */
-export function bootSample(
-  entries: {
-    navigation: PerformanceNavigationTiming | undefined;
-    paints: readonly PerformanceEntry[];
-    entryScript: PerformanceResourceTiming | undefined;
-  },
-  longTasks: { count: number; blockingMs: number },
-): PerfSampleInput | null {
+/**
+ * The page's boot as one sample: until the first contentful paint, with `ttfbMs` (until the
+ * server's first byte arrived); null until that paint is known.
+ */
+export function bootSample(entries: {
+  navigation: PerformanceNavigationTiming | undefined;
+  paints: readonly PerformanceEntry[];
+}): PerfSampleInput | null {
   const fcp = entries.paints.find((p) => p.name === "first-contentful-paint");
   if (fcp === undefined) return null;
-  const fp = entries.paints.find((p) => p.name === "first-paint");
-  const nav = entries.navigation;
-  const script = entries.entryScript;
-  const attrs: Record<string, number | boolean> = {
-    fcpMs: round(fcp.startTime),
-    longTasks: longTasks.count,
-    blockingMs: round(longTasks.blockingMs),
-  };
-  if (fp !== undefined) attrs.fpMs = round(fp.startTime);
-  if (nav !== undefined) {
-    attrs.ttfbMs = round(nav.responseStart);
-    attrs.domInteractiveMs = round(nav.domInteractive);
-    if (nav.domContentLoadedEventEnd > 0) attrs.dclMs = round(nav.domContentLoadedEventEnd);
-    if (nav.loadEventEnd > 0) attrs.loadMs = round(nav.loadEventEnd);
-  }
-  if (script !== undefined) {
-    attrs.entryMs = round(script.responseEnd);
-    // From the entry script's last byte to the first contentful paint: parse, run, mount.
-    attrs.entryToPaintMs = round(fcp.startTime - script.responseEnd);
-    attrs.entryCached = script.transferSize === 0;
-  }
   return {
     probe: "web.boot",
     durMs: round(fcp.startTime),
-    ...(script !== undefined && script.transferSize > 0 ? { bytes: script.transferSize } : {}),
-    attrs,
+    ...(entries.navigation !== undefined
+      ? { attrs: { ttfbMs: round(entries.navigation.responseStart) } }
+      : {}),
   };
 }
 
@@ -280,31 +190,16 @@ export function startCollector(opts: { onRefused: () => void }): PerfCollector {
     queue.push(sample);
   };
 
-  const entryScript = (): PerformanceResourceTiming | undefined => {
-    const src = document.querySelector<HTMLScriptElement>("script[type=module][src]")?.src;
-    if (src === undefined) return undefined;
-    return performance.getEntriesByName(src, "resource")[0] as
-      PerformanceResourceTiming | undefined;
-  };
-
   const tryBoot = () => {
     if (bootSent) return;
-    const sample = bootSample(
-      {
-        navigation: performance.getEntriesByType("navigation")[0] as
-          PerformanceNavigationTiming | undefined,
-        paints,
-        entryScript: entryScript(),
-      },
-      { count: longTaskCount, blockingMs: longTaskBlockingMs },
-    );
+    const sample = bootSample({
+      navigation: performance.getEntriesByType("navigation")[0] as
+        PerformanceNavigationTiming | undefined,
+      paints,
+    });
     if (sample === null) return;
     bootSent = true;
     add(sample);
-    // The boot sample carried the long tasks so far; the windows after it start from zero.
-    longTaskCount = 0;
-    longTaskBlockingMs = 0;
-    longTaskMaxMs = 0;
   };
 
   let observer: PerformanceObserver | null = null;
@@ -332,8 +227,7 @@ export function startCollector(opts: { onRefused: () => void }): PerfCollector {
       add({
         probe: "web.longtasks",
         durMs: round(longTaskBlockingMs),
-        n: longTaskCount,
-        attrs: { maxMs: round(longTaskMaxMs) },
+        attrs: { count: longTaskCount, maxMs: round(longTaskMaxMs) },
       });
       longTaskCount = 0;
       longTaskBlockingMs = 0;
