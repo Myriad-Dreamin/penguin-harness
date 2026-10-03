@@ -57,3 +57,10 @@ export type {
 export type { Http, HttpSlots } from "../http/app.js";
 export type { WebShell, WebShellSlots } from "../http/routes/contributions.js";
 export type { SessionSurfaces, SessionSurfacesSlots } from "../runtime/session-surfaces.js";
+export type {
+  WorkflowFolderView,
+  WorkflowLoader,
+  WorkflowLoadOutcome,
+  WorkflowLoadRequest,
+  WorkflowVersion,
+} from "../mechanisms/workflows.js";
