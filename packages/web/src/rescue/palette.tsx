@@ -17,14 +17,14 @@ import { useEffect, useMemo, useState } from "react";
 import type { HostCommand, HostCommandOffer } from "@prismshadow/penguin-server/api";
 import { CommandPalette, toastError, toastInfo } from "@prismshadow/penguin-ui";
 import type { PaletteAction } from "@prismshadow/penguin-ui";
-import { onCommand } from "../../lib/shortcuts/dispatcher";
-import { useShortcutLabel } from "../../lib/shortcuts/use-keymap";
-import { S } from "../../lib/strings";
-import * as api from "../../api/endpoints";
-import { apiErrorText } from "../../lib/api-error";
-import { useAuth } from "../../state/auth";
-import { useLocale } from "../../state/locale";
-import { HarnessHistoryOverlay } from "../harness/harness-history-overlay";
+import { onCommand } from "../lib/shortcuts/dispatcher";
+import { useShortcutLabel } from "../lib/shortcuts/use-keymap";
+import { S } from "../lib/strings";
+import * as api from "../api/endpoints";
+import { apiErrorText } from "../lib/api-error";
+import { useAuth } from "../state/auth";
+import { useLocale } from "../state/locale";
+import { HarnessHistoryOverlay } from "./harness-history-overlay";
 
 /** A mount point with nothing to add shares one empty list, so the action memo stays put. */
 const NO_EXTRA: readonly PaletteAction[] = [];
