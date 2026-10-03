@@ -12,7 +12,7 @@ Recorded once per App generation — at process start, after a hot push, and whe
 
 Is starting slow because of the database? The time to bring its schema up to date.
 
-Recorded at [`packages/server/src/hmr/platform.ts:376`](../hmr/platform.ts#L376) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:369`](../hmr/platform.ts#L369) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@ Is starting slow because of one plugin? The time to import and check that plugin
 
 `attrs.plugin` names it; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not loaded again and not recorded.
 
-Recorded at [`packages/server/src/hmr/platform.ts:476`](../hmr/platform.ts#L476) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:469`](../hmr/platform.ts#L469) <!-- probe-site -->
 
 ### boot.plugins
 
 How long did loading all plugins take? Every installed plugin together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:482`](../hmr/platform.ts#L482) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:475`](../hmr/platform.ts#L475) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@ Is starting slow because of one part of the server? The time to create that modu
 
 `attrs.module` names the module.
 
-Recorded at [`packages/server/src/hmr/platform.ts:554`](../hmr/platform.ts#L554) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:528`](../hmr/platform.ts#L528) <!-- probe-site -->
 
 ### boot.modules
 
 How long did creating the server's parts take? Every module together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:558`](../hmr/platform.ts#L558) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:532`](../hmr/platform.ts#L532) <!-- probe-site -->
 
 ### boot.create
 
@@ -56,7 +56,7 @@ How long until everything was back after a start? The time until sessions were a
 
 The App already serves while these run; a long one means machines or sessions came back late.
 
-Recorded at [`packages/server/src/platform.ts:244`](../platform.ts#L244) <!-- probe-site -->
+Recorded at [`packages/server/src/platform.ts:246`](../platform.ts#L246) <!-- probe-site -->
 
 ### hmr.park
 
@@ -116,7 +116,7 @@ Is the sidebar's session list slow in the database? The time of its query.
 
 `attrs.rows` is how many sessions it returned.
 
-Recorded at [`packages/server/src/services/session-service.ts:558`](../services/session-service.ts#L558) <!-- probe-site -->
+Recorded at [`packages/server/src/services/session-service.ts:499`](../services/session-service.ts#L499) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
@@ -124,7 +124,7 @@ Is the session list slow because the Trace index is catching up? The time of tha
 
 `attrs.traces` is how many Traces it found. Usually skipped; seeing it often means sessions keep arriving that the index has not seen.
 
-Recorded at [`packages/server/src/services/session-service.ts:580`](../services/session-service.ts#L580) <!-- probe-site -->
+Recorded at [`packages/server/src/services/session-service.ts:521`](../services/session-service.ts#L521) <!-- probe-site -->
 
 ### trace.reconcile
 
@@ -154,7 +154,7 @@ Is sending a message slow to be accepted? The time from the send to the server's
 
 It includes waiting for the session's lock; `attrs.queued` is whether the message waited behind a running turn.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:1198`](../runtime/session-manager.ts#L1198) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:1195`](../runtime/session-manager.ts#L1195) <!-- probe-site -->
 
 ### session.load
 
@@ -162,7 +162,7 @@ Is a session slow to start working? The time to load one that was not in memory,
 
 `attrs.messages` is how many history messages it was loaded with. A session already in memory is not recorded.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2118`](../runtime/session-manager.ts#L2118) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2115`](../runtime/session-manager.ts#L2115) <!-- probe-site -->
 
 ### session.memory
 
@@ -170,7 +170,7 @@ Which session uses the most memory? One sample per loaded session, as `attrs.mem
 
 It adds up what the session holds: the history it was loaded with, the recent events kept so a page that reconnects can catch up, and the replies still streaming. Recorded whenever telemetry is read.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:968`](../runtime/session-manager.ts#L968) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:965`](../runtime/session-manager.ts#L965) <!-- probe-site -->
 
 ## Machines
 
