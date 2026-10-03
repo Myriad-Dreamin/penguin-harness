@@ -14,7 +14,7 @@ vi.mock("../src/api/endpoints", () => ({
 }));
 
 const { ApiError } = await import("../src/api/client");
-const { createCompanyStore } = await import("../src/state/company");
+const { createCompanyStore } = await import("../src/features/company/company-state");
 const { forgetOrgMachines, machineForOrg } = await import("../src/lib/org-machines");
 
 const org = (orgId: string, over: Partial<OrganizationSummary> = {}): OrganizationSummary =>
