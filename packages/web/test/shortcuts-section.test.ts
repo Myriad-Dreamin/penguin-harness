@@ -105,8 +105,9 @@ describe("ShortcutsSection", () => {
   });
 
   it("notes a chord the browser also uses, muted, and names the desktop menu's claim first in the desktop app", () => {
-    // Save's default takes over the browser's Save Page; no other default touches the browser.
-    expect(count(render(), S.shortcuts.browserCommon)).toBe(1);
+    // Save's default takes over the browser's Save Page and the palette's Firefox's new private
+    // window; no other default touches the browser.
+    expect(count(render(), S.shortcuts.browserCommon)).toBe(2);
     configureKeybindingsStoreForTests({
       storage: keybindings({ v: 1, linux: { "palette.toggle": "Mod+KeyR" } }),
     });
