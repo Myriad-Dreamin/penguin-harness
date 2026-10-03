@@ -23,9 +23,8 @@ import {
   dispatchChatDefaultsChanged,
   type ChatDefaultsChangedDetail,
 } from "../../chat/chat-defaults-event";
-import { ModelCatalogSelect, modelLabel } from "../../chat/model-select";
-import { SELECTABLE_THINKING_LEVELS } from "../../chat/thinking-level";
-import { WorkspaceSelect } from "../../chat/workspace-select";
+import { ModelCatalogSelect, SELECTABLE_THINKING_LEVELS, modelLabel } from "../../model-picker";
+import { WorkspaceSelect } from "../../workspace";
 import { sameModelRef } from "../../models/model-grouping";
 
 /** Approval modes offered by the new-chat-defaults select, in the composer menu's order. */

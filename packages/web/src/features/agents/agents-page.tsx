@@ -83,7 +83,7 @@ import {
   fileToBase64,
 } from "./snapshot-file";
 import { InstallFromGistDialog } from "./install-dialog";
-import { WorkspaceSelect } from "../chat/workspace-select";
+import { WorkspaceSelect } from "../workspace";
 import { SkillPickList } from "../skills/skill-pick-list";
 import type { PickableItem } from "../skills/skill-pick-list";
 import { addSkillNames, removeSkillNames, toggleSkillName } from "../skills/skill-selection";
