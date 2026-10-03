@@ -266,6 +266,7 @@ import type {
   BuiltinBrowserStatus,
   BuiltinBrowserTab,
   DesktopBrowserCommand,
+  WorkspacePullRequestResponse,
 } from "@prismshadow/penguin-server/api";
 import type { MCPServerConfig } from "@prismshadow/penguin-core/interfaces";
 import { apiFetch, apiFetchWithMeta } from "./client";
@@ -1371,6 +1372,10 @@ export const getUsage = (
 
 export const deleteAgent = (projectId: string, agentId: string) =>
   apiFetch<void>(`/api/projects/${projectId}/agents/${agentId}`, { method: "DELETE" });
+
+/** The open pull request this Session's Workspace is on, or `{ pullRequest: null }`. */
+export const getWorkspacePullRequest = (sessionId: string) =>
+  apiFetch<WorkspacePullRequestResponse>(`/api/sessions/${sessionId}/pull-request`);
 
 export const listWorkspaceFiles = (sessionId: string, path: string) =>
   apiFetch<WorkspaceFilesResponse>(`/api/sessions/${sessionId}/files`, { query: { path } });
