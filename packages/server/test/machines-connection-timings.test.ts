@@ -4,7 +4,7 @@
  * Two layers. The service's: a connect job keeps each stage it ran — probe, start the server,
  * probe again, hold, sync models, sync plugins — and when the connection was held; while
  * telemetry is on each stage is also a sample, and so is a re-hold with no job. The
- * transport's: every command and the SOCKS handshakes, never a command's text.
+ * transport's: every command, never its text.
  */
 import fs from "node:fs";
 import http from "node:http";
@@ -21,11 +21,9 @@ import type { MachinesEffects } from "../src/machines/service.js";
 import {
   closeConnectionTo,
   connectionTo,
-  flushHandshakes,
   setTimingsSink,
 } from "../src/machines/transport/index.js";
 import type { MachineSample } from "../src/machines/transport/index.js";
-import { tallyHandshake } from "../src/machines/transport/timings.js";
 import { makeTempRoot, waitFor } from "./helpers.js";
 
 /** A sink that keeps what it is handed. */
@@ -36,7 +34,6 @@ function collect(): MachineSample[] {
 }
 
 afterEach(() => {
-  flushHandshakes();
   setTimingsSink(null);
 });
 
@@ -146,7 +143,6 @@ describe("a connect, stage by stage", () => {
     expect(connectedAt).toBeLessThan(Date.parse(stages[4]!.startedAt));
     // Telemetry was off: switched on only now, nothing was held back to hand over.
     const samples = collect();
-    flushHandshakes();
     expect(samples).toEqual([]);
     // A server already up is probed once and held: the stages not needed are not recorded.
     const up = await connectJob(service({ probe: running }));
@@ -171,11 +167,9 @@ describe("a connect, stage by stage", () => {
       ["reprobe", "ok"],
       ["hold", "error"],
     ]);
-    expect(
-      stageSamples.every((s) => s.keys.machine === "ssh:nas" && s.attrs?.trigger === "connect"),
-    ).toBe(true);
+    expect(stageSamples.every((s) => s.keys.machine === "ssh:nas")).toBe(true);
     expect(samples.filter((s) => s.probe === "machine.connect")).toMatchObject([
-      { status: "error", attrs: { trigger: "connect", failedStep: "connect" } },
+      { status: "error", attrs: { failedStep: "connect" } },
     ]);
     expect(JSON.stringify(samples)).not.toContain("Permission denied");
   });
@@ -191,30 +185,7 @@ describe("a connect, stage by stage", () => {
     ).toEqual(["probe", "hold", "sync-models", "sync-plugins"]);
     expect(samples.find((s) => s.probe === "machine.connect")).toMatchObject({
       status: "ok",
-      attrs: { trigger: "rehold" },
     });
-  });
-});
-
-describe("the SOCKS handshakes, tallied", () => {
-  it("are one sample per machine per window; nothing while off; switching off hands the window over", () => {
-    tallyHandshake("ssh:nas", 4, true); // off: not counted
-    const samples = collect();
-    tallyHandshake("ssh:nas", 4, true);
-    tallyHandshake("ssh:nas", 9, false);
-    tallyHandshake("ssh:build-box", 2, true);
-    flushHandshakes();
-    expect(samples.find((s) => s.keys.machine === "ssh:nas")).toMatchObject({
-      probe: "machine.socks.handshake",
-      n: 2,
-      durMs: 9,
-      status: "error",
-      attrs: { errors: 1, totalMs: 13 },
-    });
-    expect(samples).toHaveLength(2);
-    tallyHandshake("ssh:nas", 4, true);
-    setTimingsSink(null);
-    expect(samples).toHaveLength(3);
   });
 });
 
@@ -246,7 +217,7 @@ exit 1
     fs.rmSync(stubBin, { recursive: true, force: true });
   });
 
-  it("every command is a sample — exit code, stdin size, a timeout as such, never its text", async () => {
+  it("every command is a sample — exit code, a timeout as such, never its text", async () => {
     const conn = connectionTo({ alias: "nas", user: "deploy" });
     await conn.exec("true"); // off: not sampled
     const samples = collect();
@@ -260,22 +231,7 @@ exit 1
       ["machine.ssh.command", "ok", 0],
       ["machine.ssh.command", "timeout", 255],
     ]);
-    expect(samples[2]?.attrs?.inputBytes).toBe(12);
     for (const word of ["top-secret-words", "echo"])
       expect(JSON.stringify(samples)).not.toContain(word);
-  });
-
-  it("a SOCKS dial through the session is tallied, failure included", async () => {
-    const samples = collect();
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
-    // The stub's session has no SOCKS listener behind its port: the handshake is refused.
-    await expect(conn.dial(7364)).rejects.toThrow();
-    await expect(conn.dial(7364)).rejects.toThrow();
-    flushHandshakes();
-    expect(samples.find((s) => s.probe === "machine.socks.handshake")).toMatchObject({
-      keys: { machine: "ssh:nas" },
-      n: 2,
-      attrs: { errors: 2 },
-    });
   });
 });

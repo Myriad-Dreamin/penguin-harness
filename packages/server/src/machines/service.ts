@@ -1137,7 +1137,6 @@ export class MachinesService {
   ): Promise<MachineJob["result"]> {
     const clock = new ConnectClock(
       machine.id,
-      job?.kind ?? "rehold",
       this.#effects.now,
       job === null ? null : (job.stages ??= []),
     );

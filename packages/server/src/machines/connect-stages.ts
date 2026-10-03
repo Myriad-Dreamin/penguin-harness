@@ -12,9 +12,6 @@
 import type { MachineConnectStage, MachineJob, MachineStageTiming } from "../api/types.js";
 import { emit, round, timingsSink } from "./transport/index.js";
 
-/** Who asked for the connect: a job's kind, or the standing re-hold. */
-export type ConnectTrigger = MachineJob["kind"] | "rehold";
-
 export class ConnectClock {
   /** Where the stages are kept — the job's own list — or null when nobody keeps them. */
   readonly #kept: MachineStageTiming[] | null;
@@ -23,7 +20,6 @@ export class ConnectClock {
 
   constructor(
     private readonly address: string,
-    private readonly trigger: ConnectTrigger,
     private readonly now: () => Date,
     kept: MachineStageTiming[] | null,
   ) {
@@ -55,7 +51,7 @@ export class ConnectClock {
           durMs: round(performance.now() - t0),
           status: passed ? "ok" : "error",
           keys: { machine: this.address },
-          attrs: { stage, trigger: this.trigger },
+          attrs: { stage },
         });
       }
     }
@@ -70,10 +66,7 @@ export class ConnectClock {
       durMs: round(performance.now() - this.#t0),
       status: result?.ok === true ? "ok" : "error",
       keys: { machine: this.address },
-      attrs: {
-        trigger: this.trigger,
-        ...(result !== null && !result.ok ? { failedStep: result.step } : {}),
-      },
+      ...(result !== null && !result.ok ? { attrs: { failedStep: result.step } } : {}),
     });
   }
 }
