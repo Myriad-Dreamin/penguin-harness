@@ -31,7 +31,7 @@ import { useAuth } from "../../state/auth";
 import { AppInfoRow } from "../../components/account/app-info-row";
 import { openAppInfo } from "../../lib/use-update-flow";
 import { SettingsDialog } from "../../features/settings/settings-dialog";
-import { onSettingsRequest } from "../../features/settings/settings-request";
+import { onSettingsRequest } from "../../lib/settings-request";
 import type { SettingsSectionKey } from "../../lib/settings-sections";
 import { meAvatarUrl } from "../../api/endpoints";
 
