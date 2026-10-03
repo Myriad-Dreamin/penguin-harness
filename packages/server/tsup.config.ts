@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsup";
 import { FAR_SIDE_SCRIPTS } from "../../scripts/far-side-scripts.mjs";
+import { probeSitesDefine } from "../../scripts/probe-sites.mjs";
 
 export default defineConfig({
   // Explicitly name entries to preserve subpath exports: "./api", "./lock",
@@ -41,6 +42,8 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
+  // Where each telemetry probe is recorded, for the performance panel's links (see that module).
+  define: probeSitesDefine(["packages/server/src"]),
   // The hot-update mechanism is a package for the boundary, not for npm (it is `private`):
   // inlined here so this package's published dist stays self-contained.
   noExternal: ["@prismshadow/penguin-hmr"],

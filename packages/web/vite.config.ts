@@ -17,6 +17,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
 import { penguinUi } from "../ui/src/vite-plugin";
+import { probeSitesDefine } from "../../scripts/probe-sites.mjs";
 
 /**
  * Resolves the `/api` proxy target: PENGUIN_API_PROXY replaces it outright, otherwise the
@@ -71,6 +72,9 @@ function katexWoff2Only(): Plugin {
 
 export default defineConfig({
   plugins: [penguinUi(), react(), tailwindcss(), katexWoff2Only()],
+  // Where each browser probe (`web.*`) is recorded, for the performance panel's links: the page
+  // carries its own table, at the commit this bundle was built from (scripts/probe-sites.mjs).
+  define: probeSitesDefine(["packages/web/src"]),
   build: {
     // Never inline a font. Vite turns any asset under 4 KB into a data: URI, and a font slice the
     // stylesheet references would then ride inside the one render-blocking CSS file for every
