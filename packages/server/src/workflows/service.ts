@@ -54,9 +54,9 @@ import { compileWorkflow, pruneBuilds, writeLoadStatus } from "./compile.js";
 import { installHarnessTypes, readHarnessTable } from "./harness-types.js";
 import { checkIfaces, ifaceQuestions } from "../plugin/iface-check.js";
 import { loadTypeScript } from "../plugin/typescript.js";
+import { isSafeRelPath } from "../http/static-files.js";
 import {
   historyDir,
-  isSafeRelPath,
   isTempName,
   isWorkflowId,
   listFolders,
