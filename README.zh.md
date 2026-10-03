@@ -91,7 +91,7 @@ https://github.com/user-attachments/assets/aec49ae9-b743-467b-b247-37bedfeaa36e
 | 办公效率    | `data-analysis`、`use-firecrawl`、`browser-automation`、`use-bento-slides`、`humanizer`、`goal`、`continual-learning` |
 | 软件开发    | `software-development`、`use-claude-code`                                |
 | AI 应用开发 | `agent-development`、`model-development`、`skill-porting`、`agent-tuning`       |
-| Agent 公司  | `agent-company`                                                                 |
+| Agent 公司  | `agent-company`, `agent-company-proposals`                                      |
 
 桌面应用的侧边停靠栏里还内置了一个浏览器。Agent 通过 `penguin browser` 和 `browser-automation` 插件驱动它：读取页面、点击和输入，并提取亚马逊订单这样的数据，登录用的是从你自己的浏览器导入的账号。
 
