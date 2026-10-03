@@ -8,10 +8,10 @@ import { sessionThinkingLevel } from "../../model-picker";
 import { advanceCostStat } from "../header-stats";
 import { sameModelRef } from "../../models";
 import { headerStats } from "../session/main-chat-helpers";
-import type { useChatSession } from "../session/use-chat-session";
+import type { useChatController } from "../session/use-chat-controller";
 
 export function createMainChatView(
-  scope: ReturnType<typeof useChatSession> & { projectId: string; pageAgentId: string | null },
+  scope: ReturnType<typeof useChatController> & { projectId: string; pageAgentId: string | null },
 ) {
   const {
     navigate,
