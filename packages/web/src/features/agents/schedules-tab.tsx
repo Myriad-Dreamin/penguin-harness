@@ -39,18 +39,15 @@ import {
   TableRow,
   toastError,
   toastSuccess,
-  type BadgeStyle,
 } from "@prismshadow/penguin-ui";
-
+import type { BadgeStyle } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { formatDateTime } from "../../lib/format";
 import { useProject } from "../../state/project";
 import { AiCreateModal, AiCreateButtons } from "../ai-create";
-
 import { ScheduleFormModal, ScheduleSuggestions, scheduleExamples, toggleBody } from "../schedules";
-
 import { usePromptInjection } from "./prompt-injection-controls";
 
 /** Display status → badge. A finished one-off is settled: a neutral tag, solid so it still reads. */
