@@ -79,6 +79,7 @@ const deployment: InstalledPluginsResponse = {
   plugins: [
     listed("@acme/shared", { everywhere: true, machines: [], here: true }),
     listed("@acme/gpu-only", { everywhere: false, machines: [GPU], here: false }),
+    listed("@acme/self-only", { everywhere: false, machines: [SELF], here: true }),
   ],
   shipped: [],
   file: ".project_config.toml",
@@ -86,22 +87,31 @@ const deployment: InstalledPluginsResponse = {
   restartPending: false,
 };
 
-const nameOf = (id: string) => (id === GPU ? "gpu-box" : "this server");
-
 describe("server modules per machine", () => {
-  it("all machines: every module, and a machine-only one says where it runs", () => {
-    const view: PluginView = { machineId: null, remote: null, nameOf };
-    expect(moduleParts(deployment, [], view).map((m) => [m.specifier, m.state, m.onlyOn])).toEqual([
-      ["@acme/shared", "active", undefined],
-      ["@acme/gpu-only", "elsewhere", ["gpu-box"]],
+  it("this server: shared and own rows, with only its own rows removable", () => {
+    const parts = moduleParts(deployment, [], { machineId: SELF, remote: null });
+    expect(parts.map((m) => [m.specifier, m.state, m.shared])).toEqual([
+      ["@acme/shared", "active", true],
+      ["@acme/self-only", "active", undefined],
     ]);
+    expect(parts[0]!.removeBlocked).toBe(en.plugins.sharedHint);
+    expect(parts[1]!.removeBlocked).toBeUndefined();
+    expect(
+      moduleParts({ ...deployment, shipped: ["@acme/gpu-only"] }, []).filter(
+        (m) => m.state === "none",
+      ),
+    ).toEqual([expect.objectContaining({ specifier: "@acme/gpu-only", state: "none" })]);
   });
 
-  it("this server: what it is asked for, and a shared module cannot be removed from its table", () => {
-    const view: PluginView = { machineId: SELF, remote: null, nameOf };
-    const parts = moduleParts(deployment, [], view);
-    expect(parts.map((m) => m.specifier)).toEqual(["@acme/shared"]);
-    expect(parts[0]!.removeBlocked).toBeDefined();
+  it("does not offer this machine's failed plugin again", () => {
+    const failing = {
+      ...deployment,
+      plugins: [{ ...deployment.plugins[2]!, active: false, error: "load failed" }],
+      shipped: ["@acme/self-only"],
+    };
+    expect(moduleParts(failing, []).map((m) => [m.specifier, m.state, m.shared])).toEqual([
+      ["@acme/self-only", "failed", undefined],
+    ]);
   });
 
   it("another machine: the state it reports, and what it has not received yet", () => {
@@ -111,7 +121,7 @@ describe("server modules per machine", () => {
       plugins: [listed("@acme/gpu-only", { everywhere: true, machines: [], here: true }, false)],
     };
     remote.plugins[0]!.error = "npm: 404";
-    const view: PluginView = { machineId: GPU, remote, nameOf };
+    const view: PluginView = { machineId: GPU, remote };
     expect(
       moduleParts(deployment, [], view).map((m) => [
         m.specifier,
@@ -480,7 +490,7 @@ describe("the incompatible-only filter", () => {
 });
 
 describe("a plugin the running build cannot fully run", () => {
-  const view: PluginView = { machineId: SELF, remote: null, nameOf };
+  const view: PluginView = { machineId: SELF, remote: null };
   const here = { everywhere: true, machines: [], here: true };
 
   it("is disabled with its reason, not waiting for a restart", () => {
@@ -514,7 +524,7 @@ describe("a plugin the running build cannot fully run", () => {
         },
       ],
     };
-    const parts = moduleParts(deployment, [], { machineId: GPU, remote, nameOf });
+    const parts = moduleParts(deployment, [], { machineId: GPU, remote });
     expect(parts.find((m) => m.specifier === "@acme/gpu-only")).toMatchObject({
       state: "disabled",
       unsatisfied: "names interface Nope",

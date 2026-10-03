@@ -58,12 +58,11 @@ export type PluginStatus = (typeof PLUGIN_STATUSES)[number];
 /**
  * What a listed module plugin is on the machine in view: running; waiting for a runtime that
  * can re-assemble (`pending`); FAILED — the process tried and could not load it, for the reason
- * the server sends, which no restart would change; `elsewhere` — the all-machines view of a
- * plugin listed only for other machines, which this server neither installs nor loads;
+ * the server sends, which no restart would change; `disabled` — incompatible with the
+ * platform or build on the selected machine;
  * `unsynced` — listed for a machine that has not reported running it; `none` — not listed.
  */
-export type ModuleState =
-  "none" | "pending" | "active" | "failed" | "disabled" | "elsewhere" | "unsynced";
+export type ModuleState = "none" | "pending" | "active" | "failed" | "disabled" | "unsynced";
 
 /** The Agent's entry of one of the plugin's MCP servers: one by that name the plugin installed — a server the user added under the same name is not the plugin's. */
 function pluginServer(
@@ -181,7 +180,6 @@ export function moduleStatus(state: ModuleState): PluginStatus {
       return "failed";
     case "disabled":
       return "incompatible";
-    case "elsewhere":
     case "unsynced":
       return "not-here";
     case "none":

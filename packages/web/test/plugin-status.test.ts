@@ -8,7 +8,7 @@
  *   (just uninstalled here) is neither behind nor using it; a plugin that ships nothing is on
  *   no Agent.
  * - A server module is installed when this server runs it, and otherwise waits for a restart,
- *   failed to load, runs elsewhere (or has not reached the machine in view yet), or is not
+ *   failed to load, is incompatible (or has not reached the machine in view yet), or is not
  *   listed; the module's state decides for a plugin that also ships Skills, whose Agents are
  *   still counted.
  * - The update dialog lists, per Agent, each part whose installed version differs from the
@@ -131,7 +131,7 @@ describe("a server module", () => {
     ["active", "installed"],
     ["pending", "restart"],
     ["failed", "failed"],
-    ["elsewhere", "not-here"],
+    ["disabled", "incompatible"],
     ["unsynced", "not-here"],
     ["none", "available"],
   ])("in state %s reads as %s", (state, status) => {

@@ -86,9 +86,7 @@ export function statusHint(
     case "failed":
       return S.plugins.statusHint.failed(mod?.error ?? "");
     case "not-here":
-      return mod?.state === "elsewhere"
-        ? S.plugins.statusHint.elsewhere((mod.onlyOn ?? []).join(", "))
-        : S.plugins.statusHint.unsynced;
+      return S.plugins.statusHint.unsynced;
   }
 }
 

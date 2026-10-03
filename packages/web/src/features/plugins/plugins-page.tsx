@@ -154,7 +154,6 @@ export function pluginUpdatePlan(
 }
 
 /** The picker's value for all machines: a machine id is never this short. */
-const ALL_MACHINES_CHOICE = "*";
 
 export function PluginsPage() {
   useDocumentTitle(S.nav.plugins);
@@ -223,10 +222,12 @@ export function PluginsPage() {
   useEffect(reloadDeployment, [reloadDeployment]);
 
   const { machineIds, machineLabels } = useSessions();
-  /** The machine the page shows and edits: null for all machines, or a machine's own id. */
-  const [viewMachine, setViewMachine] = useState<string | null>(null);
-  useEffect(() => setViewMachine(null), [projectId]);
+  /** The machine picked in the header; null until one is, which views this server. */
+  const [pickedMachine, setPickedMachine] = useState<string | null>(null);
+  useEffect(() => setPickedMachine(null), [projectId]);
   const selfId = deployment?.machineId;
+  /** The machine the page shows and edits — undefined only until this server's id is read. */
+  const viewMachine = pickedMachine ?? selfId;
   /** What the viewed machine answered itself — or why it could not — when it is not this server. */
   const [remote, setRemote] = useState<
     | { machineId: string; res: InstalledPluginsResponse }
@@ -237,7 +238,7 @@ export function PluginsPage() {
   // background, so a row reads "not on that machine yet" until it has answered with it.
   useEffect(() => {
     setRemote(null);
-    if (projectId === null || viewMachine === null || viewMachine === selfId) return;
+    if (projectId === null || viewMachine === undefined || viewMachine === selfId) return;
     let cancelled = false;
     api.getInstalledPlugins(projectId, viewMachine).then(
       (res) => !cancelled && setRemote({ machineId: viewMachine, res }),
@@ -249,25 +250,20 @@ export function PluginsPage() {
   }, [projectId, viewMachine, selfId, deployment]);
   const nameOf = (machineId: string) =>
     machineId === selfId ? S.plugins.thisServer : (machineLabels.get(machineId) ?? machineId);
-  const view: PluginView = {
-    machineId: viewMachine,
-    remote: remote !== null && "res" in remote ? remote.res : null,
-    nameOf,
-  };
-  /** Whether the machine in view is this server itself, or every machine including it. */
-  const viewIncludesHere = viewMachine === null || viewMachine === selfId;
-  // The picker offers the machines this Project reaches and any a table names; a deployment
-  // with neither has one machine, and no picker.
+  const view: PluginView | undefined =
+    viewMachine === undefined
+      ? undefined
+      : { machineId: viewMachine, remote: remote !== null && "res" in remote ? remote.res : null };
+  /** Whether the machine in view is this server itself. */
+  const viewingHere = viewMachine === selfId;
+  // The picker offers this server, then the machines this Project reaches and any a table
+  // names; a deployment with neither has one machine, and no picker.
   const otherMachines = [
     ...new Set([...machineIds, ...(deployment?.plugins ?? []).flatMap((p) => p.machines ?? [])]),
   ].filter((id) => id !== selfId);
-  const machineChoices: MachineChoice[] = [
-    { value: ALL_MACHINES_CHOICE, label: S.plugins.allMachines },
-    ...(selfId === undefined ? [] : [selfId, ...otherMachines]).map((id) => ({
-      value: id,
-      label: nameOf(id),
-    })),
-  ];
+  const machineChoices: MachineChoice[] = (
+    selfId === undefined ? [] : [selfId, ...otherMachines]
+  ).map((id) => ({ value: id, label: nameOf(id) }));
 
   // The registry, fetched on page entry and again after an import or a delete.
   useEffect(() => {
@@ -307,7 +303,8 @@ export function PluginsPage() {
    * toasted as installed; otherwise the row waits for a restart.
    */
   const runDeploymentInstall = async (specifier: string, install: boolean) => {
-    if (pendingSpecifier !== null || projectId === null) return;
+    // Always the viewed machine's own table: the page never edits the shared one.
+    if (pendingSpecifier !== null || projectId === null || viewMachine === undefined) return;
     setPendingSpecifier(specifier);
     try {
       const next = install
@@ -684,8 +681,8 @@ export function PluginsPage() {
       busy={row.module !== undefined && pendingSpecifier === row.module.specifier}
       blocked={
         row.module !== undefined &&
-        pendingSpecifier !== null &&
-        pendingSpecifier !== row.module.specifier
+        (viewMachine === undefined ||
+          (pendingSpecifier !== null && pendingSpecifier !== row.module.specifier))
       }
       onQuickStart={quickStartLibrary}
       onDeletePlugin={deletePlugin}
@@ -728,12 +725,12 @@ export function PluginsPage() {
             onGroupBy={chooseGroupBy}
             isAdmin={isAdmin}
             machinePicker={
-              otherMachines.length > 0 ? (
+              machineChoices.length > 1 && viewMachine !== undefined ? (
                 <MachinePicker
                   aria-label={S.plugins.viewMachine}
                   choices={machineChoices}
-                  value={viewMachine ?? ALL_MACHINES_CHOICE}
-                  onChange={(v) => setViewMachine(v === ALL_MACHINES_CHOICE ? null : v)}
+                  value={viewMachine}
+                  onChange={setPickedMachine}
                 />
               ) : null
             }
@@ -768,7 +765,7 @@ export function PluginsPage() {
             {S.plugins.machineUnreadable(nameOf(remote.machineId), remote.error)}
           </Notice>
         )}
-        {deployment !== null && viewIncludesHere && deployment.restartPending && (
+        {deployment !== null && viewingHere && deployment.restartPending && (
           <Notice tone="attention" className="mt-4">
             {S.plugins.restartPending}
           </Notice>

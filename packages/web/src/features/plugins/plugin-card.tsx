@@ -270,7 +270,7 @@ export function PluginCard(props: PluginCardProps) {
       // Not listed: Install. Listed: Remove — and, in the all-machines view of a module listed
       // for some machines only, Install too, which asks every machine to run it.
       const verbs: boolean[] = [
-        ...(mod.state === "none" || mod.state === "elsewhere" ? [true] : []),
+        ...(mod.state === "none" ? [true] : []),
         ...(mod.state !== "none" ? [false] : []),
       ];
       for (const install of verbs) {
@@ -358,9 +358,11 @@ export function PluginCard(props: PluginCardProps) {
       </PluginTag>,
     );
   }
-  if (row.module?.onlyOn !== undefined) {
+  if (row.module?.shared === true) {
     tags.push(
-      <PluginTag key="only-on">{S.plugins.onlyOn(row.module.onlyOn.join(", "))}</PluginTag>,
+      <PluginTag key="shared" title={S.plugins.sharedHint}>
+        {S.plugins.sharedTag}
+      </PluginTag>,
     );
   }
   return (

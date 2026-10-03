@@ -305,6 +305,9 @@ export function PluginDetailSections({
               />
             </div>
           )}
+          {row.module?.shared === true && (
+            <PluginTag title={S.plugins.sharedHint}>{S.plugins.sharedTag}</PluginTag>
+          )}
           <PackageDetailsLine details={rowDetails(row)} />
         </div>
       </div>

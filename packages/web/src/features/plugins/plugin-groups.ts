@@ -34,8 +34,8 @@ export interface ModulePart {
   unsatisfied?: string;
   /** The build ships it: installing it downloads nothing. */
   shipped: boolean;
-  /** The machines it is listed for, by name, when the shared table does not list it. */
-  onlyOn?: string[];
+  /** Listed in the shared table, which this page never edits. */
+  shared?: true;
   /** Why Remove is unavailable in this view, when it is. */
   removeBlocked?: string;
 }
@@ -60,33 +60,26 @@ export function unscopedName(specifier: string): string {
   return specifier.replace(/^@[^/]+\//, "");
 }
 
-/**
- * Which machine the page shows: `machineId` null for all machines (the shared table), or a
- * machine's own id. `remote` is that machine's own answer when it is not this server — what it
- * actually runs — and null when it is this server or could not be read.
- */
+/** The page always views one machine; an omitted view means this server. */
 export interface PluginView {
-  machineId: string | null;
+  machineId: string;
   remote: InstalledPluginsResponse | null;
-  /** A machine's display name, by its own id. */
-  nameOf: (machineId: string) => string;
 }
 
-export const ALL_MACHINES: PluginView = { machineId: null, remote: null, nameOf: (id) => id };
-
-/** Whether a listed plugin belongs in the view: shared, or listed for the machine in view. */
-function inView(listed: InstalledPluginsResponse["plugins"][number], view: PluginView): boolean {
+function runsOn(
+  listed: InstalledPluginsResponse["plugins"][number],
+  machineId: string | undefined,
+): boolean {
   return (
-    view.machineId === null ||
     listed.everywhere !== false ||
-    (listed.machines ?? []).includes(view.machineId)
+    (machineId !== undefined && (listed.machines ?? []).includes(machineId))
   );
 }
 
 /** A listed plugin's state as the machine in view has it. */
 function stateIn(
   listed: InstalledPluginsResponse["plugins"][number],
-  view: PluginView,
+  view: PluginView | undefined,
   selfId: string | undefined,
 ): { state: ModuleState; error?: string; unsatisfied?: string } {
   const local = (row: InstalledPluginsResponse["plugins"][number]) => {
@@ -100,9 +93,7 @@ function stateIn(
           ? { state: "failed" as const, error: row.error }
           : { state: "pending" as const };
   };
-  if (view.machineId === null)
-    return listed.here === false ? { state: "elsewhere" } : local(listed);
-  if (view.machineId === selfId) return local(listed);
+  if (view === undefined || view.machineId === selfId) return local(listed);
   const there = view.remote?.plugins.find((p) => p.specifier === listed.specifier);
   return there === undefined ? { state: "unsynced" } : local(there);
 }
@@ -116,34 +107,27 @@ function stateIn(
 export function moduleParts(
   deployment: InstalledPluginsResponse | null,
   index: readonly PluginIndexEntry[],
-  view: PluginView = ALL_MACHINES,
+  view?: PluginView,
 ): ModulePart[] {
+  const machineId = view?.machineId ?? deployment?.machineId;
   const parts: ModulePart[] = [];
   for (const listed of deployment?.plugins ?? []) {
-    if (!inView(listed, view)) continue;
+    if (!runsOn(listed, machineId)) continue;
     const shared = listed.everywhere !== false;
-    const ownTable = view.machineId !== null && (listed.machines ?? []).includes(view.machineId);
     parts.push({
       specifier: listed.specifier,
       entry: index.find((e) => e.name === listed.specifier),
       ...stateIn(listed, view, deployment?.machineId),
       shipped:
-        listed.builtin || (view.remote ?? deployment)?.shipped.includes(listed.specifier) === true,
-      ...(shared ? {} : { onlyOn: (listed.machines ?? []).map(view.nameOf) }),
-      // A machine's view edits that machine's own table; a shared entry is not in it.
-      ...(view.machineId !== null && shared && !ownTable
-        ? { removeBlocked: S.plugins.sharedCannotRemove }
-        : {}),
+        listed.builtin || (view?.remote ?? deployment)?.shipped.includes(listed.specifier) === true,
+      ...(shared ? { shared: true as const, removeBlocked: S.plugins.sharedHint } : {}),
     });
   }
-  // What the machine in view does not run yet: in the all-machines view, anything the shared
-  // table lacks — a plugin listed for some machines is still offered for all of them.
+  // Anything outside this machine's own and shared tables can be installed here.
   const listed = new Set(
-    (deployment?.plugins ?? [])
-      .filter((p) => (view.machineId === null ? p.everywhere !== false : inView(p, view)))
-      .map((p) => p.specifier),
+    (deployment?.plugins ?? []).filter((p) => runsOn(p, machineId)).map((p) => p.specifier),
   );
-  const shippedList = (view.remote ?? deployment)?.shipped ?? [];
+  const shippedList = (view?.remote ?? deployment)?.shipped ?? [];
   const seen = new Set(parts.map((p) => p.specifier));
   for (const entry of index) {
     if (listed.has(entry.name) || seen.has(entry.name)) continue;
