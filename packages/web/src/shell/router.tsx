@@ -20,27 +20,9 @@ import { AppLayout } from "../components/layout/app-layout";
 import { BootPending } from "../components/ui/boot-pending";
 import { LoginPage } from "../pages/login";
 import { homePath } from "../features/company/company-nav";
-import { OrgProposalsPage } from "../features/proposals/proposals-page";
-import type { PageEntry } from "./page-table";
 import { ContributionsProvider, useContributions } from "../state/contributions";
 import { shellDeps } from "./deps";
-
-/** The renderers a server-contributed page may name: it renders only when its `builtin` is here. */
-const BUILTIN_PAGES: Record<string, React.ComponentType> = {
-  // Company-mode pages a plugin contributes (`nav: "org"`): mounted under the organization
-  // layout, never at the root, so the company sidebar stays around them.
-  OrgProposalsPage,
-};
-
-function renderPage(page: PageEntry): React.ReactNode {
-  if ("iframe" in page.renderer) {
-    return (
-      <iframe title={page.key} src={page.renderer.iframe.src} className="h-full w-full border-0" />
-    );
-  }
-  const Component = BUILTIN_PAGES[page.renderer.builtin];
-  return Component === undefined ? <Navigate to="/chat" replace /> : <Component />;
-}
+import { ContributedPage } from "./contributed-page";
 
 /** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
@@ -82,9 +64,6 @@ function LoginRoute() {
   return <LoginPage />;
 }
 
-/** The renderer names a contributed page may point at; pages naming another are not mounted. */
-const BUILTIN_PAGE_NAMES: ReadonlySet<string> = new Set(Object.keys(BUILTIN_PAGES));
-
 /**
  * `/` and every path nothing matches: the home of the mode the shell stands in (homePath) —
  * the organizations in company mode, the conversations in development mode. A sign-in and
@@ -101,7 +80,7 @@ export interface AppRouterProps {
 
 export function AppRouter({ initialPath }: AppRouterProps = {}) {
   const tree = (
-    <ContributionsProvider builtinRenderers={BUILTIN_PAGE_NAMES}>
+    <ContributionsProvider>
       <RouteTree />
     </ContributionsProvider>
   );
@@ -115,7 +94,9 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
 /**
  * The routes: the pages the modules contributed (the shell's bindings), plus what the server
  * contributes (state/contributions.tsx) — so a page a plugin adds mounts once the
- * contributions have loaded, and the app's own pages are there from the first render.
+ * contributions have loaded, and the app's own pages are there from the first render. A
+ * company-mode page (`nav: "org"`) mounts under the organization layout, which is company
+ * mode's own (features/company/org-routes.tsx).
  */
 function RouteTree() {
   const { pages } = shellDeps.useDeps();
@@ -147,7 +128,7 @@ function RouteTree() {
             <Route key={id} path={path} element={<Component />} />
           ))}
         {contributed.map((page) => (
-          <Route key={page.id} path={page.path} element={renderPage(page)} />
+          <Route key={page.id} path={page.path} element={<ContributedPage page={page} />} />
         ))}
         {/* Settings and user management live in the settings dialog now (see
             SettingsDialog); their old routes fall through to the catch-all. */}
