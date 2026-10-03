@@ -115,8 +115,8 @@ import {
 } from "./chat-defaults-event";
 import { newChatAgentId } from "./new-chat";
 import { onPluginConfigSaved } from "../../lib/plugin-config-event";
-import { effectiveThinkingLevel } from "./thinking-level";
-import { WorkspaceSelect, pillClass } from "./workspace-select";
+import { effectiveThinkingLevel } from "../model-picker";
+import { WorkspaceSelect, pillClass } from "../workspace";
 import { FilesPanelToggle } from "./dock-toggles";
 import { sameModelRef } from "../models/model-grouping";
 
