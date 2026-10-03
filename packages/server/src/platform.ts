@@ -165,8 +165,9 @@ import {
   SessionIndex,
   SessionOrigins,
 } from "./mechanisms/sessions.js";
-import { Workflows } from "./mechanisms/workflows.js";
+import { WorkflowLoader, Workflows } from "./mechanisms/workflows.js";
 import { WorkflowService } from "./workflows/service.js";
+import { WorkflowLoaderService } from "./workflows/loader.js";
 import { WorkflowRoutes } from "./workflows/routes.js";
 import { AgentPackages } from "./mechanisms/packages.js";
 import { AgentPackageService } from "./packages/service.js";
@@ -481,8 +482,8 @@ export class CompanyModule {}
 export class ApiModule {}
 
 @Module({
-  children: [WorkflowService, WorkflowRoutes],
-  exports: [Workflows],
+  children: [WorkflowLoaderService, WorkflowService, WorkflowRoutes],
+  exports: [Workflows, WorkflowLoader],
 })
 export class WorkflowsModule {}
 
