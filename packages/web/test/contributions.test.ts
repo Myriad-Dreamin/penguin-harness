@@ -8,16 +8,33 @@
  *   path clash; a builtin renderer is skipped (this build carries none); an entry without a
  *   key, a path or an iframe src is skipped.
  * - A merged iframe page is routed at its path and draws a sandboxed frame of its src.
+ * - Safe mode is the one switch: the provider tells the store nobody is signed in, so the table
+ *   is the compiled one with nothing in flight; off again, the signed-in user's request is due.
  */
 import { createElement } from "react";
 import type { ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
-import { describe, expect, it, vi } from "vitest";
-import { contributedPagesOf, createContributionsStore } from "../src/shell/contributions";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  contributedPagesOf,
+  createContributionsStore,
+  ShellPagesProvider,
+  useShellPages,
+  useShellPagesPending,
+} from "../src/shell/contributions";
+import { shellDeps } from "../src/shell/deps";
+import type { ShellDeps } from "../src/shell/deps";
+import { setSafeMode } from "../src/rescue/safe-mode";
 import type { ShellPage } from "../src/shell";
 import { ThemeProvider } from "../src/state/theme";
+
+// The provider reads the signed-in user and asks the server through these.
+vi.mock("../src/state/auth", () => ({ useAuth: () => ({ user: { userId: "bob" } }) }));
+vi.mock("../src/api/endpoints", () => ({
+  getContributions: vi.fn(() => new Promise<never>(() => undefined)),
+}));
 
 const Blank: ComponentType = () => null;
 
@@ -214,5 +231,37 @@ describe("contributedPagesOf", () => {
     expect(html).toContain('src="/plugins/hello/index.html"');
     expect(html).toContain('title="hello"');
     expect(html).toContain('sandbox="allow-scripts allow-same-origin');
+  });
+});
+
+describe("safe mode", () => {
+  afterEach(() => setSafeMode(false));
+
+  /** The provider's table and pending flag as its first render sees them, before any effect. */
+  function firstRender(): string {
+    function Probe() {
+      const pages = useShellPages();
+      return createElement(
+        "p",
+        null,
+        `${pages.map((p) => p.key).join(",")} pending=${String(useShellPagesPending())}`,
+      );
+    }
+    const Root = shellDeps.provide({ pages: COMPILED } as unknown as ShellDeps, () =>
+      createElement(ShellPagesProvider, null, createElement(Probe)),
+    );
+    return renderToStaticMarkup(createElement(Root));
+  }
+
+  it("skips every contribution: the table is the compiled one and nothing is in flight", () => {
+    setSafeMode(true);
+    expect(firstRender()).toBe("<p>agents,terminal pending=false</p>");
+  });
+
+  it("leaving it makes the signed-in user's request due again", () => {
+    setSafeMode(true);
+    firstRender();
+    setSafeMode(false);
+    expect(firstRender()).toBe("<p>agents,terminal pending=true</p>");
   });
 });

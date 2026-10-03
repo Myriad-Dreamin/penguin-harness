@@ -10,7 +10,7 @@
  *   (the words the nav dictionary held) and a glyph in the icon registry.
  * - A member's nav drops admin-only pages and adds nothing the admin lacks.
  * - The shell receives company's provider and the update badges' owner for the signed-in
- *   session, the six layers in their mount order, and the user event handlers of company, the
+ *   session, the five layers in their mount order, and the user event handlers of company, the
  *   built-in browser and schedules in their dispatch order.
  * - The sidebar receives the Project switcher and the session list for development mode,
  *   company's mode with its switcher, channels and desks, and the to-do dots and the balance on
@@ -55,7 +55,6 @@ import { TerminalDockRuntime } from "../src/features/terminal/terminal-view-pool
 import { ShortcutRuntime } from "../src/features/settings/shortcut-runtime";
 import { BuiltinBrowserLayer } from "../src/features/builtin-browser/browser-layer";
 import { builtinBrowserUserEvents } from "../src/features/builtin-browser/browser-events";
-import { AppPalette } from "../src/rescue/palette";
 import { scheduleUserEvents } from "../src/features/schedules/schedule-store";
 import { SettingsLayer } from "../src/features/settings/settings-layer";
 import { DockScope } from "../src/features/dock/dock-scope";
@@ -250,13 +249,12 @@ describe("the booted shell slots", () => {
     ]);
   });
 
-  it("mounts the six layers in their order, the dock's scope last", () => {
+  it("mounts the five layers in their order, the dock's scope last", () => {
     expect(codeByOrder(layers)).toEqual([
       TerminalDockRuntime,
       ShortcutRuntime,
       SettingsLayer,
       BuiltinBrowserLayer,
-      AppPalette,
       DockScope,
     ]);
   });
