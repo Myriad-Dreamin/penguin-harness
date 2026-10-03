@@ -25,7 +25,7 @@ import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
 import { useLocale } from "../../state/locale";
-import { localizedText } from "../chat/skill-use";
+import { localizedText } from "../chat";
 import { apiErrorText } from "../../lib/api-error";
 import { toneInk } from "../../lib/tone";
 import { useSessions } from "../../state/sessions";
