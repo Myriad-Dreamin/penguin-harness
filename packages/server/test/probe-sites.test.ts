@@ -16,7 +16,7 @@ describe("probe sites", () => {
   const server = probeSites(["packages/server/src"]);
   const web = probeSites(["packages/web/src"]);
 
-  it("finds the server's probes in each spelling, and a per-segment family as prefix.*", () => {
+  it("finds the server's probes in each spelling", () => {
     for (const name of [
       "http.request",
       "boot.migrate",
@@ -26,8 +26,7 @@ describe("probe sites", () => {
       "session.load",
       "trace.read",
       "sessions.list.sql",
-      "turn.run",
-      "turn.*",
+      "task.accept",
       "machine.connect",
       "machine.ssh.command",
     ]) {

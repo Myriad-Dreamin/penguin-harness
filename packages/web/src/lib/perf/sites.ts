@@ -43,17 +43,6 @@ export function pageProbeSummaries(): Record<ProbeDocLang, Record<string, string
     : null;
 }
 
-/**
- * The entry `probe` is documented and located under: its own name, or its family's `prefix.*`
- * for a name recorded per segment (`turn.wait` → `turn.*`); null when `names` has neither.
- */
-export function probeEntry(probe: string, names: Record<string, unknown>): string | null {
-  if (Object.hasOwn(names, probe)) return probe;
-  const dot = probe.lastIndexOf(".");
-  const family = dot > 0 ? `${probe.slice(0, dot)}.*` : null;
-  return family !== null && Object.hasOwn(names, family) ? family : null;
-}
-
 /** The anchor GitHub gives a heading: lower case, punctuation dropped, spaces to hyphens. */
 export function githubAnchor(heading: string): string {
   return heading
@@ -79,11 +68,10 @@ export function probeLink(
   lang: ProbeDocLang,
 ): ProbeLink | null {
   if (table === null) return null;
-  const entry = probeEntry(probe, table.sites);
-  if (entry === null) return null;
+  if (!Object.hasOwn(table.sites, probe)) return null;
   return {
-    href: `${table.repo}/blob/${table.commit}/${PROBE_DOCS_DIR}/probes.${lang}.md#${githubAnchor(entry)}`,
-    site: table.sites[entry]!,
+    href: `${table.repo}/blob/${table.commit}/${PROBE_DOCS_DIR}/probes.${lang}.md#${githubAnchor(probe)}`,
+    site: table.sites[probe]!,
     dirty: table.dirty,
   };
 }
@@ -95,7 +83,5 @@ export function probeSummary(
   lang: ProbeDocLang,
 ): string | null {
   const own = summaries?.[lang];
-  if (own === undefined) return null;
-  const entry = probeEntry(probe, own);
-  return entry === null ? null : own[entry]!;
+  return own !== undefined && Object.hasOwn(own, probe) ? own[probe]! : null;
 }
