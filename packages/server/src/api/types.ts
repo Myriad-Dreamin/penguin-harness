@@ -1797,7 +1797,10 @@ export interface SessionActivityInfo {
   source?: SessionSource;
 }
 
-/** `GET /api/projects/:projectId/sessions/overview`: every non-archived Session of the Project, over every Agent. */
+/**
+ * `GET /api/projects/:projectId/sessions/overview`: every non-archived Session of the Project,
+ * over every Agent, less an organization's (the rows the list's `excludeOrg=1` leaves out).
+ */
 export interface SessionsOverviewResponse {
   sessions: SessionActivityInfo[];
 }
