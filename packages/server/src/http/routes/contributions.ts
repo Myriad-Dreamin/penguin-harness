@@ -6,7 +6,13 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import { Interface, Bind, Module, Provide } from "@prismshadow/penguin-core/kernel";
-import type { ContributionsResponse, RendererRef, WebContribution } from "../../api/types.js";
+import type {
+  ContributionsResponse,
+  RendererRef,
+  WebContribution,
+  WebPageContribution,
+  WebPageData,
+} from "../../api/types.js";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 
 export interface ContributionsRouteDeps {
@@ -34,8 +40,8 @@ export abstract class WebShell {
 }
 
 export interface WebShellSlots {
-  /** A page: its route, whether it sits in the main nav, whether it is admin-only. */
-  pages: { key: string; path: string; nav: "main" | "none"; admin: boolean; renderer: RendererRef };
+  /** A page (WebPageData says what each field means). */
+  pages: WebPageData;
   /** A tab on the Agent settings page. */
   agentTabs: { key: string; order: number; renderer: RendererRef };
   /**
@@ -66,12 +72,11 @@ export class WebModule {
   @Provide() web!: WebShell;
   @Bind("web.contributions") contributionsRoutes!: Hono<AppEnv>;
   setup({ contributions }: ClassCtx) {
-    const collect = (slot: string): WebContribution[] =>
-      (contributions[slot] ?? []).map(
-        (c) => ({ id: c.id, from: c.from, ...c.data }) as WebContribution,
-      );
+    // The kernel checked each contribution's data against its slot's type at boot.
+    const collect = <T extends WebContribution>(slot: string): T[] =>
+      (contributions[slot] ?? []).map((c) => ({ id: c.id, from: c.from, ...c.data }) as T);
     const response: ContributionsResponse = {
-      pages: collect("pages"),
+      pages: collect<WebPageContribution>("pages"),
       agentTabs: collect("agentTabs"),
       sessionTabs: collect("sessionTabs"),
     };

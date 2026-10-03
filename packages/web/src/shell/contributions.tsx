@@ -35,6 +35,7 @@ import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
 import { FramePage } from "./frame-page";
+import { parentedPagesOf } from "./page-table";
 import type { ShellPage } from "./page-table";
 
 /** What the store holds for the current user. */
@@ -105,7 +106,8 @@ function framePageFor(src: string, title: string) {
  * The compiled pages plus the contributed ones this build can draw, appended in the server's
  * order after the last compiled page. An entry is skipped when it lacks a key or a path, when
  * a compiled page (or an earlier entry) owns its key or path, or when its renderer is not an
- * iframe with a `src`.
+ * iframe with a `src`. Its nav name, glyph and parent are kept when they are strings; whether
+ * its parent can hold it is decided over the merged table (parentedPagesOf).
  */
 export function contributedPagesOf(
   compiled: readonly ShellPage[],
@@ -117,13 +119,14 @@ export function contributedPagesOf(
   let order = compiled.reduce((last, p) => Math.max(last, p.order), 0);
   const out = [...compiled];
   for (const entry of answer.pages) {
-    const { key, path, nav, admin, renderer } = entry;
+    const { key, path, nav, admin, renderer, parent, title, titleZh, icon } = entry;
     if (typeof key !== "string" || key === "" || keys.has(key)) continue;
     if (typeof path !== "string" || !path.startsWith("/") || paths.has(path)) continue;
     const src = (renderer as { iframe?: { src?: unknown } } | undefined)?.iframe?.src;
     if (typeof src !== "string") continue;
     keys.add(key);
     paths.add(path);
+    const name = typeof title === "string" ? title : key;
     out.push({
       id: entry.id,
       key,
@@ -133,7 +136,11 @@ export function contributedPagesOf(
       admin: admin === true,
       released: true,
       order: ++order,
-      Component: framePageFor(src, key),
+      ...(typeof title === "string" ? { title } : {}),
+      ...(typeof titleZh === "string" ? { titleZh } : {}),
+      ...(typeof icon === "string" ? { icon } : {}),
+      ...(typeof parent === "string" ? { parent } : {}),
+      Component: framePageFor(src, name),
     });
   }
   return out;
@@ -160,7 +167,7 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const answer = current ? state.answer : null;
   const pending = current ? state.pending : userId !== null;
   const value = useMemo(
-    () => ({ pages: contributedPagesOf(compiled, answer), pending }),
+    () => ({ pages: parentedPagesOf(contributedPagesOf(compiled, answer)), pending }),
     [compiled, answer, pending],
   );
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;

@@ -133,6 +133,7 @@ import { HmrRoutes } from "./hmr/routes.js";
 import { EventsRoutes } from "./http/routes/events.js";
 import { PluginRegistryRoutes, PluginRoutes } from "./http/routes/plugins.js";
 import { InstalledPluginRoutes } from "./http/routes/plugins-installed.js";
+import { PluginUiRoutes } from "./http/routes/plugin-ui.js";
 import { SuggestIdRoutes } from "./http/routes/suggest-id.js";
 import { TerminalModule } from "./terminal/manager.js";
 import { SessionApiRoutes } from "./http/routes/sessions.js";
@@ -444,6 +445,7 @@ export class CompanyModule {}
     PluginRoutes,
     PluginRegistryRoutes,
     InstalledPluginRoutes,
+    PluginUiRoutes,
     SuggestIdRoutes,
   ],
   exports: [Http, WebShell, UpdateCheck],
