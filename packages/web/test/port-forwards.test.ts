@@ -10,8 +10,6 @@ import {
   parsePort,
   statusLine,
 } from "../src/features/ports/port-forward-facts";
-import { dockPanelDefinition } from "../src/features/dock/panel-registry";
-import "../src/features/chat/builtin-dock-panels";
 
 const forward = (over: Partial<PortForwardInfo> = {}): PortForwardInfo => ({
   id: "f1",
@@ -67,11 +65,5 @@ describe("groupByWorkspace", () => {
       ["/srv/a", ["a1"]],
       ["/srv/b", ["b1", "b2"]],
     ]);
-  });
-});
-
-describe("the dock", () => {
-  it("has a Ports panel", () => {
-    expect(dockPanelDefinition("ports")).toBeDefined();
   });
 });

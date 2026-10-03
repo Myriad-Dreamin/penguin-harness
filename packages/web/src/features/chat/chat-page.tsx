@@ -4,32 +4,27 @@
  * popup) + the message stream and input area (input box vertically centered when there
  * are no messages), with the dock surfaces beside and below (features/dock): every side
  * element — subagents, Workspace files, Memory, Trace, terminals — is a tab in the right
- * or bottom dock, arranged by the user and persisted globally. The panel BODIES are registry
- * definitions (builtin-dock-panels.tsx); this page provides the session/stream state they read
- * around both docks (chat-dock-context.tsx), and the stream's jump commands: a message file
- * card, or a reply's link to a Workspace file, opens the Workspace tab on that file
- * (onOpenFile), a subagent chip opens the agents tab focused (onOpenSubagent), a memory-change
- * row opens the Memory tab located (onLocateMemoryChange).
+ * or bottom dock, arranged by the user and persisted globally. The panel BODIES are the
+ * modules' contributions to the dock (features/dock/iface.ts); this page hands them the
+ * conversation on screen (ChatSessionProvider), including the stream's jump commands: a message file card, or a reply's link to a Workspace file,
+ * opens the Workspace tab on that file (onOpenFile), a subagent chip opens the agents tab
+ * focused (onOpenSubagent), a memory-change row opens the Memory tab located
+ * (onLocateMemoryChange).
  * Approval mode and Model/context usage live in the input area's toolbar; context is compacted
  * via the /compact slash command.
  * Draft state (/chat/new) is carried by DraftView: Agent / Workspace / approval mode / Model are
  * chosen before sending, and everything except approval mode is locked once the Session is
  * created. The Session list and the new-chat entry point live in the global sidebar.
  */
-import { useCallback } from "react";
 import { Skeleton } from "@prismshadow/penguin-ui";
 import { WorkflowFrame, WorkflowTabStrip } from "../workflows/workflow-tabs";
 import { DockPanel } from "../dock/dock-panel";
 import { useDockMount } from "../dock/use-dock-mount";
 import { closedDockView, dockViews } from "../dock/dock-state";
 import { terminalApiSupported } from "../terminal";
-import { sessionThinkingLevel } from "../model-picker";
-// importing it registers the built-in panels (their definitions and bodies) with the dock
-import "./builtin-dock-panels";
-import { ChatDockProvider } from "./chat-dock-context";
-import type { ChatDockState } from "./chat-dock-context";
 import { useChatController } from "./session/use-chat-controller";
 import { SessionDialogs } from "./session/session-dialogs";
+import { ChatSessionProvider } from "./session/chat-session-context";
 import { ChatToolbar } from "./toolbar/chat-toolbar";
 import { liveHeaderStats } from "./toolbar/session-stats";
 import { SessionDetails } from "./toolbar/session-details";
@@ -82,44 +77,6 @@ export function ChatPage() {
   );
   const terminalSupported = terminalApiSupported();
 
-  // The Memory panel's way to its management: add / edit / delete live on the Agent's
-  // settings page, on the memory tab.
-  const { navigate } = chat;
-  const openMemorySettings = useCallback(
-    (memoryAgentId: string) => navigate(`/agents/${memoryAgentId}?tab=memory`),
-    [navigate],
-  );
-  /**
-   * What the dock panel bodies read off this page (builtin-dock-panels.tsx), provided around
-   * both docks below. Not memoised: `ctx` is rebuilt on every render and the stream fields
-   * move with every version, so a memo would miss every time; the bodies re-render with the
-   * page, exactly as they did when the page built them inline. The callbacks in it are the
-   * session controller's own memoised ones, passed as they are, never wrapped afresh.
-   */
-  const chatDock: ChatDockState = {
-    selected,
-    draft: chat.draft,
-    draftWorkspace: chat.draftWorkspace,
-    projectId,
-    panelModel: chat.panelModel,
-    stream,
-    ctx: chat.ctx,
-    subagentFocus: chat.subagentFocus,
-    subagentTaskScope: chat.subagentTaskScope,
-    models: chat.models,
-    onChangePermission: chat.onChangePermission,
-    modeSaving: chat.modeSaving,
-    parentThinkingLevel: sessionThinkingLevel(chat.turnThinkingLevel, chat.agentThinkingLevel),
-    fileOpenRequest: chat.fileOpenRequest,
-    settledTurnSignal: chat.settledTurnSignal,
-    addComposerReference: chat.addComposerReference,
-    sessionMemoryChanges: chat.sessionMemoryChanges,
-    memoryListing: chat.memoryListing,
-    memoryRequest: chat.memoryRequest,
-    openMemorySettings,
-    prefillComposer: chat.prefillComposer,
-  };
-
   if (!projectId || !pageAgentId) {
     return (
       <div className="p-6">
@@ -129,77 +86,75 @@ export function ChatPage() {
   }
 
   const hs = liveHeaderStats(chat);
+  // data-dock-host: the docks' edge bands, drop preview and the bottom dock's height
+  // ratio all measure this column (dock-drag.tsx / dock-panel.tsx).
+  // bg-canvas: the chat column is the page, so it takes the theme's page colour — white and
+  // gray-950 in Primer, exactly what it painted before; paper in Console, the sheet in Frost —
+  // and the transcript's sticky rows, painted in the same token, sit on it without a seam.
   return (
-    // data-dock-host: the docks' edge bands, drop preview and the bottom dock's height
-    // ratio all measure this column (dock-drag.tsx / dock-panel.tsx).
-    // bg-canvas: the chat column is the page, so it takes the theme's page colour — white and
-    // gray-950 in Primer, exactly what it painted before; paper in Console, the sheet in Frost —
-    // and the transcript's sticky rows, painted in the same token, sit on it without a seam.
-    <div data-dock-host className="relative flex h-full flex-col bg-canvas">
-      {/* Workflow tabs: the Agent's own pages beside the chat. A workflow tab covers the
+    <ChatSessionProvider controller={chat}>
+      <div data-dock-host className="relative flex h-full flex-col bg-canvas">
+        {/* Workflow tabs: the Agent's own pages beside the chat. A workflow tab covers the
           chat (which stays mounted, so its state survives a look at the page) below the
           strip; the strip is absent when the Agent has no workflow with a UI. */}
-      <WorkflowTabStrip
-        tabs={workflowTabs.tabs}
-        notices={workflowTabs.notices}
-        active={workflowTabs.active}
-        onSelect={workflowTabs.setActive}
-      />
-      {workflowTabs.activeTab !== null && projectId !== null && pageAgentId !== null && (
-        <div className="absolute inset-x-0 bottom-0 top-9 z-10">
-          <WorkflowFrame
-            // Per tab: the frame keeps this workflow's history fold, its error and its
-            // armed Remove, and none of that belongs to the next tab.
-            key={workflowTabs.activeTab.tabId}
-            projectId={projectId}
-            agentId={pageAgentId}
-            tab={workflowTabs.activeTab}
-            onChanged={() => void workflowTabs.refresh()}
-            onRemoved={() => {
-              workflowTabs.setActive(null);
-              void workflowTabs.refresh();
-            }}
-          />
-        </div>
-      )}
-      {/* Thin top toolbar */}
-      {selected && (
-        <ChatToolbar
-          selected={selected}
-          taskState={stream.taskState}
-          agentsPending={anySubagentPending}
-          railShown={railFit.shown}
-          outline={outline}
-          turnOffset={stream.outlineOffset}
-          streamScrollRef={streamScrollRef}
-          infoOpen={infoOpen}
-          setInfoOpen={setInfoOpen}
-          hs={hs}
-          currency={currency}
-          workspacePr={workspacePr}
-        >
-          <SessionDetails
-            selected={selected}
-            agents={agents}
-            machineName={machineNameOf(selected.sessionId)}
-            hs={hs}
-            usageBuckets={usageBuckets}
-          >
-            <ProcessList
-              processes={processes}
-              procBusy={procBusy}
-              exitedIds={exitedIds}
-              onAskStop={setProcToKill}
-              onRemoveProcess={onRemoveProcess}
-              onClearExitedProcesses={onClearExitedProcesses}
+        <WorkflowTabStrip
+          tabs={workflowTabs.tabs}
+          notices={workflowTabs.notices}
+          active={workflowTabs.active}
+          onSelect={workflowTabs.setActive}
+        />
+        {workflowTabs.activeTab !== null && projectId !== null && pageAgentId !== null && (
+          <div className="absolute inset-x-0 bottom-0 top-9 z-10">
+            <WorkflowFrame
+              // Per tab: the frame keeps this workflow's history fold, its error and its
+              // armed Remove, and none of that belongs to the next tab.
+              key={workflowTabs.activeTab.tabId}
+              projectId={projectId}
+              agentId={pageAgentId}
+              tab={workflowTabs.activeTab}
+              onChanged={() => void workflowTabs.refresh()}
+              onRemoved={() => {
+                workflowTabs.setActive(null);
+                void workflowTabs.refresh();
+              }}
             />
-          </SessionDetails>
-        </ChatToolbar>
-      )}
+          </div>
+        )}
+        {/* Thin top toolbar */}
+        {selected && (
+          <ChatToolbar
+            selected={selected}
+            taskState={stream.taskState}
+            agentsPending={anySubagentPending}
+            railShown={railFit.shown}
+            outline={outline}
+            turnOffset={stream.outlineOffset}
+            streamScrollRef={streamScrollRef}
+            infoOpen={infoOpen}
+            setInfoOpen={setInfoOpen}
+            hs={hs}
+            currency={currency}
+            workspacePr={workspacePr}
+          >
+            <SessionDetails
+              selected={selected}
+              agents={agents}
+              machineName={machineNameOf(selected.sessionId)}
+              hs={hs}
+              usageBuckets={usageBuckets}
+            >
+              <ProcessList
+                processes={processes}
+                procBusy={procBusy}
+                exitedIds={exitedIds}
+                onAskStop={setProcToKill}
+                onRemoveProcess={onRemoveProcess}
+                onClearExitedProcesses={onClearExitedProcesses}
+              />
+            </SessionDetails>
+          </ChatToolbar>
+        )}
 
-      {/* The state the dock panels' bodies read (chat-dock-context.tsx): one provider over
-          the row's right dock and the bottom dock after it — a provider adds no element. */}
-      <ChatDockProvider value={chatDock}>
         {/* data-dock-area: the row and the bottom dock together — what a fullscreen bottom dock
             (or the narrow merged view) grows to cover, up to the toolbar; a fullscreen right
             dock covers the row alone. Layout-neutral: it takes the column's remaining height
@@ -238,9 +193,9 @@ export function ChatPage() {
             />
           )}
         </div>
-      </ChatDockProvider>
 
-      <SessionDialogs session={chat} />
-    </div>
+        <SessionDialogs session={chat} />
+      </div>
+    </ChatSessionProvider>
   );
 }

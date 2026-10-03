@@ -77,7 +77,6 @@ features/chat/chat-page.tsx -> features/dock/dock-state.ts
 features/chat/chat-page.tsx -> features/dock/use-dock-mount.ts
 features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
-features/chat/dock-toggles.tsx -> features/dock/panel-meta.tsx
 features/chat/message-item.tsx -> features/proposals/proposal-links.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
 features/chat/permission-select.tsx -> features/settings/settings-dialog.tsx

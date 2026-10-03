@@ -28,7 +28,7 @@ import {
   toggleDock,
   type DockPosition,
 } from "../dock/dock-state";
-import { panelLabel } from "../dock/panel-meta";
+import { panelLabel } from "../dock";
 
 export interface DockTogglesProps {
   /** A pending approval inside a subagent: amber dot beside the agents tab's dock toggle. */
