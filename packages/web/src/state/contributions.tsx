@@ -3,10 +3,10 @@
  * fetched once per signed-in user and held for the whole tree.
  *
  * Two things come out of it. `pages` are the server's page contributions that can mount beside
- * the app's own (shell/page-table.ts `contributedPages`) — the router mounts them, so a page a
- * pushed platform or a plugin contributes opens as long as this build carries its renderer. `surfaces` is the list of session surfaces (see the chat page's
- * session-surface-view.tsx): what "New chat" offers beyond the conversation, and what a
- * Session of that kind is drawn with. `quickStarts` are module plugins' demos, which the
+ * the app's own (shell/page-table.ts `contributedPages`) — the router mounts them, so an iframe
+ * page a pushed platform or a plugin contributes opens. `surfaces` is the list of session
+ * surfaces (see the chat page's session-surface-view.tsx): what "New chat" offers beyond the
+ * conversation, and what a Session of that kind is drawn with. `quickStarts` are module plugins' demos, which the
  * Plugins page pre-fills into a draft; `refresh` re-reads everything after a plugin change.
  *
  * Until the fetch answers — and if it never does — the App is exactly what it is today:
@@ -49,14 +49,14 @@ const LOCAL: ContributionsValue = {
 
 const ContributionsContext = createContext<ContributionsValue>(LOCAL);
 
-export function ContributionsProvider({
-  builtinRenderers,
-  children,
-}: {
-  /** The page renderers this build carries (the router's registry); a contributed page naming another is skipped. */
-  builtinRenderers: ReadonlySet<string>;
-  children: ReactNode;
-}) {
+/**
+ * The builtin renderers a contributed page may name to be mounted by the router: none — the
+ * shell carries no registry, and the one builtin page there is (company mode's proposals) is
+ * routed by company mode from its own read (features/company/use-org-pages.ts).
+ */
+const NO_BUILTIN_RENDERERS: ReadonlySet<string> = new Set();
+
+export function ContributionsProvider({ children }: { children: ReactNode }) {
   const userId = useAuth().user?.userId ?? null;
   const local = useShellPages();
   const [remote, setRemote] = useState<ContributionsResponse | null>(null);
@@ -92,13 +92,13 @@ export function ContributionsProvider({
       remote === null
         ? { ...LOCAL, refresh }
         : {
-            pages: contributedPages(local, remote.pages, builtinRenderers),
+            pages: contributedPages(local, remote.pages, NO_BUILTIN_RENDERERS),
             surfaces: remote.sessionSurfaces ?? [],
             quickStarts: remote.quickStarts ?? [],
             loaded: true,
             refresh,
           },
-    [remote, local, builtinRenderers, refresh],
+    [remote, local, refresh],
   );
   return <ContributionsContext.Provider value={value}>{children}</ContributionsContext.Provider>;
 }
