@@ -1,6 +1,6 @@
 /**
  * App root component: ClipboardWriter -> CodeHighlighter -> Locale -> Theme -> Auth -> LocaleScope ->
- * Router provider composition. The shared UI package's copy controls get the app's clipboard
+ * the shell's root (the router, from the booted module tree — see web-root.ts) provider composition. The shared UI package's copy controls get the app's clipboard
  * writer, and every code surface of the package gets the app's worker-backed code highlighter
  * (lib/highlight/code-highlight.ts).
  * LocaleScope (a remount boundary) sits inside AuthProvider: switching language rebuilds the UI tree without
@@ -12,6 +12,7 @@
  * drop on the sidebar do something; it makes it do nothing.
  */
 import { useEffect } from "react";
+import type { ComponentType } from "react";
 import {
   ClipboardWriterProvider,
   CodeHighlighterProvider,
@@ -21,16 +22,23 @@ import {
 import { LocaleProvider, LocaleScope } from "./state/locale";
 import { ThemeProvider } from "./state/theme";
 import { AuthProvider } from "./state/auth";
-import { AppRouter } from "./router";
+import type { AppRouterProps } from "./shell/router";
 import { writeClipboard } from "./lib/clipboard";
 import { guardWindowDragOver, guardWindowDrop } from "./lib/file-drop";
 import { highlightCode } from "./lib/highlight/code-highlight";
 
 /**
- * `initialPath`: mount the app on an in-memory router opened at that path instead of the
- * browser's address bar (see AppRouter) — for a host document that frames the app.
+ * `Root`: the shell's root component, which `bootWeb()` returns. `initialPath`: mount the app on
+ * an in-memory router opened at that path instead of the browser's address bar (see AppRouter)
+ * — for a host document that frames the app.
  */
-export function App({ initialPath }: { initialPath?: string } = {}) {
+export function App({
+  Root,
+  initialPath,
+}: {
+  Root: ComponentType<AppRouterProps>;
+  initialPath?: string;
+}) {
   // The guard reads `defaultPrevented` rather than assuming it runs last: the chat area's
   // drop zone is a window listener too, so the two fire in registration order. Both orders
   // converge — whichever runs second either finds the drag already claimed and bails, or
@@ -50,7 +58,7 @@ export function App({ initialPath }: { initialPath?: string } = {}) {
           <ThemeProvider>
             <AuthProvider>
               <LocaleScope>
-                <AppRouter {...(initialPath === undefined ? {} : { initialPath })} />
+                <Root {...(initialPath === undefined ? {} : { initialPath })} />
                 {/* Top toast overlay: portaled to body, z-index above modals, shared site-wide. */}
                 <Toaster />
                 {/* The hover hints of every `data-tooltip` element: one listener set, one panel. */}
