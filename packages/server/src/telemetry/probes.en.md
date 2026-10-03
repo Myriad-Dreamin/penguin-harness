@@ -154,7 +154,7 @@ Is sending a message slow to be accepted? The time from the send to the server's
 
 It includes waiting for the session's lock; `attrs.queued` is whether the message waited behind a running turn.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:1160`](../runtime/session-manager.ts#L1160) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:1161`](../runtime/session-manager.ts#L1161) <!-- probe-site -->
 
 ### session.load
 
@@ -162,7 +162,7 @@ Is a session slow to start working? The time to load one that was not in memory,
 
 `attrs.messages` is how many history messages it was loaded with. A session already in memory is not recorded.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2082`](../runtime/session-manager.ts#L2082) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2083`](../runtime/session-manager.ts#L2083) <!-- probe-site -->
 
 ### session.memory
 
@@ -170,7 +170,7 @@ Which session uses the most memory? One sample per loaded session, as `attrs.mem
 
 It adds up what the session holds: the history it was loaded with, the recent events kept so a page that reconnects can catch up, and the replies still streaming. Recorded whenever telemetry is read.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:937`](../runtime/session-manager.ts#L937) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:938`](../runtime/session-manager.ts#L938) <!-- probe-site -->
 
 ## Machines
 
