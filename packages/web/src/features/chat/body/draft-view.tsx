@@ -67,58 +67,58 @@ import {
   PenguinLogo,
   toastError,
 } from "@prismshadow/penguin-ui";
-import * as api from "../../api/endpoints";
-import { S } from "../../lib/strings";
-import { UNCONFINED, draftSandboxAfter } from "../../lib/permission-level";
-import type { PermissionPick } from "../../lib/permission-level";
-import { formatMonthDay } from "../../lib/format";
-import { apiErrorText } from "../../lib/api-error";
-import { rememberSessionMachine } from "../../lib/session-machines";
-import { cachedMachineAgents, rememberMachineAgents } from "../../lib/machine-cache";
-import { useAuth } from "../../state/auth";
-import { useLocale } from "../../state/locale";
-import type { Locale } from "../../state/locale";
-import { surfaceLabel, useContributions } from "../../state/contributions";
-import { SurfaceComposer } from "./surface-composer";
-import { agentDisplayName, useProject } from "../../state/project";
-import { useSessions } from "../../state/sessions";
-import { useVersionInfo } from "../../lib/use-version-info";
-import { versionBadgeFor } from "../../lib/update-flow";
-import { openAppInfo, useUpdateFlow } from "../../lib/use-update-flow";
-import { ChatInput } from "./chat-input";
-import type { ComposerControl } from "./chat-input";
-import { APPROVAL_MODES } from "./approval-mode";
-import { adoptDockScope } from "../dock/dock-state";
-import { setDockCwd } from "../dock/dock-terminal";
-import { EXAMPLE_FOLDERS } from "./example-tasks";
-import type { ExampleFolderId, ExampleTask } from "./example-tasks";
-import { ExampleFolderRow, exampleRowClass } from "./example-folder-row";
-import { SHORTCUTS_FOLDER_ID, ShortcutsFolder } from "./shortcuts-folder";
-import { clearDraft, draftKey, loadDraft, saveDraft } from "./draft-cache";
+import * as api from "../../../api/endpoints";
+import { S } from "../../../lib/strings";
+import { UNCONFINED, draftSandboxAfter } from "../../../lib/permission-level";
+import type { PermissionPick } from "../../../lib/permission-level";
+import { formatMonthDay } from "../../../lib/format";
+import { apiErrorText } from "../../../lib/api-error";
+import { rememberSessionMachine } from "../../../lib/session-machines";
+import { cachedMachineAgents, rememberMachineAgents } from "../../../lib/machine-cache";
+import { useAuth } from "../../../state/auth";
+import { useLocale } from "../../../state/locale";
+import type { Locale } from "../../../state/locale";
+import { surfaceLabel, useContributions } from "../../../state/contributions";
+import { SurfaceComposer } from "../surface-composer";
+import { agentDisplayName, useProject } from "../../../state/project";
+import { useSessions } from "../../../state/sessions";
+import { useVersionInfo } from "../../../lib/use-version-info";
+import { versionBadgeFor } from "../../../lib/update-flow";
+import { openAppInfo, useUpdateFlow } from "../../../lib/use-update-flow";
+import { ChatInput } from "../chat-input";
+import type { ComposerControl } from "../chat-input";
+import { APPROVAL_MODES } from "../approval-mode";
+import { adoptDockScope } from "../../dock/dock-state";
+import { setDockCwd } from "../../dock/dock-terminal";
+import { EXAMPLE_FOLDERS } from "../example-tasks";
+import type { ExampleFolderId, ExampleTask } from "../example-tasks";
+import { ExampleFolderRow, exampleRowClass } from "../example-folder-row";
+import { SHORTCUTS_FOLDER_ID, ShortcutsFolder } from "../shortcuts-folder";
+import { clearDraft, draftKey, loadDraft, saveDraft } from "../draft-cache";
 import {
   applicableSurfaceKind,
   recallSurfaceKind,
   rememberSurfaceKind,
   workspaceKey,
-} from "./surface-memory";
-import type { DraftCache } from "./draft-cache";
+} from "../surface-memory";
+import type { DraftCache } from "../draft-cache";
 import {
   DRAFT_FLUSH_EVENT,
   getDraftSession,
   removeDraftSession,
   saveDraftSession,
-} from "./draft-sessions";
+} from "../draft-sessions";
 import {
   CHAT_DEFAULTS_CHANGED_EVENT,
   chatDefaultsChangedDetail,
   type ChatDefaultsChangedDetail,
-} from "./chat-defaults-event";
-import { newChatAgentId } from "./new-chat";
-import { onPluginConfigSaved } from "../../lib/plugin-config-event";
-import { effectiveThinkingLevel } from "../model-picker";
-import { WorkspaceSelect, pillClass } from "../workspace";
-import { FilesPanelToggle } from "./dock-toggles";
-import { sameModelRef } from "../models/model-grouping";
+} from "../chat-defaults-event";
+import { newChatAgentId } from "../new-chat";
+import { onPluginConfigSaved } from "../../../lib/plugin-config-event";
+import { effectiveThinkingLevel } from "../../model-picker";
+import { WorkspaceSelect, pillClass } from "../../workspace";
+import { FilesPanelToggle } from "../dock-toggles";
+import { sameModelRef } from "../../models/model-grouping";
 
 /** Coalescing window for writing body text to the cache: keystrokes are frequent, so a short batch accumulates before persisting (option changes are still written immediately). */
 const DRAFT_SAVE_DEBOUNCE_MS = 300;

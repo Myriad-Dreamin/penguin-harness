@@ -73,6 +73,9 @@ features/benchmark/benchmark-prompts.ts -> features/ai-create/ai-create-prompt.t
 features/benchmark/create-benchmark-modal.tsx -> features/semantic-id/semantic-id-field.tsx
 features/builtin-browser/browser-actions.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-layer.tsx -> features/dock/dock-state.ts
+features/chat/body/draft-view.tsx -> features/dock/dock-state.ts
+features/chat/body/draft-view.tsx -> features/dock/dock-terminal.ts
+features/chat/body/draft-view.tsx -> features/models/model-grouping.ts
 features/chat/builtin-dock-panels.tsx -> features/builtin-browser/browser-panel.tsx
 features/chat/builtin-dock-panels.tsx -> features/builtin-browser/browser-store.ts
 features/chat/builtin-dock-panels.tsx -> features/dock/panel-registry.ts
@@ -96,9 +99,6 @@ features/chat/chat-page.tsx -> features/schedules/schedule-store.ts
 features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
 features/chat/dock-toggles.tsx -> features/dock/panel-meta.tsx
-features/chat/draft-view.tsx -> features/dock/dock-state.ts
-features/chat/draft-view.tsx -> features/dock/dock-terminal.ts
-features/chat/draft-view.tsx -> features/models/model-grouping.ts
 features/chat/message-item.tsx -> features/proposals/proposal-links.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
 features/chat/new-chat.ts -> features/ai-create/default-agent.ts
