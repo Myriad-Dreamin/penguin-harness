@@ -177,9 +177,12 @@ const names = (table) => (table !== null && typeof table === "object" ? Object.k
 /**
  * The dependencies of the package at `pkgDir` that live OUTSIDE it, in the prefix `prefixDir`
  * it was installed into: what npm hoisted to `<prefix>/node_modules/<dep>`, found the way Node
- * finds a package (`node_modules` upward, stopping at the prefix), for its dependencies and
- * optional dependencies, transitively. A dependency nested inside the package already travels
- * with it; an optional one npm did not install (another platform's binary) is skipped.
+ * finds a package (`node_modules` upward, stopping at the prefix), for its dependencies,
+ * optional dependencies and peer dependencies, transitively. Peers count because npm installs
+ * them and the package imports them: the DSH chain (`@deepseek-ai/dsh-sandbox-local`) names its
+ * siblings as peers, and an entry without them cannot load. A dependency nested inside the
+ * package already travels with it; one npm did not install (another platform's binary, an
+ * optional peer) is skipped.
  */
 async function hoistedDependencies(pkgDir, prefixDir) {
   const out = new Map();
@@ -188,7 +191,11 @@ async function hoistedDependencies(pkgDir, prefixDir) {
   const visit = async (from) => {
     const manifest = await readPackageJson(from);
     if (manifest === null) return;
-    for (const dep of [...names(manifest.dependencies), ...names(manifest.optionalDependencies)]) {
+    for (const dep of [
+      ...names(manifest.dependencies),
+      ...names(manifest.optionalDependencies),
+      ...names(manifest.peerDependencies),
+    ]) {
       let found = null;
       for (let dir = from; ; dir = path.dirname(dir)) {
         const candidate = path.join(dir, "node_modules", ...dep.split("/"));

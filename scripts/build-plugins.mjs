@@ -55,7 +55,7 @@ const PLUGINS_SRC = path.join(ROOT, "plugins");
 const CACHE = path.join(ROOT, "node_modules", ".cache", "penguin-plugins");
 const COMPLETE = ".complete";
 /** Folded into the cache key: bump when what this script WRITES changes, not only what it reads. */
-const PACK_FORMAT = 15;
+const PACK_FORMAT = 16;
 // The server's own dependency: the store writes its manifests with the same library.
 const { stringify: stringifyToml } = createRequire(
   path.join(ROOT, "packages", "server", "package.json"),

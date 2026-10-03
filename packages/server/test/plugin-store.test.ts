@@ -69,7 +69,10 @@ async function prefix(
         license: "MIT",
         categories: ["sandbox"],
         dependencies: { native: "^2.0.0" },
+        // npm installs a peer beside the package; one it did not install is not looked for.
+        peerDependencies: { sibling: "^1.0.0", "absent-peer": "^1.0.0" },
       }),
+      "node_modules/sibling/package.json": JSON.stringify({ name: "sibling", version: "1.0.0" }),
       "node_modules/@acme/sandbox-x/dist/index.js": body,
       "node_modules/native/package.json": JSON.stringify({ name: "native", version: "2.0.1" }),
       "node_modules/native/index.js": "module.exports = 1;",
@@ -136,6 +139,7 @@ describe("plugin store", () => {
     );
     const pkg = path.join(entry.dir, "package");
     expect(await exists(path.join(pkg, "node_modules", "native", "index.js"))).toBe(true);
+    expect(await exists(path.join(pkg, "node_modules", "sibling", "package.json"))).toBe(true);
     expect(await exists(path.join(pkg, "node_modules", "unrelated"))).toBe(false);
     const manifest = parseToml(await fs.readFile(path.join(entry.dir, "manifest.toml"), "utf8"));
     expect(manifest).toMatchObject({ name: "@acme/sandbox-x", integrity: entry.integrity });
