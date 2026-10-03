@@ -105,7 +105,12 @@ depend on DSH.
 That includes the native parts, for every supported host: koffi's prebuilt module for Linux
 x64/arm64, macOS x64/arm64 and Windows x64 (every platform loads it, since the chain imports
 its Windows runner statically), and the Landlock launcher for Linux x64/arm64. The tarball is
-about 3.5 MB.
+about 3.7 MB (375 files).
+
+The build checks that tree against the lockfile by content: every tarball npm installed must
+match the integrity `pnpm-lock.yaml` pins for its version. npm fetches the tree from the
+registry, so building the package needs npm registry access (the npm cache serves a repeat
+build).
 
 The chain loads behind dynamic imports, so a package whose carried tree is damaged fails
 *this* load — reported fail-closed by the service — instead of failing the whole platform
