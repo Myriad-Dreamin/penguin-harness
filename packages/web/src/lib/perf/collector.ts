@@ -6,13 +6,13 @@
  * What it records, all shape and never content (the server keeps only `web.*` samples of
  * numbers and short strings, see server telemetry/browser.ts):
  *
- * - `web.boot` — once per page: navigation, the entry script's download and the first paints,
- *   from the browser's own Navigation / Resource / Paint Timing (buffered), so the boot path
- *   itself carries no marks.
+ * - `web.boot` — once per page: the time to the first contentful paint, with the time to the
+ *   server's first byte, from the browser's own Navigation / Paint Timing (buffered), so the
+ *   boot path itself carries no marks.
  * - `web.longtasks` — long tasks and their blocking time (duration past 50 ms), summed per send
- *   window; not attributed to a script.
- * - `web.session.open` / `web.turn` — a session's history load, then each turn, from the socket
- *   frame to the React commit, in segments (see StreamProbe).
+ *   window with their count and the longest; not attributed to a script.
+ * - `web.session.open` / `web.turn` — a session's history load to its first render, then each
+ *   turn from its first streamed frame to its last render (see StreamProbe).
  * - `web.socket.connect` and `web.sessions.fanout` arrive from their hooks via switch.ts.
  *
  * Samples are queued and posted in batches. A 409 from the intake means the switch went off on
