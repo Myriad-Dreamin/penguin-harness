@@ -47,9 +47,9 @@ import {
   WEB_MODULE,
   webSlotsDecl,
 } from "./agent-kind.js";
+import { isSafeRelPath } from "../http/static-files.js";
 import {
   historyDir,
-  isSafeRelPath,
   isWorkflowId,
   listFolders,
   readFolder,

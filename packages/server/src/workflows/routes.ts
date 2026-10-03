@@ -13,36 +13,15 @@
  * Every route requires access to the Project; the UI and api routes are what the
  * workflow's own page (an iframe in the Web App, same-origin cookie auth) talks to.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
 import { Hono } from "hono";
 import { Bind, Component, Use } from "@prismshadow/penguin-core/kernel";
 import type { AppEnv } from "../auth/middleware.js";
 import { HttpError } from "../http/errors.js";
+import { uiFileResponse } from "../http/static-files.js";
 import { requireValidId } from "../http/validate.js";
 import type { Access } from "../mechanisms/projects.js";
 import type { WorkflowRequest, WorkflowResponse, Workflows } from "../mechanisms/workflows.js";
 import { WorkflowNotFound } from "./service.js";
-
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".htm": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".txt": "text/plain; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-};
 
 /** The largest request body a workflow's handler is handed. */
 const MAX_BODY_BYTES = 50 * 1024 * 1024;
@@ -258,11 +237,7 @@ export function workflowRoutes(deps: WorkflowRouteDeps): Hono<AppEnv> {
     const rel = c.req.path.split(`/workflows/${id}/ui/`)[1] ?? "";
     const file = await deps.workflows.uiFile(projectId, agentId, id, decodeURIComponent(rel));
     if (file === null) throw new HttpError(404, "not_found", "No such file in the workflow's ui/.");
-    const body = await fs.readFile(file);
-    return c.body(body, 200, {
-      "content-type": MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream",
-      "cache-control": "no-cache",
-    });
+    return uiFileResponse(c, file);
   });
 
   app.all("/:id/api/*", async (c) => {
