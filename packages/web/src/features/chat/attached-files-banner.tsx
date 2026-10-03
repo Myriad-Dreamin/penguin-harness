@@ -8,11 +8,7 @@
  */
 import { GlyphIcon } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
-import { attachmentFileName } from "../../lib/attachments";
-
-/** Paperclip glyph (24×24 line path), shared with the composer's file-attachment entry. */
-export const PAPERCLIP_ICON =
-  "M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.65 5.66l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48";
+import { PAPERCLIP_ICON, attachmentFileName } from "../../lib/attachments";
 
 export function AttachedFilesBanner({ files }: { files: string[] }) {
   const label = S.chat.attachedFilesBanner(files.map(attachmentFileName));

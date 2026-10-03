@@ -26,6 +26,13 @@ import {
   matchAttachedImageLine,
 } from "@prismshadow/penguin-core/markers";
 
+/**
+ * Paperclip glyph (24×24 line path): the mark of an attached file wherever one is shown or added —
+ * the message banner, the composer's attachment entry, the drop overlay and the Files panel.
+ */
+export const PAPERCLIP_ICON =
+  "M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.65 5.66l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48";
+
 export interface ParsedAttachments {
   /** Body text with restored attachment lines removed (unrecognized lines are kept). */
   text: string;

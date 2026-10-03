@@ -149,7 +149,7 @@ import {
 } from "./input-history";
 import type { HistoryStep } from "./input-history";
 import { isStopAction, midRunAction } from "./composer-send";
-import { PAPERCLIP_ICON } from "./attached-files-banner";
+import { PAPERCLIP_ICON } from "../../lib/attachments";
 import { FileDropZone } from "./drop-zone";
 import { ContextGauge } from "./context-gauge";
 import { modelWindowBelowCompactionLimit } from "../../lib/context";
