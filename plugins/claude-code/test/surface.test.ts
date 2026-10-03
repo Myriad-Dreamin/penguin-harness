@@ -9,15 +9,33 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Terminals } from "@prismshadow/penguin-server/plugin";
-import type { SurfaceSessionRef, SurfaceState } from "@prismshadow/penguin-core/plugin";
+import type {
+  SurfaceReport,
+  SurfaceSessionRef,
+  SurfaceState,
+} from "@prismshadow/penguin-core/plugin";
 import plugin, {
-  ACTIVITY_WINDOW_MS,
   ClaudeCode,
+  MARKER_ROWS,
+  pickTranscript,
+  readAiTitle,
+  readsAsRunning,
+  SCREEN_SETTLE_MS,
+  transcriptDir,
   ClaudeCodeSurface,
   INHERITED_SESSION_MARKERS,
   claudeArgv,
   claudeBinary,
   claudeSearchedIn,
+  ClaudeCodeQueueModule,
+  DEFAULT_CAPACITY,
+  DEFAULT_IDLE_MINUTES,
+  PAGE_PREFIX,
+  PAGE_ROUTES_ID,
+  PAGE_SRC,
+  QUEUE_CONFIG_GROUP,
+  QUEUE_PREFIX,
+  QUEUE_ROUTES_ID,
 } from "../src/index.js";
 
 /** The generated table (the package's `test` script regenerates it before vitest runs). */
@@ -39,6 +57,11 @@ function fakeTerminals() {
   class FakeTerminal {
     readonly id = `t${created.length + 1}`;
     alive = true;
+    /** What the surface reads: the rendered screen, as the real capture() returns it. */
+    screen: string[] = ["❯ ", "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents"];
+    capture() {
+      return { lines: this.screen, totalLines: this.screen.length };
+    }
     private readonly outputs = new Set<(data: string) => void>();
     private readonly exits = new Set<() => void>();
     onOutput(l: (data: string) => void) {
@@ -93,9 +116,210 @@ describe("the generated manifest and the plugin agree", () => {
       kind: "claude-code",
       renderer: { builtin: "TerminalSurface" },
     });
-    expect(table.plugin).toEqual({ modules: ["ClaudeCode"], replaces: [] });
-    expect(plugin.modules).toEqual([ClaudeCode]);
+    expect(table.plugin).toEqual({
+      modules: ["ClaudeCode", "ClaudeCodeQueueModule"],
+      replaces: [],
+    });
+    expect(plugin.modules).toEqual([ClaudeCode, ClaudeCodeQueueModule]);
   });
+
+  it("declares the queue's routes, its console page and its settings with the code's own values", () => {
+    const module = table.modules.ClaudeCodeQueueModule as unknown as {
+      requires: Record<string, { iface: string; from?: string }>;
+      contributes: Record<string, Array<Record<string, unknown>>>;
+    };
+    expect(module.requires.surfaces).toMatchObject({
+      iface: "@prismshadow/penguin-server#SessionSurfaces",
+      from: "SessionRuntimeModule",
+    });
+    expect(module.requires.gateway).toMatchObject({ from: "CompanyModule" });
+    const routes = module.contributes["HttpModule.routes"]!;
+    expect(routes.map((r) => [r.id, r.prefix])).toEqual([
+      [QUEUE_ROUTES_ID, QUEUE_PREFIX],
+      [PAGE_ROUTES_ID, PAGE_PREFIX],
+    ]);
+    expect(module.contributes["WebModule.pages"]).toEqual([
+      expect.objectContaining({
+        key: "claude-code",
+        path: "claude-code",
+        nav: "org",
+        renderer: { iframe: { src: PAGE_SRC, namespace: "claude-code" } },
+      }),
+    ]);
+    const [group] = module.contributes["PluginConfigProvider.groups"]!;
+    const properties = group!.properties as Record<string, { default: unknown }>;
+    expect(group!.id).toBe(QUEUE_CONFIG_GROUP);
+    expect(properties.capacity!.default).toBe(DEFAULT_CAPACITY);
+    expect(properties.idleMinutes!.default).toBe(DEFAULT_IDLE_MINUTES);
+  });
+});
+
+describe("the running marker", () => {
+  it("is the spinner line's shape, not a word — the word is picked from a long list", () => {
+    // Running: a frame, one gerund, an ellipsis. The glyph animates and the word varies.
+    expect(readsAsRunning(["✻ Working… (3s · ↑ 1.2k tokens · esc to interrupt)"])).toBe(true);
+    expect(readsAsRunning(["✽ Wrangling…"])).toBe(true);
+    expect(readsAsRunning(["· Zigzagging... (12s)"])).toBe(true);
+    // Ended: the same glyph, a past tense, no ellipsis.
+    expect(readsAsRunning(["✻ Worked for 2s · done 1:31 AM"])).toBe(false);
+    // A waiting prompt and its bar say nothing about a turn.
+    expect(readsAsRunning(["❯ ", "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents"])).toBe(
+      false,
+    );
+    // Somebody's sentence in the transcript is not a spinner: it starts with a letter.
+    expect(readsAsRunning(["  I will keep Working… until you stop me"])).toBe(false);
+    // Only the last WRITTEN rows are read: a spinner further up is a transcript of an older
+    // turn, and the blank rows a capture carries below the cursor are not rows at all.
+    expect(
+      readsAsRunning([
+        "✻ Working…",
+        ...Array.from({ length: MARKER_ROWS }, (_, i) => `  transcript line ${i}`),
+      ]),
+    ).toBe(false);
+    expect(readsAsRunning(["✻ Working…", "", "", "", "", "", "", ""])).toBe(true);
+  });
+});
+
+describe("the title", () => {
+  it("is Claude Code's own, read from its transcript for this Workspace", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "claude-title-"));
+    try {
+      // One directory per cwd, named after the path with everything else turned into a dash.
+      const cwd = "/work/tmp-1";
+      expect(transcriptDir(cwd, { HOME: home })).toBe(
+        path.join(home, ".claude", "projects", "-work-tmp-1"),
+      );
+      // CLAUDE_CONFIG_DIR moves the root, as it does for the tool itself.
+      expect(transcriptDir(cwd, { HOME: home, CLAUDE_CONFIG_DIR: "/cfg" })).toBe(
+        path.join("/cfg", "projects", "-work-tmp-1"),
+      );
+
+      // The LAST ai-title in what was read is the current one; anything else is ignored.
+      expect(
+        readAiTitle(
+          [
+            '{"type":"mode","mode":"normal"}',
+            '{"type":"ai-title","aiTitle":"First guess"}',
+            '{"type":"user","message":{"content":"write {\"type\":\"ai-title\" somewhere"}}',
+            '{"type":"ai-title","aiTitle":"What it turned out to be"}',
+          ].join("\n"),
+        ),
+      ).toBe("What it turned out to be");
+      // A half-written last line is simply not a title yet.
+      expect(readAiTitle('{"type":"ai-title","aiTit')).toBeNull();
+      expect(readAiTitle("")).toBeNull();
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("which transcript a Session follows", () => {
+  const t = (file: string, size: number) => ({ file, at: 0, size });
+  const base = (...pairs: [string, number][]) => new Map(pairs);
+
+  it("never takes one another Session is following", () => {
+    // Two surfaces can share a Workspace, and then they share this directory: "the newest
+    // file" is whichever program typed last, and both Sessions would take one title.
+    const found = [t("/d/b.jsonl", 20), t("/d/a.jsonl", 10)];
+    expect(pickTranscript(found, { file: null }, new Set())).toBe("/d/b.jsonl");
+    expect(pickTranscript(found, { file: null }, new Set(["/d/b.jsonl"]))).toBe("/d/a.jsonl");
+    // Nothing free: better to follow nothing than to read somebody else's session.
+    expect(pickTranscript(found, { file: null }, new Set(["/d/a.jsonl", "/d/b.jsonl"]))).toBeNull();
+  });
+
+  it("ignores what an earlier run left in the same Workspace, and takes what grows", () => {
+    const before = base(["/d/old.jsonl", 500]);
+    // Present when this Session started and never written since: not this program's.
+    expect(pickTranscript([t("/d/old.jsonl", 500)], { file: null }, new Set(), before)).toBeNull();
+    // Grown since: it is being written now.
+    expect(pickTranscript([t("/d/old.jsonl", 600)], { file: null }, new Set(), before)).toBe(
+      "/d/old.jsonl",
+    );
+    // A file that was not there at all is this program's by construction.
+    expect(pickTranscript([t("/d/new.jsonl", 10)], { file: null }, new Set(), before)).toBe(
+      "/d/new.jsonl",
+    );
+  });
+
+  it("keeps the one it claimed, whatever appears next to it", () => {
+    // From the outside, "my program resumed into another session" and "the Session next door
+    // just started" are the same event. Chasing the newer file renames somebody else.
+    const found = [t("/d/newer.jsonl", 90), t("/d/mine.jsonl", 10)];
+    expect(pickTranscript(found, { file: "/d/mine.jsonl" }, new Set())).toBe("/d/mine.jsonl");
+    // Only a file that is gone releases the claim.
+    expect(pickTranscript([t("/d/newer.jsonl", 90)], { file: "/d/mine.jsonl" }, new Set())).toBe(
+      "/d/newer.jsonl",
+    );
+  });
+});
+
+describe("the title, followed for real", () => {
+  it("reports the ai-title the program writes, and each change of it", async () => {
+    vi.useRealTimers();
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "claude-follow-"));
+    try {
+      const cwd = path.join(home, "workspace");
+      await fs.mkdir(cwd, { recursive: true });
+      const dir = transcriptDir(cwd, { HOME: home });
+      await fs.mkdir(dir, { recursive: true });
+      const file = path.join(dir, "sess-1.jsonl");
+      await fs.writeFile(file, '{"type":"mode","mode":"normal"}\n');
+
+      const { terminals } = fakeTerminals();
+      const surface = new ClaudeCodeSurface(
+        terminals,
+        { PENGUIN_CLAUDE_BIN: "fake", HOME: home },
+        SCREEN_SETTLE_MS,
+        20,
+      );
+      const reports: (SurfaceState | SurfaceReport)[] = [];
+      await surface.open({ ...ref, workspace: cwd }, {}, (r) => reports.push(r));
+
+      const titles = async () => {
+        for (let i = 0; i < 50; i++) {
+          await new Promise((r) => setTimeout(r, 20));
+          const seen = reports.filter((r) => typeof r !== "string" && r.title !== undefined);
+          if (seen.length > 0) return seen.map((r) => (r as SurfaceReport).title);
+        }
+        return [];
+      };
+
+      // Appended as the program names the conversation.
+      await fs.appendFile(file, '{"type":"ai-title","aiTitle":"Counting the files"}\n');
+      expect(await titles()).toEqual(["Counting the files"]);
+
+      // And again when the program renames it, in the same transcript.
+      reports.length = 0;
+      await fs.appendFile(file, '{"type":"ai-title","aiTitle":"Auditing the tree"}\n');
+      expect(await titles()).toEqual(["Auditing the tree"]);
+
+      // A SECOND Session in the same Workspace — which the New chat page allows — must not
+      // read the first one's transcript, whichever of the two programs typed last.
+      const secondReports: (SurfaceState | SurfaceReport)[] = [];
+      await surface.open({ ...ref, sessionId: "s2", workspace: cwd }, {}, (r) =>
+        secondReports.push(r),
+      );
+      const third = path.join(dir, "sess-3.jsonl");
+      await fs.writeFile(third, '{"type":"ai-title","aiTitle":"Its own name"}\n');
+      for (let i = 0; i < 50 && secondReports.length === 0; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(
+        secondReports.filter((r) => typeof r !== "string").map((r) => (r as SurfaceReport).title),
+      ).toEqual(["Its own name"]);
+      // …and the first Session kept its own.
+      reports.length = 0;
+      await new Promise((r) => setTimeout(r, 100));
+      expect(reports.filter((r) => typeof r !== "string" && r.title !== undefined)).toEqual([]);
+
+      surface.close("s2");
+      surface.close(ref.sessionId);
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+      vi.useFakeTimers();
+    }
+  }, 20_000);
 });
 
 describe("the program", () => {
@@ -172,7 +396,7 @@ describe("the surface", () => {
   it("runs the program in the Workspace as the user's own pty, and reads output as activity", async () => {
     const { terminals, created } = fakeTerminals();
     const surface = new ClaudeCodeSurface(terminals, { PENGUIN_CLAUDE_BIN: "fake" });
-    const states: SurfaceState[] = [];
+    const states: (SurfaceState | SurfaceReport)[] = [];
     const view = await surface.open(ref, { prompt: "hello", cols: 100, rows: 30 }, (s) =>
       states.push(s),
     );
@@ -194,22 +418,35 @@ describe("the surface", () => {
     expect(surface.status("s1")).toBe("idle");
 
     const terminal = created[0]!.terminal;
+    // Output alone is not work: the screen still says the prompt is waiting.
     terminal.emit("...");
-    terminal.emit("...");
+    vi.advanceTimersByTime(SCREEN_SETTLE_MS + 1);
+    expect(surface.status("s1")).toBe("idle");
+    expect(states).toEqual([]);
+
+    // The program's own statement that a turn is in flight, in its hint bar.
+    terminal.screen = [
+      "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+      "✻ Baking… (3s · ↑ 1.2k tokens · esc to interrupt)",
+    ];
+    terminal.emit("redraw");
+    vi.advanceTimersByTime(SCREEN_SETTLE_MS + 1);
     expect(surface.status("s1")).toBe("running");
     expect(states).toEqual(["running"]);
-    vi.advanceTimersByTime(ACTIVITY_WINDOW_MS - 1);
-    expect(surface.status("s1")).toBe("running");
-    vi.advanceTimersByTime(2);
+
+    // The turn ended: the same glyph, a past tense, no ellipsis.
+    terminal.screen = [
+      "✻ Worked for 2s · done 1:31 AM",
+      "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+    ];
+    terminal.emit("redraw");
+    vi.advanceTimersByTime(SCREEN_SETTLE_MS + 1);
     expect(surface.status("s1")).toBe("idle");
     expect(states).toEqual(["running", "idle"]);
-
-    terminal.emit(">");
-    expect(states).toEqual(["running", "idle", "running"]);
     terminal.exit();
     expect(surface.status("s1")).toBe("idle");
     expect(surface.view("s1")).toEqual({ alive: false, view: { terminalId: "t1" } });
-    expect(states).toEqual(["running", "idle", "running", "idle"]);
+    expect(states).toEqual(["running", "idle"]);
   });
 
   it("opening again reuses a live pty and replaces a dead one", async () => {
@@ -241,9 +478,12 @@ describe("the surface", () => {
     next.adopt({ sessions: { s1: "t1", s2: "t2" } });
     expect(next.view("s1")).toBeNull();
     expect(next.view("s2")).toEqual({ alive: true, view: { terminalId: "t2" } });
-    const states: SurfaceState[] = [];
+    // The claimed pty reports to the NEW App's reporter, and reports what its screen says.
+    const states: (SurfaceState | SurfaceReport)[] = [];
     await next.open({ ...ref, sessionId: "s2" }, {}, (s) => states.push(s));
+    created[1]!.terminal.screen = ["✽ Herding… (1s)"];
     created[1]!.terminal.emit("x");
+    vi.advanceTimersByTime(SCREEN_SETTLE_MS + 1);
     expect(states).toEqual(["running"]);
   });
 });

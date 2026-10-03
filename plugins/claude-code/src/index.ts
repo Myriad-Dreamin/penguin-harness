@@ -14,11 +14,31 @@
  *
  * ## State
  *
- * A pty has no notion of "thinking", so this surface's state is a heuristic: output within
- * the last {@link ACTIVITY_WINDOW_MS} means running, silence past it means idle, exit means
- * idle. Claude Code redraws continuously while it works (its spinner) and not at all while
- * it waits for input, which is what makes the rule hold in practice. The window is this
- * plugin's judgement, not the platform's.
+ * READ OFF THE SCREEN, not off the flow of bytes. Claude Code says what it is doing on its
+ * own spinner line, and stops saying it when the turn ends:
+ *
+ *     ✻ Working… (3s · ↑ 1.2k tokens · esc to interrupt)   ← running
+ *     ✻ Worked for 2s · done 1:31 AM                        ← idle
+ *
+ * The word is picked from a long list and the glyph animates, so {@link RUNNING_LINE} matches
+ * the SHAPE — a symbol, one word, an ellipsis — and never a particular word.
+ *
+ * This used to be "output means running, silence past a window means idle", which is a
+ * different question with a similar answer: it called a redraw work (a resize, a paste
+ * echoing) and it called a long tool call idle the moment the spinner paused. The marker is
+ * the program's own statement, so it is what this reads — from the LAST rows only
+ * ({@link MARKER_ROWS}), since a transcript above can say anything.
+ *
+ * ## The title
+ *
+ * Claude Code names its own conversation: it writes `{"type":"ai-title","aiTitle":"…"}` into
+ * its transcript once it knows what the session is about, and again when that changes. This
+ * surface follows that file and reports each new title, so a Session in the list stops being
+ * called by whatever its first prompt happened to say.
+ *
+ * The file is CHOSEN EVERY POLL — the newest transcript for the Workspace — rather than
+ * pinned at spawn: `/resume` inside the TUI moves the program to another session, and a
+ * pinned file would name the one it started with.
  *
  * ## The program
  *
@@ -35,6 +55,7 @@
  * back from the manager by id — one that is gone reads as never opened.
  */
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import type { Json } from "@prismshadow/penguin-core/kernel";
 import { Bind, Component, Use } from "@prismshadow/penguin-core/plugin";
@@ -44,13 +65,92 @@ import type {
   SessionSurface,
   SurfaceOpenOptions,
   SurfaceSessionRef,
+  SurfaceReport,
   SurfaceState,
   SurfaceView,
 } from "@prismshadow/penguin-core/plugin";
-import type { Terminals } from "@prismshadow/penguin-server/plugin";
+import type { Hono } from "hono";
+import type {
+  Log,
+  OrgGateway,
+  Paths,
+  PluginConfig,
+  SessionIndex,
+  SessionServiceIface,
+  SessionSurfaces,
+  Terminals,
+} from "@prismshadow/penguin-server/plugin";
+import { ClaudeCodeQueue } from "./queue.js";
+import { QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
+import { PAGE_ROUTES_ID, pageRoutes } from "./console-page.js";
 
-/** Output within this many milliseconds of now reads as "running"; silence past it as "idle". */
-export const ACTIVITY_WINDOW_MS = 1500;
+export {
+  ClaudeCodeQueue,
+  KEEP_ENDED,
+  PROMPT_MAX,
+  PUMP_MS,
+  QueueError,
+  RUNS_FILE,
+  SCREEN_MAX,
+  parseRunsFile,
+  runsPath,
+} from "./queue.js";
+export type {
+  EndReason,
+  QueueConfig,
+  QueueDeps,
+  RowLike,
+  Run,
+  RunStatus,
+  RunView,
+} from "./queue.js";
+export { QUEUE_PREFIX, QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
+export {
+  PAGE_PREFIX,
+  PAGE_ROUTES_ID,
+  PAGE_SRC,
+  PAGE_STRINGS,
+  pageHtml,
+  pageRoutes,
+} from "./console-page.js";
+
+/**
+ * The screen is re-read this long after a burst of output settles — the TUI redraws its bar
+ * many times a second while working, and each redraw would otherwise cost a screen scan.
+ */
+export const SCREEN_SETTLE_MS = 120;
+
+/** How many rows of the tail carry the hint bar. Enough for the bar and its neighbours, not the transcript. */
+export const MARKER_ROWS = 6;
+
+/**
+ * The line Claude Code draws while a turn is in flight: a spinner frame, a word, an ellipsis.
+ *
+ *     ✻ Working… (3s · ↑ 1.2k tokens · esc to interrupt)
+ *     ✽ Herding… (12s · ↓ 400 tokens)
+ *
+ * THE WORD VARIES — the program picks from a long list of gerunds (Working, Wrangling,
+ * Herding, Baking, …) and animates the glyph through several frames, so neither is matched.
+ * What is matched is the shape: a symbol, a single word, and the ellipsis that says the word
+ * is a present participle. That is also what separates it from the line left behind when the
+ * turn ENDS, which is the same glyph and a past tense with no ellipsis:
+ *
+ *     ✻ Worked for 2s · done 1:31 AM
+ */
+export const RUNNING_LINE = /^\s*[^\p{L}\p{N}\s]\s+\p{L}[\p{L}'’-]*(?:…|\.\.\.)/u;
+
+/**
+ * Whether the screen says a turn is in flight: the spinner line, among the last rows that
+ * carry anything.
+ *
+ * Blank rows are dropped before the tail is taken — a capture is the whole buffer including
+ * the empty rows below the cursor, so counting from the bottom without this reads six blanks
+ * and concludes nothing is happening.
+ */
+export function readsAsRunning(lines: readonly string[]): boolean {
+  const written = lines.filter((line) => line.trim() !== "");
+  return written.slice(-MARKER_ROWS).some((line) => RUNNING_LINE.test(line));
+}
 
 /**
  * The parent's Claude Code SESSION markers, scrubbed from the pty's environment.
@@ -192,15 +292,141 @@ export function claudeArgv(
   return argv;
 }
 
+/** How often the transcript directory is re-read for a title. Cheap: a readdir and the new bytes of one file. */
+export const TITLE_POLL_MS = 4000;
+
+/**
+ * Claude Code's transcript directory for a working directory.
+ *
+ * It keeps one directory per cwd under `~/.claude/projects`, named after the path with every
+ * character that is not a letter, a digit or a dash replaced by one — `/home/k/.penguin/x`
+ * becomes `-home-k--penguin-x`. `CLAUDE_CONFIG_DIR` moves the root, as it does for the tool.
+ */
+export function transcriptDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
+  const root =
+    env.CLAUDE_CONFIG_DIR?.trim() || path.join(env.HOME ?? env.USERPROFILE ?? "", ".claude");
+  return path.join(root, "projects", cwd.replace(/[^A-Za-z0-9-]/g, "-"));
+}
+
+/**
+ * The title Claude Code gave the session, from a chunk of its transcript.
+ *
+ * It writes `{"type":"ai-title","aiTitle":"…"}` when it has named the conversation, and again
+ * whenever the name changes; the last one in the chunk is the current one. Parsed line by
+ * line rather than with one regex over the whole text, so a title that merely MENTIONS the
+ * shape cannot be read out of somebody's message.
+ */
+export function readAiTitle(chunk: string): string | null {
+  let title: string | null = null;
+  for (const line of chunk.split("\n")) {
+    if (!line.startsWith('{"type":"ai-title"')) continue;
+    try {
+      const parsed = JSON.parse(line) as { type?: unknown; aiTitle?: unknown };
+      if (
+        parsed.type === "ai-title" &&
+        typeof parsed.aiTitle === "string" &&
+        parsed.aiTitle !== ""
+      ) {
+        title = parsed.aiTitle;
+      }
+    } catch {
+      // A half-written last line: the next poll reads it whole.
+    }
+  }
+  return title;
+}
+
+/** One transcript in a Workspace's directory: when it was last written, and how much of it there is. */
+interface Transcript {
+  file: string;
+  at: number;
+  /** Bytes. A transcript is append-only, so this is what says it grew — see pickTranscript. */
+  size: number;
+}
+
+/** Every transcript in the directory, newest first. */
+async function transcripts(dir: string): Promise<Transcript[]> {
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(dir);
+  } catch {
+    return []; // No transcript yet, or none for this directory at all.
+  }
+  const found: Transcript[] = [];
+  for (const name of entries) {
+    if (!name.endsWith(".jsonl")) continue;
+    const file = path.join(dir, name);
+    try {
+      const stat = await fsp.stat(file);
+      found.push({ file, at: stat.mtimeMs, size: stat.size });
+    } catch {
+      // Gone between readdir and stat.
+    }
+  }
+  return found.sort((a, b) => b.at - a.at);
+}
+
+/**
+ * Which transcript a Session follows: the one its own program wrote, claimed once and kept.
+ *
+ * ONE TRANSCRIPT, ONE SESSION. Two surfaces can share a Workspace — the New chat page lets a
+ * person pick one — and then they share this directory. "The newest file" is then whichever
+ * of the two programs typed last, so both Sessions would take one title and rename each
+ * other; that is the bug this exists for. A file another Session follows is never taken.
+ *
+ * `baseline` is the SIZE of everything the directory held when this Session began following
+ * it. A file is this program's only when it is new or has GROWN since — a leftover from an
+ * earlier run in the same Workspace never grows again, and naming a Session after a
+ * conversation it never had is worse than not naming it.
+ *
+ * Size rather than mtime, because mtime cannot tell: a filesystem stamps it from a coarse
+ * clock (a few milliseconds per tick here), so two appends moments apart carry the SAME
+ * timestamp — measured, while writing this. A transcript is append-only, so its length is the
+ * exact statement that something was written.
+ *
+ * KEPT, not re-chosen. A `/resume` inside the TUI moves the program to another session and
+ * therefore another file, and this follower does not follow it there: from the outside, "my
+ * program resumed elsewhere" and "the Session next door just started" look the same, and
+ * guessing wrong renames somebody else's Session. The cost is a title that stops updating
+ * after a resume until the surface is opened again; the alternative was the bug.
+ */
+export function pickTranscript(
+  found: readonly Transcript[],
+  current: { file: string | null },
+  takenByOthers: ReadonlySet<string>,
+  baseline: ReadonlyMap<string, number> = new Map(),
+): string | null {
+  if (current.file !== null && found.some((t) => t.file === current.file)) return current.file;
+  const live = (t: Transcript) => {
+    const was = baseline.get(t.file);
+    return was === undefined || t.size > was;
+  };
+  return found.find((t) => !takenByOthers.has(t.file) && live(t))?.file ?? null;
+}
+
 /** What the pty manager gives back; the members this surface reads of a terminal. */
 type TerminalHandle = NonNullable<ReturnType<Terminals["get"]>>;
 
 interface Tracked {
   terminal: TerminalHandle;
   state: SurfaceState;
-  report: ((state: SurfaceState) => void) | null;
+  report: ((state: SurfaceState | SurfaceReport) => void) | null;
   quiet: ReturnType<typeof setTimeout> | null;
   unsubscribe: () => void;
+  /** Where this Session's transcripts are, and how far one has been read. */
+  titles: {
+    dir: string;
+    file: string | null;
+    /**
+     * What the directory held when this Session started following it, by SIZE — everything
+     * an earlier run left behind. A file that has not grown since is not this program's
+     * (see pickTranscript).
+     */
+    baseline: Map<string, number>;
+    offset: number;
+    last: string | null;
+    timer: ReturnType<typeof setInterval> | null;
+  } | null;
 }
 
 /** The parked document: which terminal each Session's surface is. */
@@ -218,7 +444,8 @@ export class ClaudeCodeSurface implements SessionSurface {
   constructor(
     private readonly terminals: Terminals,
     private readonly env: NodeJS.ProcessEnv = process.env,
-    private readonly windowMs: number = ACTIVITY_WINDOW_MS,
+    private readonly settleMs: number = SCREEN_SETTLE_MS,
+    private readonly titlePollMs: number = TITLE_POLL_MS,
   ) {}
 
   /** Claims back the terminals a previous App parked; a terminal that is gone is forgotten. */
@@ -240,12 +467,15 @@ export class ClaudeCodeSurface implements SessionSurface {
   async open(
     session: SurfaceSessionRef,
     options: SurfaceOpenOptions,
-    report: (state: SurfaceState) => void,
+    report: (state: SurfaceState | SurfaceReport) => void,
   ): Promise<SurfaceView> {
     const existing = this.tracked.get(session.sessionId);
     if (existing !== undefined && existing.terminal.alive) {
-      // Idempotent: the same program, and the reporter of THIS App from now on.
+      // Idempotent: the same program, and the reporter of THIS App from now on. A terminal
+      // claimed back after a swap has no follower yet — this is where it gets one.
       existing.report = report;
+      if (existing.titles === null)
+        await this.followTitle(session.sessionId, existing, session.workspace);
       return this.viewOf(existing);
     }
     if (existing !== undefined) this.untrack(session.sessionId);
@@ -269,6 +499,7 @@ export class ClaudeCodeSurface implements SessionSurface {
     });
     const tracked = this.track(session.sessionId, terminal);
     tracked.report = report;
+    await this.followTitle(session.sessionId, tracked, session.workspace);
     return this.viewOf(tracked);
   }
 
@@ -292,6 +523,79 @@ export class ClaudeCodeSurface implements SessionSurface {
     return { alive: tracked.terminal.alive, view: { terminalId: tracked.terminal.id } };
   }
 
+  /**
+   * Follows the title Claude Code gives this Session, and reports each new one.
+   *
+   * Polled rather than watched: a transcript is an append-only file in a directory the tool
+   * owns, `fs.watch` is unreliable across platforms and mounted filesystems, and the read is
+   * a readdir plus the bytes appended since the last look. The file is re-chosen every poll
+   * because `/resume` moves the program to another session — and therefore another file.
+   */
+  private async followTitle(sessionId: string, tracked: Tracked, cwd: string): Promise<void> {
+    const dir = transcriptDir(cwd, this.env);
+    // The baseline is taken BEFORE the first look, and awaited: everything already in the
+    // directory belongs to earlier runs in this Workspace, and this program's own transcript
+    // does not exist yet. Taken later, a transcript written in the meantime would be read as
+    // one of those leftovers and never followed.
+    tracked.titles = {
+      dir,
+      file: null,
+      baseline: new Map((await transcripts(dir)).map((t) => [t.file, t.size])),
+      offset: 0,
+      last: null,
+      timer: null,
+    };
+    const look = () => {
+      void (async () => {
+        const state = tracked.titles;
+        if (state === null) return;
+        const found = await transcripts(state.dir);
+        // What every OTHER Session of this surface is following: a shared Workspace means a
+        // shared directory, and two Sessions must never read one program's transcript.
+        const takenByOthers = new Set<string>();
+        for (const [id, other] of this.tracked) {
+          if (id !== sessionId && other.titles?.file != null) takenByOthers.add(other.titles.file);
+        }
+        const file = pickTranscript(found, { file: state.file }, takenByOthers, state.baseline);
+        if (file === null) return;
+        if (file !== state.file) {
+          // A different transcript (the first one, or one `/resume` moved to): read it whole.
+          state.file = file;
+          state.offset = 0;
+          state.last = null;
+        }
+        let chunk: string;
+        try {
+          const handle = await fsp.open(file, "r");
+          try {
+            const { size } = await handle.stat();
+            if (size < state.offset) state.offset = 0; // Truncated or replaced under the name.
+            if (size === state.offset) return;
+            const buffer = Buffer.alloc(size - state.offset);
+            await handle.read(buffer, 0, buffer.length, state.offset);
+            state.offset = size;
+            chunk = buffer.toString("utf8");
+          } finally {
+            await handle.close();
+          }
+        } catch {
+          return; // Being written, or gone: the next poll tries again.
+        }
+        const title = readAiTitle(chunk);
+        if (title === null || title === state.last) return;
+        state.last = title;
+        // Logged once per change: a title that does not reach the Session list is otherwise
+        // indistinguishable from a program that never named itself.
+        console.log(`[claude-code] title: ${JSON.stringify(title)}`);
+        tracked.report?.({ status: tracked.state, title });
+      })();
+    };
+    const timer = setInterval(look, this.titlePollMs);
+    timer.unref?.();
+    tracked.titles.timer = timer;
+    look();
+  }
+
   private track(sessionId: string, terminal: TerminalHandle): Tracked {
     const tracked: Tracked = {
       terminal,
@@ -299,14 +603,16 @@ export class ClaudeCodeSurface implements SessionSurface {
       report: null,
       quiet: null,
       unsubscribe: () => {},
+      titles: null,
     };
+    // Output is the CUE to look, never the answer: the screen is what says whether a turn is
+    // in flight. Coalesced, because the bar redraws many times a second while it works.
     const offOutput = terminal.onOutput(() => {
-      this.flip(tracked, "running");
-      if (tracked.quiet !== null) clearTimeout(tracked.quiet);
+      if (tracked.quiet !== null) return;
       tracked.quiet = setTimeout(() => {
         tracked.quiet = null;
-        this.flip(tracked, "idle");
-      }, this.windowMs);
+        this.readScreen(tracked);
+      }, this.settleMs);
       tracked.quiet.unref?.();
     });
     const offExit = terminal.onExit(() => {
@@ -325,9 +631,24 @@ export class ClaudeCodeSurface implements SessionSurface {
   private untrack(sessionId: string): void {
     const tracked = this.tracked.get(sessionId);
     if (tracked === undefined) return;
+    if (tracked.titles?.timer != null) clearInterval(tracked.titles.timer);
+    tracked.titles = null;
     if (tracked.quiet !== null) clearTimeout(tracked.quiet);
     tracked.unsubscribe();
     this.tracked.delete(sessionId);
+  }
+
+  /** One look at the screen, and a report when it changed the answer. */
+  private readScreen(tracked: Tracked): void {
+    if (!tracked.terminal.alive) return this.flip(tracked, "idle");
+    let lines: readonly string[];
+    try {
+      lines = tracked.terminal.capture().lines;
+    } catch {
+      // A terminal that cannot be read says nothing about the turn; the last answer stands.
+      return;
+    }
+    this.flip(tracked, readsAsRunning(lines) ? "running" : "idle");
   }
 
   private flip(tracked: Tracked, state: SurfaceState): void {
@@ -372,6 +693,7 @@ export class ClaudeCode {
   setup(_ctx: ClassCtx, context: Json) {
     this.surface = new ClaudeCodeSurface(this.terminals);
     this.surface.adopt(context);
+    liveSurface.current = this.surface;
   }
 
   park(): Json {
@@ -379,5 +701,144 @@ export class ClaudeCode {
   }
 }
 
-const plugin: Plugin = { modules: [ClaudeCode] };
+/**
+ * The surface of the current App, for the queue to read a program's activity off: the two
+ * modules are rebuilt together, and the queue asks at every pass rather than holding on.
+ */
+const liveSurface: { current: ClaudeCodeSurface | null } = { current: null };
+
+/** The queue's settings group — its contribution id, which the values are stored under. */
+export const QUEUE_CONFIG_GROUP = "claude-code-queue";
+export const DEFAULT_CAPACITY = 4;
+export const DEFAULT_IDLE_MINUTES = 30;
+
+function bounded(raw: unknown, min: number, max: number, fallback: number): number {
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= min && raw <= max
+    ? raw
+    : fallback;
+}
+
+/** The stored values, each one outside its bounds read as its default. */
+export function queueConfigOf(values: Record<string, unknown>): {
+  capacity: number;
+  idleMinutes: number;
+} {
+  return {
+    capacity: bounded(values.capacity, 1, 64, DEFAULT_CAPACITY),
+    idleMinutes: bounded(values.idleMinutes, 0, 1440, DEFAULT_IDLE_MINUTES),
+  };
+}
+
+/**
+ * The queue (queue.ts), its routes, and the console page company mode shows it on. A node of
+ * its own: it requires the session surfaces the ClaudeCode node contributes to, which that
+ * node must not (a cycle).
+ */
+@Component({
+  contributes: {
+    "HttpModule.routes": [
+      {
+        // These literals repeat QUEUE_PREFIX / PAGE_PREFIX; a test holds the copies together.
+        id: "claude-code.queue-routes",
+        prefix: "/api/projects/:projectId/organizations/:orgId/claude-code",
+        auth: "user",
+        order: 150,
+      },
+      {
+        id: "claude-code.page-routes",
+        prefix: "/api/claude-code",
+        auth: "user",
+        order: 151,
+      },
+    ],
+    "WebModule.pages": [
+      {
+        id: "claude-code.console",
+        key: "claude-code",
+        path: "claude-code",
+        nav: "org",
+        admin: false,
+        renderer: { iframe: { src: "/api/claude-code/page", namespace: "claude-code" } },
+      },
+    ],
+    "PluginConfigProvider.groups": [
+      {
+        // These literals repeat QUEUE_CONFIG_GROUP and the defaults; a test holds them together.
+        id: "claude-code-queue",
+        title: "Claude Code queue",
+        titleZh: "Claude Code 队列",
+        description:
+          "The runs employees queue in company mode. The settings apply to every organization on this server.",
+        descriptionZh: "公司模式下员工排队的 Claude Code 运行。设置对本服务器上的所有组织生效。",
+        properties: {
+          capacity: {
+            type: "number",
+            title: "Slots",
+            titleZh: "名额",
+            description:
+              "How many Claude Code runs may be open at once on this server; the rest wait in line.",
+            descriptionZh: "本服务器上同时打开的 Claude Code 运行数上限，其余的排队等待。",
+            minimum: 1,
+            maximum: 64,
+            default: 4,
+          },
+          idleMinutes: {
+            type: "number",
+            title: "Close when idle (minutes)",
+            titleZh: "空闲关闭（分钟）",
+            description:
+              "A run whose program has been waiting for input this long is closed and its slot handed on. 0 never closes one.",
+            descriptionZh: "程序等待输入满这么久的运行会被关闭，名额交给下一个。0 表示从不关闭。",
+            minimum: 0,
+            maximum: 1440,
+            default: 30,
+          },
+        },
+      },
+    ],
+  },
+})
+export class ClaudeCodeQueueModule {
+  @Use("CompanyModule") private readonly gateway!: OrgGateway;
+  @Use("SessionRuntimeModule") private readonly sessionService!: SessionServiceIface;
+  @Use("SessionRuntimeModule") private readonly sessions!: SessionIndex;
+  @Use("SessionRuntimeModule") private readonly surfaces!: SessionSurfaces;
+  @Use() private readonly terminals!: Terminals;
+  @Use("RuntimeModule") private readonly paths!: Paths;
+  @Use("RuntimeModule") private readonly log!: Log;
+  @Use("PluginConfigModule") private readonly pluginConfig!: PluginConfig;
+  @Bind(QUEUE_ROUTES_ID) routes!: Hono;
+  @Bind(PAGE_ROUTES_ID) page!: Hono;
+
+  setup({ effect }: ClassCtx) {
+    const queue = new ClaudeCodeQueue({
+      gateway: this.gateway,
+      sessionService: this.sessionService,
+      sessions: this.sessions,
+      surfaces: this.surfaces,
+      activity: (sessionId) => liveSurface.current?.status(sessionId) ?? "idle",
+      screen: (terminalId) => {
+        const terminal = this.terminals.get(terminalId);
+        if (terminal === undefined || !terminal.alive) return null;
+        try {
+          return [...terminal.capture().lines];
+        } catch {
+          return null;
+        }
+      },
+      root: this.paths.root,
+      config: () => queueConfigOf(this.pluginConfig.get(QUEUE_CONFIG_GROUP)),
+      surfaceKind: "claude-code",
+      log: (line) => this.log.line(line),
+    });
+    void queue.start();
+    effect(() => {
+      void queue.stop();
+    });
+    this.routes = queueRoutes(queue);
+    this.page = pageRoutes();
+  }
+}
+
+const plugin: Plugin = { modules: [ClaudeCode, ClaudeCodeQueueModule] };
 export default plugin;

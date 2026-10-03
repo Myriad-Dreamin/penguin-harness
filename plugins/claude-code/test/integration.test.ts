@@ -58,7 +58,11 @@ describe.skipIf(process.platform === "win32")("the claude-code plugin on a real 
 
   it("is loaded, and its surface is what the App is offered", async () => {
     const [row] = await harness.installedPlugins();
-    expect(row).toMatchObject({ active: true, modules: ["ClaudeCode"], replaces: [] });
+    expect(row).toMatchObject({
+      active: true,
+      modules: ["ClaudeCode", "ClaudeCodeQueueModule"],
+      replaces: [],
+    });
     const contributions = await api.get<{ sessionSurfaces: Array<Record<string, unknown>> }>(
       "/api/contributions",
     );
@@ -72,6 +76,40 @@ describe.skipIf(process.platform === "win32")("the claude-code plugin on a real 
         renderer: { builtin: "TerminalSurface" },
       },
     ]);
+  });
+
+  it("contributes the console as a company-mode iframe page behind the cookie gate, and its settings group", async () => {
+    const { pages } = await api.get<{ pages: Array<Record<string, unknown>> }>(
+      "/api/contributions",
+    );
+    expect(pages.find((p) => p.key === "claude-code")).toMatchObject({
+      nav: "org",
+      path: "claude-code",
+      renderer: { iframe: { src: "/api/claude-code/page" } },
+    });
+    const page = await api.request("GET", "/api/claude-code/page");
+    expect(page.status).toBe(200);
+    expect(page.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(await page.text()).toContain('<main id="main"><h1>Claude Code</h1>');
+    expect((await fetch(`${harness.baseUrl}/api/claude-code/page`)).status).toBe(401);
+    const config = await api.get<{
+      plugins: Array<{ name: string; values: Record<string, unknown> }>;
+    }>("/api/admin/plugin-config");
+    expect(config.plugins.find((p) => p.name === "claude-code-queue")?.values).toMatchObject({
+      capacity: 4,
+      idleMinutes: 30,
+    });
+  });
+
+  it("answers the queue's routes with 404 while company mode is off, and for a missing organization", async () => {
+    const runs = "/api/projects/default_project/organizations/acme/claude-code/runs";
+    await expect(api.get(runs)).rejects.toMatchObject({ status: 404 });
+    await api.put("/api/admin/settings", { companyMode: true });
+    await expect(api.get(runs)).rejects.toMatchObject({ status: 404 });
+    await expect(api.post(runs, { prompt: "x", agent: "a" })).rejects.toMatchObject({
+      status: 404,
+    });
+    await api.put("/api/admin/settings", { companyMode: false });
   });
 
   it("opens Claude Code in the Workspace, reports its activity, and closes with the Session", async () => {
@@ -94,7 +132,7 @@ describe.skipIf(process.platform === "win32")("the claude-code plugin on a real 
       await fs.realpath(session.workspace),
     );
 
-    // The program got the prompt, and its first burst of output reads as running.
+    // The program got the prompt, and settles at a waiting prompt.
     const screen = await waitFor(
       terminal.capture,
       (lines) => lines.join("\n").includes("fake claude hello there"),
@@ -102,22 +140,21 @@ describe.skipIf(process.platform === "win32")("the claude-code plugin on a real 
     );
     expect(screen.join("\n")).toContain("fake claude hello there");
     const info = () => api.get<{ session: SessionInfo }>(`/api/sessions/${session.sessionId}`);
-    const running = await waitFor(info, (r) => r.session.status === "running", {
-      what: "running",
-    });
-    expect(running.session.hasTrace).toBe(true);
+    const waiting = await waitFor(info, (r) => r.session.status === "idle", { what: "idle" });
     // The prompt named the Session.
-    expect(running.session.title).toBe("hello there");
-
-    // …and the prompt's silence reads as idle.
-    await waitFor(info, (r) => r.session.status === "idle", { what: "idle" });
+    expect(waiting.session.title).toBe("hello there");
     await waitFor(terminal.capture, (lines) => lines.some((l) => l.startsWith(">")), {
       what: "the prompt",
     });
 
-    // Input wakes it: running again, then idle with its answer on screen.
+    // Input wakes it, and the state follows the program's own SPINNER LINE — `<glyph> Word…`
+    // while the turn is in flight, a past tense with no ellipsis when it ends — not the flow
+    // of bytes (the fake draws a different word each turn, as the real one does).
     await terminal.keys("do a thing\n", true);
-    await waitFor(info, (r) => r.session.status === "running", { what: "running again" });
+    const running = await waitFor(info, (r) => r.session.status === "running", {
+      what: "running",
+    });
+    expect(running.session.hasTrace).toBe(true);
     await waitFor(terminal.capture, (lines) => lines.join("\n").includes("done: do a thing"), {
       what: "the answer",
     });
