@@ -7,7 +7,13 @@ import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import { Interface, Bind, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
 import type { SessionSurfaces } from "../../runtime/session-surfaces.js";
-import type { ContributionsResponse, RendererRef, WebContribution } from "../../api/types.js";
+import type {
+  ContributionsResponse,
+  RendererRef,
+  WebContribution,
+  WebPageContribution,
+  WebPageData,
+} from "../../api/types.js";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 
 export interface ContributionsRouteDeps {
@@ -35,18 +41,8 @@ export abstract class WebShell {
 }
 
 export interface WebShellSlots {
-  /**
-   * A page: its route, where it sits (`main` = the development nav; `org` = a company-mode
-   * page — its path is relative to `/org/:projectId/:orgId/` and it gets a nav row after the
-   * organization's own; `none` = reachable by URL only), whether it is admin-only.
-   */
-  pages: {
-    key: string;
-    path: string;
-    nav: "main" | "org" | "none";
-    admin: boolean;
-    renderer: RendererRef;
-  };
+  /** A page (WebPageData says what each field means). */
+  pages: WebPageData;
   /** A tab on the Agent settings page. */
   agentTabs: { key: string; order: number; renderer: RendererRef };
   /**
@@ -90,14 +86,15 @@ export class WebModule {
   @Provide() web!: WebShell;
   @Bind("web.contributions") contributionsRoutes!: Hono<AppEnv>;
   setup({ contributions }: ClassCtx) {
-    const collect = (slot: string): WebContribution[] =>
+    // The kernel checked each contribution's data against its slot's type at boot.
+    const collect = <T extends WebContribution>(slot: string): T[] =>
       (contributions[slot] ?? []).map(
         // The contribution's own fields first: `id` and `from` are the server's attribution,
         // and a data field of the same name must not replace them.
-        (c) => ({ ...c.data, id: c.id, from: c.from }) as WebContribution,
+        (c) => ({ ...c.data, id: c.id, from: c.from }) as T,
       );
     const response: ContributionsResponse = {
-      pages: collect("pages"),
+      pages: collect<WebPageContribution>("pages"),
       agentTabs: collect("agentTabs"),
       sessionTabs: collect("sessionTabs"),
       quickStarts: collect("quickStarts") as unknown as ContributionsResponse["quickStarts"],
