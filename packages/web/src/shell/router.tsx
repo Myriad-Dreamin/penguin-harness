@@ -15,7 +15,7 @@ import { useAuth } from "../state/auth";
 import { useRuntimeLanguages } from "../lib/use-runtime-languages";
 import { ProjectProvider } from "../state/project";
 import { SessionsProvider } from "../state/sessions";
-import { AppLayout } from "../components/layout/app-layout";
+import { AppLayout } from "./app-layout";
 import { BootPending } from "../components/ui/boot-pending";
 import { LoginPage } from "../pages/login";
 import { ContributionsProvider, useContributions } from "../state/contributions";

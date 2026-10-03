@@ -6,7 +6,7 @@
  * collapsible area: arrow up = click to collapse, arrow down while collapsed = the way back);
  * Agents, Models and Plugins are pinned by default, a row's hover pin button or a drag across
  * the areas moves an entry, and both the fold and the pin choices persist in localStorage
- * (nav-group-collapse.ts) -> Session area with three grouping
+ * (nav-state.ts) -> Session area with three grouping
  * modes (chosen in the section header's list options; the
  * choice and each Project's group collapse and pin state persist in localStorage): by Workspace
  * (the default; groups loaded Sessions by their
@@ -145,9 +145,9 @@ import {
   storeNavGroupCollapsed,
   storeNavPinOverrides,
   withNavPinned,
-} from "../../lib/nav-group-collapse";
-import type { NavEntryKey, NavGroupKey } from "../../lib/nav-group-collapse";
-import { navPagesOf, useShellPages } from "../../shell";
+} from "./nav-state";
+import type { NavEntryKey, NavGroupKey } from "./nav-state";
+import { navPagesOf, useShellPages } from "../index";
 import {
   loadPinnedSessions,
   removePinnedSession,
@@ -181,8 +181,8 @@ import {
   orderGroups,
   saveGroupOrder,
 } from "../../lib/group-order";
-import { HOVER_ROW_ACTIONS, contextMenuActions, sessionRowActions } from "../ui/session-row-menu";
-import type { SessionRowAction } from "../ui/session-row-menu";
+import { HOVER_ROW_ACTIONS, contextMenuActions, sessionRowActions } from "../../components/ui/session-row-menu";
+import type { SessionRowAction } from "../../components/ui/session-row-menu";
 import { NAV_ICONS } from "../../lib/nav-icons";
 import {
   GROUP_MODE_ICONS,
@@ -192,10 +192,10 @@ import {
   initialGroupMode,
   newEntityForGroupMode,
   storeGroupMode,
-} from "../ui/group-list";
-import type { GroupMode } from "../ui/group-list";
+} from "../../components/ui/group-list";
+import type { GroupMode } from "../../components/ui/group-list";
 import { writeClipboard } from "../../lib/clipboard";
-import { Truncated } from "../ui/truncated";
+import { Truncated } from "../../components/ui/truncated";
 import { DRAFT_SESSION_ID } from "../../features/chat/chat-page";
 import { MessagingBindingModal } from "../../features/messaging/messaging-binding-modal";
 import { WorkspaceSelect } from "../../features/chat/workspace-select";
@@ -209,7 +209,7 @@ import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
 import { prepareNewChatDraft } from "../../features/chat/new-chat";
 import { docksOnScreen, openPanel } from "../../features/dock/dock-state";
 import { dockWorkspace } from "../../features/dock/dock-terminal";
-import { CreateProjectDialog, ProjectSettingsDialog } from "./project-dialogs";
+import { CreateProjectDialog, ProjectSettingsDialog } from "../../components/layout/project-dialogs";
 import { UserMenu } from "./user-menu";
 import { PinnedBalanceBadge } from "../../features/models/group-balance";
 import { isCurrentPath, renderRouterLink } from "./router-link";
@@ -465,7 +465,7 @@ export function Sidebar({
   const [navCollapsed, setNavCollapsed] = useState(initialNavGroupCollapsed);
   /** The main nav's pages, as the modules contributed them (shell/page-table.ts). */
   const navPages = navPagesOf(useShellPages());
-  /** The user's changes to which nav entries are pinned (the defaults live in nav-group-collapse.ts); persisted like the fold. */
+  /** The user's changes to which nav entries are pinned (the defaults live in nav-state.ts); persisted like the fold. */
   const [navPins, setNavPins] = useState(() => initialNavPinOverrides(navPages));
   /** Nav entry being dragged across the areas, and the area a drop would move it into. */
   const [navDrag, setNavDrag] = useState<NavEntryKey | null>(null);
@@ -1935,7 +1935,7 @@ export function Sidebar({
     : [];
 
   /**
-   * Development mode's entries by area (nav-group-collapse.ts): New chat, then the main
+   * Development mode's entries by area (nav-state.ts): New chat, then the main
    * nav's pages minus the entries this user's role cannot reach, each pinned or
    * collapsible, both areas in page order. New chat is always pinned and renders in its
    * fixed slot above the scroll area, so the pinned rows here are the pages after it.

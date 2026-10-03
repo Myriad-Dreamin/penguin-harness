@@ -31,7 +31,7 @@ import { ShellModule } from "../src/shell/module";
 import { navPagesOf } from "../src/shell";
 import type { ShellPage } from "../src/shell";
 import { contributedPages, orgPagesOf, pageTableOf } from "../src/shell/page-table";
-import { navKeysFor } from "../src/lib/nav-group-collapse";
+import { navKeysFor } from "../src/shell/sidebar/nav-state";
 import { zh } from "../src/lib/strings";
 import { NAV_ICONS } from "../src/lib/nav-icons";
 import { AgentsPage } from "../src/features/agents/agents-page";
