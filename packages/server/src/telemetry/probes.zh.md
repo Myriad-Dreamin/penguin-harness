@@ -218,7 +218,7 @@ machine 回答命令慢吗？一条命令从发起到答复的时间。
 
 `attrs.code` 是退出码；machine 一直没回答时 `status` 为 `timeout`。命令文本从不记录。
 
-记录于 [`packages/server/src/machines/transport/timings.ts:85`](../machines/transport/timings.ts#L85) <!-- probe-site -->
+记录于 [`packages/server/src/machines/transport/timings.ts:84`](../machines/transport/timings.ts#L84) <!-- probe-site -->
 
 ## 浏览器
 

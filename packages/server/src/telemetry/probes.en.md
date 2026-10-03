@@ -218,7 +218,7 @@ Is a machine slow to answer commands? The time of one command, from the ask to t
 
 `attrs.code` is its exit code; `status` is `timeout` when the machine never answered. The command's text is never recorded.
 
-Recorded at [`packages/server/src/machines/transport/timings.ts:85`](../machines/transport/timings.ts#L85) <!-- probe-site -->
+Recorded at [`packages/server/src/machines/transport/timings.ts:84`](../machines/transport/timings.ts#L84) <!-- probe-site -->
 
 ## Browser
 
