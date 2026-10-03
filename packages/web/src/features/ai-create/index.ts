@@ -5,7 +5,6 @@
  */
 export { aiChatRouteState, buildAiDraft, useAiBridge } from "./ai-bridge";
 export type { AiChatRequest, AiChatRouteState } from "./ai-bridge";
-export { DEFAULT_AGENT_ID, pickDefaultAgent } from "./default-agent";
 export { composeAiPrompt } from "./ai-create-prompt";
 export { AiCreatePanel, PromptFold } from "./ai-create-panel";
 export type { AiCreatePanelProps, AiExample } from "./ai-create-panel";
