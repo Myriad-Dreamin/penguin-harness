@@ -56,7 +56,7 @@ How long until everything was back after a start? The time until sessions were a
 
 The App already serves while these run; a long one means machines or sessions came back late.
 
-Recorded at [`packages/server/src/platform.ts:243`](../platform.ts#L243) <!-- probe-site -->
+Recorded at [`packages/server/src/platform.ts:245`](../platform.ts#L245) <!-- probe-site -->
 
 ### hmr.park
 
@@ -154,7 +154,7 @@ Is sending a message slow to be accepted? The time from the send to the server's
 
 It includes waiting for the session's lock; `attrs.queued` is whether the message waited behind a running turn.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:1179`](../runtime/session-manager.ts#L1179) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:1194`](../runtime/session-manager.ts#L1194) <!-- probe-site -->
 
 ### session.load
 
@@ -162,7 +162,7 @@ Is a session slow to start working? The time to load one that was not in memory,
 
 `attrs.messages` is how many history messages it was loaded with. A session already in memory is not recorded.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2099`](../runtime/session-manager.ts#L2099) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2114`](../runtime/session-manager.ts#L2114) <!-- probe-site -->
 
 ### session.memory
 
@@ -170,7 +170,7 @@ Which session uses the most memory? One sample per loaded session, as `attrs.mem
 
 It adds up what the session holds: the history it was loaded with, the recent events kept so a page that reconnects can catch up, and the replies still streaming. Recorded whenever telemetry is read.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:956`](../runtime/session-manager.ts#L956) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:964`](../runtime/session-manager.ts#L964) <!-- probe-site -->
 
 ## Machines
 
