@@ -100,7 +100,7 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
             : [
                 {
                   key,
-                  to: `/${key}`,
+                  to: page.path,
                   label: pageTitle(page, locale),
                   icon: page.icon ?? "",
                   note: notes.get(key) ?? null,

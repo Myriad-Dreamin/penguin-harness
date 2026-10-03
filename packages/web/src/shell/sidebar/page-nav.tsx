@@ -188,7 +188,7 @@ export function PageNav({
    */
   const renderNavEntry = (page: ShellPage) => {
     const key = page.key;
-    const to = `/${key}`;
+    const to = page.path;
     const label = pageTitle(page, locale);
     const note = notes.get(key) ?? null;
     const pinned = isNavPinned(key, nav.navPins);
