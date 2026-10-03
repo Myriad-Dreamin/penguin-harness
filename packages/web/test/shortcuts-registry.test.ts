@@ -76,12 +76,13 @@ describe("registry defaults", () => {
   });
 
   it("names every default that shares a chord with a browser function", () => {
-    // Save takes the browser's Save Page on purpose; on macOS Chrome binds ⌥⌘P to Page Setup
-    // and ⌥⌘N to split view.
+    // The palette's Mod+Shift+P is Firefox's new private window, by decision: Firefox acts on it
+    // before the page (reserved.ts says so where it lists it). Save takes the browser's Save Page
+    // on purpose; on macOS Chrome binds ⌥⌘N to split view.
     const expected: Record<Platform, CommandId[]> = {
       mac: ["palette.toggle", "chat.new", "editor.save"],
-      windows: ["editor.save"],
-      linux: ["editor.save"],
+      windows: ["palette.toggle", "editor.save"],
+      linux: ["palette.toggle", "editor.save"],
     };
     for (const platform of PLATFORMS) {
       const common = SHORTCUT_COMMANDS.filter((cmd) => {
