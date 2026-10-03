@@ -16,7 +16,7 @@ import type { PanelKind } from "../../dock/dock-state";
 import { approvalModeChoices } from "../approval-mode";
 import { ChatMemoryView } from "../memory-view";
 import { SubagentsView } from "../subagents-view";
-import type { ChatSessionController } from "../session/use-chat-session";
+import type { ChatController } from "../session/use-chat-controller";
 
 /**
  * The panel tabs' bodies. Keyed by Session where the view starts over per conversation
@@ -24,7 +24,7 @@ import type { ChatSessionController } from "../session/use-chat-session";
  * its own handled-once request guard is what the conversation-switch e2e covers.
  */
 export function renderChatPanel(
-  session: ChatSessionController,
+  session: ChatController,
   kind: PanelKind,
   active: boolean,
 ): ReactNode {

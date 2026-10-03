@@ -39,7 +39,7 @@ import { useSessionControls } from "./use-session-controls";
 import { useModelSwitches } from "./use-model-switches";
 import { streamRenderContext } from "./stream-context";
 
-export function useChatSession() {
+export function useChatController() {
   const inputs = useChatInputs();
   const {
     routeSessionId,
@@ -309,4 +309,4 @@ export function useChatSession() {
   };
 }
 
-export type ChatSessionController = ReturnType<typeof useChatSession>;
+export type ChatController = ReturnType<typeof useChatController>;

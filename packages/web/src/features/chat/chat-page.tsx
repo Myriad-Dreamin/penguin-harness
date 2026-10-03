@@ -23,7 +23,7 @@ import { DockPanel } from "../dock/dock-panel";
 import { useDockMount } from "../dock/use-dock-mount";
 import { closedDockView, dockViews, type PanelKind } from "../dock/dock-state";
 import { terminalApiSupported } from "../terminal/terminal-list";
-import { useChatSession } from "./session/use-chat-session";
+import { useChatController } from "./session/use-chat-controller";
 import { SessionDialogs } from "./session/session-dialogs";
 import { ChatToolbar } from "./toolbar/chat-toolbar";
 import { liveHeaderStats } from "./toolbar/session-stats";
@@ -33,7 +33,7 @@ import { ChatBody } from "./body/chat-body";
 import { renderChatPanel } from "./panels/render-panel";
 
 export function ChatPage() {
-  const chat = useChatSession();
+  const chat = useChatController();
   const {
     projectId,
     agentId,
