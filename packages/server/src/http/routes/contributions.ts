@@ -11,6 +11,8 @@ import type {
   ContributionsResponse,
   RendererRef,
   WebContribution,
+  WebFileRendererContribution,
+  WebFileRendererData,
   WebPageContribution,
   WebPageData,
 } from "../../api/types.js";
@@ -28,7 +30,7 @@ export function contributionsRoutes(deps: ContributionsRouteDeps): Hono<AppEnv> 
 
 /**
  * The frontend's slots, declared on the SERVER so a server module (or a plugin) can
- * contribute a page, an Agent settings tab or a Session tab as manifest data. The web
+ * contribute a page, a file renderer, an Agent settings tab or a Session tab as manifest data. The web
  * app reads them back through GET /api/contributions and renders the ones whose
  * renderer it knows: a `builtin` name from its own registry, or an `iframe`. No code
  * crosses this boundary — only data.
@@ -43,6 +45,8 @@ export abstract class WebShell {
 export interface WebShellSlots {
   /** A page (WebPageData says what each field means). */
   pages: WebPageData;
+  /** How a kind of Workspace file is drawn where a reply links it (WebFileRendererData). */
+  fileRenderers: WebFileRendererData;
   /** A tab on the Agent settings page. */
   agentTabs: { key: string; order: number; renderer: RendererRef };
   /**
@@ -95,6 +99,7 @@ export class WebModule {
       );
     const response: ContributionsResponse = {
       pages: collect<WebPageContribution>("pages"),
+      fileRenderers: collect<WebFileRendererContribution>("fileRenderers"),
       agentTabs: collect("agentTabs"),
       sessionTabs: collect("sessionTabs"),
       quickStarts: collect("quickStarts") as unknown as ContributionsResponse["quickStarts"],
