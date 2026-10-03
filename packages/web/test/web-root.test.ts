@@ -109,7 +109,8 @@ import { BuiltinBrowserModule } from "../src/features/builtin-browser/module";
 import type { DockPanelData } from "../src/features/dock/iface";
 import { PortsDockPanel } from "../src/features/ports/ports-dock-panel";
 import { ChatModule } from "../src/features/chat/module";
-import { sessionTabsOf } from "../src/features/chat/deps";
+import { fileRenderersOf, sessionTabsOf } from "../src/features/chat/deps";
+import { AudioFile } from "../src/features/audio/audio-file";
 import { WorkflowSessionTab } from "../src/features/workflows/session-tab";
 
 let pages: readonly ShellPage[] = [];
@@ -122,6 +123,7 @@ let rows: RowExtensions | null = null;
 let sessionListSection: unknown = null;
 let dockPanels: readonly Contributed[] = [];
 let sessionTabs: readonly Contributed[] = [];
+let fileRenderers: readonly Contributed[] = [];
 
 /** A slot's code halves in the order the shell mounts them. */
 const codeByOrder = (list: readonly Contributed[]): unknown[] =>
@@ -170,6 +172,7 @@ beforeAll(async () => {
   const chat = Object.assign(new ChatModule(), {
     setup(ctx: ClassCtx) {
       sessionTabs = ctx.contributions.sessionTabs ?? [];
+      fileRenderers = ctx.contributions.fileRenderers ?? [];
       ChatModule.prototype.setup.call(chat, ctx);
     },
   });
@@ -312,6 +315,7 @@ describe("the booted page table", () => {
     const answer = {
       // As the server might send it: the app checks each entry's fields itself.
       pages: remote as readonly object[] as ContributionsResponse["pages"],
+      fileRenderers: [],
       agentTabs: [],
       sessionTabs: [],
       quickStarts: [],
@@ -482,5 +486,10 @@ describe("the booted chat slot", () => {
   it("the chat page receives the workflow tab strip", () => {
     expect(sessionTabsOf(sessionTabs).map(({ Tab }) => Tab)).toEqual([WorkflowSessionTab]);
     expect(sessionTabs.map((c) => c.from)).toEqual(["WorkflowsModule"]);
+  });
+
+  it("the chat page's file renderer registry holds the audio module's player as `audio`", () => {
+    expect([...fileRenderersOf(fileRenderers)]).toEqual([["audio", AudioFile]]);
+    expect(fileRenderers.map((c) => c.from)).toEqual(["AudioModule"]);
   });
 });
