@@ -55,7 +55,7 @@ afterEach(() => {
 describe("ErrorBoundary", () => {
   it("draws its children until something below it throws", () => {
     const html = renderToStaticMarkup(
-      createElement(ErrorBoundary, { fallback: panel }, createElement("p", null, "fine")),
+      createElement(ErrorBoundary, { fallback: panel, children: createElement("p", null, "fine") }),
     );
     expect(html).toBe("<p>fine</p>");
   });
