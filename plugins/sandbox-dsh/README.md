@@ -50,6 +50,14 @@ something else — a stdio MCP Server launched through bash, which `PENGUIN_SHEL
 choose — the error says only that the runner cannot start bash or sh. Nothing here changes on
 Linux or macOS, where bash runs confined as usual.
 
+A shell named without a directory (`pwsh`, `powershell`) is handed to the runner as the file the
+harness's `PATH` names. Left to itself, the runner looks in its current directory — the session's
+working directory, inside the Workspace — and in System32 before `PATH`, so an `.exe` of the same
+name written into the Workspace would start instead. A name no `PATH` directory holds is refused.
+A bare name is looked up as `.exe` only, as Windows does: when `PATH` carries a `.cmd` or `.bat`
+of that name instead — `npx` and `uvx` are batch files, a common stdio MCP Server command — the
+refusal names that file; to hand the batch file over, name it with its extension (`npx.cmd`).
+
 ## Requirements
 
 - The DSH dependencies (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-sandbox`,
