@@ -288,8 +288,8 @@ describe("events arriving from a machine", () => {
 
   it("reloads for this Project, wherever the Session was created", () => {
     const { store, reloads } = countingStore();
-    applyUserEvent(store, created("p"), () => undefined, "M1");
-    applyUserEvent(store, created("p"), () => undefined, null);
+    applyUserEvent(store, [], created("p"), () => undefined, "M1");
+    applyUserEvent(store, [], created("p"), () => undefined, null);
     expect(reloads()).toBe(2);
   });
 
@@ -297,8 +297,8 @@ describe("events arriving from a machine", () => {
     // Unconditional for machines, every Session and every subagent started in any other
     // Project on any connected machine refetched this whole list, Agents x sources.
     const { store, reloads } = countingStore();
-    applyUserEvent(store, created("other"), () => undefined, "M1");
-    applyUserEvent(store, created("other"), () => undefined, null);
+    applyUserEvent(store, [], created("other"), () => undefined, "M1");
+    applyUserEvent(store, [], created("other"), () => undefined, null);
     expect(reloads()).toBe(0);
   });
 
@@ -307,11 +307,11 @@ describe("events arriving from a machine", () => {
     // Session came back with nothing new: Agents x sources calls per desk run.
     const { store, reloads } = countingStore();
     const org = { ...created("p"), client: "org" } as ServerEvent;
-    applyUserEvent(store, org, () => undefined, "M1");
-    applyUserEvent(store, org, () => undefined, null);
+    applyUserEvent(store, [], org, () => undefined, "M1");
+    applyUserEvent(store, [], org, () => undefined, null);
     expect(reloads()).toBe(0);
     // A server that predates the field says nothing about the creator, and still reloads.
-    applyUserEvent(store, created("p"), () => undefined, "M1");
+    applyUserEvent(store, [], created("p"), () => undefined, "M1");
     expect(reloads()).toBe(1);
   });
 });

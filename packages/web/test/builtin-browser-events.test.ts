@@ -1,6 +1,6 @@
 /**
  * The agent browser's user-channel events, as the one `/api/events` connection routes them
- * (state/sessions.tsx's applyUserEvent → features/builtin-browser/browser-events.ts): this
+ * (state/sessions.tsx's applyUserEvent → the feature's handler, `builtinBrowserUserEvents`):
  * every one goes to the browser layer named by the server it came from — null for this one, the
  * machine id for a machine, whose own browser the events are about — and a resync tells the
  * layer to re-read that server's registry.
@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { BuiltinBrowserServerEvent, ServerEvent } from "@prismshadow/penguin-server/api";
 import { applyUserEvent, createSessionsStore } from "../src/state/sessions";
 import {
+  builtinBrowserUserEvents,
   isBuiltinBrowserEvent,
   subscribeBuiltinBrowserEvents,
   subscribeBuiltinBrowserResync,
@@ -45,7 +46,8 @@ describe("agent browser events on the user channel", () => {
     const seen: BuiltinBrowserServerEvent[] = [];
     const stop = subscribeBuiltinBrowserEvents((ev) => seen.push(ev));
     try {
-      for (const ev of EVENTS) applyUserEvent(listStore(), ev, () => undefined);
+      for (const ev of EVENTS)
+        applyUserEvent(listStore(), [builtinBrowserUserEvents], ev, () => undefined);
     } finally {
       stop();
     }
@@ -56,7 +58,8 @@ describe("agent browser events on the user channel", () => {
     const sources: (string | null)[] = [];
     const stop = subscribeBuiltinBrowserEvents((_ev, server) => sources.push(server));
     try {
-      for (const ev of EVENTS) applyUserEvent(listStore(), ev, () => undefined);
+      for (const ev of EVENTS)
+        applyUserEvent(listStore(), [builtinBrowserUserEvents], ev, () => undefined);
     } finally {
       stop();
     }
@@ -67,7 +70,8 @@ describe("agent browser events on the user channel", () => {
     const seen: [BuiltinBrowserServerEvent, string | null][] = [];
     const stop = subscribeBuiltinBrowserEvents((ev, server) => seen.push([ev, server]));
     try {
-      for (const ev of EVENTS) applyUserEvent(listStore(), ev, () => undefined, "machine-1");
+      for (const ev of EVENTS)
+        applyUserEvent(listStore(), [builtinBrowserUserEvents], ev, () => undefined, "machine-1");
     } finally {
       stop();
     }
@@ -78,8 +82,19 @@ describe("agent browser events on the user channel", () => {
     const resyncs: (string | null)[] = [];
     const stop = subscribeBuiltinBrowserResync((server) => resyncs.push(server));
     try {
-      applyUserEvent(listStore(), { type: "resync_required" }, () => undefined);
-      applyUserEvent(listStore(), { type: "resync_required" }, () => undefined, "machine-1");
+      applyUserEvent(
+        listStore(),
+        [builtinBrowserUserEvents],
+        { type: "resync_required" },
+        () => undefined,
+      );
+      applyUserEvent(
+        listStore(),
+        [builtinBrowserUserEvents],
+        { type: "resync_required" },
+        () => undefined,
+        "machine-1",
+      );
     } finally {
       stop();
     }
