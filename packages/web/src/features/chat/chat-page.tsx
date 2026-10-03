@@ -32,11 +32,7 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import {
   Button,
-  ConfirmModal,
-  CopyButton,
-  Dot,
   EmptyState,
-  Modal,
   Skeleton,
   toastError,
   toastInfo,
@@ -53,7 +49,7 @@ import { apiErrorText } from "../../lib/api-error";
 import type { PermissionPick } from "../../lib/permission-level";
 import { configuredCompactionLimit } from "../../lib/context";
 import { useDocumentTitle } from "../../lib/use-document-title";
-import { formatDateTime, humanizeTokens } from "../../lib/format";
+import { humanizeTokens } from "../../lib/format";
 import { isOrgSession, latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
 import { noteSessionSeen } from "../../lib/session-seen";
 import {
@@ -69,9 +65,8 @@ import { bucketCostUsd } from "../../lib/omni/task-stats";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { useTheme } from "../../state/theme";
-import { agentDisplayName, useProject } from "../../state/project";
+import { useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
-import { Truncated } from "../../components/ui/truncated";
 import { MessageStream } from "./message-stream";
 import type { A2uiActions, StreamRenderContext } from "./message-stream";
 import type { ForkTarget } from "./task-stats-line";
@@ -102,7 +97,6 @@ import {
   sessionProbeKey,
 } from "./session-project";
 import { machineForSession } from "../../lib/session-machines";
-import { nameOnMachine } from "../../lib/workspace-machines";
 import { CHAT_DEFAULTS_CHANGED_EVENT, chatDefaultsChangedDetail } from "./chat-defaults-event";
 import { advanceCostStat, applyUsageFetch, createCostStatHold } from "./header-stats";
 import { buildInputHistory } from "./input-history";
@@ -112,7 +106,6 @@ import { handoffMessage, modelSwitchMessage } from "./agent-handoff";
 import { sessionModelPickerDisabled, sessionRowStale, switchContextShape } from "./model-switch";
 import type { SwitchContextShape } from "./model-switch";
 import { hasConfiguredKey, promotedPricing, sameModelRef } from "../models/model-grouping";
-import { providerInfo } from "@prismshadow/penguin-core/model-catalog";
 import { useWorkspacePullRequest } from "./use-workspace-pr";
 import { useMemoryListing } from "./use-memory-listing";
 import { deletedChangeKeys } from "./memory-nav";
@@ -143,29 +136,12 @@ import { useSessionStream } from "./use-session-stream";
 import { exitedProcessIds, reportableProcessFailure } from "./process-list";
 import { ChatToolbar } from "./toolbar/chat-toolbar";
 import { headerStats } from "./toolbar/session-stats";
+import { SessionDetails } from "./toolbar/session-details";
+import { ProcessList } from "./toolbar/process-list";
+import { SessionDialogs } from "./session/session-dialogs";
 
 /** How often the background-process list refreshes while it can still change (a run may promote a command at any time; a running process can exit on its own). */
 const PROCESS_POLL_MS = 15_000;
-
-/**
- * Session id row in the details card: the id is selectable mono text (styled like the other
- * sections' values) with the shared CopyButton beside it. The copy feedback is the button's
- * icon swapping to the check (#312, no "已复制" text) — the "Session id" label above never
- * changes.
- */
-function SessionIdRow({ sessionId }: { sessionId: string }) {
-  return (
-    <div>
-      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-        {S.chat.sessionIdLabel}
-      </p>
-      <div className="flex items-start gap-1.5">
-        <span className="min-w-0 flex-1 break-all font-mono text-xs leading-5">{sessionId}</span>
-        <CopyButton text={sessionId} label={S.chat.copySessionId} size="sm" className="shrink-0" />
-      </div>
-    </div>
-  );
-}
 
 /**
  * Server-enforced ceiling on paths per files/stat call (STAT_MAX_PATHS in the sessions routes,
@@ -1968,20 +1944,6 @@ export function ChatPage() {
       currency,
     }),
   );
-  // Cache hit rate over the recorded input buckets (cacheRead = hits, cacheWrite =
-  // uncached input) — the details card's tokens-line parenthetical. Null until a usage
-  // row with any input has applied, so a fresh session shows no "0%" out of thin air.
-  const recordedInput = usageBuckets ? usageBuckets.cacheRead + usageBuckets.cacheWrite : 0;
-  const cacheHitRate =
-    usageBuckets && recordedInput > 0
-      ? `${Math.round((100 * usageBuckets.cacheRead) / recordedInput)}%`
-      : null;
-  // Display name of the Session's own Agent for the details card — null when the Agent has
-  // no name of its own (agentDisplayName then returns the id, which the row already shows)
-  // or when the Agent list hasn't arrived yet.
-  const sessionAgent = agents.find((a) => a.agentId === selected?.agentId);
-  const sessionAgentName =
-    sessionAgent && sessionAgent.name !== undefined ? agentDisplayName(sessionAgent) : null;
   const modelInfo = models?.models.find((m) => sameModelRef(m, activeModelRef));
   const contextWindow = modelInfo?.contextWindow;
   // Assumed supported by default: only models explicitly marked vision=false show a blocking hint when adding images.
@@ -2107,181 +2069,22 @@ export function ChatPage() {
           currency={currency}
           workspacePr={workspacePr}
         >
-          <div className="space-y-3 px-3.5 py-2.5 text-sm">
-            {/* Agent, above the Model: a conversation belongs to an Agent first, and the
-                  Model it runs on is one of that Agent's settings. Paired the same way as the
-                  Model row — the id the API speaks, then the display name, which is dropped
-                  when the Agent has none of its own and the two would simply repeat. */}
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{S.chat.agent}</p>
-              <p className="truncate text-xs">
-                <span className="font-mono">{selected.agentId}</span>
-                {sessionAgentName !== null && (
-                  <span className="ml-1.5 text-gray-400 dark:text-gray-500">
-                    {sessionAgentName}
-                  </span>
-                )}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{S.chat.model}</p>
-              {/* Paired display: upstream model_id + provider name (two separate fields on the Session DTO). */}
-              <p className="truncate text-xs">
-                <span className="font-mono">{selected.modelId}</span>
-                <span className="ml-1.5 text-gray-400 dark:text-gray-500">
-                  {providerInfo(selected.provider)?.label ?? selected.provider}
-                </span>
-              </p>
-            </div>
-            <SessionIdRow sessionId={selected.sessionId} />
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {S.chat.workspace}
-              </p>
-              {/* The machine too: a path names a directory only together with the
-                    filesystem it is on, and the same path exists on more than one of them. */}
-              <p className="break-all font-mono text-xs leading-5">
-                {nameOnMachine(selected.workspace, machineNameOf(selected.sessionId))}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {S.common.created}
-              </p>
-              <p className="font-mono text-xs">{formatDateTime(selected.createdAt)}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                {S.chat.sessionStats}
-              </p>
-              {/* A bulleted list, one stat per line. The tokens bullet carries the cache
-                    hit rate in parentheses (cacheRead ÷ all recorded input); the rate comes
-                    from the usage fetch, so it can trail the live total mid-run and
-                    reconciles on idle. No-cost sessions omit the cost bullet entirely, as
-                    the chip does. */}
-              <ul className="list-inside list-disc space-y-1 font-mono text-xs">
-                <li>
-                  {S.chat.statTotalTokens} {hs.tokensText}
-                  {cacheHitRate !== null &&
-                    `${S.chat.statParenOpen}${S.chat.statCacheHit(cacheHitRate)}${S.chat.statParenClose}`}
-                </li>
-                {hs.costText != null && (
-                  <li>
-                    {S.common.cost} {hs.costText}
-                    {hs.costUncosted ? " *" : ""}
-                  </li>
-                )}
-                <li>
-                  {S.chat.statElapsed} {hs.elapsedNode}
-                  {hs.elapsedSplit}
-                </li>
-              </ul>
-            </div>
-            {/* Background processes the conversation started (e.g. a dev server on
-                  localhost:3000): live rows carry a stop button — the kill signals the whole
-                  process group and the row drops on the follow-up refresh; exited rows keep
-                  their "exited" label and carry a remove button that deletes the entry from
-                  the list (#312), and the heading carries one action removing every exited
-                  row at once. A command too long for its row shows whole in a tooltip. Hidden
-                  entirely while there are none. */}
-            {processes.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {S.chat.processList}
-                  </p>
-                  {/* Only while something has exited. Words rather than a glyph, in the quiet
-                        text-action style of the memory card's "Open memory list": the same
-                        text size as the heading beside it, so the heading row keeps its height
-                        when the first process exits. The same no-confirm tidy-up as a single
-                        row's Remove, and its hint, like that button's, says what leaves with
-                        the rows. */}
-                  {exitedIds.length > 0 && (
-                    <button
-                      type="button"
-                      data-tooltip={S.chat.processClearExitedHint}
-                      disabled={procBusy !== null}
-                      onClick={() => void onClearExitedProcesses()}
-                      className="shrink-0 cursor-pointer whitespace-nowrap text-xs text-gray-400 transition-colors duration-150 hover:text-gray-600 disabled:cursor-default disabled:opacity-60 dark:text-gray-500 dark:hover:text-gray-300"
-                    >
-                      {S.chat.processClearExited}
-                    </button>
-                  )}
-                </div>
-                <ul className="mt-1 space-y-1.5">
-                  {processes.map((p) => (
-                    <li key={p.processId} className="flex items-center gap-2">
-                      {p.running ? (
-                        <Dot tone="success" pulse />
-                      ) : (
-                        <span
-                          aria-hidden
-                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300 dark:bg-gray-600"
-                        />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <Truncated text={p.cmd} className="font-mono text-xs" codeTooltip />
-                        <span className="block truncate text-xs text-gray-400 dark:text-gray-500">
-                          {formatDateTime(p.startedAt)}
-                          {p.pid !== null && ` · pid ${p.pid}`}
-                          {/* Detected service URL (output scan or port probe), running rows
-                                only — an exited process serves nothing to open. Scheme dropped
-                                at this size; the tooltip and the link carry the full URL. */}
-                          {p.running && p.serviceUrl !== undefined && (
-                            <>
-                              {" · "}
-                              <a
-                                href={p.serviceUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                data-tooltip={p.serviceUrl}
-                                className="text-gray-500 underline decoration-gray-300 underline-offset-2 transition-colors duration-150 hover:text-gray-700 hover:decoration-gray-500 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200"
-                              >
-                                {p.serviceUrl.replace(/^https?:\/\//i, "")}
-                              </a>
-                            </>
-                          )}
-                        </span>
-                      </span>
-                      {p.running ? (
-                        <button
-                          type="button"
-                          disabled={procBusy !== null}
-                          onClick={() => setProcToKill(p)}
-                          className="shrink-0 whitespace-nowrap rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                        >
-                          {procBusy?.includes(p.processId) ? S.common.loading : S.chat.processStop}
-                        </button>
-                      ) : (
-                        <>
-                          <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
-                            {S.chat.processExited}
-                          </span>
-                          {/* The row is the only handle on that process's captured
-                                output — removing the entry drops it from the runtime
-                                registry, so the model can no longer be asked to read it
-                                (input_command answers "unknown process_id"). No confirm
-                                step for a one-click tidy-up of a dead row, but the title
-                                says what leaves with it. */}
-                          <button
-                            type="button"
-                            data-tooltip={S.chat.processRemoveHint}
-                            disabled={procBusy !== null}
-                            onClick={() => void onRemoveProcess(p.processId)}
-                            className="shrink-0 whitespace-nowrap rounded-md border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors duration-150 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-default disabled:opacity-60 dark:border-gray-700 dark:text-gray-300 dark:hover:border-red-900 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                          >
-                            {procBusy?.includes(p.processId)
-                              ? S.common.loading
-                              : S.chat.processRemove}
-                          </button>
-                        </>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          <SessionDetails
+            selected={selected}
+            agents={agents}
+            machineName={machineNameOf(selected.sessionId)}
+            hs={hs}
+            usageBuckets={usageBuckets}
+          >
+            <ProcessList
+              processes={processes}
+              procBusy={procBusy}
+              exitedIds={exitedIds}
+              onAskStop={setProcToKill}
+              onRemoveProcess={onRemoveProcess}
+              onClearExitedProcesses={onClearExitedProcesses}
+            />
+          </SessionDetails>
         </ChatToolbar>
       )}
 
@@ -2456,126 +2259,27 @@ export function ChatPage() {
         </div>
       </ChatDockProvider>
 
-      <Modal
-        open={credentialGuide}
-        title={S.project.noCredentialTitle}
-        onClose={() => setCredentialGuide(false)}
-        footer={
-          <>
-            <Button size="sm" onClick={() => setCredentialGuide(false)}>
-              {S.project.later}
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => {
-                setCredentialGuide(false);
-                navigate("/models");
-              }}
-            >
-              {S.project.goToModels}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-gray-600 dark:text-gray-300">{S.project.noCredentialBody}</p>
-      </Modal>
-
-      <ConfirmModal
-        open={procToKill !== null}
-        title={S.chat.processStopTitle}
-        onClose={() => setProcToKill(null)}
-        onConfirm={() => {
-          if (procToKill !== null) void onKillProcess(procToKill.processId);
-          setProcToKill(null);
+      <SessionDialogs
+        session={{
+          navigate,
+          procToKill,
+          setProcToKill,
+          onKillProcess,
+          selected,
+          stream,
+          credentialGuide,
+          setCredentialGuide,
+          thinkingSwitch,
+          setThinkingSwitch,
+          compactThenThinkingSwitch,
+          applyTurnThinkingLevel,
+          modelSwitchAsk,
+          setModelSwitchAsk,
+          modelSwitchPosting,
+          confirmModelSwitch,
+          modelDisplay,
         }}
-        confirmLabel={S.chat.processStop}
-        cancelLabel={S.common.cancel}
-      >
-        <p className="text-sm text-gray-600 dark:text-gray-300">{S.chat.processStopConfirm}</p>
-        <p className="mt-2 line-clamp-3 break-all font-mono text-xs text-gray-500 dark:text-gray-400">
-          {procToKill?.cmd}
-        </p>
-      </ConfirmModal>
-
-      {/* Mid-chat thinking-level switch confirmation (issue #310), three choices: compact
-          first and switch when it finishes (primary — the recommended, cheap path), switch
-          anyway (immediate, today's force path), or cancel (keeps the current level). The
-          compact choice is unavailable while the session is busy — the server only starts a
-          compaction on an idle session and does not queue it — and the body then says so.
-          After a successful compaction the guard lets a re-pick through without asking. */}
-      <ConfirmModal
-        open={thinkingSwitch?.phase === "ask"}
-        title={S.chat.thinkingSwitchTitle}
-        tone="primary"
-        confirmLabel={S.chat.thinkingSwitchCompactFirst}
-        cancelLabel={S.common.cancel}
-        confirmDisabled={stream.taskState !== "idle"}
-        onConfirm={compactThenThinkingSwitch}
-        secondaryLabel={S.chat.thinkingSwitchConfirm}
-        onSecondary={() => {
-          if (thinkingSwitch !== null) applyTurnThinkingLevel(thinkingSwitch.level);
-          setThinkingSwitch(null);
-        }}
-        onClose={() => setThinkingSwitch(null)}
-      >
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          {S.chat.thinkingSwitchBody(
-            thinkingLevelLabel(S.chat.thinkingLevelNames, thinkingSwitch?.level) ??
-              thinkingSwitch?.level ??
-              "",
-          )}
-        </p>
-        {stream.taskState !== "idle" && (
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {S.chat.thinkingSwitchBusyHint}
-          </p>
-        )}
-      </ConfirmModal>
-
-      {/* In-conversation model switch confirmation (the session toolbar's model picker), two
-          choices only: compact and switch, or cancel. There is no "switch anyway" — a switch
-          always compacts on the current model first, and a failed compaction keeps it. The two
-          shapes with nothing to compact read "switch" instead: an empty transcript (the switch
-          is immediate) and a transcript ending in a completed compaction or a model switch (no
-          compaction runs; the conversation continues from what is already held). The session
-          can start running while the dialog is up (a queued follow-up, a schedule): the confirm
-          is then disabled and the body says why, exactly like the thinking dialog. */}
-      <ConfirmModal
-        open={modelSwitchAsk !== null}
-        title={S.chat.modelSwitchInSessionTitle}
-        tone="primary"
-        confirmLabel={
-          modelSwitchAsk?.shape === "compact"
-            ? S.chat.modelSwitchInSessionConfirm
-            : S.chat.modelSwitchInSessionDirectConfirm
-        }
-        cancelLabel={S.common.cancel}
-        confirmDisabled={stream.taskState !== "idle"}
-        busy={modelSwitchPosting}
-        onConfirm={() => void confirmModelSwitch()}
-        onClose={() => {
-          if (!modelSwitchPosting) setModelSwitchAsk(null);
-        }}
-      >
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          {modelSwitchAsk === null || selected === null
-            ? null
-            : modelSwitchAsk.shape === "empty"
-              ? S.chat.modelSwitchInSessionDirectBody(modelDisplay(modelSwitchAsk.to))
-              : modelSwitchAsk.shape === "compacted"
-                ? S.chat.modelSwitchInSessionCompactedBody(modelDisplay(modelSwitchAsk.to))
-                : S.chat.modelSwitchInSessionBody(
-                    modelDisplay({ provider: selected.provider, modelId: selected.modelId }),
-                    modelDisplay(modelSwitchAsk.to),
-                  )}
-        </p>
-        {stream.taskState !== "idle" && (
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {S.chat.thinkingSwitchBusyHint}
-          </p>
-        )}
-      </ConfirmModal>
+      />
     </div>
   );
 }
