@@ -31,8 +31,6 @@ const ALLOWLIST: Readonly<Record<string, readonly [number, string]>> = {
   "features/chat/message-stream.tsx": [1, "W6"],
   "features/chat/subagents-view.tsx": [1, "W6"],
   "features/chat/task-stats-line.tsx": [1, "W6"],
-  "features/chat/workspace-browser.tsx": [1, "W7"],
-  "features/chat/workspace-finder.tsx": [11, "W10"],
   "features/company/channel-header.tsx": [4, "W6"],
   "features/company/channel-sidebar.tsx": [2, "W4"],
   "features/company/channel-view.tsx": [1, "W6"],
@@ -48,6 +46,8 @@ const ALLOWLIST: Readonly<Record<string, readonly [number, string]>> = {
   "features/settings/shortcuts-section.tsx": [1, "W10"],
   "features/terminal/terminal-keybar.tsx": [3, "W10"],
   "features/traces/trace-event-row.tsx": [1, "W4"],
+  "features/workspace/workspace-browser.tsx": [1, "W7"],
+  "features/workspace/workspace-finder.tsx": [11, "W10"],
   "lib/attachments.ts": [1, "W6"],
   "lib/nav-icons.ts": [1, "W7"],
 };

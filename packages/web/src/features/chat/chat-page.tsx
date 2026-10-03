@@ -105,11 +105,12 @@ import type { ComposerReference } from "../../lib/workspace-tree";
 import {
   compactionTally,
   heldThinkingSwitch,
+  modelLabel,
   needsThinkingSwitchConfirm,
   sessionThinkingLevel,
   thinkingLevelLabel,
-} from "./thinking-level";
-import type { StagedThinkingSwitch } from "./thinking-level";
+} from "../model-picker";
+import type { StagedThinkingSwitch } from "../model-picker";
 import { ChatDropRegion } from "./drop-zone";
 import { ConversationOutline, OutlineMenuButton, useOutlineRailFit } from "./conversation-outline";
 import { DraftView } from "./draft-view";
@@ -129,12 +130,11 @@ import { buildInputHistory } from "./input-history";
 import { buildOutline } from "./outline-model";
 import { GoalStatusBanner } from "./goal-banner";
 import { handoffMessage, modelSwitchMessage } from "./agent-handoff";
-import { modelLabel } from "./model-select";
 import { sessionModelPickerDisabled, sessionRowStale, switchContextShape } from "./model-switch";
 import type { SwitchContextShape } from "./model-switch";
 import { hasConfiguredKey, promotedPricing, sameModelRef } from "../models/model-grouping";
 import { providerInfo } from "@prismshadow/penguin-core/model-catalog";
-import { WorkspaceBrowser } from "./workspace-browser";
+import { WorkspaceBrowser } from "../workspace";
 import { ChatMemoryView } from "./memory-view";
 import { useMemoryListing } from "./use-memory-listing";
 import { deletedChangeKeys } from "./memory-nav";

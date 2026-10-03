@@ -14,8 +14,8 @@
  */
 import type { ModelRefDto, SessionInfo, SessionStatus } from "@prismshadow/penguin-server/api";
 import { sameModelRef } from "../models/model-grouping";
-import { trailingCompaction } from "./thinking-level";
-import type { ThinkingSwitchItem } from "./thinking-level";
+import { trailingCompaction } from "../model-picker";
+import type { ThinkingSwitchItem } from "../model-picker";
 
 /**
  * Whether the picker is disabled: a switch compacts, and the server neither starts nor queues a
