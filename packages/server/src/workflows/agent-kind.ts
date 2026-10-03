@@ -149,7 +149,12 @@ export function agentHost(
       if (!deps.agents.exists(projectId, target)) {
         throw new Error(`createSession: this Project has no Agent '${target}'`);
       }
-      return deps.sessions.createSession({ projectId, agentId: target });
+      // Unattended, like a scheduled run: allow-all, whatever the default preset asks.
+      return deps.sessions.createSession({
+        projectId,
+        agentId: target,
+        approvalMode: "allow-all",
+      });
     },
     async run(sessionId: string, input: WorkflowInput[]) {
       ownSession(sessionId, "run");
