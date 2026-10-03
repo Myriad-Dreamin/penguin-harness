@@ -2230,6 +2230,10 @@ export const removeWorkflow = (
     server: machineId,
   });
 
+// ---- What the server's modules and plugins contribute to the web slots, as data ----
+/** Read by shell/contributions.tsx alone. */
+export const getContributions = () => apiFetch<ContributionsResponse>("/api/contributions");
+
 // ---- The plugins a Project asks for, and the confinement agent commands run under ----
 /**
  * A Project's plugin list. Project-scoped because machines are lent to Projects, so this is

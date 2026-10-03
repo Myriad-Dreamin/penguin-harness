@@ -1,6 +1,7 @@
 /**
  * Router (react-router v7 declarative style): /login is public; every other route is a page a
- * module contributed to `ShellModule.pages` (shell/module.ts), read from the shell's bindings.
+ * module contributed to `ShellModule.pages` (shell/module.ts) or the server contributed to
+ * `WebModule.pages` (shell/contributions.tsx), read through `useShellPages()`.
  * A "shell" page goes through the RequireAuth guard (redirects to /login when not
  * authenticated) and is wrapped in ProjectProvider + SessionsProvider, the session providers
  * modules contributed, and AppLayout; a "bare" page only needs the user signed in.
@@ -17,6 +18,7 @@ import { SessionsProvider } from "../state/sessions";
 import { AppLayout } from "./app-layout";
 import { LoginPage } from "../pages/login";
 import { shellDeps } from "./deps";
+import { ShellPagesProvider, useShellPages, useShellPagesPending } from "./contributions";
 
 /** Route guard: shows blank while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
@@ -60,9 +62,11 @@ export interface AppRouterProps {
   initialPath?: string;
 }
 
-export function AppRouter({ initialPath }: AppRouterProps = {}) {
-  const { pages } = shellDeps.useDeps();
-  const routes = (
+/** The routes of every page in the table, under the guard of its frame. */
+function PageRoutes() {
+  const pages = useShellPages();
+  const pending = useShellPagesPending();
+  return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
       {pages
@@ -89,10 +93,19 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
             <Route key={id} path={path} element={<Component />} />
           ))}
         {/* Settings and user management live in the settings dialog now (see
-            SettingsDialog); their old routes fall through to the catch-all. */}
-        <Route path="*" element={<Navigate to="/chat" replace />} />
+            SettingsDialog); their old routes fall through to the catch-all, which waits
+            while a server-contributed page may still claim the path. */}
+        <Route path="*" element={pending ? null : <Navigate to="/chat" replace />} />
       </Route>
     </Routes>
+  );
+}
+
+export function AppRouter({ initialPath }: AppRouterProps = {}) {
+  const routes = (
+    <ShellPagesProvider>
+      <PageRoutes />
+    </ShellPagesProvider>
   );
   return initialPath === undefined ? (
     <BrowserRouter>{routes}</BrowserRouter>
