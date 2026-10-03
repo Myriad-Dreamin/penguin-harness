@@ -96,15 +96,20 @@ still under the restricted token, so still confined.
 
 ## Requirements
 
-- The DSH dependencies (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-sandbox`,
-  `@deepseek-ai/dsh-sandbox-local`) are dependencies of **this package**, not of the
-  harness — which is what "plugins are configuration, not built-in capability" means in
-  dependency terms.
+None beyond Node 24. The package carries the DSH chain it runs as `dist/node_modules`
+(`@deepseek-ai/cordis`, `@deepseek-ai/dsh-sandbox-local` and what they depend on, at exactly the
+versions the repository's `pnpm-lock.yaml` resolves), so it loads
+wherever it is unpacked, with nothing installed beside it, and the harness itself does not
+depend on DSH.
 
-They load behind dynamic imports, which is load-bearing for hot push: the package reaches
-native-adjacent modules that a pushed single-file bundle resolves from the installation, so
-an installation missing them fails *this* load — reported fail-closed by the service —
-instead of failing the whole platform bundle's import.
+That includes the native parts, for every supported host: koffi's prebuilt module for Linux
+x64/arm64, macOS x64/arm64 and Windows x64 (every platform loads it, since the chain imports
+its Windows runner statically), and the Landlock launcher for Linux x64/arm64. The tarball is
+about 3.5 MB.
+
+The chain loads behind dynamic imports, so a package whose carried tree is damaged fails
+*this* load — reported fail-closed by the service — instead of failing the whole platform
+bundle's import.
 
 ## Install
 

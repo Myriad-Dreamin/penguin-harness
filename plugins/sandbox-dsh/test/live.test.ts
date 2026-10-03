@@ -3,19 +3,22 @@
  * (bwrap → Landlock on Linux, Seatbelt on macOS, the ACL runner on Windows), real
  * spawns through core's command sessions, real kernel denials.
  *
+ * The adaptor is the PACKED package (test/global-setup.ts): what ships is what runs, so a
+ * dependency the tarball fails to carry fails here instead of on an install.
+ *
  * Host-gated the way DSH gates its own backend e2e: one real confine decides
  * usability, and a host with no usable backend skips (unless PENGUIN_MUST_RUN names it;
  * see scripts/must-run.mjs). The adaptor is driven DIRECTLY
  * (no SandboxService): what this package owes is that DSH's confinement works behind
  * our interface; routing and settings are the harness's behavior, tested there.
  */
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, inject, it } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { CommandSessionManager } from "@prismshadow/penguin-core";
 import type { SandboxProvider } from "@prismshadow/penguin-core/plugin";
-import { loadDshAdaptor } from "../src/index.js";
 import { mustRun } from "../../../scripts/must-run.mjs";
 
 const win32 = process.platform === "win32";
@@ -33,13 +36,20 @@ const win32 = process.platform === "win32";
 // spawn: core resolves the session shell once per process, and the load reads it.
 if (win32) process.env.PENGUIN_SHELL = "pwsh";
 
+const packed = pathToFileURL(path.join(inject("dshPackage"), "dist", "index.js")).href;
+const { loadDshAdaptor } = (await import(packed)) as typeof import("../src/index.js");
+
 const ws = mkdtempSync(path.join(tmpdir(), "penguin-dsh-live-"));
 const outsideProbe = path.join(homedir(), `penguin-dsh-live-${process.pid}.txt`);
 /** What the background child writes inside the Workspace: proof it ran at all. */
 const backgroundMarker = path.join(ws, "bg-inside.txt");
 
+// A host whose chain has no working rung fails the load with DSH's reason (the load probes it),
+// and that goes to mustRun below. A module the package does not carry is a packaging defect,
+// not a host without a backend, so it is not caught: it fails the suite on every host.
 let loadError = "the DSH adaptor did not load";
 const provider: SandboxProvider | null = await loadDshAdaptor().catch((err: unknown) => {
+  if ((err as { code?: unknown } | null)?.code === "ERR_MODULE_NOT_FOUND") throw err;
   loadError = err instanceof Error ? err.message : String(err);
   return null;
 });

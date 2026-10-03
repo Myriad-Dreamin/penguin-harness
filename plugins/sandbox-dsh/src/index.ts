@@ -4,9 +4,10 @@
  *
  * A PLUGIN PACKAGE, not part of the platform: a Project asks for it on the Plugins page
  * and the harness resolves it from the installation (see the server's plugin/loader.ts).
- * The DSH dependencies live HERE, in this package — the harness itself does not depend
- * on them, which is what "plugins are configuration, not built-in capability" means in
- * dependency terms.
+ * The DSH chain travels INSIDE this package, as `dist/node_modules` (scripts/vendor-dsh-deps.mjs):
+ * the package loads wherever it is unpacked, with nothing installed beside it, and the harness
+ * itself does not depend on DSH — which is what "plugins are configuration, not built-in
+ * capability" means in dependency terms.
  *
  * `@deepseek-ai/dsh-sandbox-local` carries the platform chain (dsh-bwrap → Landlock on
  * Linux, Seatbelt on macOS, the ACL restricted-token runner on Windows) and probes them
@@ -15,10 +16,8 @@
  * `fs-write` — the service therefore never routes a network / mask-paths policy here,
  * and the adaptor never has to drop a dimension it cannot honor.
  *
- * Everything DSH loads behind the dynamic imports below, and that is load-bearing for
- * hot push (see scripts/deploy.mjs): the package reaches native-adjacent modules that a
- * pushed single-file bundle resolves from the installation, so an installation missing
- * them fails THIS load — reported fail-closed by the service — instead of failing the
+ * Everything DSH loads behind the dynamic imports below, so a package whose carried tree is
+ * damaged fails THIS load — reported fail-closed by the service — instead of failing the
  * whole platform bundle's import.
  */
 import { lstatSync, statSync } from "node:fs";
