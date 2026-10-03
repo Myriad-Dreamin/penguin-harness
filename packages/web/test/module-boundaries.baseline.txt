@@ -79,6 +79,9 @@ features/benchmark/create-benchmark-modal.tsx -> features/semantic-id/semantic-i
 features/browser/browser-detach.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-actions.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-layer.tsx -> features/dock/dock-state.ts
+features/chat/body/draft-view.tsx -> features/dock/dock-state.ts
+features/chat/body/draft-view.tsx -> features/dock/dock-terminal.ts
+features/chat/body/draft-view.tsx -> features/models/model-grouping.ts
 features/chat/chat-input.tsx -> features/models/model-grouping.ts
 features/chat/chat-input.tsx -> features/skills/skill-icon-view.tsx
 features/chat/chat-input.tsx -> features/skills/skill-pick-list.tsx
@@ -103,9 +106,6 @@ features/chat/chat-page.tsx -> features/traces/trace-panel.tsx
 features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
 features/chat/dock-toggles.tsx -> features/dock/panel-meta.tsx
-features/chat/draft-view.tsx -> features/dock/dock-state.ts
-features/chat/draft-view.tsx -> features/dock/dock-terminal.ts
-features/chat/draft-view.tsx -> features/models/model-grouping.ts
 features/chat/message-item.tsx -> features/proposals/proposal-links.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
 features/chat/new-chat.ts -> features/ai-create/default-agent.ts
