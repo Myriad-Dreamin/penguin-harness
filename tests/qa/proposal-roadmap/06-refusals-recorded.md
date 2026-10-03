@@ -17,14 +17,16 @@ Task 02.
    twice.
 4. Run `proposal.nosuchthing` on `proposal:1`; run `proposal.approve` on `proposal:9999`.
 5. `GET $ORG/actions/runs/<id>` for the run of step 1.
+6. Publish a body that links to a file (a 4xx thrown by the run, not the guard); read its run.
 
 ## Expect
 
 1. 4xx with `{ error: { code, message, runId } }`.
-2. The refusal is listed with state `refused` and the same code.
+2. The refusal is listed with `outcome: refused` and the same code.
 3. All three answers carry the same run id; one run in the Activity.
-4. 404s; whether they appear in the Activity is recorded either way (note which).
+4. 404s. The unknown key leaves no run; the unknown proposal is recorded `refused`.
 5. The run with its params, actor and end.
+6. `outcome: refused` with its 4xx code — `failed` is kept for faults only.
 
 ## Evidence
 

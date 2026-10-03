@@ -8,7 +8,9 @@ run records who acted and through what.
 ## Setup
 
 Tasks 02 and 04. A desk session of `qa_b` (open it with `GET $ORG/employees/qa_b/desk`), from
-which the CLI runs as `agent:qa_b`.
+which the CLI runs as `agent:qa_b`. Check first that the session's `penguin` has `org proposal`
+and `org action` (`penguin org action ls`); if it is older, make the same calls with `curl` and
+the session's `$PENGUIN_API_TOKEN`, and report the stale CLI as a finding.
 
 ## Steps
 
@@ -24,9 +26,9 @@ which the CLI runs as `agent:qa_b`.
 
 1–4. Succeed.
 5. Newest first; each run names `agent:qa_b` (not the token's user), `via: session`, the key,
-   subject and state.
+   subject and `outcome`.
 6. The same runs as the HTTP listing for that key.
 
 ## Evidence
 
-The run rows of step 5 (id, key, subject, by, via, state, time).
+The run rows of step 5 (id, key, subject, by, via, outcome, time).

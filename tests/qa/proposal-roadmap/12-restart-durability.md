@@ -7,12 +7,13 @@ cut off by the process exit becomes `abandoned`.
 
 ## Setup
 
-Tasks 02–08. A company module with a `deploy.qa_slow` that sleeps 120 s, bound.
+Tasks 02–08. A company workflow contributing `deploy.qa_slow`, which sleeps 120 s. Nobody else
+relies on the server while it restarts.
 
 ## Steps
 
-1. Record `GET $ORG/proposals`, `GET $ORG/roadmaps`, `GET $ORG/actions/runs?limit=50` and the
-   bindings (`GET $ORG/actions/contributions`).
+1. Record `GET $ORG/proposals`, `GET $ORG/roadmaps`, `GET $ORG/actions/runs?limit=50`,
+   `GET $ORG/workflows` and `GET $ORG/actions/contributions`.
 2. Start `deploy.qa_slow`; while it runs, restart the server.
 3. Repeat step 1's reads.
 4. Read the run of step 2.
