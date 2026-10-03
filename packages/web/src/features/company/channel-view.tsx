@@ -64,7 +64,7 @@ import { formatDateTime } from "../../lib/format";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { toneDot, toneInk } from "../../lib/tone";
 import { useAuth } from "../../state/auth";
-import { useCompany, useCompanyEvents } from "../../state/company";
+import { useCompany, useCompanyEvents } from "./company-state";
 import { NAV_ICONS } from "../../lib/nav-icons";
 import { createStreamFollow, stickToBottom } from "../chat/stream-follow";
 import { EmployeeAvatar, FACE_PX } from "./employee-avatar";

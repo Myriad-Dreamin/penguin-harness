@@ -14,7 +14,7 @@ vi.mock("../src/api/endpoints", async (importOriginal) => ({
   listOrgProposals: (projectId: string, orgId: string) => listOrgProposals(projectId, orgId),
 }));
 
-const { createCompanyStore } = await import("../src/state/company");
+const { createCompanyStore } = await import("../src/features/company/company-state");
 const { PROPOSALS_RETRY_MAX_MS, PROPOSALS_RETRY_MIN_MS } =
   await import("../src/state/proposals-retry");
 
