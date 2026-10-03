@@ -15,9 +15,10 @@
  * A builtin plugin bundles what it runs. Every file in the prefix is a blob a push carries
  * separately, so an npm dependency tree (a grammar collection, a web framework's CJS, ESM and
  * type copies) turns one plugin into hundreds of small transfers. Its own build compiles its
- * pure-JS dependencies into `dist/`; what remains a runtime dependency is a native module whose
- * per-platform binaries cannot live inside a bundle, named in NATIVE_DEPENDENCIES — and a
- * package declaring anything else fails this build before anything is packed.
+ * pure-JS dependencies into `dist/`, and what cannot be bundled (code that finds its parts by
+ * path at run time, per-platform native binaries) it carries inside its own package, the way
+ * sandbox-dsh carries its DSH chain as `dist/node_modules` (scripts/vendor-dsh-deps.mjs). A
+ * package declaring any runtime dependency fails this build before anything is packed.
  *
  * THE BUILTIN INDEX IS THE BUILD'S. Every package the prefix ships is also laid out as a
  * store entry — `<name>/<version>/<hash16>/manifest.toml + package/`, the
@@ -26,10 +27,12 @@
  * the index travels with the build, each entry's `integrity` is the one a machine computes
  * when it stores the shipped package, and nobody writes it by hand.
  *
- * Cached by content: the hash over every plugin's `src/`, `package.json`, `README.md` and
- * `tsup.config.ts` names a directory under `node_modules/.cache/penguin-plugins/`, and an
- * unchanged set is not built, packed or installed again — a push of an unrelated change costs
- * nothing here. Installing needs the registry (for the dependencies) the first time only.
+ * Cached by content: the hash over every plugin's `src/`, `package.json`, `README.md`,
+ * `tsup.config.ts`, the scripts its build runs and the lockfile entries those vendor from names a
+ * directory under `node_modules/.cache/penguin-plugins/`, and an unchanged set is not built,
+ * packed or installed again — a push of an unrelated change costs nothing here. sandbox-dsh's
+ * build installs its DSH chain from the npm registry, so a build that is not cached needs
+ * registry access.
  *
  * THE INDEX'S INTEGRITY IS THE PUBLISHED TARBALL'S. Each plugin is packed once; the tarball is
  * kept beside the prefix in the cache, its npm integrity (sha512 of its bytes, what the registry
@@ -49,6 +52,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { INDEX_FILE, layOutEntry, entryDir, sortIndex, tarballIntegrity } from "./plugin-entry.mjs";
+import { run } from "./lib/run-command.mjs";
+import { vendorCacheInputs } from "./vendor-dsh-deps.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGINS_SRC = path.join(ROOT, "plugins");
@@ -62,58 +67,6 @@ const { stringify: stringifyToml } = createRequire(
 )("smol-toml");
 /** The prefix's own manifest: npm needs one above `node_modules`, and it is ours, never a package's. */
 const PREFIX_MANIFEST = { name: "penguin-builtin-plugins", private: true, version: "0.0.0" };
-/**
- * The runtime dependencies a builtin plugin may declare: native modules only, each with a
- * reason. Everything else is compiled into the plugin's `dist/` by its own build. Empty today:
- * sandbox-dsh, whose DSH chain and koffi were the entries, carries that chain inside its own
- * package (scripts/vendor-dsh-deps.mjs) and declares no runtime dependency.
- */
-const NATIVE_DEPENDENCIES = new Map();
-
-/**
- * The hosts a pushed prefix may land on. npm installs a native module's binary for the machine
- * doing the install, and this build runs wherever CI or a developer happens to be — so a prefix
- * built on Linux carried no Windows binary, and sandbox-dsh's Windows runner failed there with
- * "Cannot find the native Koffi module" (sandbox-dsh now carries every target's binary itself).
- * The per-platform packages of every NATIVE_DEPENDENCIES entry are installed for each of these
- * as well; they are small next to the plugins themselves, and one prefix then serves every
- * target a push can reach.
- */
-const TARGET_PLATFORMS = [
-  { os: "linux", cpu: "x64" },
-  { os: "linux", cpu: "arm64" },
-  { os: "win32", cpu: "x64" },
-  { os: "darwin", cpu: "arm64" },
-];
-
-/**
- * The per-platform packages a native dependency declares as optional dependencies, as
- * `name@version` specifiers, for the targets above. A native module publishes one package per
- * `<os>-<cpu>` (koffi: `@koromix/koffi-win32-x64`) and depends on all of them optionally, so its
- * own manifest — installed above — is the list, and this build never hardcodes a platform triple.
- */
-async function platformPackagesOf(prefix) {
-  const wanted = TARGET_PLATFORMS.map(({ os: o, cpu }) => `${o}-${cpu}`);
-  const specs = [];
-  for (const dep of NATIVE_DEPENDENCIES.keys()) {
-    let manifest;
-    try {
-      manifest = JSON.parse(
-        await fsp.readFile(
-          path.join(prefix, "node_modules", ...dep.split("/"), "package.json"),
-          "utf8",
-        ),
-      );
-    } catch {
-      continue; // not installed: no plugin in this build declares it
-    }
-    for (const [name, version] of Object.entries(manifest.optionalDependencies ?? {})) {
-      if (wanted.some((triple) => name.endsWith(`-${triple}`))) specs.push(`${name}@${version}`);
-    }
-  }
-  return specs.sort();
-}
-
 /** What npm leaves in the prefix that is not a package: its hidden lockfile. Never shipped. */
 const NOT_SHIPPED = new Set(["node_modules/.package-lock.json"]);
 
@@ -128,29 +81,6 @@ async function walk(dir, prefix = "") {
   return out.sort();
 }
 
-/** A package manager's command, as the platform names it. */
-function command(name) {
-  return process.platform === "win32" ? `${name}.cmd` : name;
-}
-// cmd.exe does not unquote spawn args by itself: under `shell: true` the args are joined
-// into one command line, so a path with a space (the pack directory lives under the user's
-// temp directory, i.e. their profile) splits into two. Quoted the way run-with-env.mjs quotes.
-const quote = (a) => (/[\s"^&|<>;,()%!]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
-export function run(name, args, cwd) {
-  const windows = process.platform === "win32";
-  try {
-    execFileSync(command(name), windows ? args.map(quote) : args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: windows,
-      env: process.env,
-    });
-  } catch (err) {
-    const stderr = err instanceof Object && "stderr" in err ? String(err.stderr).trim() : "";
-    throw new Error(`${name} ${args.slice(0, 3).join(" ")} failed in ${cwd}\n${stderr}`);
-  }
-}
-
 /**
  * What a plugin's pack depends on: its sources, its manifest, its README, its build config —
  * and every other directory the package SHIPS.
@@ -159,6 +89,10 @@ export function run(name, args, cwd) {
  * backend ships the PowerShell script its setup runs), and hashing only `src/` meant editing one
  * of them changed nothing the cache could see: the build happily served a stale pack, and the
  * fix nobody could find on the host was a file that had never left this machine.
+ *
+ * The same holds for the repository scripts the package's `build` runs (`../../scripts/*.mjs`):
+ * they write into `dist/`, so their source is hashed — and for scripts/vendor-dsh-deps.mjs, the
+ * pnpm-lock.yaml entries it vendors from, so a lockfile bump of the DSH chain rebuilds the pack.
  */
 async function sourceHash(dir, into) {
   for (const rel of ["package.json", "README.md", "tsup.config.ts"]) {
@@ -171,6 +105,15 @@ async function sourceHash(dir, into) {
         .update("\0");
   }
   const manifest = JSON.parse(await fsp.readFile(path.join(dir, "package.json"), "utf8"));
+  const buildScripts = [...(manifest.scripts?.build ?? "").matchAll(/scripts\/([\w.-]+\.mjs)/g)];
+  for (const script of [...new Set(buildScripts.map((m) => m[1]))].sort()) {
+    into
+      .update(`scripts/${script}`)
+      .update("\0")
+      .update(await fsp.readFile(path.join(ROOT, "scripts", script)))
+      .update("\0");
+    if (script === "vendor-dsh-deps.mjs") into.update(vendorCacheInputs()).update("\0");
+  }
   // `dist` and `vendor` are built or fetched from what is hashed here, never edited by hand.
   const shipped = (manifest.files ?? []).filter((f) => !["dist", "vendor"].includes(f));
   for (const name of ["src", ...shipped]) {
@@ -197,15 +140,13 @@ async function pluginPackages() {
     const pkg = JSON.parse(await fsp.readFile(manifestFile, "utf8"));
     // A package with a code entry is built and packed; one without (skills, hooks) carries no code.
     if (pkg.main === undefined && pkg.exports === undefined) continue;
-    const unbundled = Object.keys(pkg.dependencies ?? {}).filter(
-      (d) => !NATIVE_DEPENDENCIES.has(d),
-    );
+    const unbundled = Object.keys(pkg.dependencies ?? {});
     if (unbundled.length > 0) {
       throw new Error(
-        `${pkg.name} declares runtime dependencies ${unbundled.join(", ")}: a builtin plugin bundles ` +
-          "what it runs (tsup noExternal, the package a devDependency) — every file it would " +
-          "install is a separate blob on every push. Only native modules stay dependencies " +
-          "(NATIVE_DEPENDENCIES in scripts/build-plugins.mjs).",
+        `${pkg.name} declares runtime dependencies ${unbundled.join(", ")}: a builtin plugin ` +
+          "declares none. It bundles what it runs (tsup noExternal, the package a " +
+          "devDependency), and carries what cannot be bundled inside its own package (as " +
+          "sandbox-dsh carries dist/node_modules, scripts/vendor-dsh-deps.mjs).",
       );
     }
     out.push({ name: pkg.name, version: pkg.version, dir });
@@ -275,31 +216,6 @@ export async function buildBuiltinPlugins({ log = () => {} } = {}) {
           ],
           out,
         );
-        // One call for every target: npm reconciles the tree on each install, so a second
-        // install would prune the first target's package as extraneous. --force is what makes
-        // npm accept a package whose `os`/`cpu` is not this machine's — the point of the call.
-        const platformPackages = await platformPackagesOf(out);
-        if (platformPackages.length > 0) {
-          run(
-            "npm",
-            [
-              "install",
-              "--no-save",
-              "--no-package-lock",
-              "--omit=dev",
-              "--no-audit",
-              "--no-fund",
-              "--ignore-scripts",
-              "--force",
-              "--",
-              ...platformPackages,
-            ],
-            out,
-          );
-        }
-        if (platformPackages.length > 0) {
-          log(`${platformPackages.length} per-platform native binaries: installed`);
-        }
       }
       // npm installs a package's files with the mode it pleases, and a vendored program
       // arrives without its exec bit — which no consumer of the prefix can guess back.

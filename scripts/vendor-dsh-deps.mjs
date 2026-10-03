@@ -16,7 +16,14 @@
  *
  * The tree is exactly what pnpm-lock.yaml resolves: the closure of the carried packages is read
  * from the lockfile's snapshots, npm installs those exact versions, and any package npm puts in
- * the tree that the closure does not name (or names at another version) fails the build.
+ * the tree that the closure does not name (or names at another version) fails the build. So does
+ * any package whose content differs from the lockfile's: the integrity npm records for each
+ * tarball it installed (its hidden `.package-lock.json`) must equal the `resolution.integrity`
+ * pnpm-lock.yaml pins for that `name@version`, so a republished or tampered tarball cannot pass
+ * under a locked version number.
+ *
+ * npm installs from the registry, so the build needs registry access (the npm cache serves a
+ * repeat build).
  *
  * Usage (run by the package's build, after tsup):
  *   node scripts/vendor-dsh-deps.mjs        vendor into plugins/sandbox-dsh/dist/node_modules/
@@ -26,7 +33,7 @@ import fsp from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { run } from "./build-plugins.mjs";
+import { run } from "./lib/run-command.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.join(ROOT, "plugins", "sandbox-dsh", "dist", "node_modules");
@@ -40,9 +47,13 @@ const TARGETS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win3
 const yaml = createRequire(path.join(ROOT, "packages", "core", "package.json"))("yaml");
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 
-/** `name@version` of every package the carried ones need, as pnpm-lock.yaml resolves them. */
-function lockedClosure() {
-  const lock = yaml.parse(fs.readFileSync(path.join(ROOT, "pnpm-lock.yaml"), "utf8"));
+/** The parsed pnpm-lock.yaml. */
+function readLock() {
+  return yaml.parse(fs.readFileSync(path.join(ROOT, "pnpm-lock.yaml"), "utf8"));
+}
+
+/** `name` → `version` of every package the carried ones need, as pnpm-lock.yaml resolves them. */
+function lockedClosure(lock) {
   const importer = lock.importers["plugins/sandbox-dsh"];
   const deps = { ...importer.dependencies, ...importer.devDependencies };
   const queue = CARRIED.map((name) => [name, deps[name].version]);
@@ -67,6 +78,53 @@ function lockedClosure() {
   return closure;
 }
 
+/**
+ * What the build's output depends on besides this plugin's own sources: this script and the
+ * lockfile entries it reads (each carried package's `name@version` and integrity) — the cache
+ * key scripts/build-plugins.mjs folds in for the package whose build runs this script.
+ */
+export function vendorCacheInputs() {
+  const lock = readLock();
+  const entries = [...lockedClosure(lock)].map(
+    ([name, version]) => `${name}@${version} ${lockedIntegrity(lock, name, version)}`,
+  );
+  return [fs.readFileSync(fileURLToPath(import.meta.url), "utf8"), ...entries.sort()].join("\0");
+}
+
+/** The `resolution.integrity` pnpm-lock.yaml pins for `name@version`, if any. */
+function lockedIntegrity(lock, name, version) {
+  return lock.packages?.[`${name}@${version}`]?.resolution?.integrity;
+}
+
+/**
+ * Every way npm's installed tree departs from pnpm-lock.yaml by content, as messages (empty when
+ * none). `npmLock` is npm's hidden lockfile (`node_modules/.package-lock.json`): each installed
+ * package keyed by its path, with the integrity of the tarball npm verified on download.
+ */
+export function integrityMismatches(lock, closure, npmLock) {
+  const problems = [];
+  const seen = new Set();
+  for (const [key, entry] of Object.entries(npmLock.packages ?? {})) {
+    if (key === "") continue; // the staging directory's own manifest
+    const name = entry.name ?? key.slice(key.lastIndexOf("node_modules/") + "node_modules/".length);
+    const id = `${name}@${entry.version}`;
+    seen.add(name);
+    if (closure.get(name) !== entry.version) {
+      problems.push(`${id}: not in the locked closure`);
+      continue;
+    }
+    const want = lockedIntegrity(lock, name, entry.version);
+    if (want === undefined) problems.push(`${id}: pnpm-lock.yaml records no integrity`);
+    else if (entry.integrity !== want) {
+      problems.push(`${id}: npm installed ${entry.integrity ?? "(no integrity)"}, locked ${want}`);
+    }
+  }
+  for (const [name, version] of closure) {
+    if (!seen.has(name)) problems.push(`${name}@${version}: not in npm's lockfile`);
+  }
+  return problems;
+}
+
 /** `name` → `version` of every package npm installed under `dir`, nested ones included. */
 function installed(dir, into = []) {
   for (const entry of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
@@ -84,7 +142,8 @@ function installed(dir, into = []) {
 }
 
 export async function vendorDshDeps() {
-  const closure = lockedClosure();
+  const lock = readLock();
+  const closure = lockedClosure(lock);
   await fsp.mkdir(CACHE, { recursive: true });
   const stage = await fsp.mkdtemp(path.join(CACHE, "penguin-dsh-deps-"));
   try {
@@ -114,8 +173,15 @@ export async function vendorDshDeps() {
         `vendor-dsh-deps: npm's tree differs from pnpm-lock.yaml — not locked: ${wrong.map((p) => p.join("@")).join(", ") || "none"}; missing: ${missing.join(", ") || "none"}`,
       );
     }
+    const npmLockFile = path.join(stage, "node_modules", ".package-lock.json");
+    const mismatches = integrityMismatches(lock, closure, readJson(npmLockFile));
+    if (mismatches.length > 0) {
+      throw new Error(
+        `vendor-dsh-deps: npm's tree differs from pnpm-lock.yaml by content:\n  ${mismatches.join("\n  ")}`,
+      );
+    }
     await fsp.rm(path.join(stage, "node_modules", ".bin"), { recursive: true, force: true });
-    await fsp.rm(path.join(stage, "node_modules", ".package-lock.json"), { force: true });
+    await fsp.rm(npmLockFile, { force: true });
     await fsp.rm(OUT, { recursive: true, force: true });
     await fsp.rename(path.join(stage, "node_modules"), OUT);
   } finally {
