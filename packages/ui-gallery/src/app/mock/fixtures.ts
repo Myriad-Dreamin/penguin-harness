@@ -1369,6 +1369,12 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
         attachmentLimitMinMb: 1,
         attachmentLimitMaxMb: 200,
       },
+      uploadPolicy: {
+        imageCompression: true,
+        imageCompressionOverMb: 4,
+        imageCompressionMinMb: 1,
+        imageCompressionMaxMb: 64,
+      },
       companyMode: false,
     },
     prefs: {
@@ -1384,6 +1390,8 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
       githubTokenSet: false,
       attachmentMaxMb: 100,
       attachmentTotalMb: 120,
+      imageCompression: true,
+      imageCompressionOverMb: 4,
       companyMode: false,
     },
     project,

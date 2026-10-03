@@ -108,7 +108,7 @@ export function SettingsDialog({
     account: S.settings.accountTitle,
     credits: S.settings.creditsTitle,
     proxy: S.settings.proxyTitle,
-    uploads: S.settings.uploadLimitsTitle,
+    uploads: S.settings.uploadsTitle,
     company: S.settings.companyModeTitle,
     sharing: S.settings.sharingTitle,
     plugins: S.settings.pluginsTitle,
