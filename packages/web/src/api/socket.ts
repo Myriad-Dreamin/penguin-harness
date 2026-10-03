@@ -408,7 +408,6 @@ export class ApiSocket {
     this.#state = "connecting";
     // Telemetry: handshake to first reply, timed only while the switch is on (lib/perf).
     const connectAt = perfOn() ? performance.now() : null;
-    let openMs: number | null = null;
     let replied = false;
     let ws: WebSocket;
     try {
@@ -437,7 +436,6 @@ export class ApiSocket {
       this.#attempts = 0;
       this.#neverOpened = 0;
       this.#lastFrameAt = performance.now();
-      if (connectAt !== null) openMs = this.#lastFrameAt - connectAt;
       this.#armWatchdog();
       this.#settleReady(true);
       for (const entry of [...this.#waiting]) this.#issue(entry);
@@ -446,12 +444,11 @@ export class ApiSocket {
       if (this.#ws !== ws) return;
       this.#lastFrameAt = performance.now();
       this.#framesSeen += 1;
-      if (connectAt !== null && openMs !== null && !replied) {
+      if (connectAt !== null && !replied) {
         replied = true;
         perfSample({
           probe: "web.socket.connect",
           durMs: Math.round((this.#lastFrameAt - connectAt) * 10) / 10,
-          attrs: { openMs: Math.round(openMs * 10) / 10 },
         });
       }
       this.#armWatchdog();

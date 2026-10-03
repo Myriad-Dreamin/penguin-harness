@@ -107,18 +107,16 @@ import type { ActivityKey, StreamPosition } from "../lib/session-grouping";
 import { noteScheduleEvent } from "../features/schedules/schedule-store";
 import { useProject } from "./project";
 
-/** A session-list fan-out being timed (telemetry on): requests sent and the slowest answer. */
+/** A session-list fan-out being timed (telemetry on): when it started and its slowest answer. */
 interface FanoutTiming {
   startedAt: number;
-  requests: number;
   slowestMs: number;
 }
 
-/** Counts one fan-out request and times it to its answer or failure; `timing` null passes it through. */
+/** Times one fan-out request to its answer or failure; `timing` null passes it through. */
 function timedAsk<T>(timing: FanoutTiming | null, ask: Promise<T>): Promise<T> {
   if (timing === null) return ask;
   const askedAt = performance.now();
-  timing.requests += 1;
   return ask.finally(() => {
     timing.slowestMs = Math.max(timing.slowestMs, performance.now() - askedAt);
   });
@@ -670,10 +668,10 @@ export function createSessionsStore() {
           source,
         }));
       });
-      // Telemetry (lib/perf): how many requests this fan-out sends and how long the slowest
-      // takes — timed only while the switch is on.
+      // Telemetry (lib/perf): the whole fan-out and its slowest request — timed only while
+      // the switch is on.
       const fanout: FanoutTiming | null = perfOn()
-        ? { startedAt: performance.now(), requests: 0, slowestMs: 0 }
+        ? { startedAt: performance.now(), slowestMs: 0 }
         : null;
       try {
         const results = await Promise.all(
@@ -744,14 +742,7 @@ export function createSessionsStore() {
           perfSample({
             probe: "web.sessions.fanout",
             durMs: Math.round((performance.now() - fanout.startedAt) * 10) / 10,
-            n: jobs.length,
-            attrs: {
-              requests: fanout.requests,
-              slowestMs: Math.round(fanout.slowestMs * 10) / 10,
-              agents: agentIds.length,
-              sources: sources.length,
-              unanswered: results.filter((r) => !r.answered).length,
-            },
+            attrs: { slowestMs: Math.round(fanout.slowestMs * 10) / 10 },
           });
         }
         // Whether each machine answered is a fact about the machine, whichever reload is

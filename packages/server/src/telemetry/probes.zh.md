@@ -1,112 +1,110 @@
 # 遥测采集点
 
-性能面板列出的每个采集点（PRFC-0008）：一条样本量的是什么，以及记录它的那一行代码。样本只记形状——耗时、大小、计数、状态——从不记内容。耗时单位为毫秒。
+性能面板列出的每个采集点能告诉你什么（PRFC-0008）。每一节开头就是这个采集点回答的问题。样本只记数字——时长、大小、次数——以及标明测的是什么的名称（路由模式、模块名、状态），从不记内容。时长单位为毫秒；`memoryCost` 与其他大小单位为字节。
 
-每一节开头是一句概述，面板上采集点名称旁的「?」显示的就是这一句。「记录于」一行由 `pnpm gen:probe-docs` 保持最新，链接打开的是与本页相同的 commit。
+面板里名称旁的「?」显示这一节的第一句。「记录于」一行由 `pnpm gen:probe-docs` 保持最新，链接打开的是与本页相同的 commit。
 
 ## 启动与热更新
 
-每代 App 记一次：进程启动、热推送之后、插件变化重新组装 App 时。遥测打开之前就跑过的采集点会先留着，在这一代创建时一并记下。
+每代 App 记一次：进程启动、热推送之后、插件变化重新组装 App 时。遥测打开之前就跑过的会先留着，在这一代创建时一并记下。
 
 ### boot.migrate
 
-平台启动时把数据库 schema 升到最新所用的时间。
-
-推送来的平台自带迁移，这是应用它们的耗时；留给运行时下次重启的迁移不计在内。
+启动慢是不是数据库的缘故？把 schema 升到最新所用的时间。
 
 记录于 [`packages/server/src/hmr/platform.ts:361`](../hmr/platform.ts#L361) <!-- probe-site -->
 
 ### plugin.load
 
-启动时导入并检查一个插件所用的时间。
+启动慢是不是某一个插件拖的？导入并检查这个插件所用的时间。
 
-`attrs.plugin` 是哪个插件；失败、被留在这一代之外时 `status` 为 `error`。沿用上一代的插件不再导入，也不记录。
+`attrs.plugin` 是哪个插件；失败、被留在这一代之外时 `status` 为 `error`。沿用上一代的插件不再加载，也不记。
 
 记录于 [`packages/server/src/hmr/platform.ts:461`](../hmr/platform.ts#L461) <!-- probe-site -->
 
 ### boot.plugins
 
-启动时加载全部已装插件的总时间。
+加载全部插件花了多久？所有已装插件一起的时间。
 
 记录于 [`packages/server/src/hmr/platform.ts:467`](../hmr/platform.ts#L467) <!-- probe-site -->
 
 ### boot.module
 
-创建服务端模块树中某一个模块所用的时间。
+启动慢是不是服务端某一部分拖的？创建这个模块所用的时间。
 
-`attrs.module` 是模块名。这里慢的，是构造或启动时就做了实事、拖住 App 开始服务的模块。
+`attrs.module` 是模块名。
 
 记录于 [`packages/server/src/hmr/platform.ts:520`](../hmr/platform.ts#L520) <!-- probe-site -->
 
 ### boot.modules
 
-创建整棵模块树的总时间。
+创建服务端各部分花了多久？所有模块一起的时间。
 
 记录于 [`packages/server/src/hmr/platform.ts:524`](../hmr/platform.ts#L524) <!-- probe-site -->
 
 ### boot.create
 
-从开始创建 App 到它能提供服务的时间。
+App 过了多久才能提供服务？从开始创建到就绪的时间。
 
-涵盖上面几步（迁移、插件、模块）以及它们之间的一切。
+涵盖上面几步以及它们之间的一切。
 
-记录于 [`packages/server/src/telemetry/boot.ts:99`](boot.ts#L99) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:84`](boot.ts#L84) <!-- probe-site -->
 
 ### boot.quiet
 
-启动之后，后台两项清扫（会话接管与 machine 重连）都结束所用的时间。
+启动之后多久一切都恢复了？到会话接管完、machine 重连好的时间。
 
-这期间 App 已在服务；这一项长，意味着 machine 或被接管的会话回来得晚。
+这期间 App 已在服务；这一项长，说明 machine 或会话回来得晚。
 
 记录于 [`packages/server/src/platform.ts:243`](../platform.ts#L243) <!-- probe-site -->
 
 ### hmr.park
 
-热更新时上一代把自己的状态停放好所用的时间。
+热更新交接慢吗？上一代把状态停放好所用的时间。
 
-以上一代为键（`keys.generation`）。由新一代记录，因为旧一代的缓冲随它一起没了。
+以上一代为键，由新一代记下。
 
-记录于 [`packages/server/src/telemetry/boot.ts:104`](boot.ts#L104) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:89`](boot.ts#L89) <!-- probe-site -->
 
 ### hmr.dispose
 
-热更新后上一代关闭所用的时间。
+热更新放手慢吗？上一代关闭所用的时间。
 
 与 `hmr.park` 一样以上一代为键。
 
-记录于 [`packages/server/src/telemetry/boot.ts:106`](boot.ts#L106) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:91`](boot.ts#L91) <!-- probe-site -->
 
 ### hmr.generation
 
-创建了一代 App：原因，以及这个包在本进程里被创建过几次。
+这一代为什么启动？每次创建 App 一条。
 
-`n` 是代号。`attrs.cause` 为 `boot`、`push` 或 `reassemble`；`attrs.creates` 是同一个包的创建次数，同一个构建被再次创建（重复推送）时 `attrs.repeat` 为 true。
+`attrs.cause` 为 `boot`、`push`（热推送）或 `reassemble`（插件变化）。
 
-记录于 [`packages/server/src/telemetry/boot.ts:110`](boot.ts#L110) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:94`](boot.ts#L94) <!-- probe-site -->
 
 ### process.memory
 
-一代刚创建完时进程的内存。
+服务端用了多少内存？整个进程的总量，`attrs.memoryCost`，单位字节。
 
-`bytes` 是常驻内存（RSS），`attrs` 带 `heapUsed`、`heapTotal`、`external`。要跨代对比着看：每推一次只涨不落，说明有某一代没有被释放。
+每次创建之后、以及每次读遥测时记一条。要跨代对比着看：每次热推都只涨不落，说明有旧的一代没被释放。
 
-记录于 [`packages/server/src/telemetry/boot.ts:121`](boot.ts#L121) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:95`](boot.ts#L95) <!-- probe-site -->
 
 ### hmr.admit
 
-新一代回答热推送准入检查所用的时间。
+热推送被接受得慢吗？新一代回答准入检查所用的时间。
 
-这是推送来的一代在被换上之前收到的第一个请求；`attrs.code` 是它回答的状态码。
+`attrs.code` 是它回答的状态码。
 
-记录于 [`packages/server/src/telemetry/boot.ts:148`](boot.ts#L148) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/boot.ts:119`](boot.ts#L119) <!-- probe-site -->
 
 ## 请求
 
 ### http.request
 
-回答一个 HTTP 请求所用的时间，从请求到达到响应交回。
+哪些 API 调用慢？回答一个 HTTP 请求所用的时间。
 
-`attrs.method` 与 `attrs.route` 以路由模式（从不是路径）标明路由，`attrs.code` 是状态码，`bytes` 是响应自己声明的大小，`attrs.requestBytes` 是请求体大小。`keys.request` 是为这个请求生成的 id，它运行期间记下的样本（一次 `session.messages`、其中的 `trace.read`）可据此对上它。
+`attrs.method` 与 `attrs.route` 以路由模式（从不是路径）标明是哪个调用，`attrs.code` 是状态码，`attrs.requestBytes` 是请求大小，`bytes` 是响应自己声明的大小。`keys.request` 把它和它运行期间记下的样本连起来。
 
 记录于 [`packages/server/src/telemetry/http.ts:29`](http.ts#L29) <!-- probe-site -->
 
@@ -114,166 +112,158 @@
 
 ### sessions.list.sql
 
-会话列表为一个 Agent 查数据库所用的时间。
+侧栏的会话列表慢在数据库吗？它那次查询的时间。
 
-`n` 是返回的行数。与 `sessions.list.reconcile` 同属一次会话列表读取；列表请求剩下的时间是逐行的处理。
+`attrs.rows` 是返回了多少个会话。
 
 记录于 [`packages/server/src/services/session-service.ts:438`](../services/session-service.ts#L438) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
-列会话时有行尚未分类，为此对账 Trace 索引所用的时间。
+会话列表慢是不是 Trace 索引在追？那次追赶的时间。
 
-`n` 是找到的 Trace 数。稳定状态下这一步会跳过；经常出现，说明不断有未分类的行进来。
+`attrs.traces` 是找到了多少个 Trace。平时会跳过；经常出现，说明不断有索引没见过的会话进来。
 
 记录于 [`packages/server/src/services/session-service.ts:463`](../services/session-service.ts#L463) <!-- probe-site -->
 
 ### trace.reconcile
 
-一次把 Trace 索引与磁盘上的文件对齐所用的时间。
+把 Trace 索引对齐要多久？每一遍记一条，不论有几个调用在等它。
 
-强制的一遍 `attrs.force` 为 true。加入一遍已在进行中的调用，记下自己等待的时间，`attrs.shared` 为 true。
-
-记录于 [`packages/server/src/services/trace-index.ts:162`](../services/trace-index.ts#L162) <!-- probe-site -->
+记录于 [`packages/server/src/services/trace-index.ts:166`](../services/trace-index.ts#L166) <!-- probe-site -->
 
 ### trace.read
 
-从磁盘读一个 Trace 文件所用的时间。
+打开会话慢在读盘吗？读一个 Trace 文件所用的时间。
 
-`n` 是读出的消息数。在 `session.messages` 的读取里，它带上那个会话的键。
+`attrs.messages` 是文件里有多少条消息。在 `session.messages` 的读取里，它带上那个会话。
 
 记录于 [`packages/server/src/services/trace-service.ts:356`](../services/trace-service.ts#L356) <!-- probe-site -->
 
 ### session.messages
 
-为页面读一个会话的一窗消息所用的时间。
+打开会话慢在服务端吗？读出页面要的那些消息所用的时间。
 
-`n` 是返回的消息数；`attrs.kind` 是请求的是哪一窗，`attrs.reachesEnd` 是否读到了最新一条。它读过的 Trace 文件就是同一会话、同一请求下的 `trace.read` 样本。
+`attrs.kind` 是要的哪一部分，`attrs.messages` 是返回了多少条。它读过的 Trace 文件就是同一会话下的 `trace.read`。
 
 记录于 [`packages/server/src/services/trace-service.ts:642`](../services/trace-service.ts#L642) <!-- probe-site -->
 
 ### task.accept
 
-接收发给会话的一条消息所用的时间，从调用到答复，含等会话锁的时间。
+发消息之后接收得慢吗？从发出到服务端答复的时间。
 
-`attrs.queued` 是这条消息是否排在一轮正在运行的之后。
+含等会话锁的时间；`attrs.queued` 是这条消息是否排在一轮正在运行的之后。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:1165`](../runtime/session-manager.ts#L1165) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:1161`](../runtime/session-manager.ts#L1161) <!-- probe-site -->
 
 ### session.load
 
-载入一个不在内存里的会话所用的时间，含它的历史。
+会话开始干活慢吗？载入一个不在内存里的会话（含历史）所用的时间。
 
-`n` 是会话恢复时带的历史消息数。已在内存里的会话不记录。
+`attrs.messages` 是载入时带了多少条历史。已在内存里的会话不记。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:2100`](../runtime/session-manager.ts#L2100) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:2096`](../runtime/session-manager.ts#L2096) <!-- probe-site -->
+
+### session.memory
+
+哪个会话最占内存？每个已加载的会话一条，`attrs.memoryCost`，单位字节。
+
+它把会话占着的加在一起：载入的历史、为重连的页面留着的近期事件、还在流式输出的回复。每次读遥测时记一条。
+
+记录于 [`packages/server/src/runtime/session-manager.ts:938`](../runtime/session-manager.ts#L938) <!-- probe-site -->
 
 ### turn.badge
 
-发布一次会话状态变化所用的时间：列表角标与任务状态一起。
+更新会话状态慢吗？告诉各个页面会话状态变了所用的时间。
 
-`attrs.state` 是发布的状态。
-
-记录于 [`packages/server/src/runtime/session-manager.ts:2529`](../runtime/session-manager.ts#L2529) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:2523`](../runtime/session-manager.ts#L2523) <!-- probe-site -->
 
 ### turn.run
 
-服务端上一轮的全程，以及其中模型所占的部分。
+一轮慢吗，是不是模型慢？服务端上一整轮的时间。
 
-`n` 是流式消息数。`attrs.modelMs` 是各次模型请求从开始到结束的时间，`attrs.requests` 是请求次数，`attrs.serverMs` 是各 `turn.*` 段之和。剩下的是引擎自己的时间：工具调用、MCP、写 Trace。
+`attrs.modelMs` 是其中模型占的时间；`attrs.messages` 是流出了多少条消息。剩下的是服务端与工具的时间。
 
-记录于 [`packages/server/src/telemetry/turn.ts:126`](turn.ts#L126) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/turn.ts:121`](turn.ts#L121) <!-- probe-site -->
 
 ### turn.*
 
-一轮里模型之外、逐条消息做的某一段工作，在整轮上求和。
+一轮在服务端、模型之外的时间花在哪？逐条消息的某一部分工作，在整轮上求和。
 
-各段为 `turn.tail`（实时尾部）、`turn.fanout`（发布到页面的通道）、`turn.errors`（流错误观察）与 `turn.usage`（用量记录）。`n` 是这一段处理的消息数，`attrs.maxMs` 是最慢的一条。
+各部分为 `turn.tail`、`turn.fanout`、`turn.errors`、`turn.usage`；`attrs.messages` 是这一部分处理了多少条消息。
 
-记录于 [`packages/server/src/telemetry/turn.ts:133`](turn.ts#L133) <!-- probe-site -->
+记录于 [`packages/server/src/telemetry/turn.ts:127`](turn.ts#L127) <!-- probe-site -->
 
 ## Machine
 
 ### machine.connect
 
-一次连接 machine 的全程，以及它如何结束。
+连接 machine 慢、还是失败了？一次连接的全程。
 
-`keys.machine` 是 machine 的地址。`attrs.trigger` 说明是什么发起的，失败的一次给出 `attrs.failedStep`。
+`keys.machine` 是哪台 machine；失败的一次给出 `attrs.failedStep`。
 
-记录于 [`packages/server/src/machines/connect-stages.ts:69`](../machines/connect-stages.ts#L69) <!-- probe-site -->
+记录于 [`packages/server/src/machines/connect-stages.ts:65`](../machines/connect-stages.ts#L65) <!-- probe-site -->
 
 ### machine.connect.stage
 
-连接 machine 时某一阶段所用的时间。
+连接 machine 慢在哪一步？某一步所用的时间。
 
-`attrs.stage` 为 `probe`、`start-server`、`reprobe`、`hold`、`sync-models`、`sync-plugins` 之一；不需要的阶段不跑，也不记。
+`attrs.stage` 为 `probe`、`start-server`、`reprobe`、`hold`、`sync-models`、`sync-plugins` 之一。
 
-记录于 [`packages/server/src/machines/connect-stages.ts:54`](../machines/connect-stages.ts#L54) <!-- probe-site -->
+记录于 [`packages/server/src/machines/connect-stages.ts:50`](../machines/connect-stages.ts#L50) <!-- probe-site -->
 
 ### machine.ssh.command
 
-经 ssh 会话在 machine 上跑一条命令所用的时间，从发起到答复，含排在其他命令之后等待的时间。
+machine 回答命令慢吗？一条命令从发起到答复的时间。
 
-`attrs.code` 是退出码，`attrs.inputBytes` 是经 stdin 送的量。machine 一直没回答时 `status` 为 `timeout`。命令文本从不记录。
+`attrs.code` 是退出码；machine 一直没回答时 `status` 为 `timeout`。命令文本从不记录。
 
-记录于 [`packages/server/src/machines/transport/timings.ts:158`](../machines/transport/timings.ts#L158) <!-- probe-site -->
-
-### machine.socks.handshake
-
-一小段时间窗内到某台 machine 的 SOCKS 握手，合成一条样本：最慢的一次、次数与失败数。
-
-`durMs` 是最慢的一次，`n` 是次数，`attrs.errors` 是失败数，`attrs.totalMs` 是总和，`attrs.windowMs` 是时间窗长度。
-
-记录于 [`packages/server/src/machines/transport/timings.ts:106`](../machines/transport/timings.ts#L106) <!-- probe-site -->
+记录于 [`packages/server/src/machines/transport/timings.ts:85`](../machines/transport/timings.ts#L85) <!-- probe-site -->
 
 ## 浏览器
 
-由页面在遥测打开期间记录并发到服务端的缓冲。这些链接打开的是页面构建所用的 commit；只热推前端之后，它可能与服务端的不同。
+由页面在遥测打开期间记录并发到服务端。这些链接打开的是页面构建所用的 commit；只热推前端之后，它可能与服务端的不同。
 
 ### web.boot
 
-从导航到页面首次内容绘制所用的时间。
+页面出来得慢吗？到首次绘出内容的时间。
 
-`attrs` 分段给出：`ttfbMs`（首字节）、`domInteractiveMs`、`dclMs`、`loadMs`、`entryMs`（入口脚本下载完成）、`entryToPaintMs`（从入口脚本到绘制：解析、运行、挂载）、`entryCached`，以及绘制之前的长任务。标签页在后台而推迟的绘制，会把隐藏的时间也计进去。
+`attrs.ttfbMs` 是到服务端第一个字节到达的时间；若它占了大头，等待发生在服务端答复之前。在后台打开的页面会把隐藏的时间也计进去。
 
-记录于 [`packages/web/src/lib/perf/collector.ts:251`](../../../web/src/lib/perf/collector.ts#L251) <!-- probe-site -->
+记录于 [`packages/web/src/lib/perf/collector.ts:160`](../../../web/src/lib/perf/collector.ts#L160) <!-- probe-site -->
 
 ### web.longtasks
 
-自上次上报以来主线程上超过 50 ms 的任务，合成一条样本。
+页面会卡住吗？自上次上报以来主线程上超过 50 ms 的阻塞。
 
-`n` 是个数，`durMs` 是总阻塞时间（每个任务超过 50 ms 的部分），`attrs.maxMs` 是最长的一个。
+`durMs` 是阻塞的总时间，`attrs.count` 是次数，`attrs.maxMs` 是最长的一次。
 
-记录于 [`packages/web/src/lib/perf/collector.ts:333`](../../../web/src/lib/perf/collector.ts#L333) <!-- probe-site -->
+记录于 [`packages/web/src/lib/perf/collector.ts:228`](../../../web/src/lib/perf/collector.ts#L228) <!-- probe-site -->
 
 ### web.session.open
 
-在页面里打开一个会话所用的时间，从请求到它的历史首次渲染。
+页面里打开会话慢吗？从点击到历史出现在屏幕上的时间。
 
-`attrs.fetchMs` 是历史请求本身；`commits`、`reduceMs`、`waitMs`、`renderMs` 及其最大值把其余时间分给处理帧、等待下一次渲染与渲染。
+`attrs.fetchMs` 是其中等服务端的时间。
 
-记录于 [`packages/web/src/lib/perf/collector.ts:168`](../../../web/src/lib/perf/collector.ts#L168) <!-- probe-site -->
+记录于 [`packages/web/src/lib/perf/collector.ts:103`](../../../web/src/lib/perf/collector.ts#L103) <!-- probe-site -->
 
 ### web.turn
 
-页面展示一轮所用的时间，从第一帧流式消息到最后一次渲染。
+回复在页面里出来得慢吗？从第一段流式内容到最后一段出现在屏幕上的时间。
 
-`n` 是帧数；各属性的分法与 `web.session.open` 相同。
-
-记录于 [`packages/web/src/lib/perf/collector.ts:184`](../../../web/src/lib/perf/collector.ts#L184) <!-- probe-site -->
+记录于 [`packages/web/src/lib/perf/collector.ts:134`](../../../web/src/lib/perf/collector.ts#L134) <!-- probe-site -->
 
 ### web.sessions.fanout
 
-侧栏会话列表跨所有 Agent 与来源刷新一次所用的时间。
+侧栏的会话列表填得慢吗？刷新一次的时间。
 
-`n` 是发出的请求数；`attrs.slowestMs` 是其中最慢的一个，另有 Agent 数、来源数与没有回答的来源数。
+`attrs.slowestMs` 是其中最慢的一个请求。
 
-记录于 [`packages/web/src/state/sessions.tsx:630`](../../../web/src/state/sessions.tsx#L630) <!-- probe-site -->
+记录于 [`packages/web/src/state/sessions.tsx:628`](../../../web/src/state/sessions.tsx#L628) <!-- probe-site -->
 
 ### web.socket.connect
 
-从打开页面的 API socket 到收到服务端第一条消息所用的时间。
+页面连上服务端慢吗？从打开连接到收到服务端第一条消息的时间。
 
-`attrs.openMs` 只是握手、到 socket 打开为止的时间。
-
-记录于 [`packages/web/src/api/socket.ts:441`](../../../web/src/api/socket.ts#L441) <!-- probe-site -->
+记录于 [`packages/web/src/api/socket.ts:439`](../../../web/src/api/socket.ts#L439) <!-- probe-site -->

@@ -19,14 +19,12 @@ describe("browserSample", () => {
       browserSample({
         probe: "web.turn",
         durMs: 12.34,
-        n: 3.6,
         session: "session-2026-09-30-08-00-00-7e1e0001",
         attrs: { commits: 2, cached: true, kind: "tail", "bad key": 1, nan: Number.NaN },
       }),
     ).toEqual({
       probe: "web.turn",
       durMs: 12.34,
-      n: 4,
       keys: { session: "session-2026-09-30-08-00-00-7e1e0001" },
       attrs: { commits: 2, cached: true, kind: "tail" },
     });
@@ -83,8 +81,8 @@ describe("POST /api/telemetry/samples", () => {
   it("on: takes a member's web.* samples into the buffer only an admin reads; refuses an unbounded body", async () => {
     await turn(true);
     const res = await post([
-      { probe: "web.turn", durMs: 40, n: 12, session: "s-1", attrs: { commits: 3 } },
-      { probe: "web.turn", durMs: 80, n: 20, session: "s-1" },
+      { probe: "web.turn", durMs: 40, session: "s-1", attrs: { commits: 3 } },
+      { probe: "web.turn", durMs: 80, session: "s-1" },
       { probe: "http.request", durMs: 1 },
       { probe: "web.socket.connect", durMs: 15, attrs: { openMs: 9 } },
     ]);

@@ -1,112 +1,110 @@
 # Telemetry probes
 
-Every probe the performance panel lists (PRFC-0008), what one sample of it measures, and the line that records it. A sample records shape only — durations, sizes, counts, a status — never content. Durations are milliseconds.
+What each probe the performance panel lists tells you (PRFC-0008). Every section opens with the question the probe answers. A sample records numbers only — a duration, sizes, counts — and the names that say what was measured (a route pattern, a module, a status), never content. Durations are milliseconds; `memoryCost` and other sizes are bytes.
 
-Each section opens with a one-sentence summary; the panel shows that sentence behind the "?" beside the probe's name. The "Recorded at" line is kept current by `pnpm gen:probe-docs`, and its link opens the same commit as this page.
+The "?" beside a probe's name in the panel shows the section's first sentence. The "Recorded at" line is kept current by `pnpm gen:probe-docs`, and its link opens the same commit as this page.
 
 ## Startup and hot update
 
-These are recorded once per App generation: at process start, after a hot push, and when a plugin change reassembles the App. A probe that runs before telemetry is on is kept and recorded when the generation is created.
+Recorded once per App generation — at process start, after a hot push, and when a plugin change reassembles the App. What runs before telemetry is on is kept and recorded when the generation is created.
 
 ### boot.migrate
 
-Time to bring the database schema up to date when the platform boots.
-
-A pushed platform carries its own migrations; this is how long applying them took. Migrations deferred to the runtime's next restart are not included.
+Is starting slow because of the database? The time to bring its schema up to date.
 
 Recorded at [`packages/server/src/hmr/platform.ts:361`](../hmr/platform.ts#L361) <!-- probe-site -->
 
 ### plugin.load
 
-Time to import and check one plugin at boot.
+Is starting slow because of one plugin? The time to import and check that plugin.
 
-`attrs.plugin` names the plugin; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not imported again and not recorded.
+`attrs.plugin` names it; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not loaded again and not recorded.
 
 Recorded at [`packages/server/src/hmr/platform.ts:461`](../hmr/platform.ts#L461) <!-- probe-site -->
 
 ### boot.plugins
 
-Time to load every installed plugin at boot, all steps together.
+How long did loading all plugins take? Every installed plugin together.
 
 Recorded at [`packages/server/src/hmr/platform.ts:467`](../hmr/platform.ts#L467) <!-- probe-site -->
 
 ### boot.module
 
-Time to create one module of the server's module tree.
+Is starting slow because of one part of the server? The time to create that module.
 
-`attrs.module` names the module. A slow one here is a module whose constructor or start does real work before the App can serve.
+`attrs.module` names the module.
 
 Recorded at [`packages/server/src/hmr/platform.ts:520`](../hmr/platform.ts#L520) <!-- probe-site -->
 
 ### boot.modules
 
-Time to create the whole module tree, every module together.
+How long did creating the server's parts take? Every module together.
 
 Recorded at [`packages/server/src/hmr/platform.ts:524`](../hmr/platform.ts#L524) <!-- probe-site -->
 
 ### boot.create
 
-Time from the start of the App's creation to the point it can serve.
+How long until the App could serve? From the start of its creation until it was ready.
 
-This spans the steps above (migrations, plugins, modules) plus everything between them.
+It spans the steps above and everything between them.
 
-Recorded at [`packages/server/src/telemetry/boot.ts:99`](boot.ts#L99) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:84`](boot.ts#L84) <!-- probe-site -->
 
 ### boot.quiet
 
-Time after boot until the background sweeps settle: session adoption and machine reconnection.
+How long until everything was back after a start? The time until sessions were adopted and machines reconnected.
 
-The App already serves while these run; a long one means machines or adopted sessions come back late.
+The App already serves while these run; a long one means machines or sessions came back late.
 
 Recorded at [`packages/server/src/platform.ts:243`](../platform.ts#L243) <!-- probe-site -->
 
 ### hmr.park
 
-Time the previous generation spent parking its state for a hot update.
+Is a hot update slow to hand over? The time the previous generation took to set its state aside.
 
-Keyed by the previous generation (`keys.generation`). Recorded by the new generation, because the old one's buffer went with it.
+Keyed by the previous generation; recorded by the new one.
 
-Recorded at [`packages/server/src/telemetry/boot.ts:104`](boot.ts#L104) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:89`](boot.ts#L89) <!-- probe-site -->
 
 ### hmr.dispose
 
-Time the previous generation took to shut down after a hot update.
+Is a hot update slow to let go? The time the previous generation took to shut down.
 
 Keyed by the previous generation, like `hmr.park`.
 
-Recorded at [`packages/server/src/telemetry/boot.ts:106`](boot.ts#L106) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:91`](boot.ts#L91) <!-- probe-site -->
 
 ### hmr.generation
 
-One App generation was created: why, and how many times this bundle has been created in this process.
+Why did this generation start? One sample per App creation.
 
-`n` is the generation number. `attrs.cause` is `boot`, `push` or `reassemble`; `attrs.creates` counts creates of the same bundle, and `attrs.repeat` is true when the same build was created again (a repeated push).
+`attrs.cause` is `boot`, `push` (a hot push) or `reassemble` (a plugin change).
 
-Recorded at [`packages/server/src/telemetry/boot.ts:110`](boot.ts#L110) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:94`](boot.ts#L94) <!-- probe-site -->
 
 ### process.memory
 
-The process's memory right after a generation was created.
+How much 内存 does the server use? The process's total, as `attrs.memoryCost` in bytes.
 
-`bytes` is the resident set size; `attrs` carries `heapUsed`, `heapTotal` and `external`. Read it across generations: memory that only grows with each push is a generation that is not let go.
+Recorded after each creation and whenever telemetry is read. Read it across generations: a total that only grows with each hot push means an old generation was not let go.
 
-Recorded at [`packages/server/src/telemetry/boot.ts:121`](boot.ts#L121) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:95`](boot.ts#L95) <!-- probe-site -->
 
 ### hmr.admit
 
-Time the new generation took to answer a hot push's admission check.
+Is a hot push slow to be accepted? The time the new generation took to answer its admission check.
 
-This is the first request a pushed generation receives, before it is swapped in; `attrs.code` is the status it answered.
+`attrs.code` is the status it answered.
 
-Recorded at [`packages/server/src/telemetry/boot.ts:148`](boot.ts#L148) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/boot.ts:119`](boot.ts#L119) <!-- probe-site -->
 
 ## Requests
 
 ### http.request
 
-Time to answer one HTTP request, from arrival to the response being handed back.
+Which API calls are slow? The time to answer one HTTP request.
 
-`attrs.method` and `attrs.route` name the route by its pattern (never the path), `attrs.code` is the status, `bytes` the response size when the response declares one, and `attrs.requestBytes` the request body. `keys.request` is an id minted for the request, so the samples recorded while it runs (a `session.messages`, its `trace.read`) can be matched to it.
+`attrs.method` and `attrs.route` name the call by its route pattern (never the path), `attrs.code` is the status, `attrs.requestBytes` the request's size and `bytes` the response's when it declares one. `keys.request` ties it to the samples recorded while it ran.
 
 Recorded at [`packages/server/src/telemetry/http.ts:29`](http.ts#L29) <!-- probe-site -->
 
@@ -114,166 +112,158 @@ Recorded at [`packages/server/src/telemetry/http.ts:29`](http.ts#L29) <!-- probe
 
 ### sessions.list.sql
 
-Time for the session list's database query for one Agent.
+Is the sidebar's session list slow in the database? The time of its query.
 
-`n` is the number of rows it returned. With `sessions.list.reconcile`, part of one session-list read; the rest of the list request is the per-row work.
+`attrs.rows` is how many sessions it returned.
 
 Recorded at [`packages/server/src/services/session-service.ts:438`](../services/session-service.ts#L438) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
-Time to reconcile the Trace index while listing sessions, when some rows are not classified yet.
+Is the session list slow because the Trace index is catching up? The time of that catch-up.
 
-`n` is the number of Traces found. In the steady state this pass is skipped; seeing it often means rows keep arriving unclassified.
+`attrs.traces` is how many Traces it found. Usually skipped; seeing it often means sessions keep arriving that the index has not seen.
 
 Recorded at [`packages/server/src/services/session-service.ts:463`](../services/session-service.ts#L463) <!-- probe-site -->
 
 ### trace.reconcile
 
-Time for one pass that brings the Trace index up to date with the files on disk.
+How long does bringing the Trace index up to date take? One pass, however many callers waited on it.
 
-`attrs.force` is true for a forced pass. A call that joined a pass already running records its own wait, with `attrs.shared` true.
-
-Recorded at [`packages/server/src/services/trace-index.ts:162`](../services/trace-index.ts#L162) <!-- probe-site -->
+Recorded at [`packages/server/src/services/trace-index.ts:166`](../services/trace-index.ts#L166) <!-- probe-site -->
 
 ### trace.read
 
-Time to read one Trace file from disk.
+Is opening a session slow on disk? The time to read one Trace file.
 
-`n` is the number of messages read. Inside a `session.messages` read it carries that session's key.
+`attrs.messages` is how many messages it held. Inside a `session.messages` read it carries that session.
 
 Recorded at [`packages/server/src/services/trace-service.ts:356`](../services/trace-service.ts#L356) <!-- probe-site -->
 
 ### session.messages
 
-Time to read one window of a session's messages for the page.
+Is opening a session slow on the server? The time to read the messages the page asked for.
 
-`n` is the number of messages returned; `attrs.kind` says which window was asked for and `attrs.reachesEnd` whether it reached the newest message. The Trace files it read are its `trace.read` samples, under the same session and request.
+`attrs.kind` is which part was asked for, `attrs.messages` how many came back. The Trace files it read are its `trace.read` samples.
 
 Recorded at [`packages/server/src/services/trace-service.ts:642`](../services/trace-service.ts#L642) <!-- probe-site -->
 
 ### task.accept
 
-Time to accept a message sent to a session, from the call to its answer, the wait for the session's lock included.
+Is sending a message slow to be accepted? The time from the send to the server's answer.
 
-`attrs.queued` is whether the message was queued behind a running turn.
+It includes waiting for the session's lock; `attrs.queued` is whether the message waited behind a running turn.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:1165`](../runtime/session-manager.ts#L1165) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:1161`](../runtime/session-manager.ts#L1161) <!-- probe-site -->
 
 ### session.load
 
-Time to load a session that was not in memory, its history included.
+Is a session slow to start working? The time to load one that was not in memory, its history included.
 
-`n` is the number of history messages the session was resumed with. A session already loaded is not recorded.
+`attrs.messages` is how many history messages it was loaded with. A session already in memory is not recorded.
 
-Recorded at [`packages/server/src/runtime/session-manager.ts:2100`](../runtime/session-manager.ts#L2100) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2096`](../runtime/session-manager.ts#L2096) <!-- probe-site -->
+
+### session.memory
+
+Which session uses the most 内存? One sample per loaded session, as `attrs.memoryCost` in bytes.
+
+It adds up what the session holds: the history it was loaded with, the recent events kept so a page that reconnects can catch up, and the replies still streaming. Recorded whenever telemetry is read.
+
+Recorded at [`packages/server/src/runtime/session-manager.ts:938`](../runtime/session-manager.ts#L938) <!-- probe-site -->
 
 ### turn.badge
 
-Time to publish one change of a session's state: the list badge and the task state together.
+Is updating a session's state slow? The time to tell every page that the session changed state.
 
-`attrs.state` is the state published.
-
-Recorded at [`packages/server/src/runtime/session-manager.ts:2529`](../runtime/session-manager.ts#L2529) <!-- probe-site -->
+Recorded at [`packages/server/src/runtime/session-manager.ts:2523`](../runtime/session-manager.ts#L2523) <!-- probe-site -->
 
 ### turn.run
 
-The whole of one turn on the server, with the model's share of it.
+Is a turn slow, and is it the model? The whole of one turn on the server.
 
-`n` is the number of streamed messages. `attrs.modelMs` is the time between the model requests' begin and end, `attrs.requests` their count, and `attrs.serverMs` the sum of the `turn.*` segments. What remains is the engine's own time: tool calls, MCP, Trace writes.
+`attrs.modelMs` is how much of it was the model; `attrs.messages` how many messages it streamed. What remains is the server's and the tools' time.
 
-Recorded at [`packages/server/src/telemetry/turn.ts:126`](turn.ts#L126) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/turn.ts:121`](turn.ts#L121) <!-- probe-site -->
 
 ### turn.*
 
-One segment of a turn's per-message work outside the model, summed over the turn.
+Where in the server does a turn spend its time besides the model? One part of its per-message work, summed over the turn.
 
-The segments are `turn.tail` (the live tail), `turn.fanout` (publishing to the page's channel), `turn.errors` (the stream error watcher) and `turn.usage` (the usage recorder). `n` is how many messages the segment handled and `attrs.maxMs` the slowest one.
+The parts are `turn.tail`, `turn.fanout`, `turn.errors` and `turn.usage`; `attrs.messages` is how many messages that part handled.
 
-Recorded at [`packages/server/src/telemetry/turn.ts:133`](turn.ts#L133) <!-- probe-site -->
+Recorded at [`packages/server/src/telemetry/turn.ts:127`](turn.ts#L127) <!-- probe-site -->
 
 ## Machines
 
 ### machine.connect
 
-The whole of one connection to a machine, and how it ended.
+Is connecting to a machine slow, or failing? The whole of one connection.
 
-`keys.machine` is the machine's address. `attrs.trigger` says what started it, and a failed one names `attrs.failedStep`.
+`keys.machine` is the machine; a failed one names `attrs.failedStep`.
 
-Recorded at [`packages/server/src/machines/connect-stages.ts:69`](../machines/connect-stages.ts#L69) <!-- probe-site -->
+Recorded at [`packages/server/src/machines/connect-stages.ts:65`](../machines/connect-stages.ts#L65) <!-- probe-site -->
 
 ### machine.connect.stage
 
-Time for one stage of connecting to a machine.
+Which step of connecting to a machine is slow? The time of one step.
 
-`attrs.stage` is one of `probe`, `start-server`, `reprobe`, `hold`, `sync-models` and `sync-plugins`; a stage that is not needed is not run and not recorded.
+`attrs.stage` is one of `probe`, `start-server`, `reprobe`, `hold`, `sync-models`, `sync-plugins`.
 
-Recorded at [`packages/server/src/machines/connect-stages.ts:54`](../machines/connect-stages.ts#L54) <!-- probe-site -->
+Recorded at [`packages/server/src/machines/connect-stages.ts:50`](../machines/connect-stages.ts#L50) <!-- probe-site -->
 
 ### machine.ssh.command
 
-Time to run one command on a machine over its ssh session, from the ask to the answer — its wait behind the session's other commands included.
+Is a machine slow to answer commands? The time of one command, from the ask to the answer.
 
-`attrs.code` is the exit code and `attrs.inputBytes` what it carried on stdin. `status` is `timeout` when the machine never answered. The command's text is never recorded.
+`attrs.code` is its exit code; `status` is `timeout` when the machine never answered. The command's text is never recorded.
 
-Recorded at [`packages/server/src/machines/transport/timings.ts:158`](../machines/transport/timings.ts#L158) <!-- probe-site -->
-
-### machine.socks.handshake
-
-SOCKS handshakes to one machine over a short window, as one sample: the slowest, the count and the failures.
-
-`durMs` is the slowest handshake, `n` the count, `attrs.errors` the failures, `attrs.totalMs` their sum and `attrs.windowMs` the window.
-
-Recorded at [`packages/server/src/machines/transport/timings.ts:106`](../machines/transport/timings.ts#L106) <!-- probe-site -->
+Recorded at [`packages/server/src/machines/transport/timings.ts:85`](../machines/transport/timings.ts#L85) <!-- probe-site -->
 
 ## Browser
 
-Recorded by the page and sent to the server's buffer while telemetry is on. These open the commit the page was built from, which can differ from the server's after a hot push of the web alone.
+Recorded by the page and sent to the server while telemetry is on. These open the commit the page was built from, which can differ from the server's after a hot push of the web alone.
 
 ### web.boot
 
-Time from navigation to the page's first contentful paint.
+Is the page slow to appear? The time until its first content was drawn.
 
-`attrs` breaks it down: `ttfbMs` (first byte), `domInteractiveMs`, `dclMs`, `loadMs`, `entryMs` (the entry script downloaded), `entryToPaintMs` (from the entry script to the paint: parse, run, mount), `entryCached`, and the long tasks before the paint. A paint delayed because the tab was in the background counts the time it was hidden.
+`attrs.ttfbMs` is the time until the server's first byte arrived; if that is most of it, the wait is before the server answered. A page opened in the background counts the time it was hidden.
 
-Recorded at [`packages/web/src/lib/perf/collector.ts:251`](../../../web/src/lib/perf/collector.ts#L251) <!-- probe-site -->
+Recorded at [`packages/web/src/lib/perf/collector.ts:160`](../../../web/src/lib/perf/collector.ts#L160) <!-- probe-site -->
 
 ### web.longtasks
 
-Main-thread tasks over 50 ms since the last report, as one sample.
+Does the page freeze? Main-thread blocks over 50 ms since the last report.
 
-`n` is the count, `durMs` the total blocking time (the part of each task over 50 ms) and `attrs.maxMs` the longest task.
+`durMs` is the total time blocked, `attrs.count` how many blocks, `attrs.maxMs` the longest.
 
-Recorded at [`packages/web/src/lib/perf/collector.ts:333`](../../../web/src/lib/perf/collector.ts#L333) <!-- probe-site -->
+Recorded at [`packages/web/src/lib/perf/collector.ts:228`](../../../web/src/lib/perf/collector.ts#L228) <!-- probe-site -->
 
 ### web.session.open
 
-Time to open a session in the page, from the request to the first render of its history.
+Is opening a session slow in the page? From the click to its history on screen.
 
-`attrs.fetchMs` is the history request; `commits`, `reduceMs`, `waitMs`, `renderMs` and their maxima split the rest between processing frames, waiting for the next render and rendering.
+`attrs.fetchMs` is how much of it was waiting for the server.
 
-Recorded at [`packages/web/src/lib/perf/collector.ts:168`](../../../web/src/lib/perf/collector.ts#L168) <!-- probe-site -->
+Recorded at [`packages/web/src/lib/perf/collector.ts:103`](../../../web/src/lib/perf/collector.ts#L103) <!-- probe-site -->
 
 ### web.turn
 
-Time the page spent showing one turn, from its first streamed frame to its last render.
+Is a reply slow to show up in the page? From its first streamed piece to its last on screen.
 
-`n` is the number of frames; the attributes split the time like `web.session.open`'s.
-
-Recorded at [`packages/web/src/lib/perf/collector.ts:184`](../../../web/src/lib/perf/collector.ts#L184) <!-- probe-site -->
+Recorded at [`packages/web/src/lib/perf/collector.ts:134`](../../../web/src/lib/perf/collector.ts#L134) <!-- probe-site -->
 
 ### web.sessions.fanout
 
-Time for one refresh of the sidebar's session list across every Agent and source.
+Is the sidebar's session list slow to fill? One refresh of it.
 
-`n` is the number of requests sent; `attrs.slowestMs` is the slowest of them, with the number of Agents, sources and sources that did not answer.
+`attrs.slowestMs` is its slowest request.
 
-Recorded at [`packages/web/src/state/sessions.tsx:630`](../../../web/src/state/sessions.tsx#L630) <!-- probe-site -->
+Recorded at [`packages/web/src/state/sessions.tsx:628`](../../../web/src/state/sessions.tsx#L628) <!-- probe-site -->
 
 ### web.socket.connect
 
-Time from opening the page's API socket to its first message from the server.
+Is the page slow to connect to the server? From opening its connection to the server's first message.
 
-`attrs.openMs` is the handshake alone, until the socket opened.
-
-Recorded at [`packages/web/src/api/socket.ts:441`](../../../web/src/api/socket.ts#L441) <!-- probe-site -->
+Recorded at [`packages/web/src/api/socket.ts:439`](../../../web/src/api/socket.ts#L439) <!-- probe-site -->

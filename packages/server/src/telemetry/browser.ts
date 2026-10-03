@@ -66,7 +66,6 @@ export function browserSample(raw: unknown): TelemetrySampleInput | null {
   }
   const durMs = count(r.durMs);
   const bytes = count(r.bytes);
-  const n = count(r.n);
   const status = shortString(r.status);
   const session = typeof r.session === "string" && SESSION.test(r.session) ? r.session : undefined;
   const attrs = attrsOf(r.attrs);
@@ -74,7 +73,6 @@ export function browserSample(raw: unknown): TelemetrySampleInput | null {
     probe: r.probe,
     ...(durMs !== undefined ? { durMs } : {}),
     ...(bytes !== undefined ? { bytes: Math.round(bytes) } : {}),
-    ...(n !== undefined ? { n: Math.round(n) } : {}),
     ...(status !== undefined ? { status } : {}),
     ...(session !== undefined ? { keys: { session } } : {}),
     ...(attrs !== undefined ? { attrs } : {}),
