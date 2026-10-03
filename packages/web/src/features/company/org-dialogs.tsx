@@ -57,7 +57,7 @@ import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
 import { SEMANTIC_ID_PATTERN } from "../../lib/semantic-id";
 import { useAuth } from "../../state/auth";
-import { heldMachines, useCompany, type HeldMachine } from "../../state/company";
+import { heldMachines, useCompany, type HeldMachine } from "./company-state";
 import { projectDisplayName, useProject } from "../../state/project";
 import { useTheme } from "../../state/theme";
 import { ModelCatalogSelect, modelLabel } from "../chat/model-select";

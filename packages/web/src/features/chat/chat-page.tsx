@@ -53,7 +53,7 @@ import {
 import * as api from "../../api/endpoints";
 import { switchDeskModel } from "../company/desk-model";
 import { conversationMode } from "../company/company-nav";
-import { useCompany } from "../../state/company";
+import { useCompany } from "../company";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
 import { useWorkflowTabs, WorkflowFrame, WorkflowTabStrip } from "../workflows/workflow-tabs";
