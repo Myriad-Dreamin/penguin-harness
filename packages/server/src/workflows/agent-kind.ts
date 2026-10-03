@@ -10,7 +10,8 @@ import type { AgentIndex } from "../mechanisms/projects.js";
 import type { SessionIndex } from "../mechanisms/sessions.js";
 import type { WorkflowInput, WorkflowTab } from "../mechanisms/workflows.js";
 import type { ScheduleSessionCreator, ScheduleTaskRunner } from "../runtime/scheduler.js";
-import { isSafeRelPath, readState, UI_DIR, writeState } from "./store.js";
+import { isSafeRelPath } from "../http/static-files.js";
+import { readState, UI_DIR, writeState } from "./store.js";
 
 const PKG = "@prismshadow/penguin-server";
 export const HOST_MODULE = "Host";
