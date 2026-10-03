@@ -154,7 +154,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 含等会话锁的时间；`attrs.queued` 是这条消息是否排在一轮正在运行的之后。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:1160`](../runtime/session-manager.ts#L1160) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:1161`](../runtime/session-manager.ts#L1161) <!-- probe-site -->
 
 ### session.load
 
@@ -162,7 +162,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.messages` 是载入时带了多少条历史。已在内存里的会话不记。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:2082`](../runtime/session-manager.ts#L2082) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:2083`](../runtime/session-manager.ts#L2083) <!-- probe-site -->
 
 ### session.memory
 
@@ -170,7 +170,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 它把会话占着的加在一起：载入的历史、为重连的页面留着的近期事件、还在流式输出的回复。每次读遥测时记一条。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:937`](../runtime/session-manager.ts#L937) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:938`](../runtime/session-manager.ts#L938) <!-- probe-site -->
 
 ## Machine
 
