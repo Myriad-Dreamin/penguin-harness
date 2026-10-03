@@ -233,7 +233,6 @@ shell/sidebar/sidebar.tsx -> features/company/index.ts
 shell/sidebar/sidebar.tsx -> features/company/org-session-groups.tsx
 shell/sidebar/sidebar.tsx -> features/company/org-switcher.tsx
 shell/sidebar/sidebar.tsx -> features/company/roadmaps-sidebar.tsx
-shell/sidebar/sidebar.tsx -> features/company/use-org-pages.ts
 shell/sidebar/sidebar.tsx -> features/models/group-balance.tsx
 shell/sidebar/sidebar.tsx -> features/projects/index.ts
 shell/sidebar/sidebar.tsx -> features/session-list/index.ts
