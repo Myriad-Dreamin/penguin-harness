@@ -55,7 +55,7 @@ const PLUGINS_SRC = path.join(ROOT, "plugins");
 const CACHE = path.join(ROOT, "node_modules", ".cache", "penguin-plugins");
 const COMPLETE = ".complete";
 /** Folded into the cache key: bump when what this script WRITES changes, not only what it reads. */
-const PACK_FORMAT = 16;
+const PACK_FORMAT = 17;
 // The server's own dependency: the store writes its manifests with the same library.
 const { stringify: stringifyToml } = createRequire(
   path.join(ROOT, "packages", "server", "package.json"),
@@ -64,28 +64,20 @@ const { stringify: stringifyToml } = createRequire(
 const PREFIX_MANIFEST = { name: "penguin-builtin-plugins", private: true, version: "0.0.0" };
 /**
  * The runtime dependencies a builtin plugin may declare: native modules only, each with a
- * reason. Everything else is compiled into the plugin's `dist/` by its own build.
+ * reason. Everything else is compiled into the plugin's `dist/` by its own build. Empty today:
+ * sandbox-dsh, whose DSH chain and koffi were the entries, carries that chain inside its own
+ * package (scripts/vendor-dsh-deps.mjs) and declares no runtime dependency.
  */
-const NATIVE_DEPENDENCIES = new Map([
-  ["koffi", "FFI with per-platform prebuilt binaries (sandbox-dsh's Windows ACL runner)"],
-  [
-    "@deepseek-ai/dsh-sandbox-local",
-    "picks its per-platform rung by bare specifier at run time — bundling it makes the Windows one unresolvable (sandbox-dsh)",
-  ],
-  ["@deepseek-ai/cordis", "the context the DSH chain is mounted on, shared with it (sandbox-dsh)"],
-  [
-    "@deepseek-ai/node-addon-landlock-run",
-    "resolves its per-platform launcher binary package at run time (sandbox-dsh)",
-  ],
-]);
+const NATIVE_DEPENDENCIES = new Map();
 
 /**
  * The hosts a pushed prefix may land on. npm installs a native module's binary for the machine
  * doing the install, and this build runs wherever CI or a developer happens to be — so a prefix
  * built on Linux carried no Windows binary, and sandbox-dsh's Windows runner failed there with
- * "Cannot find the native Koffi module". The per-platform packages of every NATIVE_DEPENDENCIES
- * entry are installed for each of these as well; they are small next to the plugins themselves,
- * and one prefix then serves every target a push can reach.
+ * "Cannot find the native Koffi module" (sandbox-dsh now carries every target's binary itself).
+ * The per-platform packages of every NATIVE_DEPENDENCIES entry are installed for each of these
+ * as well; they are small next to the plugins themselves, and one prefix then serves every
+ * target a push can reach.
  */
 const TARGET_PLATFORMS = [
   { os: "linux", cpu: "x64" },
@@ -144,7 +136,7 @@ function command(name) {
 // into one command line, so a path with a space (the pack directory lives under the user's
 // temp directory, i.e. their profile) splits into two. Quoted the way run-with-env.mjs quotes.
 const quote = (a) => (/[\s"^&|<>;,()%!]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
-function run(name, args, cwd) {
+export function run(name, args, cwd) {
   const windows = process.platform === "win32";
   try {
     execFileSync(command(name), windows ? args.map(quote) : args, {
