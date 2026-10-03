@@ -25,7 +25,6 @@ const WEB = SCAN.files.filter((file) => file.root === "web");
 
 /** Glyph paths outside the registry, by path under `packages/web/src`: `[count, wave]`. */
 const ALLOWLIST: Readonly<Record<string, readonly [number, string]>> = {
-  "components/layout/sidebar.tsx": [2, "W7"],
   "features/chat/attached-files-banner.tsx": [1, "W6"],
   "features/chat/conversation-outline.tsx": [1, "W6"],
   "features/chat/goal-use.ts": [1, "W6"],
@@ -49,6 +48,7 @@ const ALLOWLIST: Readonly<Record<string, readonly [number, string]>> = {
   "features/settings/shortcuts-section.tsx": [1, "W10"],
   "features/terminal/terminal-keybar.tsx": [3, "W10"],
   "features/traces/trace-event-row.tsx": [1, "W4"],
+  "shell/sidebar/sidebar.tsx": [2, "W7"],
 };
 
 /** SVG path data: a moveto, then only path commands, numbers and separators. */
