@@ -45,11 +45,11 @@ const ALLOWLIST: Readonly<Record<string, readonly [number, string]>> = {
   "features/schedules/schedule-panel.tsx": [3, "W4"],
   "features/schedules/schedule-suggestions.tsx": [3, "W4"],
   "features/semantic-id/semantic-id-field.tsx": [1, "W2"],
+  "features/session-list/session-list.tsx": [1, "W7"],
   "features/settings/shortcuts-section.tsx": [1, "W10"],
   "features/terminal/terminal-keybar.tsx": [3, "W10"],
   "features/traces/trace-event-row.tsx": [1, "W4"],
   "lib/nav-icons.ts": [1, "W7"],
-  "shell/sidebar/sidebar.tsx": [1, "W7"],
 };
 
 /** SVG path data: a moveto, then only path commands, numbers and separators. */
