@@ -9,6 +9,7 @@
  * registry test holds that line. Defaults also stay off the browsers' own shortcuts
  * (reserved.ts), which is why most sit on Mod+Alt — ⌥⌘ on macOS, Ctrl+Alt elsewhere; the registry
  * test holds that line too, and names the defaults that still share a chord with a browser.
+ * `overDialogs` lets a command through while a dialog or menu is open (see dispatcher.ts).
  */
 import { normalizeChord, parseChord } from "./chord";
 import type { Chord, CommandId, Platform, ShortcutCommand, ShortcutGroup } from "./types";
@@ -18,8 +19,11 @@ export const SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
     id: "palette.toggle",
     scope: "global",
     group: "general",
-    // Mod+P is the browser's Print. On macOS this takes over Chrome's ⌥⌘P (Page Setup).
-    defaults: { default: "Mod+Alt+KeyP" },
+    // Mod+P is the browser's Print. Mod+Shift+P is the editors' command palette chord, and
+    // Firefox's new private window: Firefox acts on it before the page, so in a Firefox tab the
+    // palette needs a rebinding (the registry test names this default on purpose).
+    defaults: { default: "Mod+Shift+KeyP" },
+    overDialogs: true,
   },
   {
     id: "sessions.search",
