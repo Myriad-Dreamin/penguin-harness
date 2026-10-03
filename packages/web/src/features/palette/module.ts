@@ -1,6 +1,6 @@
 /** The app's command palette, mounted once beside every page. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
-import { AppPalette } from "./app-palette";
+import { AppPalette } from "../../rescue/palette";
 
 @Module({
   contributes: {

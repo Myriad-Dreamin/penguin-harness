@@ -23,7 +23,7 @@ import {
   type WorkflowTab,
 } from "../../lib/workflow-tabs";
 import { rememberSelection } from "../../state/project";
-import { AppPalette } from "../palette/app-palette";
+import { AppPalette } from "../../rescue/palette";
 import { openUserEvents } from "../../api/sse";
 import { WorkflowFrame } from "./workflow-tabs";
 

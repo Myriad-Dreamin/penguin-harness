@@ -8,10 +8,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { CommandPalette } from "@prismshadow/penguin-ui";
 import type { PaletteAction } from "@prismshadow/penguin-ui";
-import { onCommand } from "../../lib/shortcuts/dispatcher";
-import { useShortcutLabel } from "../../lib/shortcuts/use-keymap";
-import { S } from "../../lib/strings";
-import { HarnessHistoryOverlay } from "../harness/harness-history-overlay";
+import { onCommand } from "../lib/shortcuts/dispatcher";
+import { useShortcutLabel } from "../lib/shortcuts/use-keymap";
+import { S } from "../lib/strings";
+import { HarnessHistoryOverlay } from "./harness-history-overlay";
 
 /** A mount point with nothing to add shares one empty list, so the action memo stays put. */
 const NO_EXTRA: readonly PaletteAction[] = [];
