@@ -17,8 +17,6 @@ import type { Errors } from "../mechanisms/observability.js";
 import type { Settings } from "../mechanisms/settings.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
 
-/** The request id header (PRFC-0008): answered on every sampled request, and reused when a request arrives carrying one — the machine proxy forwards it, so both servers' samples share the id. */
-
 /** The assembled business surface: one request in, one response (or a decline) out. */
 @Interface()
 export abstract class Http {
