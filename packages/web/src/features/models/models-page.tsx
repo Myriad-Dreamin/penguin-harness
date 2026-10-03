@@ -169,7 +169,7 @@ import {
   withModelGroupPinned,
 } from "./model-group-pins";
 import type { ModelGroupPins } from "./model-group-pins";
-import { clearDraftModelRef } from "../chat/draft-cache";
+import { clearDraftModelRef } from "../chat";
 import { useUpdateBadges, dismissTodo, refreshProjectTodos } from "../todos";
 import { AddNewModelsButton, AddNewModelsConfirm, RestoreDefaultsConfirm } from "./preset-sync";
 import type { PresetSyncHost } from "./preset-sync";

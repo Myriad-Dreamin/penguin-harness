@@ -18,11 +18,12 @@ import { S } from "../../../lib/strings";
 import { apiErrorText } from "../../../lib/api-error";
 import { agentDisplayName, useProject } from "../../../state/project";
 import { useAuth } from "../../../state/auth";
-import { clearDraftChatDefaults, clearDraftModelRef } from "../../chat/draft-cache";
 import {
+  clearDraftChatDefaults,
+  clearDraftModelRef,
   dispatchChatDefaultsChanged,
   type ChatDefaultsChangedDetail,
-} from "../../chat/chat-defaults-event";
+} from "../../chat";
 import { ModelCatalogSelect, SELECTABLE_THINKING_LEVELS, modelLabel } from "../../model-picker";
 import { WorkspaceSelect } from "../../workspace";
 import { sameModelRef } from "../../models/model-grouping";
