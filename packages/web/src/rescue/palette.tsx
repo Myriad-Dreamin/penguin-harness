@@ -7,9 +7,10 @@
  *
  * It is the way back when the UI breaks — the harness history rolls the harness version back —
  * so it mounts beside the shell's tree (app.tsx), not in it, and needs nothing the tree
- * provides: no router, no auth or Project context. It opens over the rescue panel, on the bare
- * routes, and over an open dialog (`palette.toggle` is the one command the dialog blocker lets
- * through, see lib/shortcuts/dispatcher.ts). A mounted page adds its own actions through
+ * provides: no router, no Project context — only the auth and locale providers app.tsx puts
+ * above both. It opens over the rescue panel, on the bare routes, and over an open dialog
+ * (`palette.toggle` is the one command the dialog blocker lets through, see
+ * lib/shortcuts/dispatcher.ts). A mounted page adds its own actions through
  * lib/palette-actions.ts.
  *
  * The palette also carries the host's commands — what the process hosting the server can do
@@ -18,7 +19,8 @@
  * items; the menu bar is hidden there (a lone Alt used to take the keyboard), so the palette
  * is where a person finds them. The host says what it offers AND what to call it, so it can
  * offer something this build has never heard of; a plain server offers none, and a non-admin
- * is told nothing.
+ * is told nothing. Beside the tree, they stay reachable over a page that threw: opening
+ * DevTools is one of the ways to see why.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { HostCommand, HostCommandOffer } from "@prismshadow/penguin-server/api";
