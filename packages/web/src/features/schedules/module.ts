@@ -3,7 +3,7 @@
  * the mark a scheduled conversation's row wears in the session list (session-row-mark.ts), and the
  * dock's scheduled-tasks panel (schedule-dock-panel.tsx).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { scheduleUserEvents } from "./schedule-store";
 import { scheduledRowMark } from "./session-row-mark";
 import { ScheduleDockPanel } from "./schedule-dock-panel";

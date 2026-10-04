@@ -1,8 +1,9 @@
 /**
  * Safe mode: the app runs without anything the server contributes, so a contribution that
- * breaks the UI can be stepped around and the harness rolled back. Two places read it: the
- * contributions consumer (shell/contributions.tsx), and the list cache (lib/list-cache.ts),
- * which draws nothing in safe mode so a bad cached list cannot break the boot either. The
+ * breaks the UI can be stepped around and the harness rolled back. Three places read it: the
+ * contributions consumer (shell/contributions.tsx), the list cache (lib/list-cache.ts), which
+ * draws nothing in safe mode so a bad cached list cannot break the boot either, and the
+ * verified-plugin cache (lib/verified-cache.ts), which it bypasses for the same reason. The
  * rescue panel enters it, the marker and the command palette leave it.
  *
  * The switch lives in sessionStorage, not in the URL. An in-app navigation drops the query

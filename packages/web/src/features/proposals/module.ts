@@ -3,7 +3,7 @@
  * names (`OrgProposalsPage`). The plugin says the page exists and where it is routed; this
  * build supplies what draws it, by that name (`ShellModule.pageRenderers`).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { OrgProposalsPage } from "./proposals-page";
 
 @Module({

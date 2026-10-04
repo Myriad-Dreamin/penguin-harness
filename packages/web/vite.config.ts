@@ -15,7 +15,7 @@
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-import type { Plugin } from "vite";
+import type { Plugin, Rollup } from "vite";
 import { penguinUi } from "../ui/src/vite-plugin";
 
 /**
@@ -69,8 +69,58 @@ function katexWoff2Only(): Plugin {
   };
 }
 
+/** A module id inside arktype or one of its `@ark/*` packages, however the store lays them out. */
+const ARKTYPE_MODULE = /[\\/]node_modules[\\/](?:arktype|@ark)[\\/]/;
+
+/**
+ * Every arktype module in a chunk the page loads up front: the entry chunks and whatever they
+ * import statically, transitively — `file: module id` per hit, empty when the boot path is clean.
+ *
+ * The page boots through the kernel's arktype-free runtime entry; the full kernel, arktype with
+ * it, is a lazy chunk that only plugin verification imports (src/lib/verify-plugins.ts). A static
+ * import that drags it back costs ~60 ms of evaluation on every load and breaks nothing visible,
+ * so the build refuses it. Exported for the unit test.
+ */
+export function arktypeOnBootPath(bundle: Rollup.OutputBundle): string[] {
+  const chunks = new Map<string, Rollup.OutputChunk>();
+  for (const out of Object.values(bundle)) if (out.type === "chunk") chunks.set(out.fileName, out);
+  const seen = new Set<string>();
+  const pending = [...chunks.values()].filter((c) => c.isEntry).map((c) => c.fileName);
+  while (pending.length > 0) {
+    const file = pending.pop()!;
+    if (seen.has(file)) continue;
+    seen.add(file);
+    pending.push(...(chunks.get(file)?.imports ?? []));
+  }
+  return [...seen].flatMap((file) =>
+    (chunks.get(file)?.moduleIds ?? [])
+      .filter((id) => ARKTYPE_MODULE.test(id))
+      .map((id) => `${file}: ${id}`),
+  );
+}
+
+/** Fails the build when {@link arktypeOnBootPath} finds anything. */
+function arktypeOffBootPath(): Plugin {
+  return {
+    name: "penguin:arktype-off-boot-path",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const hits = arktypeOnBootPath(bundle);
+      if (hits.length > 0) {
+        this.error(
+          `arktype is on the page's boot path — import values from @prismshadow/penguin-core/kernel/runtime, not /kernel:\n  ${hits.slice(0, 10).join("\n  ")}`,
+        );
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [penguinUi(), react(), tailwindcss(), katexWoff2Only()],
+  plugins: [penguinUi(), react(), tailwindcss(), katexWoff2Only(), arktypeOffBootPath()],
+  // arktype reaches the page only through the full kernel's lazy chunk (plugin verification).
+  // Named here so the dev server pre-bundles it up front: discovered at that first dynamic
+  // import instead, it would make Vite re-optimize and reload the page.
+  optimizeDeps: { include: ["@prismshadow/penguin-core > arktype"] },
   // The module classes (`module.ts`, web-root.ts) use standard decorators, which no browser
   // runs yet. The production build lowers them for its browser target; the dev server
   // transforms for `esnext` by default and would pass them through as a syntax error.

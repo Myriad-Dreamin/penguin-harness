@@ -7,12 +7,19 @@
  * The manifests and interfaces come from `ifaces.json`, which scripts/gen-ifaces.mjs generates
  * from this package's sources (`pnpm gen:ifaces`; not committed). The tree parks nothing and
  * claims no live resource, so its resource registry is an empty one. Booting does no network
- * and takes a few milliseconds; the kernel and its arktype dependency are a fixed cost in the
- * entry bundle.
+ * and takes a few milliseconds.
+ *
+ * The tree is VERIFIED when it is built (scripts/verify-builtin-tree.mjs runs the kernel's full
+ * check over `ifaces.json` before `vite build`), so the page boots it through the kernel's
+ * arktype-free runtime entry: identity wiring and the cheap checks, no shape validation.
  */
 import type { ComponentType } from "react";
-import { bootModules, Module, moduleDefOf } from "@prismshadow/penguin-core/kernel";
-import type { IfaceTable, ManifestTable, Resources } from "@prismshadow/penguin-core/kernel";
+import { bootVerified, Module, moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
+import type {
+  IfaceTable,
+  ManifestTable,
+  Resources,
+} from "@prismshadow/penguin-core/kernel/runtime";
 import table from "./ifaces.json";
 import { ShellModule } from "./shell/module";
 import type { Shell } from "./shell/module";
@@ -84,7 +91,7 @@ const NO_RESOURCES: Resources = {
 
 /** Boots the module tree and returns the component the app mounts. */
 export async function bootWeb(): Promise<ComponentType<AppRouterProps>> {
-  const tree = await bootModules(
+  const tree = await bootVerified(
     moduleDefOf(WebRoot, { manifests: table.modules as unknown as ManifestTable }),
     { ifaces: table as unknown as IfaceTable, resources: NO_RESOURCES },
   );

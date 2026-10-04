@@ -2,7 +2,7 @@
  * Messaging: the session list's binding entry and relay mark (session-row-action.tsx), and the
  * dock's messaging panel (messaging-dock-panel.tsx).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { messagingRowAction } from "./session-row-action";
 import { MessagingDockPanel } from "./messaging-dock-panel";
 

@@ -1,5 +1,5 @@
 /** The dashboard page: reached from the user menu, not from the nav. */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { DashboardPage } from "./dashboard-page";
 
 @Module({

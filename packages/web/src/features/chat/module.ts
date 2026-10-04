@@ -6,7 +6,7 @@
  * subagents and its memory (panels/).
  */
 import type { ComponentType } from "react";
-import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import { ChatRoute } from "./chat-route";
 import { chatDrafts } from "./chat-drafts";

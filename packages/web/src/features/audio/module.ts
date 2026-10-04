@@ -1,5 +1,5 @@
 /** Audio in a conversation: the `audio` file renderer a server's file renderer rule may name (audio-file.tsx). */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { AudioFile } from "./audio-file";
 
 @Module({

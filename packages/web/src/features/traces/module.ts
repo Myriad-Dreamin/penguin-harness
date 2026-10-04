@@ -1,5 +1,5 @@
 /** Trace observation: the dock's Trace panel (trace-dock-panel.tsx). */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { TraceDockPanel } from "./trace-dock-panel";
 
 @Module({

@@ -11,7 +11,7 @@
  * paragraph that links it (lib/file-renderers.ts).
  */
 import type { ComponentType } from "react";
-import { Interface } from "@prismshadow/penguin-core/kernel";
+import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
 import type { FileRenderer } from "../../lib/file-renderers";
 

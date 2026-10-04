@@ -14,7 +14,7 @@
  * the same split as the server's `HttpModule.routes` and `HttpSlots`.
  */
 import type { ComponentType, ReactNode } from "react";
-import { Interface, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
+import { Interface, Module, Provide, Use } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx, Contributed, Slot } from "@prismshadow/penguin-core/kernel";
 import type { UserEventHandlers } from "../state/user-events";
 import type { ChatDrafts } from "../features/chat";

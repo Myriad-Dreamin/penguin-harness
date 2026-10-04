@@ -11,7 +11,7 @@
  * panel registry (panel-registry.ts) at boot, which is what the dock's surfaces read (module.ts).
  */
 import type { ComponentType } from "react";
-import { Interface } from "@prismshadow/penguin-core/kernel";
+import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
 
 @Interface()

@@ -6,7 +6,7 @@
   "description": "PenguinHarness web frontend SPA: React + Vite + Tailwind CSS, rendering conversations streamed over the OmniMessage protocol, plus Agent configuration, model configuration, usage stats, and Traces.",
   "scripts": {
     "dev": "pnpm gen:ifaces && vite",
-    "build": "pnpm gen:ifaces && vite build",
+    "build": "pnpm gen:ifaces && node scripts/verify-builtin-tree.mjs && vite build",
     "preview": "vite preview",
     "typecheck": "pnpm gen:ifaces && tsc --noEmit -p tsconfig.json",
     "gen:ifaces": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out src/ifaces.json",

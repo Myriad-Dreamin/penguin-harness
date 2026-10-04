@@ -2,7 +2,7 @@
  * Projects: the Project switcher, in the sidebar's switcher row in development mode, with the
  * create and settings dialogs it opens.
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import type { SidebarSection } from "../../lib/sidebar-contributions";
 import { ProjectSwitcher } from "./project-switcher";
 

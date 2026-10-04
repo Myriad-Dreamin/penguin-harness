@@ -2,7 +2,7 @@
  * Settings: the shortcut runtime, which reconciles the shortcut mirror with the account's prefs,
  * and the Settings dialog, opened on request (settings-layer.tsx).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { ShortcutRuntime } from "./shortcut-runtime";
 import { SettingsLayer } from "./settings-layer";
 

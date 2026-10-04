@@ -6,9 +6,12 @@
  *   replaced outright by PENGUIN_API_PROXY unless that is empty.
  * - KaTeX's stylesheet ships woff2 only: the woff and truetype fallbacks are dropped, and a
  *   stylesheet without them is left untouched.
+ * - The boot path holds no arktype: an arktype module in an entry chunk, or in a chunk an entry
+ *   imports statically, is found; one in a chunk reached only by a dynamic import is not.
  */
 import { describe, expect, it } from "vitest";
-import { apiProxyTarget, dropNonWoff2FontSources } from "../vite.config.js";
+import type { Rollup } from "vite";
+import { apiProxyTarget, arktypeOnBootPath, dropNonWoff2FontSources } from "../vite.config.js";
 
 describe("apiProxyTarget", () => {
   it("defaults to the development backend, not the installed server's 7364", () => {
@@ -48,5 +51,25 @@ describe("KaTeX fonts ship locally, woff2 only", () => {
   it("leaves a stylesheet that has no fallbacks untouched", () => {
     const only = `@font-face{src:url(fonts/A.woff2) format("woff2")}`;
     expect(dropNonWoff2FontSources(only)).toBe(only);
+  });
+});
+
+describe("arktypeOnBootPath", () => {
+  const chunk = (fileName: string, over: Partial<Rollup.OutputChunk>) =>
+    ({ type: "chunk", fileName, isEntry: false, imports: [], moduleIds: [], ...over }) as Rollup.OutputChunk;
+  const ark = "/repo/node_modules/.pnpm/arktype@2.2.3/node_modules/arktype/out/index.js";
+  const schema = "/repo/node_modules/.pnpm/@ark+schema@0.56.2/node_modules/@ark/schema/out/node.js";
+  const bundle = (shared: string[], lazy: string[]): Rollup.OutputBundle => ({
+    "index.js": chunk("index.js", { isEntry: true, imports: ["shared.js"], dynamicImports: ["lazy.js"] }),
+    "shared.js": chunk("shared.js", { moduleIds: ["/repo/packages/core/dist/kernel/runtime.js", ...shared] }),
+    "lazy.js": chunk("lazy.js", { moduleIds: lazy }),
+  });
+
+  it("finds arktype in a chunk an entry imports statically", () => {
+    expect(arktypeOnBootPath(bundle([schema], []))).toEqual([`shared.js: ${schema}`]);
+  });
+
+  it("ignores arktype behind a dynamic import", () => {
+    expect(arktypeOnBootPath(bundle([], [ark, schema]))).toEqual([]);
   });
 });

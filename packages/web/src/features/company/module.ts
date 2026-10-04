@@ -6,7 +6,7 @@
  * (sidebar-mode.tsx); and the unread count on the contributed proposals page's row
  * (proposals-badge.tsx).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { OrgRoutes } from "./org-routes";
 import { HomeRedirect } from "./home-redirect";
 import { CompanyProvider, companyUserEvents } from "./company-state";

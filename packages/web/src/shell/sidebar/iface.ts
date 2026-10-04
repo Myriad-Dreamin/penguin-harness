@@ -10,7 +10,7 @@
  * reaches them without importing the shell.
  */
 import type { ComponentType } from "react";
-import { Interface } from "@prismshadow/penguin-core/kernel";
+import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
 import type { NavBadge, SidebarMode, SidebarSection } from "../../lib/sidebar-contributions";
 

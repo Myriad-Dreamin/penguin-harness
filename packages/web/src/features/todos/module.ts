@@ -2,7 +2,7 @@
  * To-dos: the owner of the update badges for the signed-in session, and the dots they put on the
  * sidebar's anchors (badges-context.tsx).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import {
   UpdateBadgesProvider,
   accountBadge,

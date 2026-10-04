@@ -7,7 +7,7 @@
  * stored key, its name in the active language, its mark and its place — which every dock surface
  * reads; a stored tab of a kind nobody contributes keeps its place with a placeholder body.
  */
-import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx, Contributed } from "@prismshadow/penguin-core/kernel";
 import { S, zh } from "../../lib/strings";
 import { glyphOf } from "../../lib/nav-icons";

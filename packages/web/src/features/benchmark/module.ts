@@ -1,5 +1,5 @@
 /** The benchmarks list and one benchmark's detail. */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { BenchmarkPage } from "./benchmark-page";
 import { BenchmarkDetailPage } from "./benchmark-detail-page";
 

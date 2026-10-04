@@ -1,5 +1,5 @@
 /** The machines page, admin-only: it installs onto other hosts with the server account's ssh keys. */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { MachinesPage } from "./machines-page";
 
 @Module({

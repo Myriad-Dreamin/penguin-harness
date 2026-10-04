@@ -2,7 +2,7 @@
  * Port forwarding: one machine's forwarded ports, admin-only like the machines page it is reached
  * from, and the dock's Ports panel for the conversation's Workspace (ports-dock-panel.tsx).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { MachinePortsPage } from "./machine-ports-page";
 import { PortsDockPanel } from "./ports-dock-panel";
 

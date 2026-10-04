@@ -3,7 +3,7 @@
  * (iface.ts). The shell `@Use`s what it provides to mount both; the column's New chat entries
  * open the chat module's drafts.
  */
-import { Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
+import { Module, Provide, Use } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import type { ChatDrafts } from "../../features/chat";
 import type { Sidebar } from "./iface";

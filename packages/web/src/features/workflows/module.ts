@@ -2,7 +2,7 @@
  * The Agent's workflow pages: as tabs beside the chat (session-tab.tsx), and one page as the whole
  * app, outside the shell like the terminal (with and without a tab).
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { WorkflowAppPage } from "./workflow-app-page";
 import { WorkflowSessionTab } from "./session-tab";
 

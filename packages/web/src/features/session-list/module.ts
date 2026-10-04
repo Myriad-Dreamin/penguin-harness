@@ -2,7 +2,7 @@
  * The session list: the sidebar's development-mode section (section.tsx), on the chat module's
  * drafts, with the row extensions other modules contribute to its `rowActions` slot (iface.ts).
  */
-import { Bind, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module, Provide, Use } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import type { SidebarSection } from "../../lib/sidebar-contributions";
 import type { ChatDrafts } from "../chat";

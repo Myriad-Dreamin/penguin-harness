@@ -1,5 +1,5 @@
 /** The Agents list and one Agent's settings. */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { AgentsPage } from "./agents-page";
 import { AgentSettingsPage } from "./agent-settings-page";
 

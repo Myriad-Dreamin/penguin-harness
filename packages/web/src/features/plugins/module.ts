@@ -1,5 +1,5 @@
 /** The plugins page and one registry plugin's detail. */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { PluginsPage } from "./plugins-page";
 import { PluginDetailPage } from "./plugin-detail-page";
 

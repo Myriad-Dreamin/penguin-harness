@@ -7,7 +7,7 @@
  * The interface itself carries nothing: the kernel hangs a module's slots on an interface it
  * provides (`SessionListSlots` beside `SessionList`), and the list has no API of its own to offer.
  */
-import { Interface } from "@prismshadow/penguin-core/kernel";
+import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
 import type { RowAction } from "../../lib/session-row-contributions";
 

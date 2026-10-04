@@ -5,7 +5,7 @@
  * no conversation and works on the draft page too.
  */
 import { createElement } from "react";
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import type { DockPanel, PanelOffering } from "../dock/iface";
 import { BuiltinBrowserLayer } from "./browser-layer";
 import { builtinBrowserUserEvents } from "./browser-events";

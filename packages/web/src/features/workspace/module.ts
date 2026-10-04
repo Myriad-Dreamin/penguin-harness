@@ -1,5 +1,5 @@
 /** The Workspace files: the dock's Files panel (workspace-panel.tsx). */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { WorkspacePanel } from "./workspace-panel";
 
 @Module({

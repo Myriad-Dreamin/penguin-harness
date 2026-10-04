@@ -17,6 +17,29 @@
     "import/no-self-import": "error",
     "import/no-empty-named-blocks": "error"
   },
+  "overrides": [
+    {
+      // The web boots through the kernel's arktype-free runtime entry; the full kernel (and
+      // arktype with it) loads only where a dynamic import asks for it (lib/verify-plugins.ts).
+      // A static value import of the full entry would put arktype back on the boot path, and
+      // the build's entry-chunk assertion (vite.config.ts) would then fail far from the cause.
+      "files": ["packages/web/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@prismshadow/penguin-core/kernel",
+                "message": "Import values from @prismshadow/penguin-core/kernel/runtime; the full kernel loads arktype. Type-only imports are fine.",
+                "allowTypeImports": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",

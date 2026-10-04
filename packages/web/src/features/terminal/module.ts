@@ -3,7 +3,7 @@
  * pool: the xterm views live in it and are adopted into dock tab bodies by DOM handoff, so
  * navigating between pages never reconnects a terminal.
  */
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
 import { TerminalPage } from "./terminal-page";
 import { TerminalDockRuntime } from "./terminal-view-pool";
 
