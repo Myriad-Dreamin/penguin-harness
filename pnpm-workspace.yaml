@@ -40,6 +40,9 @@ allowBuilds:
   # node-pty compiles its native pty binding (node-gyp) on install; without this the
   # terminal server has no pty and every session fails to spawn.
   node-pty: true
+  # @parcel/watcher (through the music example's @tailwindcss/cli) ships per-platform prebuilt
+  # bindings; its build script is a fallback compile, and the plugin build never watches.
+  "@parcel/watcher": false
 # pnpm 11 withholds freshly published versions by default (supply-chain gate), which
 # would resolve mmsp back to the previous release and lose the fix the bump is for.
 # This package is first-party, so the exemption carries no third-party risk.
