@@ -1,6 +1,6 @@
 /**
  * The proposals row's unread count (`SidebarModule.navBadges`), anchored on the contributed
- * proposals page's row by its page key (sidebar-mode.tsx keys those rows so): the open
+ * proposals page's row by its renderer's name (sidebar-mode.tsx keys those rows so): the open
  * organization's unread proposal events, the way a channel row wears its unread count. The
  * pinned column draws the count with a tooltip saying what it counts; the rail, with no room for
  * the number, a dot whose name and tooltip say how many.

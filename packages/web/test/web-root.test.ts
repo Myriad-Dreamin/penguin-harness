@@ -21,7 +21,8 @@
  *   built-in browser and schedules in their dispatch order.
  * - The sidebar receives the Project switcher and the session list for development mode,
  *   company's mode with its switcher, channels, roadmaps and desks, the to-do dots and the
- *   balance on their anchors, and company's unread count on the contributed proposals page's row;
+ *   balance on their anchors, and company's unread count on the contributed proposals page's row
+ *   (anchored by the renderer's name);
  *   the session list receives the messaging binding, the scheduled mark and the dock's "Browse
  *   files".
  * - The dock receives the eight panels in their menu order — agents and memory from chat, the
@@ -385,9 +386,12 @@ describe("the booted sidebar slots", () => {
     expect(marksFor(badges, "account").map((m) => m.Mark)).toEqual([PinnedBalanceBadge]);
   });
 
-  it("puts company's unread count on the contributed proposals page's row", () => {
+  it("puts company's unread count on the contributed proposals page's row, anchored by its renderer's name", () => {
     const badges = badgesOf(sidebarSlots.navBadges ?? []);
-    expect(badges.filter((b) => b.anchor === "org-proposals").map((b) => b.badge)).toEqual([
+    // The row is keyed by the renderer it is drawn with, whatever key the plugin gives the page.
+    const renderer = pageRenderers.find((c) => c.code === OrgProposalsPage)?.data.name;
+    expect(renderer).toBe("OrgProposalsPage");
+    expect(badges.filter((b) => b.anchor === renderer).map((b) => b.badge)).toEqual([
       proposalsUnreadBadge,
     ]);
   });
