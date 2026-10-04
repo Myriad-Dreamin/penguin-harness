@@ -32,6 +32,7 @@ import {
   UserAvatar,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
+import { Deferred } from "../../components/ui/deferred";
 import { S } from "../../lib/strings";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { useAuth } from "../../state/auth";
@@ -101,10 +102,15 @@ export function Sidebar({ onNavigate, onCollapse, initialSearchOpen = false }: S
   };
   const offered = modes.flatMap((m, i) => (modeStates[i]!.available ? [m] : []));
 
-  /** The current mode's sections at one place, each with its full form. */
+  /**
+   * The current mode's sections at one place, each with its full form — whose code may load on
+   * first show (a contributed mode's blocks do); the block stays empty until it has.
+   */
   const renderSections = (place: "header" | "body"): ReactNode =>
     sectionsIn(sections, currentKey, place).map(({ id, section: { Full } }) => (
-      <Full key={id} {...(onNavigate ? { onNavigate } : {})} />
+      <Deferred key={id} fallback={null}>
+        <Full {...(onNavigate ? { onNavigate } : {})} />
+      </Deferred>
     ));
 
   /**

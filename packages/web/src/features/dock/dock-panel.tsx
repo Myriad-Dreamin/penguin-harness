@@ -75,6 +75,7 @@ import type { DockPickerChoice, DockTabItem } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { NAV_ICONS } from "../../lib/nav-icons";
 import { chordKeys } from "../../components/ui/chord-kbd";
+import { Deferred } from "../../components/ui/deferred";
 import { useDisplayedBinding, useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { useCoarsePointer } from "../../lib/use-coarse-pointer";
 import { useTerminalChrome } from "../terminal/terminal-appearance";
@@ -232,8 +233,11 @@ function PanelBody({
     <DockPanelProvider handle={handle}>
       {Body !== undefined ? (
         // The panel's name, which a contributed body's draft placeholder wears as its title.
+        // The body's code may load on its first show (lib/lazy-component.ts).
         <DockPanelTitle.Provider value={panelLabel(id)}>
-          <Body active={active} />
+          <Deferred>
+            <Body active={active} />
+          </Deferred>
         </DockPanelTitle.Provider>
       ) : (
         <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-4">
