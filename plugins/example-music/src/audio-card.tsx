@@ -76,7 +76,10 @@ export function AudioCard({
       </button>
       <div className="mp:flex mp:min-w-0 mp:flex-1 mp:flex-col mp:gap-1">
         <div className="mp:flex mp:items-baseline mp:gap-3">
-          <span data-tooltip={name} className="mp:min-w-0 mp:flex-1 mp:truncate mp:font-mono mp:text-sm mp:text-fg">
+          <span
+            data-tooltip={name}
+            className="mp:min-w-0 mp:flex-1 mp:truncate mp:font-mono mp:text-sm mp:text-fg"
+          >
             {name}
           </span>
           {/* Read out by the seek bar's value text; drawn here for the eye only. */}
@@ -108,7 +111,10 @@ export function AudioFailed({ name, strings: S }: { name: string; strings: Audio
       <span className={`${DISC} mp:bg-surface-muted`}>
         <GlyphIcon d={ICONS.xCircle} size={ICON_SIZE.iconButton} className={DANGER_INK} />
       </span>
-      <span role="status" className="mp:min-w-0 mp:flex-1 mp:text-sm mp:text-fg-muted mp:[overflow-wrap:anywhere]">
+      <span
+        role="status"
+        className="mp:min-w-0 mp:flex-1 mp:text-sm mp:text-fg-muted mp:[overflow-wrap:anywhere]"
+      >
         {S.unavailable(name)}
       </span>
     </div>
