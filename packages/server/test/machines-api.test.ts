@@ -42,6 +42,8 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { setTimingsSink } from "../src/machines/transport/index.js";
+import type { MachineSample } from "../src/machines/transport/index.js";
 import type {
   MachinesUseResponse,
   MachinesResponse,
@@ -997,6 +999,68 @@ describe("machines API", () => {
       expect(t.deps.machines.job()?.result).toMatchObject({ ok: true, connected: true });
       expect(starts).toEqual([7364]);
       expect(t.deps.machines.job()?.log.join(" ")).toContain("Starting its server");
+    });
+
+    /** Down until started, so a connect runs every stage up to the hold. */
+    const startable = (over: Partial<MachinesEffects> = {}) => {
+      let up = false;
+      return boot({
+        probe: async () =>
+          up
+            ? { state: { kind: "running" as const, port: 7364, pid: 4242 }, machineId: null }
+            : { state: { kind: "stopped" as const }, machineId: null },
+        startServer: async () => {
+          up = true;
+          return { ok: true };
+        },
+        ...over,
+      });
+    };
+
+    it("a connect job keeps each stage it ran, and when the connection was held", async () => {
+      await startable();
+      installed("9.9.9");
+      await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
+      await waitFor(() => t.deps.machines.job()?.running === false);
+      const job = t.deps.machines.job()!;
+      expect(job.stages?.slice(0, 4).map((s) => [s.stage, s.ok])).toEqual([
+        ["probe", true],
+        ["start-server", true],
+        ["reprobe", true],
+        ["hold", true],
+      ]);
+      expect(job.result).toMatchObject({ ok: true, connectedAt: expect.any(String) });
+    });
+
+    it("with a telemetry sink set, each stage and the connect are samples; a failed hold says so without its text", async () => {
+      await startable({
+        hold: async () => ({ ok: false, detail: "Permission denied (publickey)." }),
+      });
+      installed("9.9.9");
+      const samples: MachineSample[] = [];
+      setTimingsSink((sample) => samples.push(sample));
+      try {
+        await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
+        await waitFor(() => t.deps.machines.job()?.running === false);
+      } finally {
+        setTimingsSink(null);
+      }
+      expect(
+        samples
+          .filter((s) => s.probe === "machine.connect.stage")
+          .map((s) => [s.attrs?.stage, s.status]),
+      ).toEqual([
+        ["probe", "ok"],
+        ["start-server", "ok"],
+        ["reprobe", "ok"],
+        ["hold", "error"],
+      ]);
+      expect(samples.find((s) => s.probe === "machine.connect")).toMatchObject({
+        status: "error",
+        keys: { machine: "ssh:nas" },
+        attrs: { failedStep: "connect" },
+      });
+      expect(JSON.stringify(samples)).not.toContain("Permission denied");
     });
 
     it("a remembered port that does not take is the failure, not a cue to try another", async () => {
