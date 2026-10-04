@@ -33,5 +33,8 @@ import { lazyComponent } from "../../lib/lazy-component";
 })
 export class BenchmarkModule {
   @Bind("benchmark.list") list = lazyComponent(() => import("./benchmark-page"), "BenchmarkPage");
-  @Bind("benchmark.detail") detail = lazyComponent(() => import("./benchmark-detail-page"), "BenchmarkDetailPage");
+  @Bind("benchmark.detail") detail = lazyComponent(
+    () => import("./benchmark-detail-page"),
+    "BenchmarkDetailPage",
+  );
 }

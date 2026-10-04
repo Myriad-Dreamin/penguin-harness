@@ -23,5 +23,8 @@ import { messagingRowAction } from "./session-row-action";
 })
 export class MessagingModule {
   @Bind("messaging.binding") binding = messagingRowAction;
-  @Bind("messaging.panel") panel = lazyComponent(() => import("./messaging-dock-panel"), "MessagingDockPanel");
+  @Bind("messaging.panel") panel = lazyComponent(
+    () => import("./messaging-dock-panel"),
+    "MessagingDockPanel",
+  );
 }

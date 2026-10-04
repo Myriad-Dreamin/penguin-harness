@@ -17,5 +17,8 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class WorkspaceModule {
-  @Bind("workspace.panel") panel = lazyComponent(() => import("./workspace-panel"), "WorkspacePanel");
+  @Bind("workspace.panel") panel = lazyComponent(
+    () => import("./workspace-panel"),
+    "WorkspacePanel",
+  );
 }

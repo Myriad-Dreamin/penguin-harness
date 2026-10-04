@@ -27,5 +27,8 @@ import { scheduledRowMark } from "./session-row-mark";
 export class SchedulesModule {
   @Bind("schedules.events") events = scheduleUserEvents;
   @Bind("schedules.mark") mark = scheduledRowMark;
-  @Bind("schedules.panel") panel = lazyComponent(() => import("./schedule-dock-panel"), "ScheduleDockPanel");
+  @Bind("schedules.panel") panel = lazyComponent(
+    () => import("./schedule-dock-panel"),
+    "ScheduleDockPanel",
+  );
 }

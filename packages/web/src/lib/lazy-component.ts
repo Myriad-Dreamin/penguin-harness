@@ -43,10 +43,10 @@ export function isChunkLoadError(error: unknown): error is ChunkLoadError {
  * The named export `name` of the module `load` imports, as a deferred component. `load` must be
  * an `import()` of a file in the binding module's own directory (test/module-boundaries.test.ts).
  */
-export function lazyComponent<M extends Record<K, ComponentType<never>>, K extends keyof M & string>(
-  load: () => Promise<M>,
-  name: K,
-): LazyComponent<ComponentProps<M[K]>> {
+export function lazyComponent<
+  M extends Record<K, ComponentType<never>>,
+  K extends keyof M & string,
+>(load: () => Promise<M>, name: K): LazyComponent<ComponentProps<M[K]>> {
   type C = ComponentType<ComponentProps<M[K]>>;
   let loaded: C | null = null;
   let pending: Promise<C> | null = null;
