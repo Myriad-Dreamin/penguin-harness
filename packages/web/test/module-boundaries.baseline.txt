@@ -210,7 +210,6 @@ features/proposals/pr-graph-roadmaps.ts -> features/company/roadmaps.ts
 features/proposals/pr-graph-rows.tsx -> features/company/shared.tsx
 features/proposals/proposal-impl.tsx -> features/company/org-layout.tsx
 features/proposals/proposal-links.tsx -> features/company/company-nav.ts
-features/proposals/proposal-links.tsx -> features/company/company-state.tsx
 features/proposals/proposals-page.tsx -> features/company/company-nav.ts
 features/proposals/proposals-page.tsx -> features/company/employee-avatar.tsx
 features/proposals/proposals-page.tsx -> features/company/org-layout.tsx
