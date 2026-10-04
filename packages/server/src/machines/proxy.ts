@@ -116,39 +116,11 @@ function proxyThroughSession(
     headers["host"] = `localhost:${port}`;
     headers["cookie"] = cookie;
 
-    const upstream = http.request(
-      {
-        agent,
-        host: "127.0.0.1",
-        port,
-        path: `${path.remotePath}${url.search}`,
-        method: request.method,
-        headers,
-      },
-      (res) => {
-        clearTimeout(answering);
-        report?.(path.machineId, { ok: true });
-        const out = new Headers();
-        for (const [name, value] of Object.entries(res.headers)) {
-          if (value === undefined || DROP_RESPONSE_HEADERS.has(name.toLowerCase())) continue;
-          out.set(name, Array.isArray(value) ? value.join(", ") : value);
-        }
-        if (res.headers.location !== undefined) {
-          out.set("location", rewriteLocation(res.headers.location, path.machineId));
-        }
-        resolve(
-          new Response(
-            res.statusCode === 204 || res.statusCode === 304
-              ? null
-              : (Readable.toWeb(res) as ReadableStream),
-            { status: res.statusCode ?? 502, headers: out },
-          ),
-        );
-      },
-    );
     // Reads only: see the doc above. A write waits for the machine however long it takes.
     const reads = request.method === "GET" || request.method === "HEAD";
     let timedOut = false;
+    let cancelled = false;
+    let upstream: http.ClientRequest;
     const answering = !reads
       ? undefined
       : setTimeout(() => {
@@ -170,39 +142,84 @@ function proxyThroughSession(
     // Request, socket/serve.ts): drop the forward rather than hold it open until the machine
     // answers someone who is gone. That is the caller's doing, not the machine's, so it is
     // not reported as an unreachable machine.
-    let cancelled = false;
     const cancel = () => {
       cancelled = true;
       clearTimeout(answering);
       upstream.destroy();
     };
     request.signal.addEventListener("abort", cancel, { once: true });
-    upstream.on("close", () => request.signal.removeEventListener("abort", cancel));
-    upstream.on("error", (err) => {
-      clearTimeout(answering);
-      if (timedOut) return; // answered above; this is the teardown
-      if (cancelled) {
-        resolve(cancelledResponse());
-        return;
-      }
-      report?.(path.machineId, { ok: false, detail: err.message });
-      resolve(
-        Response.json(
-          {
-            error: {
-              code: "server_unreachable",
-              message: `The connection to ${path.machineId} did not answer: ${err.message}`,
-            },
-          },
-          { status: 502 },
-        ),
+
+    const send = (resent: boolean): void => {
+      const sent = http.request(
+        {
+          agent,
+          host: "127.0.0.1",
+          port,
+          path: `${path.remotePath}${url.search}`,
+          method: request.method,
+          headers,
+        },
+        (res) => {
+          clearTimeout(answering);
+          report?.(path.machineId, { ok: true });
+          const out = new Headers();
+          for (const [name, value] of Object.entries(res.headers)) {
+            if (value === undefined || DROP_RESPONSE_HEADERS.has(name.toLowerCase())) continue;
+            out.set(name, Array.isArray(value) ? value.join(", ") : value);
+          }
+          if (res.headers.location !== undefined) {
+            out.set("location", rewriteLocation(res.headers.location, path.machineId));
+          }
+          const bodiless = res.statusCode === 204 || res.statusCode === 304;
+          // Read to its end even with nothing in it: only an ended answer hands its kept-alive
+          // socket back to the agent (transport/session-agent.ts).
+          if (bodiless) res.resume();
+          resolve(
+            new Response(bodiless ? null : (Readable.toWeb(res) as ReadableStream), {
+              status: res.statusCode ?? 502,
+              headers: out,
+            }),
+          );
+        },
       );
-    });
-    if (request.body !== null) {
-      Readable.fromWeb(request.body as import("node:stream/web").ReadableStream).pipe(upstream);
-    } else {
-      upstream.end();
-    }
+      upstream = sent;
+      sent.on("close", () => {
+        if (upstream === sent) request.signal.removeEventListener("abort", cancel);
+      });
+      sent.on("error", (err) => {
+        if (timedOut) return; // answered above; this is the teardown
+        if (cancelled) {
+          resolve(cancelledResponse());
+          return;
+        }
+        // A kept-alive socket the machine closed while it sat idle — its close still on the
+        // way when this request was handed it. Nothing reached the machine, so a read is sent
+        // once more, on a fresh channel; a write is not, since it may have arrived.
+        if (!resent && sent.reusedSocket && reads && request.body === null) {
+          send(true);
+          return;
+        }
+        clearTimeout(answering);
+        report?.(path.machineId, { ok: false, detail: err.message });
+        resolve(
+          Response.json(
+            {
+              error: {
+                code: "server_unreachable",
+                message: `The connection to ${path.machineId} did not answer: ${err.message}`,
+              },
+            },
+            { status: 502 },
+          ),
+        );
+      });
+      if (request.body !== null) {
+        Readable.fromWeb(request.body as import("node:stream/web").ReadableStream).pipe(sent);
+      } else {
+        sent.end();
+      }
+    };
+    send(false);
   });
 }
 

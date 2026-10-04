@@ -47,6 +47,7 @@ import {
 import type { ForwardFact, ShellSession } from "./ssh-session.js";
 import { dialThroughSocks } from "./socks.js";
 import { inLane } from "./lane.js";
+import { SessionAgent } from "./session-agent.js";
 import { scpArgs, sshArgs } from "../commands.js";
 import type { ExecResult } from "./exec.js";
 import type { ForwardSpec, RemoteTarget } from "../commands.js";
@@ -67,6 +68,12 @@ export interface MachineChannel {
 
 /** Enough for an installer to download a release, or a store to cross a slow link. */
 const BULK_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * The kept-alive agents, by `<address>#<port>`. Like the sessions they dial through, they live
+ * in a registry rather than on the handle, so every handle to one machine shares them.
+ */
+const agents = new Map<string, SessionAgent>();
 
 export class MachineConnection implements MachineChannel {
   readonly address: string;
@@ -134,20 +141,26 @@ export class MachineConnection implements MachineChannel {
     return dialThroughSocks(opened.session.socksPort, "127.0.0.1", remotePort);
   }
 
-  /** An http.Agent whose every socket is a dial through the session — for node:http callers. */
+  /**
+   * The http.Agent whose every socket is a dial through the session — for node:http callers.
+   * One per machine and port, keeping its idle sockets alive (session-agent.ts); whatever it
+   * still holds from a session that is no longer the one up is destroyed before it is handed
+   * out, so a request never rides a channel of a replaced session.
+   */
   agent(remotePort: number): http.Agent {
-    const agent = new http.Agent({ keepAlive: false });
-    // createConnection is documented on Agent (and overridable); the typings omit it.
-    (agent as unknown as { createConnection: unknown }).createConnection = (
-      _options: unknown,
-      callback: (err: Error | null, socket?: net.Socket) => void,
-    ) => {
-      this.dial(remotePort).then(
-        (socket) => callback(null, socket),
-        (err: unknown) => callback(err instanceof Error ? err : new Error(String(err))),
-      );
-    };
-    return agent;
+    const key = `${this.address}#${remotePort}`;
+    let pooled = agents.get(key);
+    if (pooled === undefined) {
+      pooled = new SessionAgent(async () => {
+        const opened = await this.open();
+        if (!opened.ok) throw new Error(opened.detail);
+        const socket = await dialThroughSocks(opened.session.socksPort, "127.0.0.1", remotePort);
+        return { socket, session: opened.session.pid };
+      });
+      agents.set(key, pooled);
+    }
+    pooled.retire(sessionOf(this.address)?.pid ?? null);
+    return pooled.agent;
   }
 
   /**
@@ -172,6 +185,15 @@ export class MachineConnection implements MachineChannel {
   }
 }
 
+/** Destroys the agents to one machine (all of them when `address` is undefined) and forgets them. */
+function dropAgents(address?: string): void {
+  for (const [key, pooled] of agents) {
+    if (address !== undefined && !key.startsWith(`${address}#`)) continue;
+    pooled.destroy();
+    agents.delete(key);
+  }
+}
+
 /** The machine's connection handle. Cheap: state lives in the per-address registry. */
 export function connectionTo(target: RemoteTarget): MachineConnection {
   return new MachineConnection(target);
@@ -185,9 +207,13 @@ export function connectionTo(target: RemoteTarget): MachineConnection {
  */
 export function closeConnectionTo(address: string): void {
   closeShell(address);
+  dropAgents(address);
 }
 
 /** This generation's transient connections closed, its held ones delivered — the platform's dispose effect. */
 export function closeAllConnections(): void {
   closeAllShells();
+  // The kept sockets are this generation's own, held or transient session alike: a held
+  // session is delivered to the next generation, and its agents start afresh there.
+  dropAgents();
 }

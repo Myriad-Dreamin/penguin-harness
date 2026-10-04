@@ -315,3 +315,105 @@ describe("a caller that gives up", () => {
     expect(dialed).toBe(false);
   });
 });
+
+describe("a kept-alive channel", () => {
+  let upstream: http.Server | null = null;
+  const request = (machineId: string) =>
+    new Request(`http://app.local${SERVER_PROXY_PREFIX}${machineId}/api/me`);
+
+  afterEach(() => {
+    upstream?.closeAllConnections();
+    upstream?.close();
+    upstream = null;
+  });
+
+  /**
+   * A machine that answers the first request on each connection and drops the connection on
+   * any later one — what a kept-alive socket the far side closed while idle looks like to the
+   * request handed it.
+   */
+  const closingMachine = (status = 200): Promise<{ port: number; requests: string[] }> =>
+    new Promise((resolve) => {
+      const requests: string[] = [];
+      const served = new WeakSet<net.Socket>();
+      upstream = http.createServer((req, res) => {
+        requests.push(`${req.method} ${req.url}`);
+        if (served.has(req.socket)) {
+          req.socket.destroy();
+          return;
+        }
+        served.add(req.socket);
+        res.statusCode = status;
+        res.end(status === 204 ? undefined : '{"ok":true}');
+      });
+      upstream.listen(0, "127.0.0.1", () =>
+        resolve({ port: (upstream!.address() as AddressInfo).port, requests }),
+      );
+    });
+
+  it("sends a read once more on a fresh channel when its kept socket was closed under it", async () => {
+    const { port, requests } = await closingMachine();
+    const agent = new http.Agent({ keepAlive: true });
+    const seen: unknown[] = [];
+    const proxy = machinesProxy(
+      async () => ({ agent, port, cookie: "penguin_session=x", session: 1 }),
+      (machineId, outcome) => seen.push([machineId, outcome]),
+    );
+    const first = await proxy(request(A));
+    expect(await first!.json()).toEqual({ ok: true });
+    const second = await proxy(request(A));
+    expect(second?.status).toBe(200);
+    expect(await second!.json()).toEqual({ ok: true });
+    expect(requests).toEqual(["GET /api/me", "GET /api/me", "GET /api/me"]);
+    expect(seen).toEqual([
+      [A, { ok: true }],
+      [A, { ok: true }],
+    ]);
+    agent.destroy();
+  });
+
+  it("does not send a write twice: a closed kept socket is answered as unreachable", async () => {
+    const { port, requests } = await closingMachine();
+    const agent = new http.Agent({ keepAlive: true });
+    const proxy = machinesProxy(async () => ({
+      agent,
+      port,
+      cookie: "penguin_session=x",
+      session: 1,
+    }));
+    await (await proxy(request(A)))!.json();
+    const write = await proxy(
+      new Request(`http://app.local${SERVER_PROXY_PREFIX}${A}/api/me`, { method: "DELETE" }),
+    );
+    expect(write?.status).toBe(502);
+    expect(((await write!.json()) as { error: { code: string } }).error.code).toBe(
+      "server_unreachable",
+    );
+    expect(requests).toEqual(["GET /api/me", "DELETE /api/me"]);
+    agent.destroy();
+  });
+
+  it("hands a bodiless answer's socket back for the next request", async () => {
+    let connections = 0;
+    upstream = http.createServer((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    upstream.on("connection", () => connections++);
+    const port = await new Promise<number>((resolve) =>
+      upstream!.listen(0, "127.0.0.1", () => resolve((upstream!.address() as AddressInfo).port)),
+    );
+    const agent = new http.Agent({ keepAlive: true });
+    const proxy = machinesProxy(async () => ({
+      agent,
+      port,
+      cookie: "penguin_session=x",
+      session: 1,
+    }));
+    expect((await proxy(request(A)))?.status).toBe(204);
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await proxy(request(A)))?.status).toBe(204);
+    expect(connections).toBe(1);
+    agent.destroy();
+  });
+});
