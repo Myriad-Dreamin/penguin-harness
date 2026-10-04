@@ -1,14 +1,18 @@
 /**
- * The player (src/audio-*.tsx): a themed card driving an `<audio>` on the file URL the web app
+ * The player (src/player.tsx): a themed card driving an `<audio>` on the file URL the web app
  * hands it, in the app's interface language, and the time arithmetic under it.
  */
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import AudioFile from "../src/audio-file";
-import { AudioCard, AudioFailed } from "../src/audio-card";
-import type { AudioPlayback } from "../src/audio-card";
-import { formatClock, loadedEnd } from "../src/audio-clock";
+import AudioFile, {
+  AudioCard,
+  AudioFailed,
+  formatClock,
+  knownLength,
+  loadedEnd,
+} from "../src/player";
+import type { AudioPlayback } from "../src/player";
 import { stringsFor } from "../src/strings";
 
 const ZH = stringsFor("zh");
@@ -48,6 +52,9 @@ describe("AudioCard", () => {
     expect(html).toMatch(
       /<input type="range"[^>]* disabled=""[^>]*aria-label="夜曲.wav 的播放位置"/,
     );
+    // The playhead waits at the start, not at the far end.
+    expect(html).toContain("left:0%");
+    expect(html).not.toContain("left:100%");
     expect(html).not.toContain("aria-busy");
   });
 
@@ -64,6 +71,11 @@ describe("AudioCard", () => {
     expect(html).toContain("0:03 / 1:12");
     expect(html).toContain('aria-valuetext="0:03，共 1:12"');
     expect(html).not.toMatch(/<input type="range"[^>]* disabled=""/);
+  });
+
+  it("a file shorter than a second reads 0:01, never a length of 0:00", () => {
+    const html = card({ playing: false, waiting: false, time: 0.25, duration: 0.25, loaded: 0.25 });
+    expect(html).toContain("0:01 / 0:01");
   });
 
   it("ended: back to a play button with the bar full", () => {
@@ -96,7 +108,7 @@ describe("the interface language", () => {
   });
 });
 
-describe("audio clock", () => {
+describe("time arithmetic", () => {
   it("reads m:ss, h:mm:ss from an hour, and -:-- for an unknown length", () => {
     expect(formatClock(0)).toBe("0:00");
     expect(formatClock(59.9)).toBe("0:59");
@@ -104,6 +116,14 @@ describe("audio clock", () => {
     expect(formatClock(3723)).toBe("1:02:03");
     expect(formatClock(null)).toBe("-:--");
     expect(formatClock(Number.POSITIVE_INFINITY)).toBe("-:--");
+    expect(formatClock(0.25, "up")).toBe("0:01");
+  });
+
+  it("knows a length only once the element reports a finite, positive one", () => {
+    expect(knownLength(Number.NaN)).toBeNull();
+    expect(knownLength(0)).toBeNull();
+    expect(knownLength(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(knownLength(72)).toBe(72);
   });
 
   it("can seek as far as the furthest seekable or buffered end", () => {
