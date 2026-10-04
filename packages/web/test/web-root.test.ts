@@ -13,8 +13,9 @@
  *   pages of their own modules, off the nav, the ports page admin-only.
  * - Home (`/` and every unmatched path) is company mode's page, since it depends on the mode.
  * - The proposals page is the one page renderer, under the name its plugin's page names.
- * - Beside the booted table, a contributed page whose key the app owns is ignored, and the
- *   company-mode proposals page passes the renderers company mode carries.
+ * - Folded into the booted table, a contributed page whose key the app owns is ignored, and the
+ *   company-mode proposals page is drawn by the proposals page, inside company mode and from
+ *   the root alike.
  * - The shell receives company's provider and the update badges' owner for the signed-in
  *   session, the six layers in their mount order, and the user event handlers of company, the
  *   built-in browser and schedules in their dispatch order.
@@ -29,7 +30,7 @@
  *   module registers in its panel registry at boot.
  * - The chat page receives the workflow tab strip beside the conversation.
  */
-import type { ReactElement } from "react";
+import type { ComponentType, ReactElement } from "react";
 import { bootModules, moduleDefOf } from "@prismshadow/penguin-core/kernel";
 import type {
   ClassCtx,
@@ -44,7 +45,9 @@ import { bootWeb, WebRoot } from "../src/web-root";
 import { ShellModule } from "../src/shell/module";
 import { navPagesOf } from "../src/shell";
 import type { ShellPage } from "../src/shell";
-import { contributedPages, orgPagesOf, pageTableOf } from "../src/shell/page-table";
+import { pageTableOf } from "../src/shell/page-table";
+import { contributedPagesOf } from "../src/shell/contributions";
+import { orgPagesOf } from "../src/features/company/use-org-pages";
 import { navKeysFor } from "../src/shell/sidebar/nav-state";
 import { SidebarModule } from "../src/shell/sidebar/module";
 import { badgesOf, marksFor, modesOf, sectionsIn, sectionsOf } from "../src/shell/sidebar/modes";
@@ -58,7 +61,6 @@ import { AgentsPage } from "../src/features/agents/agents-page";
 import { TerminalPage } from "../src/features/terminal/terminal-page";
 import { OrgRoutes } from "../src/features/company/org-routes";
 import { HomeRedirect } from "../src/features/company/home-redirect";
-import { ORG_PAGE_RENDERERS } from "../src/features/company/company-nav";
 import { ChatRoute } from "../src/features/chat/chat-route";
 import { OrgProposalsPage } from "../src/features/proposals/proposals-page";
 import { DashboardPage } from "../src/features/dashboard/dashboard-page";
@@ -285,21 +287,44 @@ describe("the booted page table", () => {
     ]);
   });
 
-  it("lets a contributed page in beside the table only under a key the app does not own", () => {
+  it("folds a contributed page in only under a key the app does not own, drawn by its module's renderer", () => {
     const remote = [
-      { key: "dashboard", path: "/elsewhere", renderer: { iframe: { src: "/x", namespace: "x" } } },
       {
+        id: "x.dashboard",
+        from: "X",
+        key: "dashboard",
+        path: "/elsewhere",
+        renderer: { iframe: { src: "/x", namespace: "x" } },
+      },
+      {
+        id: "proposals.page",
+        from: "CompanyProposals",
         key: "org-proposals",
         path: "proposals/:number?",
         nav: "org",
         renderer: { builtin: "OrgProposalsPage" },
       },
     ];
-    const orgRenderers = new Set(Object.keys(ORG_PAGE_RENDERERS));
-    expect(orgPagesOf(contributedPages(pages, remote, orgRenderers)).map((p) => p.key)).toEqual([
-      "org-proposals",
+    const renderers = new Map(
+      pageRenderers.map((c) => [c.data.name as string, c.code as ComponentType]),
+    );
+    const answer = {
+      pages: remote,
+      agentTabs: [],
+      sessionTabs: [],
+      quickStarts: [],
+      sessionSurfaces: [],
+    };
+    const merged = contributedPagesOf(pages, answer, renderers);
+    expect(merged.slice(0, pages.length)).toEqual(pages);
+    // One table: the router mounts the page from the root, company mode under the organization.
+    expect(merged.slice(pages.length)).toMatchObject([
+      { key: "org-proposals", path: "proposals/:number?", frame: "shell", nav: "org" },
     ]);
-    expect(contributedPages(pages, remote, new Set())).toEqual([]);
+    expect(orgPagesOf(merged).map((p) => [p.key, p.Component])).toEqual([
+      ["org-proposals", OrgProposalsPage],
+    ]);
+    expect(contributedPagesOf(pages, answer, new Map())).toEqual(pages);
   });
 });
 

@@ -100,11 +100,9 @@ features/company/employee-dialogs.tsx -> features/skills/skill-selection.ts
 features/company/finance-page.tsx -> features/usage/trend-chart.tsx
 features/company/org-dialogs.tsx -> features/models/model-grouping.ts
 features/company/org-dialogs.tsx -> features/semantic-id/semantic-id-field.tsx
-features/company/org-routes.tsx -> features/proposals/proposals-page.tsx
 features/company/org-session-groups.tsx -> features/messaging/messaging-binding-modal.tsx
 features/company/roadmap-detail.tsx -> features/proposals/activity-view.tsx
 features/company/roadmap-detail.tsx -> features/proposals/proposals-model.ts
-features/company/use-org-pages.ts -> shell/page-table.ts
 features/dock/dock-launcher.tsx -> features/browser/browser-tabs.ts
 features/dock/dock-launcher.tsx -> features/builtin-browser/browser-store.ts
 features/dock/dock-launcher.tsx -> features/terminal/terminal-list.ts
