@@ -9,7 +9,7 @@
  * plugin manifests' call, pinned in packages/plugins' own tests, and a reordering inside a card
  * is not a regression worth a red suite.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { zh } from "../src/lib/strings";
@@ -18,21 +18,19 @@ import { en } from "../src/lib/strings-en";
 
 const pluginsRoot = join(__dirname, "..", "..", "..", "plugins");
 
-/** A private package never ships (scripts/build-plugins.mjs skips it): an example, not the library. */
-const isPrivate = (plugin: string): boolean => {
-  const manifest = join(pluginsRoot, plugin, "package.json");
-  return (
-    existsSync(manifest) &&
-    (JSON.parse(readFileSync(manifest, "utf8")) as { private?: boolean }).private === true
-  );
-};
+/**
+ * A repository example (plugins/example-*) never ships (scripts/build-plugins.mjs skips its
+ * directory): an example, not the library. Known by directory, not by `private`, since several
+ * shipped plugins are private packages too.
+ */
+const isExample = (plugin: string): boolean => plugin.startsWith("example-");
 
 /** Every skill directory under every shipped plugin's skills/ (a plugin may ship none). */
 const librarySkills = readdirSync(pluginsRoot, { withFileTypes: true })
   .filter(
     (plugin) =>
       plugin.isDirectory() &&
-      !isPrivate(plugin.name) &&
+      !isExample(plugin.name) &&
       existsSync(join(pluginsRoot, plugin.name, "skills")),
   )
   .flatMap((plugin) =>
