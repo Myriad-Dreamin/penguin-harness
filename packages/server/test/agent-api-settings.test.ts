@@ -35,7 +35,14 @@ import type {
   AgentsResponse,
   ServerSettingsResponse,
 } from "../src/api/types.js";
-import { apiClient, createTestApp, loginAdmin, provisionUser, tokenClient } from "./helpers.js";
+import {
+  adminBearerToken,
+  apiClient,
+  createTestApp,
+  loginAdmin,
+  provisionUser,
+  tokenClient,
+} from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 import { adoptSession, fakeSession, uniqueSessionId } from "./fixtures/session.js";
 
@@ -315,6 +322,26 @@ describe("Agent API settings", () => {
         proxyForAgent: before.proxyForAgent,
         browserExtensionsEnabled: before.browserExtensionsEnabled,
       });
+    }
+  });
+
+  it("a real admin sign-in carried as Bearer passes the human gate, unlike the boot token", async () => {
+    const signedIn = tokenClient(t.app, await adminBearerToken(t.app));
+    const settings = "/api/admin/settings";
+    const before = ((await (await admin.get(settings)).json()) as ServerSettingsResponse).settings;
+    try {
+      const res = await signedIn.put(settings, { agentApiEnabled: !before.agentApiEnabled });
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as ServerSettingsResponse).settings.agentApiEnabled).toBe(
+        !before.agentApiEnabled,
+      );
+      await humanRequired(
+        await tokenClient(t.app, t.deps.authService.localApiToken()!).put(settings, {
+          agentApiEnabled: before.agentApiEnabled,
+        }),
+      );
+    } finally {
+      await admin.put(settings, { agentApiEnabled: before.agentApiEnabled });
     }
   });
 
