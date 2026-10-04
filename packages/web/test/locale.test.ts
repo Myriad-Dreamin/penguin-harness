@@ -22,21 +22,27 @@ describe("resolveSystemLocale (navigator.language → UI language)", () => {
 });
 
 /** A stand-in for the browser: a stored preference, a device language, and its change event. */
-function fakeEnv(stored: string | null, device: string) {
-  const env = {
+interface FakeEnv extends LocaleEnv {
+  stored: string | null;
+  device: string;
+  systemListeners: Set<() => void>;
+}
+
+function fakeEnv(stored: string | null, device: string): FakeEnv {
+  const env: FakeEnv = {
     stored,
     device,
-    systemListeners: new Set<() => void>(),
+    systemListeners: new Set(),
     readPref: () => env.stored,
-    writePref: (pref: string) => {
+    writePref: (pref) => {
       env.stored = pref;
     },
     systemLanguage: () => env.device,
-    onSystemChange: (onChange: () => void) => {
+    onSystemChange: (onChange) => {
       env.systemListeners.add(onChange);
       return () => env.systemListeners.delete(onChange);
     },
-  } satisfies LocaleEnv & Record<string, unknown>;
+  };
   return env;
 }
 

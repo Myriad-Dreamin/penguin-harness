@@ -272,7 +272,11 @@ async function shoot(page, browser, sessionId) {
   await expect(p.getByRole("button", { name: "Play evening.wav" })).toBeVisible();
   await shootReply(p, "player-before-en");
   await shootPlaying(p, "player-playing-en", "Play evening.wav");
-  await p.locator("[data-reply-files]").last().locator("audio").evaluate((el) => el.load());
+  await p
+    .locator("[data-reply-files]")
+    .last()
+    .locator("audio")
+    .evaluate((el) => el.load());
   await expect(p.getByRole("status").filter({ hasText: "Cannot play chime.ogg" })).toBeVisible();
   await shootReply(p, "player-en");
   await en.close();
