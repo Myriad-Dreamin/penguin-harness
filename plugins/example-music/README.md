@@ -14,7 +14,9 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
   is fetched the first time a reply links such a file.
 - **Its own stylesheet.** `src/styles.css` compiles the player's Tailwind utilities against the web
   app's theme as a reference (no preflight, no variables of its own), so the card reads the host's
-  tokens and follows its theme and mode. The web app attaches it when it loads the module.
+  tokens and follows its theme and mode. Its classes carry the plugin's own prefix (`mp:flex`): a
+  second copy of the host's `.flex` in a sheet attached later would reorder the host's cascade. The
+  web app attaches it when it loads the module.
 - **The Markdown is not touched.** When a paragraph of a reply links such a file in the
   Workspace — `[Evening Theme](music/tune.wav)` — the link stays a link (clicking it opens the file
   in the Files panel) and a player appears directly below that paragraph, once per file. A link
