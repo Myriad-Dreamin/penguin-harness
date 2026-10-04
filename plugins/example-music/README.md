@@ -3,21 +3,25 @@
 The smallest plugin that teaches the PenguinHarness web app to draw a kind of Workspace file with
 browser code of its own, plus a Skill that teaches the Agent to produce one. It demonstrates:
 
-- **A web module.** The plugin's one module (`src/module.ts`) contributes to the web app's
+- **A web module.** The plugin's one module (`src/index.ts`, beside the plugin's declaration) contributes to the web app's
   `ChatModule.fileRenderers` slot, so the build places it on the web side: gen-ifaces writes
   `side: "web"` and its built file into `ifaces.json`, and `scripts/build-plugin.mjs` emits
   `dist/web/ExampleMusic.js` for the browser, with React, the kernel and the UI package left to the
   web app's own instances. The server only forwards it (`GET /api/contributions`, `webModules`);
   the web app checks it against its module tree and boots it with its own modules.
 - **One contribution, both halves.** The rule — files ending in `mp3`, `wav`, `ogg` or `m4a` — is
-  the contribution's data, in the manifest; the player is its code, a lazy component, so its chunk
-  is fetched the first time a reply links such a file.
+  the contribution's data, declared on the module; the player (`src/player.tsx`) is its code, a lazy
+  component, so its chunk is fetched the first time a reply links such a file.
+- **Every state drawn.** Before play nothing is fetched: the clock reads `-:--` and the playhead
+  waits at the start. Pressing play shows a spinner until the file can play; a file that is missing
+  or that the browser cannot decode turns the card into a line saying so.
 - **Its own stylesheet.** `src/styles.css` compiles the player's Tailwind utilities against the web
   app's theme as a reference (no preflight, no variables of its own), so the card reads the host's
   tokens and follows its theme and mode. Its classes carry the plugin's own prefix (`mp:flex`): a
   second copy of the host's `.flex` in a sheet attached later would reorder the host's cascade.
   The build fails on a compiled class outside the prefix, and on two plugins built together with
-  one prefix. The web app attaches the sheet before it mounts, so the card never shows unstyled.
+  one prefix. The web app attaches the sheet when it loads the plugin, before the lazy player is
+  ever drawn.
 - **The host's types.** The renderer's props (`FileRendererProps`) come from the web app's
   plugin-facing types (`packages/web/src/plugin-types.ts`, mapped in `tsconfig.json`), imported
   as a type only.

@@ -18,7 +18,8 @@
  * - The player's src is the Workspace file URL, answering 200 with an audio content type, and the
  *   browser decodes the file; the missing file's player turns into a line saying so.
  * - With `?safe` the reply renders without a player, and no plugin file is requested.
- * - Screenshots of the player (light and dark, zh and en) go to E2E_SHOTS_DIR when it is set.
+ * - Screenshots of the player before play, mid-play, and ended beside the missing file's line
+ *   (light and dark, zh and en) go to E2E_SHOTS_DIR when it is set.
  */
 import path from "node:path";
 import { test, expect } from "@playwright/test";
@@ -151,6 +152,7 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   const seek = below.getByRole("slider", { name: "evening.wav 的播放位置" });
   await expect(seek).toBeDisabled();
   await expect(below.locator("[data-audio-file]")).toContainText("0:00 / -:--");
+  if (SHOTS) await shootReply(page, "player-before-zh");
 
   // The links are untouched: still links to the file, opening nothing in a new tab.
   const link = first.getByRole("link", { name: "Evening Theme" });
@@ -185,7 +187,8 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   // quarter-second tune ends back on a play button.
   await play.click();
   await expect(seek).toBeEnabled();
-  await expect(seek).toHaveAttribute("aria-valuetext", /，共 0:00$/);
+  // A quarter-second file: its length reads 0:01 (rounded up), never 0:00.
+  await expect(seek).toHaveAttribute("aria-valuetext", /，共 0:01$/);
   await expect(below.locator('[data-audio-file="paused"]')).toBeVisible();
   await expect(below.getByRole("button", { name: "播放 evening.wav" })).toBeVisible();
 
@@ -208,20 +211,22 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   await expect(page.locator('link[data-plugin="@penguinharness/example-music"]')).toHaveCount(0);
 });
 
-/** The player, light and dark, in Chinese and (in a fresh English context) in English. */
-async function shoot(page, browser, sessionId) {
+/**
+ * The reply with its players, light and dark, as `<tag>-<mode>.png`: from the first paragraph to
+ * the last player, so the missing file's line is in the shot too.
+ */
+async function shootReply(p, tag) {
   // No hover tooltip left over from pressing play, and the colour transitions settled.
-  await page.mouse.move(0, 0);
-  const dark = async (on) => {
-    await page.evaluate((v) => document.documentElement.classList.toggle("dark", v), on);
-    await page.waitForTimeout(400);
-  };
-  const paragraph = page.locator("p", { hasText: "Here is your tune" });
-  const region = async (p, file) => {
-    const box = await p.locator("p", { hasText: "Here is your tune" }).boundingBox();
-    const files = await p.locator("[data-reply-files]").first().boundingBox();
+  await p.mouse.move(0, 0);
+  const first = p.locator("p", { hasText: "Here is your tune" });
+  await first.scrollIntoViewIfNeeded();
+  const box = await first.boundingBox();
+  const files = await p.locator("[data-reply-files]").last().boundingBox();
+  for (const mode of ["light", "dark"]) {
+    await p.evaluate((v) => document.documentElement.classList.toggle("dark", v), mode === "dark");
+    await p.waitForTimeout(400);
     await p.screenshot({
-      path: path.join(SHOTS, file),
+      path: path.join(SHOTS, `${tag}-${mode}.png`),
       clip: {
         x: Math.max(0, box.x - 16),
         y: Math.max(0, box.y - 16),
@@ -229,13 +234,34 @@ async function shoot(page, browser, sessionId) {
         height: files.y + files.height - box.y + 32,
       },
     });
-  };
-  await paragraph.scrollIntoViewIfNeeded();
-  await dark(false);
-  await region(page, "player-zh-light.png");
-  await dark(true);
-  await region(page, "player-zh-dark.png");
-  await dark(false);
+  }
+  await p.evaluate(() => document.documentElement.classList.remove("dark"));
+}
+
+/**
+ * Plays the quarter-second tune at a tenth of its speed and shoots it mid-play, then lets it end.
+ */
+async function shootPlaying(p, tag, playName) {
+  const audio = p.locator("[data-reply-files]").first().locator("audio");
+  await audio.evaluate((el) => {
+    el.currentTime = 0;
+    el.defaultPlaybackRate = 0.1;
+    el.playbackRate = 0.1;
+  });
+  await p.getByRole("button", { name: playName }).click();
+  await expect(p.locator('[data-audio-file="playing"]')).toBeVisible();
+  await p.waitForTimeout(700);
+  await shootReply(p, tag);
+  await expect(p.locator('[data-audio-file="playing"]')).toHaveCount(0, { timeout: 10_000 });
+}
+
+/**
+ * The player in Chinese (ended, the missing file's line beside it; then mid-play) and, in a fresh
+ * English context, before play, mid-play, and ended with the missing file's line.
+ */
+async function shoot(page, browser, sessionId) {
+  await shootReply(page, "player-zh");
+  await shootPlaying(page, "player-playing-zh", "播放 evening.wav");
 
   const en = await browser.newContext({
     locale: "en-US",
@@ -244,9 +270,10 @@ async function shoot(page, browser, sessionId) {
   const p = await en.newPage();
   await p.goto(`${BASE}/chat/${sessionId}`);
   await expect(p.getByRole("button", { name: "Play evening.wav" })).toBeVisible();
-  await region(p, "player-en-light.png");
-  await p.evaluate(() => document.documentElement.classList.add("dark"));
-  await p.waitForTimeout(400);
-  await region(p, "player-en-dark.png");
+  await shootReply(p, "player-before-en");
+  await shootPlaying(p, "player-playing-en", "Play evening.wav");
+  await p.locator("[data-reply-files]").last().locator("audio").evaluate((el) => el.load());
+  await expect(p.getByRole("status").filter({ hasText: "Cannot play chime.ogg" })).toBeVisible();
+  await shootReply(p, "player-en");
   await en.close();
 }
