@@ -26,17 +26,19 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
- * The two host tables, generated from this checkout. A table not generated yet (a plugin built
- * before the host packages, as `pnpm -r` may order it) is generated here the way the host's own
- * `gen:ifaces` script does; gen-ifaces writes atomically, so two plugin builds racing to it read
- * a whole file either way.
+ * The two host tables, generated from this checkout. A table not generated yet, or older than a
+ * source file of its package (a plugin built before the host packages, as `pnpm -r` may order
+ * it, or after a pull that changed a host slot), is generated here the way the host's own
+ * `gen:ifaces` script does — a stale table would decide sides, and which web modules carry no
+ * code, against slots that are no longer there. gen-ifaces writes atomically, so two plugin
+ * builds racing to it read a whole file either way.
  */
 export function hostTables(pkgDir = process.cwd()) {
   const out = { plugins: dependencyModules(pkgDir) };
   for (const side of ["server", "web"]) {
     const dir = path.join(ROOT, "packages", side);
     const file = path.join(dir, "src", "ifaces.json");
-    if (!fs.existsSync(file)) {
+    if (!fs.existsSync(file) || newestSource(path.join(dir, "src")) > fs.statSync(file).mtimeMs) {
       execFileSync(
         process.execPath,
         [
@@ -52,6 +54,16 @@ export function hostTables(pkgDir = process.cwd()) {
     out[side] = JSON.parse(fs.readFileSync(file, "utf8"));
   }
   return out;
+}
+
+/** The latest mtime of the TypeScript sources under `dir`. */
+function newestSource(dir) {
+  let newest = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!e.isFile() || !/\.tsx?$/.test(e.name)) continue;
+    newest = Math.max(newest, fs.statSync(path.join(e.parentPath, e.name)).mtimeMs);
+  }
+  return newest;
 }
 
 /**
@@ -94,9 +106,17 @@ function dependencyModules(pkgDir) {
 /**
  * What gen-ifaces writes for a plugin package: every module's `side`, a web module's built
  * `file`, and each module's `source` (what the plugin build takes as the module's entry).
- * Mutates `manifests`; returns the errors.
+ * A web module with no code (codeless below) gets no `file`: nothing of it is built, and the web
+ * app assembles it from its manifest alone. `bodyless` names the module classes declared with an
+ * empty body. Mutates `manifests`; returns the errors.
  */
-export function assignSides(manifests, sources, pluginDecl, hosts = hostTables()) {
+export function assignSides(
+  manifests,
+  sources,
+  pluginDecl,
+  hosts = hostTables(),
+  bodyless = new Set(),
+) {
   const { sides, errors } = decideSides(manifests, hosts, pluginDecl?.replaces ?? []);
   const own = Object.fromEntries(
     Object.keys(manifests)
@@ -107,9 +127,34 @@ export function assignSides(manifests, sources, pluginDecl, hosts = hostTables()
   for (const [name, m] of Object.entries(manifests)) {
     m.side = sides[name];
     if (own[name] !== undefined) m.source = own[name];
-    if (sides[name] === "web") m.file = webFileOf(name);
+    if (sides[name] === "web" && !codeless(m, hosts.web, bodyless)) m.file = webFileOf(name);
   }
   return errors;
+}
+
+/**
+ * Whether a web module is data and nothing else, so the web app need not import any file of it:
+ * its class has an empty body (no field, no `setup`), it requires, provides and holds nothing,
+ * and every slot it contributes to is one of the web app's with no code half. Such a module's
+ * whole effect is its manifest (example-no-evaluation-center's page removal).
+ *
+ * @param {{ name: string, requires?: object, provides?: object, children?: unknown[], contributes?: object }} m
+ * @param {{ modules?: object, ifaces?: object }} web the web app's table
+ * @param {ReadonlySet<string>} bodyless
+ */
+export function codeless(m, web, bodyless) {
+  if (!bodyless.has(m.name)) return false;
+  const empty = (o) => o === undefined || Object.keys(o).length === 0;
+  if (!empty(m.requires) || !empty(m.provides) || (m.children ?? []).length > 0) return false;
+  return Object.keys(m.contributes ?? {}).every((key) => {
+    const split = splitSlotKey(key);
+    if (split === null) return false;
+    const provides = web.modules?.[split.module]?.provides ?? {};
+    const decl = Object.values(provides)
+      .map((k) => web.ifaces?.[k]?.slots?.[split.slot])
+      .find((d) => d !== undefined);
+    return decl !== undefined && decl.code === undefined;
+  });
 }
 
 /** `<module>.<slot>` → its halves; null when malformed. Same rule as core kernel/manifest.ts. */

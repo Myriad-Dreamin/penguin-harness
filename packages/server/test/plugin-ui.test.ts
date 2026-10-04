@@ -119,7 +119,7 @@ describe("plugin ui route", () => {
 
     const body = (await (await admin.get("/api/contributions")).json()) as ContributionsResponse;
     expect(body.webModules.map((p) => p.package)).toEqual(["@acme/pages"]);
-    const url = body.webModules[0]!.modules[0]!.url;
+    const url = body.webModules[0]!.modules[0]!.url!;
     expect(url).toMatch(/^\/api\/plugins\/@acme\/pages\/web\/[0-9a-f]{16}\/Player\.js$/);
     const js = await admin.get(url);
     expect(js.status).toBe(200);

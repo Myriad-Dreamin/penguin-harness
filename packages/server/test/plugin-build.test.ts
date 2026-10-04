@@ -15,6 +15,11 @@
  * - A web module's requirement of a web-app interface, restated in the plugin, takes the app's key
  *   (scripts/lib/host-keys.mjs): by export name among the named module's provisions or the whole
  *   app's, its copy moved under that key; several matches is an error asking for the module.
+ * - A web module that is data only — an empty class contributing to web slots with no code half,
+ *   requiring and providing nothing — gets no built file, and the build emits no browser code
+ *   for it.
+ * - A web stylesheet names its Tailwind prefix; a compiled class outside it, or two plugins with
+ *   one prefix, is an error.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -24,9 +29,14 @@ import * as Kernel from "@prismshadow/penguin-core/kernel/runtime";
 import { moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ManifestTable, ModuleClass } from "@prismshadow/penguin-core/kernel/runtime";
 import { adoptHostKeys } from "../../../scripts/lib/host-keys.mjs";
-import { decideSides, mixedFiles } from "../../../scripts/lib/plugin-sides.mjs";
+import { assignSides, decideSides, mixedFiles } from "../../../scripts/lib/plugin-sides.mjs";
 import type { HostTable } from "../../../scripts/lib/plugin-sides.mjs";
-import { buildPlugin } from "../../../scripts/build-plugin.mjs";
+import {
+  buildPlugin,
+  prefixClashes,
+  stylePrefixOf,
+  unprefixedClasses,
+} from "../../../scripts/build-plugin.mjs";
 import { makeTempRoot } from "./helpers.js";
 
 const hosts: { server: HostTable; web: HostTable } = {
@@ -182,6 +192,86 @@ describe("host interface keys", () => {
   });
 });
 
+describe("a data-only web module", () => {
+  const web = {
+    modules: {
+      ShellModule: { provides: { shell: "web#Shell" } },
+      ChatModule: hosts.web.modules!.ChatModule!,
+    },
+    ifaces: {
+      "web#Shell": { slots: { pageRemovals: { data: {} }, pages: { data: {}, code: {} } } },
+      "web#Chat": { slots: { fileRenderers: { data: {}, code: {} } } },
+    },
+  };
+  const removal = () =>
+    m("Removal", { contributes: { "ShellModule.pageRemovals": [{ id: "r", key: "benchmark" }] } });
+  const sides = (manifests: Record<string, ReturnType<typeof m>>, bodyless: string[]) => {
+    const sources = new Map(Object.keys(manifests).map((n) => [n, `src/${n}.ts`]));
+    const errors = assignSides(
+      manifests,
+      sources,
+      { modules: Object.keys(manifests), replaces: [] },
+      { server: hosts.server, web },
+      new Set(bodyless),
+    );
+    expect(errors).toEqual([]);
+    return manifests as Record<string, { side?: string; file?: string }>;
+  };
+
+  it("gets no built file: an empty class contributing data to a slot with no code half", () => {
+    const out = sides({ Removal: removal() }, ["Removal"]);
+    expect(out.Removal).toMatchObject({ side: "web" });
+    expect(out.Removal!.file).toBeUndefined();
+  });
+
+  it("keeps its file with a body, a requirement, or a contribution to a slot with code", () => {
+    const page = m("Page", { contributes: { "ShellModule.pages": [{ id: "p" }] } });
+    const using = { ...removal(), name: "Using", requires: { l: { iface: "web#Language" } } };
+    const out = sides({ Removal: removal(), Page: page, Using: using }, ["Page", "Using"]);
+    expect(out.Removal!.file).toBe("dist/web/Removal.js");
+    expect(out.Page!.file).toBe("dist/web/Page.js");
+    expect(out.Using!.file).toBe("dist/web/Using.js");
+  });
+});
+
+describe("the web stylesheet's prefix", () => {
+  it("is read off the Tailwind theme import", () => {
+    expect(
+      stylePrefixOf(`@import "tailwindcss/theme.css" layer(theme) reference prefix(mp);\n`),
+    ).toBe("mp");
+    expect(stylePrefixOf(`@import "tailwindcss/theme.css" layer(theme) reference;`)).toBeNull();
+    expect(stylePrefixOf(`@import "tailwindcss";`)).toBeNull();
+  });
+
+  it("finds compiled classes outside the prefix, not the host classes a variant names", () => {
+    const css =
+      ".mp\\:flex{display:flex}.mp\\:p-1\\.5{padding:.375rem}" +
+      ".mp\\:dark\\:text-red:where(.dark,.dark *){color:red}" +
+      "@media (hover:hover){.mp\\:hover\\:x:hover{opacity:.9}}";
+    expect(unprefixedClasses(css, "mp")).toEqual([]);
+    expect(unprefixedClasses(`${css}.hidden{display:none}.mpx{color:red}`, "mp")).toEqual([
+      "hidden",
+      "mpx",
+    ]);
+  });
+
+  it("is unique among the plugins built together", () => {
+    expect(
+      prefixClashes([
+        ["@a/one", "mp"],
+        ["@a/two", "hp"],
+      ]),
+    ).toEqual([]);
+    expect(
+      prefixClashes([
+        ["@a/one", "mp"],
+        ["@a/two", "hp"],
+        ["@a/three", "mp"],
+      ]),
+    ).toEqual(["@a/one and @a/three both use the style prefix 'mp:'"]);
+  });
+});
+
 /** A plugin package as gen-ifaces leaves it: sources and a table with sides decided. */
 async function writePackage(dir: string, player: string): Promise<void> {
   await fs.mkdir(path.join(dir, "src"), { recursive: true });
@@ -300,6 +390,20 @@ describe("the plugin build", () => {
     const view = inst.bind?.p as { lazy: boolean; load: () => Promise<{ default: () => string }> };
     expect(view.lazy).toBe(true);
     expect((await view.load()).default()).toBe("the player");
+  });
+
+  it("emits no browser code for a data-only web module", async () => {
+    const dir = await pkgDir();
+    const table = JSON.parse(await fs.readFile(path.join(dir, "ifaces.json"), "utf8")) as {
+      modules: Record<string, { file?: string }>;
+    };
+    delete table.modules.Player!.file;
+    await fs.writeFile(path.join(dir, "ifaces.json"), JSON.stringify(table));
+    expect(await buildPlugin(dir, { minify: false })).toEqual({ web: ["Player"], server: ["Box"] });
+    await expect(fs.readdir(path.join(dir, "dist", "web"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(await fs.readFile(path.join(dir, "dist", "index.js"), "utf8")).not.toContain("Player");
   });
 
   it("refuses a web module importing a Node builtin", async () => {

@@ -17,7 +17,8 @@
  *    earlier one, is left out here with its problem rather than failing the boot.
  * 3. LOADED: the admitted packages' stylesheets are attached and their module files imported (an
  *    ES module whose default export is the module class, decorated through the app's own kernel
- *    — shared.ts); each class is paired with the manifest it was forwarded with.
+ *    — shared.ts); each class is paired with the manifest it was forwarded with. A module
+ *    forwarded without a file only contributes data and is defined by its manifest alone.
  *
  * The root boots the admitted ones; should that boot still fail, the app boots without any. A
  * package left out is recorded with why (`pluginModuleFailures`, read by the Plugins page) and
@@ -101,6 +102,14 @@ function attachStyles(pkg: string, urls: readonly string[]): Promise<void> {
   ).then(() => undefined);
 }
 
+/**
+ * The definition of a module that only contributes data (the server forwards it without a file,
+ * scripts/lib/plugin-sides.mjs `codeless`): nothing to import, nothing to create.
+ */
+function dataOnlyDef(manifest: ManifestTable[string]): ModuleDef {
+  return { manifest, create: () => ({ api: {} }) };
+}
+
 /** A forwarded package with the table verification checks: its interfaces and its manifests by name. */
 interface Candidate {
   pkg: WebModulePackage;
@@ -174,6 +183,8 @@ async function loadPackage(c: Candidate, load: ImportModule): Promise<PluginModu
     Promise.all(
       c.pkg.modules.map(async ({ manifest, url }) => {
         const name = (manifest as { name: string }).name;
+        // A module forwarded without a file is data only: its manifest is all of it.
+        if (url === undefined) return dataOnlyDef(manifests[name]!);
         const cls = ((await load(url)) as { default?: unknown }).default;
         if (typeof cls !== "function") {
           throw new Error(`${name}: ${url} has no module class as its default export`);
