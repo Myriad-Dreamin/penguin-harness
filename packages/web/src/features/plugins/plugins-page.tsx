@@ -76,6 +76,7 @@ import * as api from "../../api/endpoints";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
+import { pluginModuleFailures } from "../../plugins/assemble";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import {
   useUpdateBadges,
@@ -1094,12 +1095,16 @@ function stateIn(
   view: PluginView,
   selfId: string | undefined,
 ): { state: ModuleState; error?: string } {
+  // A plugin the server runs whose web modules this page left out of its tree is failed here too.
+  const webFailure = pluginModuleFailures().get(listed.specifier);
   const local = (row: InstalledPluginsResponse["plugins"][number]) =>
-    row.active
-      ? { state: "active" as const }
-      : row.error !== undefined
-        ? { state: "failed" as const, error: row.error }
-        : { state: "pending" as const };
+    row.active && row === listed && webFailure !== undefined
+      ? { state: "failed" as const, error: S.plugins.webModulesLeftOut(webFailure) }
+      : row.active
+        ? { state: "active" as const }
+        : row.error !== undefined
+          ? { state: "failed" as const, error: row.error }
+          : { state: "pending" as const };
   if (view.machineId === null)
     return listed.here === false ? { state: "elsewhere" } : local(listed);
   if (view.machineId === selfId) return local(listed);

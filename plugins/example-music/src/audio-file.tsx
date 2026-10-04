@@ -1,5 +1,5 @@
 /**
- * The `audio` file renderer: a linked audio file as a compact player card below the reply
+ * The player: a linked audio file as a compact player card below the reply
  * paragraph that links it (audio-card.tsx draws it). Underneath is a plain `<audio>` without
  * controls — the browser's own player chrome differs per browser and ignores the theme — and the
  * card follows the element's media events, so the element stays the one source of truth for
@@ -16,19 +16,21 @@
  */
 import { useRef, useState } from "react";
 import type { SyntheticEvent } from "react";
-import type { FileRendererProps } from "../../lib/file-renderers";
 import { loadedEnd } from "./audio-clock";
 import { AudioCard, AudioFailed } from "./audio-card";
 import type { AudioPlayback } from "./audio-card";
+import type { FileRendererProps } from "./file-renderer";
+import { stringsFor } from "./strings";
 
 const IDLE: AudioPlayback = { playing: false, waiting: false, time: 0, duration: null, loaded: 0 };
 
-export function AudioFile({ url, name }: FileRendererProps) {
+export default function AudioFile({ url, name, locale }: FileRendererProps) {
+  const strings = stringsFor(locale);
   const ref = useRef<HTMLAudioElement>(null);
   const [failed, setFailed] = useState(false);
   const [playback, setPlayback] = useState<AudioPlayback>(IDLE);
 
-  if (failed) return <AudioFailed name={name} />;
+  if (failed) return <AudioFailed name={name} strings={strings} />;
 
   const patch = (next: Partial<AudioPlayback>) => setPlayback((p) => ({ ...p, ...next }));
   // Where the element is, read from it rather than tracked beside it.
@@ -64,7 +66,7 @@ export function AudioFile({ url, name }: FileRendererProps) {
   };
 
   return (
-    <AudioCard name={name} playback={playback} onToggle={toggle} onSeek={seek}>
+    <AudioCard name={name} strings={strings} playback={playback} onToggle={toggle} onSeek={seek}>
       <audio
         ref={ref}
         preload="none"

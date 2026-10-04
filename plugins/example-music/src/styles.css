@@ -1,0 +1,16 @@
+/*
+ * The player's stylesheet: the utilities its components use, compiled by Tailwind with the web
+ * app's theme as a REFERENCE — no preflight, no base rules, no theme variables of its own. Each
+ * utility reads the host's tokens (`bg-surface` → `var(--ui-surface)`, `rounded-xl` →
+ * `var(--radius-xl)`), so the player follows the host's theme, mode and accent, and the sheet
+ * holds nothing that could restyle the page around it. The web app attaches it when it loads the
+ * plugin (scripts/build-plugin.mjs emits it as dist/web/styles.css).
+ *
+ * Limit: a utility whose theme variable the host's own sheet never emits (Tailwind writes only the
+ * variables its utilities use) resolves to nothing. Everything here is a token the host uses too.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) reference;
+@import "@prismshadow/penguin-ui/theme.css" reference;
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "./";

@@ -6,14 +6,15 @@
  * imports the chat page's draft files.
  *
  * `Chat` carries the page's slots: `sessionTabs`, tabs beside the conversation that another module
- * draws (the Agent's workflow pages), so the page names none of them; and `fileRenderers`, the
- * named components a server's file renderer rule may pick to draw a Workspace file below the reply
- * paragraph that links it (lib/file-renderers.ts).
+ * draws (the Agent's workflow pages), so the page names none of them; and `fileRenderers`, which
+ * draw a kind of Workspace file below the reply paragraph that links it — the rule (which
+ * extensions) and the component in one contribution (reply-files.ts joins them with a reply's
+ * links). A plugin's web module contributes here too (the music example's player); its component
+ * may be lazy, and is drawn inside a Suspense boundary.
  */
 import type { ComponentType } from "react";
 import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
-import type { FileRenderer } from "../../lib/file-renderers";
 
 /** One parked draft as a list shows it: unsent new-chat text set aside for later. */
 export interface ParkedDraft {
@@ -63,15 +64,29 @@ export interface SessionTabProps {
  */
 export type SessionTab = ComponentType<SessionTabProps>;
 
-/** The data half of a `fileRenderers` contribution. */
-export interface FileRendererData {
-  /** The name a rule's `builtin` renderer names it by. */
+/** What a file renderer is handed. */
+export interface FileRendererProps {
+  /** Where the file is fetched from: the open conversation's Workspace file URL. */
+  url: string;
+  /** The file's Workspace-relative path. */
+  path: string;
+  /** Its last path segment. */
   name: string;
+  /** The interface language, for the renderer's own words. */
+  locale: "zh" | "en";
+}
+
+export type FileRenderer = ComponentType<FileRendererProps>;
+
+/** The data half of a `fileRenderers` contribution: the files it draws. */
+export interface FileRendererData {
+  /** Extensions without the dot, compared case-insensitively (`mp3`, `wav`). */
+  extensions: string[];
 }
 
 export interface ChatSlots {
   /** A strip of tabs above the conversation. */
   sessionTabs: Slot<SessionTabData, SessionTab>;
-  /** A named file renderer. */
+  /** How a kind of Workspace file is drawn below the reply paragraph that links it. */
   fileRenderers: Slot<FileRendererData, FileRenderer>;
 }

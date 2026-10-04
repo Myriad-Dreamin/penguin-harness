@@ -18,11 +18,6 @@
  * nothing to draw it with. A compiled page wins over a contributed one
  * with the same key or path: a plugin adds pages here, it does not shadow the app's own.
  *
- * The same answer carries file renderer rules: which Workspace file extensions take which of this
- * build's named file renderers (lib/file-renderers.ts). Only `builtin` renderers are read; a file
- * renderer drawn in an iframe has no contributor yet and no agreed size inside a reply, so such a
- * rule is skipped like any malformed one.
- *
  * The answer may also remove pages by key, the app's own or contributed ones alike: such a page
  * leaves the table with the routes under its path and the pages under it (removedPagesOf), so it
  * has no nav row and its paths fall to the catch-all, company mode's `home` page. Neither that
@@ -32,8 +27,13 @@
  *
  * Safe mode (rescue/safe-mode.ts) is the one switch over all of it: while it is on, the store is
  * told nobody is signed in, so nothing is asked and the table is the compiled one — nothing
- * removed, no company-mode page, no session surface, no quick start, no file renderer rule, and
- * a refresh asks nothing; leaving it asks again.
+ * removed, no company-mode page, no session surface, no quick start, and a refresh asks nothing;
+ * leaving it asks again.
+ *
+ * The answer also forwards the enabled plugins' web modules (`webModules`); those are not read
+ * here but by the boot, which assembles them into the module tree before the first render
+ * (plugins/forwarded.ts, whose answer is this store's first one, so the boot's request is not
+ * repeated).
  */
 import {
   createContext,
@@ -50,8 +50,7 @@ import type {
   SessionSurfaceSummary,
 } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
-import { FileRendererRulesContext } from "../lib/file-renderers";
-import type { FileRendererRule } from "../lib/file-renderers";
+import { assembleAfterSignIn, takeBootContributions } from "../plugins/forwarded";
 import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -218,34 +217,6 @@ export function contributedPagesOf(
 }
 
 /**
- * The answer's file renderer rules this build can read, in the server's order: extensions are
- * strings, dropped of a leading dot and lowercased (empty ones dropped), and the renderer is a
- * `builtin` name. Anything else — no extensions left, an iframe renderer, a missing field, an
- * answer from a server that sends no such list — is skipped. Whether the name is in this build's
- * registry is the conversation's question, not this one's.
- */
-export function fileRendererRulesOf(
-  answer: ContributionsResponse | null,
-): readonly FileRendererRule[] {
-  const entries: unknown = answer?.fileRenderers;
-  if (!Array.isArray(entries)) return NO_RULES;
-  const rules: FileRendererRule[] = [];
-  for (const entry of entries as Array<Record<string, unknown> | null>) {
-    if (entry === null || typeof entry !== "object" || typeof entry.id !== "string") continue;
-    const builtin = (entry.renderer as { builtin?: unknown } | undefined)?.builtin;
-    if (typeof builtin !== "string" || builtin === "" || !Array.isArray(entry.extensions)) continue;
-    const extensions = (entry.extensions as unknown[])
-      .filter((e): e is string => typeof e === "string")
-      .map((e) => e.replace(/^\./, "").toLowerCase())
-      .filter((e) => e !== "");
-    if (extensions.length > 0) rules.push({ id: entry.id, extensions, builtin });
-  }
-  return rules;
-}
-
-const NO_RULES: readonly FileRendererRule[] = [];
-
-/**
  * The keys of the pages the answer removes, in the server's order: an entry is read when its key
  * is a non-empty string; anything else, and an answer that sends no such list, is skipped.
  */
@@ -290,15 +261,18 @@ interface ShellPagesValue extends ContributionsValue {
 
 const PagesContext = createContext<ShellPagesValue | null>(null);
 
-/**
- * Holds the signed-in user's contributions — the merged page table and the file renderer rules —
- * for everything under the router.
- */
+/** Holds the signed-in user's contributions — the merged page table — for everything under the router. */
 export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const { pages: compiled, pageRenderers } = shellDeps.useDeps();
   const signedIn = useAuth().user?.userId ?? null;
   const userId = useSafeMode() ? null : signedIn;
-  const [store] = useState(() => createContributionsStore(api.getContributions));
+  const [store] = useState(() =>
+    // The boot's answer first (plugins/forwarded.ts), once; every later ask goes to the server.
+    createContributionsStore(() => {
+      const primed = takeBootContributions();
+      return primed !== null ? Promise.resolve(primed) : api.getContributions();
+    }),
+  );
   useEffect(() => store.setUser(userId), [store, userId]);
   const state = useSyncExternalStore(store.subscribe, store.current, store.current);
   // Until the effect above has told the store about a new user, the state is the last user's:
@@ -317,14 +291,9 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
     }),
     [compiled, answer, pageRenderers, pending, store],
   );
-  const rules = useMemo(() => fileRendererRulesOf(answer), [answer]);
-  return (
-    <PagesContext.Provider value={value}>
-      <FileRendererRulesContext.Provider value={rules}>
-        {children}
-      </FileRendererRulesContext.Provider>
-    </PagesContext.Provider>
-  );
+  // A sign-in after a signed-out boot: the tree was assembled without the plugins' web modules.
+  useEffect(() => assembleAfterSignIn(answer), [answer]);
+  return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
 }
 
 function usePagesValue(): ShellPagesValue {

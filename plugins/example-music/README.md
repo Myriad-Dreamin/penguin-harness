@@ -1,12 +1,20 @@
 # Example: an Agent that sends music
 
-The smallest plugin that teaches the PenguinHarness web app to draw a kind of Workspace file, plus
-a Skill that teaches the Agent to produce one. It demonstrates:
+The smallest plugin that teaches the PenguinHarness web app to draw a kind of Workspace file with
+browser code of its own, plus a Skill that teaches the Agent to produce one. It demonstrates:
 
-- **A file renderer as data.** The plugin's one module contributes to the server's
-  `WebModule.fileRenderers` slot: files ending in `mp3`, `wav`, `ogg` or `m4a` take the web app's
-  builtin `audio` renderer. The web app reads it from `GET /api/contributions`; no browser code is
-  loaded into the app.
+- **A web module.** The plugin's one module (`src/module.ts`) contributes to the web app's
+  `ChatModule.fileRenderers` slot, so the build places it on the web side: gen-ifaces writes
+  `side: "web"` and its built file into `ifaces.json`, and `scripts/build-plugin.mjs` emits
+  `dist/web/ExampleMusic.js` for the browser, with React, the kernel and the UI package left to the
+  web app's own instances. The server only forwards it (`GET /api/contributions`, `webModules`);
+  the web app checks it against its module tree and boots it with its own modules.
+- **One contribution, both halves.** The rule — files ending in `mp3`, `wav`, `ogg` or `m4a` — is
+  the contribution's data, in the manifest; the player is its code, a lazy component, so its chunk
+  is fetched the first time a reply links such a file.
+- **Its own stylesheet.** `src/styles.css` compiles the player's Tailwind utilities against the web
+  app's theme as a reference (no preflight, no variables of its own), so the card reads the host's
+  tokens and follows its theme and mode. The web app attaches it when it loads the module.
 - **The Markdown is not touched.** When a paragraph of a reply links such a file in the
   Workspace — `[Evening Theme](music/tune.wav)` — the link stays a link (clicking it opens the file
   in the Files panel) and a player appears directly below that paragraph, once per file. A link
@@ -35,7 +43,7 @@ PENGUIN_PLUGIN_EXAMPLES=1 node scripts/build-plugins.mjs --out packages/server/p
 ```
 
 What a Project lists is loaded for the whole server. Reload the web app after enabling it: the app
-reads contributions once per sign-in. The web e2e suite enables it this way
+assembles plugin web modules once per page load. In safe mode it assembles none. The web e2e suite enables it this way
 (`packages/web/e2e/run.sh`).
 
 ## Install the Skill (a separate, manual step)

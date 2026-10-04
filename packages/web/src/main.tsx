@@ -3,8 +3,9 @@
  * responsible for rendering and interaction).
  *
  * Two things happen before the mount. The module tree boots (web-root.ts): the router's pages
- * are its contributions, so there is nothing to mount until it has — it does no network,
- * takes milliseconds, and runs alongside the reconcile below. And the browser's persisted UI
+ * are its contributions, so there is nothing to mount until it has — it takes milliseconds once
+ * the server has said which plugin web modules join it (one bounded request, beside the two
+ * below), and runs alongside the reconcile below. And the browser's persisted UI
  * state is reconciled against the data root the server is actually serving
  * (lib/install-scope.ts). The reconcile has to be HERE and not in a provider, because the
  * state it may clear is read from `useState` initializers scattered through the tree — the
@@ -32,6 +33,7 @@ import { App } from "./app";
 import { bootInstallScope, watchInstallScope } from "./lib/install-scope";
 import { prefetchMe } from "./state/auth";
 import { bootWeb } from "./web-root";
+import { fetchBootContributions, reloadOnSafeModeChange } from "./plugins/forwarded";
 import { bootFailedRoot } from "./rescue/rescue-panel";
 import { adoptSafeModeParam } from "./rescue/safe-mode";
 import type { AppRouterProps } from "./shell/router";
@@ -74,9 +76,17 @@ prefetchMe();
 // (the manifests are checked at typecheck), but a hot-updated build can still carry one: the
 // app then mounts the rescue panel in the tree's place, with the command palette beside it, so
 // the harness can be rolled back.
+//
+// The enabled plugins' web modules are part of the tree, so the tree boots once the server has
+// said which there are (plugins/forwarded.ts: asked beside the two above, bounded, nothing in
+// safe mode).
+const webModules = fetchBootContributions().then((answer) => answer?.webModules ?? []);
 void Promise.all([
   bootInstallScope().catch(() => "mount" as const),
-  bootWeb().catch((error: unknown) => bootFailedRoot(error)),
+  webModules.then((packages) => {
+    reloadOnSafeModeChange(packages.length > 0);
+    return bootWeb(packages).catch((error: unknown) => bootFailedRoot(error));
+  }),
 ]).then(([action, Root]) => {
   if (action === "reload") location.reload();
   else mount(Root);

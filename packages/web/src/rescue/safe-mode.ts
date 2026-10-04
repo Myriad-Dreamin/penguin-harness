@@ -1,9 +1,11 @@
 /**
  * Safe mode: the app runs without anything the server contributes, so a contribution that
- * breaks the UI can be stepped around and the harness rolled back. Three places read it: the
- * contributions consumer (shell/contributions.tsx), the list cache (lib/list-cache.ts), which
- * draws nothing in safe mode so a bad cached list cannot break the boot either, and the
- * verified-plugin cache (lib/verified-cache.ts), which it bypasses for the same reason. The
+ * breaks the UI can be stepped around and the harness rolled back. Four places read it: the
+ * contributions consumer (shell/contributions.tsx), the boot, which assembles no plugin web
+ * module (plugins/forwarded.ts — switching it then reloads the page), the list cache
+ * (lib/list-cache.ts), which draws nothing in safe mode so a bad cached list cannot break the
+ * boot either, and the verified-plugin cache (lib/verified-cache.ts), which it bypasses for the
+ * same reason. The
  * rescue panel enters it, the marker and the command palette leave it.
  *
  * The switch lives in sessionStorage, not in the URL. An in-app navigation drops the query
@@ -53,6 +55,11 @@ export function setSafeMode(next: boolean): void {
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** Calls `listener` with the new value whenever safe mode changes; returns the unsubscribe. */
+export function onSafeModeChange(listener: (on: boolean) => void): () => void {
+  return subscribe(() => listener(isSafeMode()));
 }
 
 /** Whether safe mode is on, redrawn when it changes. */

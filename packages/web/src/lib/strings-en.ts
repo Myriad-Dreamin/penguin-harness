@@ -2367,6 +2367,7 @@ export const en: Strings = {
     /** The Project-level install: the plugin is listed, and running unless the row says otherwise. */
     deploymentInstalledToast: (name: string) => `Installed ${name}`,
     /** Listed, but the process could not load it: the reason, not a success. */
+    webModulesLeftOut: (reason: string) => `Loaded, but its web modules were left out of this page: ${reason}`,
     deploymentFailedToast: (name: string, reason: string) => `${name} failed to load: ${reason}`,
     applyConfirmInstall: (name: string) => `Install ${name}?`,
     applyConfirmRemove: (name: string) => `Remove ${name}?`,
@@ -3878,13 +3879,6 @@ Scenarios:
 
   files: {
     title: "Files",
-    audioPlay: (name: string) => `Play ${name}`,
-    audioPause: (name: string) => `Pause ${name}`,
-    audioSeek: (name: string) => `Position in ${name}`,
-    audioPosition: (elapsed: string, total: string) => `${elapsed} of ${total}`,
-    audioLoading: (name: string) => `Loading ${name}`,
-    audioUnavailable: (name: string) =>
-      `Cannot play ${name}: the file is missing or its format is not supported.`,
     upload: "Upload",
     download: "Download",
     /** Desktop shell's own window only: opens the previewed file's directory in the OS file manager. */
