@@ -18,6 +18,7 @@ import { ProjectProvider } from "../state/project";
 import { SessionsProvider } from "../state/sessions";
 import { AppLayout } from "./app-layout";
 import { BootPending } from "../components/ui/boot-pending";
+import { Deferred } from "../components/ui/deferred";
 import { LoginPage } from "../pages/login";
 import { shellDeps } from "./deps";
 import { ShellPagesProvider, useShellPages, useShellPagesPending } from "./contributions";
@@ -101,7 +102,9 @@ function RouteTree() {
             path={path}
             element={
               <RequireAuthBare>
-                <Component />
+                <Deferred>
+                  <Component />
+                </Deferred>
               </RequireAuthBare>
             }
           />

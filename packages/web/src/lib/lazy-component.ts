@@ -1,0 +1,83 @@
+/**
+ * A component whose code loads on first render instead of with the entry bundle: what a module
+ * binds to a slot whose code half is a plain component (a page, a dock panel, a session tab, a
+ * sidebar section's block), so the feature behind it becomes its own chunk.
+ *
+ *     @Bind("agents.list") list = lazyComponent(() => import("./agents-page"), "AgentsPage");
+ *
+ * The kernel never looks inside the code half, so nothing upstream of the binding changes; what
+ * the slot's owner must do is render the component under a `<Deferred>` boundary
+ * (components/ui/deferred.tsx), which shows the quiet pending state while the chunk is in flight
+ * and a retry when it fails.
+ *
+ * Not `React.lazy`, for two reasons. A `React.lazy` that rejected once stays rejected for the
+ * life of the page, so a chunk lost to a dropped connection could never be retried short of a
+ * reload; here a failed load forgets its promise and the next render (the boundary's retry)
+ * asks again. And it exposes `preload()`, which the nav calls on hover and focus (shell/sidebar/
+ * router-link.tsx), so the click finds the chunk already there. Once loaded, the component
+ * renders the target directly, with no suspension, on every later mount.
+ */
+import { createElement, use } from "react";
+import type { ComponentProps, ComponentType, FunctionComponent } from "react";
+
+/** A deferred component: render it under a `<Deferred>` boundary; `preload()` starts its load early. */
+export type LazyComponent<P> = FunctionComponent<P> & { preload(): Promise<void> };
+
+/**
+ * The failure a deferred component throws when its chunk does not arrive. `<Deferred>` catches
+ * only this one and offers a retry; any other render error goes on to the app's own boundary.
+ */
+export class ChunkLoadError extends Error {
+  constructor(what: string, cause: unknown) {
+    super(`could not load ${what}`, { cause });
+    this.name = "ChunkLoadError";
+  }
+}
+
+/** Whether an error is a deferred component's failed load. */
+export function isChunkLoadError(error: unknown): error is ChunkLoadError {
+  return error instanceof ChunkLoadError;
+}
+
+/**
+ * The named export `name` of the module `load` imports, as a deferred component. `load` must be
+ * an `import()` of a file in the binding module's own directory (test/module-boundaries.test.ts).
+ */
+export function lazyComponent<M extends Record<K, ComponentType<never>>, K extends keyof M & string>(
+  load: () => Promise<M>,
+  name: K,
+): LazyComponent<ComponentProps<M[K]>> {
+  type C = ComponentType<ComponentProps<M[K]>>;
+  let loaded: C | null = null;
+  let pending: Promise<C> | null = null;
+  const start = (): Promise<C> =>
+    (pending ??= load().then(
+      (module) => {
+        const target = module[name] as unknown as C | undefined;
+        if (target === undefined) throw new ChunkLoadError(name, new Error(`no export ${name}`));
+        loaded = target;
+        return target;
+      },
+      (error: unknown) => {
+        // Forgotten, so the boundary's retry starts a fresh load rather than rethrowing this one.
+        pending = null;
+        throw new ChunkLoadError(name, error);
+      },
+    ));
+  function Lazy(props: ComponentProps<M[K]>) {
+    return createElement(loaded ?? use(start()), props);
+  }
+  Lazy.displayName = `Lazy(${name})`;
+  Lazy.preload = () =>
+    start().then(
+      () => undefined,
+      () => undefined,
+    );
+  return Lazy;
+}
+
+/** Starts loading a component's code if it is a deferred one; anything else is already loaded. */
+export function preloadComponent(component: unknown): void {
+  const preload = (component as { preload?: unknown } | null)?.preload;
+  if (typeof preload === "function") void (preload as () => Promise<void>)();
+}

@@ -16,6 +16,7 @@ import {
   UserAvatar,
 } from "@prismshadow/penguin-ui";
 import { meAvatarUrl } from "../../api/endpoints";
+import { Deferred } from "../../components/ui/deferred";
 import { S } from "../../lib/strings";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
@@ -223,7 +224,9 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
           to the organization's all-hands channel: an organization's conversations are its
           channels, and the one everyone is in is where a person goes back to. */}
       {RailTop !== undefined ? (
-        <RailTop />
+        <Deferred fallback={null}>
+          <RailTop />
+        </Deferred>
       ) : (
         <RailItem
           label={S.nav.lastConversation}
@@ -271,7 +274,11 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
       {/* The current mode's sections in their rail form, under the pages the way they sit
           under the nav in the pinned sidebar. */}
       {sectionsIn(sections, currentKey, "body").map(({ id, section: { Rail: SectionRail } }) =>
-        SectionRail === undefined ? null : <SectionRail key={id} />,
+        SectionRail === undefined ? null : (
+          <Deferred key={id} fallback={null}>
+            <SectionRail />
+          </Deferred>
+        ),
       )}
     </Rail>
   );
