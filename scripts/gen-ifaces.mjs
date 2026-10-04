@@ -50,7 +50,8 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
-import { assignSides } from "./lib/plugin-sides.mjs";
+import { adoptHostKeys } from "./lib/host-keys.mjs";
+import { assignSides, hostTables } from "./lib/plugin-sides.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name) => {
@@ -1261,8 +1262,13 @@ for (const project of projects) {
 }
 
 // A plugin package's modules each run on one side, decided here from their wiring
-// (lib/plugin-sides.mjs) and written into the table with the file the plugin build emits.
-if (pluginDecl !== null) errors.push(...assignSides(manifests, moduleSources, pluginDecl));
+// (lib/plugin-sides.mjs) and written into the table with the file the plugin build emits; a web
+// module's requirements of the web app's interfaces take the app's keys (lib/host-keys.mjs).
+if (pluginDecl !== null) {
+  const hosts = hostTables();
+  errors.push(...assignSides(manifests, moduleSources, pluginDecl, hosts));
+  errors.push(...adoptHostKeys(manifests, table, hosts.web));
+}
 
 for (const w of warnings) console.warn(`gen-ifaces: warning: ${w}`);
 // A node depends on mechanisms, never on implementations: a `@Use` field typed by a

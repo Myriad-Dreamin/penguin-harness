@@ -10,15 +10,20 @@
  *   module, with a lazy component in its own chunk; the browser module carries no copy of React,
  *   the kernel or the UI package — imported with a page's shared instances in place, it decorates
  *   through and renders with those very instances.
- * - A web module importing a Node builtin, or a package that is not shared, fails the build.
+ * - A web module importing a Node builtin, a package that is not shared, or the full kernel (the
+ *   page shares only its arktype-free runtime entry) fails the build.
+ * - A web module's requirement of a web-app interface, restated in the plugin, takes the app's key
+ *   (scripts/lib/host-keys.mjs): by export name among the named module's provisions or the whole
+ *   app's, its copy moved under that key; several matches is an error asking for the module.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import * as Kernel from "@prismshadow/penguin-core/kernel";
-import { moduleDefOf } from "@prismshadow/penguin-core/kernel";
-import type { ManifestTable, ModuleClass } from "@prismshadow/penguin-core/kernel";
+import * as Kernel from "@prismshadow/penguin-core/kernel/runtime";
+import { moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
+import type { ManifestTable, ModuleClass } from "@prismshadow/penguin-core/kernel/runtime";
+import { adoptHostKeys } from "../../../scripts/lib/host-keys.mjs";
 import { decideSides, mixedFiles } from "../../../scripts/lib/plugin-sides.mjs";
 import type { HostTable } from "../../../scripts/lib/plugin-sides.mjs";
 import { buildPlugin } from "../../../scripts/build-plugin.mjs";
@@ -131,6 +136,52 @@ describe("the side decision", () => {
   });
 });
 
+describe("host interface keys", () => {
+  const host = {
+    modules: {
+      ChatModule: { provides: { chat: "web#Chat", drafts: "web#ChatDrafts" } },
+      DockModule: { provides: { dock: "web#Dock" } },
+      OtherModule: { provides: { drafts: "other#ChatDrafts" } },
+    },
+    ifaces: { "web#Chat": {}, "web#ChatDrafts": {}, "web#Dock": {}, "other#ChatDrafts": {} },
+  };
+  const COPY = { name: "ChatDrafts", methods: {}, slots: {} };
+  const web = <R extends Record<string, { iface: string; from?: string }>>(requires: R) => ({
+    Probe: { name: "Probe", side: "web", provides: {} as Record<string, string>, requires },
+  });
+
+  it("re-keys a requirement to the named module's interface of the same name, copying it there", () => {
+    const manifests = web({ drafts: { iface: "@acme/p#ChatDrafts", from: "ChatModule" } });
+    const ifaces: Record<string, unknown> = { "@acme/p#ChatDrafts": COPY };
+    expect(adoptHostKeys(manifests, ifaces, host)).toEqual([]);
+    expect(manifests.Probe.requires.drafts.iface).toBe("web#ChatDrafts");
+    expect(ifaces["web#ChatDrafts"]).toBe(COPY);
+  });
+
+  it("takes a named module's one provision, and matches by name across the app when none is named", () => {
+    const named = web({ dock: { iface: "@acme/p#MyDock", from: "DockModule" } });
+    expect(adoptHostKeys(named, { "@acme/p#MyDock": COPY }, host)).toEqual([]);
+    expect(named.Probe.requires.dock.iface).toBe("web#Dock");
+    const unnamed = web({ chat: { iface: "@acme/p#Chat" } });
+    expect(adoptHostKeys(unnamed, { "@acme/p#Chat": COPY }, host)).toEqual([]);
+    expect(unnamed.Probe.requires.chat.iface).toBe("web#Chat");
+  });
+
+  it("refuses an ambiguous name, and a named module without it; leaves an unmatched one", () => {
+    const ambiguous = web({ drafts: { iface: "@acme/p#ChatDrafts" } });
+    expect(adoptHostKeys(ambiguous, { "@acme/p#ChatDrafts": COPY }, host)).toEqual([
+      expect.stringMatching(/several interfaces named 'ChatDrafts'.*@Use\("<Module>"\)/),
+    ]);
+    const missing = web({ x: { iface: "@acme/p#Nope", from: "ChatModule" } });
+    expect(adoptHostKeys(missing, { "@acme/p#Nope": COPY }, host)).toEqual([
+      expect.stringMatching(/'ChatModule' provides no interface named 'Nope'/),
+    ]);
+    const unmatched = web({ x: { iface: "@acme/p#Nope" } });
+    expect(adoptHostKeys(unmatched, { "@acme/p#Nope": COPY }, host)).toEqual([]);
+    expect(unmatched.Probe.requires.x.iface).toBe("@acme/p#Nope");
+  });
+});
+
 /** A plugin package as gen-ifaces leaves it: sources and a table with sides decided. */
 async function writePackage(dir: string, player: string): Promise<void> {
   await fs.mkdir(path.join(dir, "src"), { recursive: true });
@@ -227,7 +278,7 @@ describe("the plugin build", () => {
     const react = { lazy: (load: () => unknown) => ({ ...lazyMarker, load }) };
     (globalThis as Record<string, unknown>).__penguinShared = Object.freeze({
       react,
-      "@prismshadow/penguin-core/kernel": Kernel,
+      "@prismshadow/penguin-core/kernel/runtime": Kernel,
     });
     const mod = (await import(pathToFileURL(path.join(dir, "dist", "web", "Player.js")).href)) as {
       default: ModuleClass;
@@ -255,6 +306,19 @@ describe("the plugin build", () => {
     const dir = await pkgDir(`import fs from "node:fs";\n${PLAYER}\nexport const x = fs;\n`);
     await expect(buildPlugin(dir)).rejects.toMatchObject({
       errors: [expect.objectContaining({ text: expect.stringMatching(/Node builtin 'node:fs'/) })],
+    });
+  });
+
+  it("refuses a web module importing the full kernel", async () => {
+    const dir = await pkgDir(
+      `import { checkTree } from "@prismshadow/penguin-core/kernel";\n${PLAYER}\nexport const x = checkTree;\n`,
+    );
+    await expect(buildPlugin(dir)).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({
+          text: expect.stringMatching(/'@prismshadow\/penguin-core\/kernel' is not shared/),
+        }),
+      ],
     });
   });
 

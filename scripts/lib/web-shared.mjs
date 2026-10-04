@@ -8,8 +8,12 @@
  * host's object: esbuild reads named imports off a CommonJS module by property, so the stub needs
  * no export list and stays correct as the host's packages grow.
  *
- * `@prismshadow/penguin-core/plugin` is the decorators' public path for plugins; on the web side
- * it is served by the kernel, which exports the same decorators.
+ * The kernel shared is its arktype-free runtime entry, the one the page boots through (one
+ * decorator state; a plugin module never pulls arktype onto the page). `@prismshadow/penguin-core/plugin`
+ * is the decorators' public path for plugins; on the web side it is served by that entry, which
+ * exports the same decorators. The full kernel (`@prismshadow/penguin-core/kernel`) is not
+ * shared: what a web module may need of the kernel at run time is in the runtime entry, and
+ * checking belongs to the page's verification, not to a plugin.
  */
 
 export const SHARED_GLOBAL = "__penguinShared";
@@ -18,8 +22,8 @@ export const SHARED_GLOBAL = "__penguinShared";
 export const SHARED = {
   react: "react",
   "react/jsx-runtime": "react/jsx-runtime",
-  "@prismshadow/penguin-core/kernel": "@prismshadow/penguin-core/kernel",
-  "@prismshadow/penguin-core/plugin": "@prismshadow/penguin-core/kernel",
+  "@prismshadow/penguin-core/kernel/runtime": "@prismshadow/penguin-core/kernel/runtime",
+  "@prismshadow/penguin-core/plugin": "@prismshadow/penguin-core/kernel/runtime",
   "@prismshadow/penguin-ui": "@prismshadow/penguin-ui",
 };
 
