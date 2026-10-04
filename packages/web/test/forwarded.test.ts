@@ -7,6 +7,7 @@
  * - With a cached list the boot answers at once, before the request does; an answer with the
  *   same list changes nothing, another rewrites the cache and reloads once — not again within
  *   the guard, so a list that never settles cannot loop.
+ * - A cached list whose module is data only (no URL) is a list to boot from.
  * - A boot with no plugins (an empty cached list) waits on nothing.
  * - A signed-out boot (401) that assembled a cached list reloads once signed in.
  * - Safe mode asks and reads nothing; logout drops the cached list; junk is no cache.
@@ -96,6 +97,13 @@ describe("the boot's web module list", () => {
     await again.bootWebModules();
     again.reconcileWebModules(answerOf([music]), "u");
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("boots at once from a cached list whose module is data only (no URL)", async () => {
+    const removal: WebModulePackage = { ...music, modules: [{ manifest: { name: "Removal" } }] };
+    cache("u", [removal]);
+    const f = await load();
+    expect(await f.bootWebModules()).toEqual([removal]);
   });
 
   it("with no plugins, waits on nothing", async () => {

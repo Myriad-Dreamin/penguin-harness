@@ -260,7 +260,10 @@ export function writeOrganizationCache(
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((v) => typeof v === "string");
 
-/** A package as the boot reads it: names, the table's two maps, module URLs and stylesheets. */
+/**
+ * A package as the boot reads it: names, the table's two maps, module URLs (none for a module
+ * that is data only) and stylesheets.
+ */
 function isWebModulePackage(value: unknown): value is WebModulePackage {
   if (!isRecord(value) || typeof value.package !== "string") return false;
   const { ifaces, modules, styles } = value;
@@ -270,7 +273,8 @@ function isWebModulePackage(value: unknown): value is WebModulePackage {
     isRecord(ifaces.types) &&
     Array.isArray(modules) &&
     modules.every(
-      (m: unknown) => isRecord(m) && isRecord(m.manifest) && typeof m.url === "string",
+      (m: unknown) =>
+        isRecord(m) && isRecord(m.manifest) && (m.url === undefined || typeof m.url === "string"),
     ) &&
     isStringArray(styles)
   );
