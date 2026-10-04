@@ -4,9 +4,9 @@
  * Declared here, and only here — the app's own modules import them from this file too — so a
  * plugin's types are the app's, not a copy kept in step by hand.
  *
- * A plugin imports this file for its TYPES only (`import type`), through a path its tsconfig maps
- * (`@prismshadow/penguin-web/plugin-types`, see plugins/example-music/tsconfig.json): the web app
- * is not a package a plugin depends on at run time, and its build refuses a value import of it
+ * A plugin imports this file for its TYPES only (`import type`), as the web package's types-only
+ * export `@prismshadow/penguin-web/plugin-types` (a devDependency of the plugin): the web app is
+ * not a package a plugin depends on at run time, and its build refuses a value import of it
  * (scripts/lib/web-shared.mjs). So this file imports nothing but the kernel's `Interface` marker,
  * which every plugin already has: a plugin's typecheck reads it, and nothing it would pull in.
  *
@@ -14,8 +14,8 @@
  * interface of the app is), and so is a plugin's requirement of it: the plugin's tree wires to
  * the providing module by that exact key, with no `from` and no copy of the interface.
  *
- * TODO(web-plugin-types): a plugin outside this repository has no path to map; publish this
- * file as a types-only package once the first external web plugin needs it.
+ * TODO(web-plugin-types): a plugin outside this repository cannot install the web package;
+ * publish this file as a types-only package once the first external web plugin needs it.
  */
 import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 
