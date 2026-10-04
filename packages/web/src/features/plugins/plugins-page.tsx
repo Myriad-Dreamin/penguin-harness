@@ -1880,9 +1880,11 @@ export function ModuleRow({
           {stateText}
         </span>
       </p>
+      {/* Wrapped, not cut to one line: the reason is what the row is for; a long one is held to
+          three lines, the tooltip carrying all of it. */}
       {state === "failed" && error !== undefined && (
         <p
-          className={`mt-1 truncate text-xs ${toneInk.danger}`}
+          className={`mt-1 line-clamp-3 text-xs break-words ${toneInk.danger}`}
           data-tooltip={error}
           data-tooltip-content="text"
         >

@@ -299,6 +299,41 @@ describe("plugin web modules in the tree", () => {
     expect(created).toEqual(["MusicPlugin"]);
   });
 
+  it("takes a left-out package's stylesheets away with it", async () => {
+    const head: Array<{ dataset: Record<string, string>; remove(): void }> = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const link = {
+          dataset: {} as Record<string, string>,
+          onload: null as null | (() => void),
+          onerror: null as null | (() => void),
+          remove: () => head.splice(head.indexOf(link), 1),
+        };
+        return link;
+      },
+      head: {
+        appendChild: (link: (typeof head)[number] & { onload: () => void }) => {
+          head.push(link);
+          link.onload();
+        },
+      },
+      querySelectorAll: () => [...head],
+    });
+    const styled = (name: string, url: string, manifest: object): WebModulePackage => ({
+      ...pkg(name, [{ manifest, url }]),
+      styles: [`/${name}.css`],
+    });
+    await bootWeb(
+      [
+        styled("@acme/held", "/held.js", manifest("SlotProbe")),
+        styled("@acme/music", "/music.js", MUSIC_MANIFEST),
+      ],
+      { load: (url) => (url === "/held.js" ? new Promise(() => {}) : load(url)), deadlineMs: 20 },
+    );
+    expect(pluginModuleFailures().has("@acme/held")).toBe(true);
+    expect(head.map((l) => l.dataset.plugin)).toEqual(["@acme/music"]);
+  });
+
   it("swallows a file that fails after the deadline", async () => {
     let fail: (err: Error) => void = () => {};
     const late = new Promise((_, reject) => (fail = reject));

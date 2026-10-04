@@ -79,10 +79,14 @@ export function pluginModuleFailures(): ReadonlyMap<string, string> {
   return failures;
 }
 
-/** Records a package as left out of this page's tree, with why. */
+/** Records a package as left out of this page's tree, with why; its stylesheets go with it. */
 export function leaveOut(pkg: string, reason: string): void {
   failures.set(pkg, reason);
   console.warn(`[plugins] web modules of ${pkg} left out: ${reason}`);
+  if (typeof document === "undefined") return;
+  for (const link of document.querySelectorAll<HTMLLinkElement>("link[data-plugin]")) {
+    if (link.dataset.plugin === pkg) link.remove();
+  }
 }
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -95,14 +99,10 @@ export function bootFailureReason(err: unknown): string {
     : `the app's module tree did not boot with it: ${message(err)}`;
 }
 
-/**
- * Attaches the stylesheets; resolves once each has loaded or failed (unstyled is not fatal).
- * Returns the elements too, so a package left out takes its sheets with it.
- */
-function attachStyles(pkg: string, urls: readonly string[]): [Promise<void>, HTMLLinkElement[]] {
-  if (typeof document === "undefined") return [Promise.resolve(), []];
-  const links: HTMLLinkElement[] = [];
-  const settled = Promise.all(
+/** Attaches the stylesheets; resolves once each has loaded or failed (unstyled is not fatal). */
+function attachStyles(pkg: string, urls: readonly string[]): Promise<void> {
+  if (typeof document === "undefined") return Promise.resolve();
+  return Promise.all(
     urls.map(
       (href) =>
         new Promise<void>((resolve) => {
@@ -112,11 +112,9 @@ function attachStyles(pkg: string, urls: readonly string[]): [Promise<void>, HTM
           link.dataset.plugin = pkg;
           link.onload = link.onerror = () => resolve();
           document.head.appendChild(link);
-          links.push(link);
         }),
     ),
   ).then(() => undefined);
-  return [settled, links];
 }
 
 /**
@@ -200,13 +198,12 @@ async function loadPackage(
   shared: Promise<void>,
   deadlineMs: number,
 ): Promise<PluginModules | null> {
-  const [styled, links] = attachStyles(c.pkg.package, c.pkg.styles);
+  const styled = attachStyles(c.pkg.package, c.pkg.styles);
   const work = Promise.all([shared.then(() => loadModules(c, load)), styled]);
   try {
     const [defs] = await withDeadline(work, deadlineMs, "its files");
     return { package: c.pkg.package, defs, ifaces: c.table };
   } catch (err) {
-    for (const link of links) link.remove();
     leaveOut(c.pkg.package, message(err));
     return null;
   }
