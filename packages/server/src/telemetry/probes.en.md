@@ -12,7 +12,7 @@ Recorded once per App generation — at process start, after a hot push, and whe
 
 Is starting slow because of the database? The time to bring its schema up to date.
 
-Recorded at [`packages/server/src/hmr/platform.ts:352`](../hmr/platform.ts#L352) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:369`](../hmr/platform.ts#L369) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@ Is starting slow because of one plugin? The time to import and check that plugin
 
 `attrs.plugin` names it; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not loaded again and not recorded.
 
-Recorded at [`packages/server/src/hmr/platform.ts:452`](../hmr/platform.ts#L452) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:469`](../hmr/platform.ts#L469) <!-- probe-site -->
 
 ### boot.plugins
 
 How long did loading all plugins take? Every installed plugin together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:458`](../hmr/platform.ts#L458) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:475`](../hmr/platform.ts#L475) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@ Is starting slow because of one part of the server? The time to create that modu
 
 `attrs.module` names the module.
 
-Recorded at [`packages/server/src/hmr/platform.ts:511`](../hmr/platform.ts#L511) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:528`](../hmr/platform.ts#L528) <!-- probe-site -->
 
 ### boot.modules
 
 How long did creating the server's parts take? Every module together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:515`](../hmr/platform.ts#L515) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:532`](../hmr/platform.ts#L532) <!-- probe-site -->
 
 ### boot.create
 
