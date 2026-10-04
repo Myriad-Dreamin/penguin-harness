@@ -240,6 +240,16 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // Math test case (lazy-chunks.spec): an inline and a display formula, which load KaTeX.
+    if (flat.includes("math reply test") && !isTitle) {
+      block(res, 0, { type: "text", text: "" }, [
+        { type: "text_delta", text: "Energy is \\(E=mc^2\\) here.\n\n" },
+        { type: "text_delta", text: "$$\\int_0^1 x\\,dx$$" },
+      ]);
+      messageStop(res, "end_turn", 20);
+      return;
+    }
+
     // Music test case: the first paragraph links one audio file twice (one player), the code
     // span's look-alike link is not a link, and the second paragraph links a second file.
     if (flat.includes("music link test")) {
