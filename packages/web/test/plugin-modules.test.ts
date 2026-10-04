@@ -16,12 +16,14 @@
  *   longer satisfies is refused at verification; a requirement only a structural match meets is
  *   refused before the boot, not by it.
  * - Nothing forwarded (safe mode, signed out) boots the app's own tree.
- * - A module forwarded without a file (data only) joins from its manifest, nothing imported: its
+ * - A module whose effect is all data (an empty class) joins from its file like any other: its
  *   page removal reaches the shell's `pageRemovals` slot.
  * - A plugin page joins the shell's `pages` slot with its `parent`, and its module `@Use`s an
  *   interface the app provides (`Language`, by its own key, no `from`, no copy).
- * - The app shares its own React, JSX runtime, kernel runtime entry and UI package with plugin
- *   modules, under the keys the plugin build resolves them to (scripts/lib/web-shared.mjs).
+ * - The app shares its own React, JSX runtime, kernel runtime entry and the UI package's plugin
+ *   surface with plugin modules, under the keys the plugin build resolves them to
+ *   (scripts/lib/web-shared.mjs); the surface's instances are the UI package's own, and its names
+ *   are exactly the ones the plugin build's stub exports.
  */
 import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
@@ -33,7 +35,11 @@ import type { ClassCtx, Contributed, IfaceDecl } from "@prismshadow/penguin-core
 import * as Ui from "@prismshadow/penguin-ui";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SHARED, SHARED_GLOBAL as BUILD_GLOBAL } from "../../../scripts/lib/web-shared.mjs";
+import {
+  SHARED,
+  SHARED_GLOBAL as BUILD_GLOBAL,
+  uiSurfaceNames,
+} from "../../../scripts/lib/web-shared.mjs";
 import { bootWeb } from "../src/web-root";
 import table from "../src/ifaces.json";
 import { pluginModuleFailures } from "../src/plugins/assemble";
@@ -83,6 +89,10 @@ class HelloPlugin {
     created.push("HelloPlugin");
   }
 }
+
+/** A module whose effect is all data: an empty class, its manifest a page removal. */
+@PluginModule({})
+class NoBenchmark {}
 
 /** A plugin module named like one of the app's own. */
 const Clash = (() => {
@@ -140,22 +150,16 @@ const HELLO_MANIFEST = {
   requires: { language: { iface: "@prismshadow/penguin-web#Language" } },
 };
 
-/** A data-only module as the server forwards it: no `file`, no URL. */
-const REMOVAL_MANIFEST = {
-  name: "NoBenchmark",
-  kind: "module",
-  requires: {},
-  provides: {},
-  contributes: { "ShellModule.pageRemovals": [{ id: "no-benchmark", key: "benchmark" }] },
-  children: [],
-  side: "web",
-};
+const REMOVAL_MANIFEST = manifest("NoBenchmark", {
+  "ShellModule.pageRemovals": [{ id: "no-benchmark", key: "benchmark" }],
+});
 
 const classes: Record<string, unknown> = {
   "/hello.js": HelloPlugin,
   "/music.js": MusicPlugin,
   "/probe.js": SlotProbe,
   "/clash.js": Clash,
+  "/removal.js": NoBenchmark,
 };
 const load = async (url: string) => {
   if (!(url in classes)) throw new Error(`404 ${url}`);
@@ -203,10 +207,11 @@ describe("plugin web modules in the tree", () => {
     expect(renderers.map((c) => c.from)).toEqual(["MusicPlugin"]);
   });
 
-  it("a data-only module joins from its manifest, nothing imported", async () => {
-    const load = vi.fn(async () => ({}));
-    await bootWeb([pkg("@acme/no-benchmark", [{ manifest: REMOVAL_MANIFEST }])], { load });
-    expect(load).not.toHaveBeenCalled();
+  it("a module whose effect is all data joins from its file like any other", async () => {
+    await bootWeb(
+      [pkg("@acme/no-benchmark", [{ manifest: REMOVAL_MANIFEST, url: "/removal.js" }])],
+      opts,
+    );
     expect(pluginModuleFailures().size).toBe(0);
     expect(shellSlots.pageRemovals?.map((c) => [c.from, c.data.key])).toEqual([
       ["NoBenchmark", "benchmark"],
@@ -446,8 +451,16 @@ describe("shared instances", () => {
     expect(shared.react).toBe(React);
     expect(shared["react/jsx-runtime"]).toBe(JsxRuntime);
     expect(shared["@prismshadow/penguin-core/kernel/runtime"]).toBe(Kernel);
-    expect(shared["@prismshadow/penguin-ui"]).toBe(Ui);
+    const surface = shared["@prismshadow/penguin-ui"] as Record<string, unknown>;
+    for (const [name, value] of Object.entries(surface))
+      expect(value, name).toBe((Ui as Record<string, unknown>)[name]);
     expect(Object.isFrozen(shared)).toBe(true);
+  });
+
+  it("shares exactly the UI names the plugin build's stub exports", () => {
+    const surface = SHARED_MODULES["@prismshadow/penguin-ui"] as Record<string, unknown>;
+    expect(Object.keys(surface).sort()).toEqual(uiSurfaceNames());
+    for (const name of uiSurfaceNames()) expect(surface[name], name).toBeDefined();
   });
 
   it("under the keys the plugin build resolves to", () => {
