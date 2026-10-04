@@ -19,7 +19,8 @@
  * with the same key or path: a plugin adds pages here, it does not shadow the app's own.
  *
  * Safe mode (rescue/safe-mode.ts) is the one switch over all of it: while it is on, the store is
- * told nobody is signed in, so nothing is asked and the table is the compiled one; leaving it
+ * told nobody is signed in, so nothing is asked and the table is the compiled one — no
+ * company-mode page, no session surface, no quick start, and a refresh asks nothing; leaving it
  * asks again.
  */
 import {
