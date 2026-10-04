@@ -21,7 +21,7 @@ const BASE = process.env.BASE_URL;
 const U = `rescue_${Date.now().toString(36)}`;
 const P = "password123";
 
-const EMPTY = { agentTabs: [], sessionTabs: [] };
+const EMPTY = { sessionTabs: [] };
 const BROKEN = { pages: [null], ...EMPTY };
 const HELLO = {
   pages: [

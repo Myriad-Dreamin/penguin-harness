@@ -76,7 +76,6 @@ function answer(pages: readonly object[]): ContributionsResponse {
   return {
     pages,
     webModules: [],
-    agentTabs: [],
     sessionTabs: [],
   } as unknown as ContributionsResponse;
 }

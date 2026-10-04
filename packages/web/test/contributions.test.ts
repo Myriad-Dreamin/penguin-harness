@@ -89,7 +89,6 @@ function answer(pages: readonly object[]): ContributionsResponse {
   return {
     pages: pages as ContributionsResponse["pages"],
     webModules: [],
-    agentTabs: [],
     sessionTabs: [],
     quickStarts: [],
     sessionSurfaces: [],

@@ -6679,7 +6679,6 @@ export type { WebModulePackage };
 
 export interface ContributionsResponse {
   pages: WebPageContribution[];
-  agentTabs: WebContribution[];
   sessionTabs: WebContribution[];
   /** Module plugins' quick starts, each named by the module that contributes it (`from`). */
   quickStarts: Array<QuickStartItem & { id: string; from: string }>;

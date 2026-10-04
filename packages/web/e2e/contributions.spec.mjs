@@ -48,7 +48,6 @@ const CONTRIBUTIONS = {
       renderer: { iframe: { src: "/plugin-hello.html", namespace: "shadow" } },
     },
   ],
-  agentTabs: [],
   sessionTabs: [],
 };
 

@@ -16,7 +16,6 @@ import { pluginHostFrom } from "../../plugin/host.js";
 import { webModulesOf } from "../../plugin/web-modules.js";
 import type {
   ContributionsResponse,
-  RendererRef,
   WebContribution,
   WebPageContribution,
   WebPageData,
@@ -35,8 +34,7 @@ export function contributionsRoutes(deps: ContributionsRouteDeps): Hono<AppEnv> 
 
 /**
  * The frontend's slots, declared on the SERVER so a server module (or a plugin) can
- * contribute a page, an Agent settings tab or a Session tab
- * as manifest data. The web app reads them back through GET /api/contributions and renders
+ * contribute a page or a Session tab as manifest data. The web app reads them back through GET /api/contributions and renders
  * the ones whose renderer it knows: a `builtin` name from its own registry, or an `iframe`.
  * No code crosses this boundary — only data.
  */
@@ -50,8 +48,6 @@ export abstract class WebShell {
 export interface WebShellSlots {
   /** A page (WebPageData says what each field means). */
   pages: WebPageData;
-  /** A tab on the Agent settings page. */
-  agentTabs: { key: string; order: number; renderer: RendererRef };
   /**
    * A tab beside a Session's chat. A workflow contributes here too, from its own tree, where
    * the host publishes this slot under this module's name and scopes the tab to its Agent.
@@ -103,7 +99,6 @@ export class WebModule {
       );
     const response: Omit<ContributionsResponse, "webModules"> = {
       pages: collect<WebPageContribution>("pages"),
-      agentTabs: collect("agentTabs"),
       sessionTabs: collect("sessionTabs"),
       quickStarts: collect("quickStarts") as unknown as ContributionsResponse["quickStarts"],
       sessionSurfaces: this.surfaces.list(),
