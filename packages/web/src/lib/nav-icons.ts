@@ -21,8 +21,6 @@ export const NAV_ICONS = {
   orgChart: ICONS.network,
   /** The ticket board. */
   orgTickets: ICONS.kanban,
-  /** Proposals: a change written up, waiting to be approved. */
-  orgProposals: ICONS.fileCheck,
   /** Roadmaps: where a discussion leads, and the proposals on the way. */
   orgRoadmaps: ICONS.foldedMap,
 } as const;

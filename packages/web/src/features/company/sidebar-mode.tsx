@@ -1,9 +1,10 @@
 /**
  * Company mode in the sidebar (`SidebarModule.modes` and `.sections`): the work mode beside
- * development, with the organization's six pages as its nav rows, and its three sections — the
- * organization switcher where the Project switcher stands; the channel list where the
- * conversation list is (or, with no organization yet, the block that creates one); and the
- * organization's 工位 group, one row per employee's desk, with its Temporary entries.
+ * development, with the organization's six pages and the company-mode pages plugins contribute
+ * as its nav rows, and its three sections — the organization switcher where the Project switcher
+ * stands; the channel list where the conversation list is (or, with no organization yet, the
+ * block that creates one); and the organization's 工位 group, one row per employee's desk, with
+ * its Temporary entries.
  */
 import { useLocation, useMatch } from "react-router";
 import { RailDivider } from "@prismshadow/penguin-ui";
@@ -11,8 +12,16 @@ import { S } from "../../lib/strings";
 import type { ModeState, SidebarMode, SidebarSection } from "../../lib/sidebar-contributions";
 import { useCompany } from "./company-state";
 import { CompanyBetaBadge } from "./company-beta";
-import { COMPANY_NAV_ICONS } from "./company-nav-icons";
-import { COMPANY_NAV_KEYS, isOrgRoute, orgPagePath, parseOrgKey } from "./company-nav";
+import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "./company-nav-icons";
+import {
+  COMPANY_NAV_KEYS,
+  ORG_PAGE_RENDERERS,
+  isOrgRoute,
+  orgPagePath,
+  orgPageRows,
+  parseOrgKey,
+} from "./company-nav";
+import { useOrgPages } from "./use-org-pages";
 import { NoOrganizationsSidebar, OrgSwitcher } from "./org-switcher";
 import { ChannelRailRows, ChannelSidebar, DefaultChannelRailRow } from "./channel-sidebar";
 import { DeskRailRows, OrgSessionGroups, TempSessionRailRows } from "./org-session-groups";
@@ -27,6 +36,7 @@ function useCompanyMode(): ModeState {
   const company = useCompany();
   const location = useLocation();
   const navOrg = useNavOrg();
+  const contributedPages = useOrgPages();
   return {
     available: company.available,
     current: company.workMode === "company",
@@ -42,12 +52,22 @@ function useCompanyMode(): ModeState {
     // all in the fold, with no pins and no drag. With no organization the six keep their
     // places, disabled: the pages exist, they just have no organization to show yet, and a nav
     // that empties itself reads as a broken shell rather than as an empty one.
-    navItems: COMPANY_NAV_KEYS.map((key) => ({
-      key,
-      to: navOrg === null ? null : orgPagePath(navOrg.projectId, navOrg.orgId, key),
-      label: S.nav.org[key],
-      icon: COMPANY_NAV_ICONS[key],
-    })),
+    navItems: [
+      ...COMPANY_NAV_KEYS.map((key) => ({
+        key,
+        to: navOrg === null ? null : orgPagePath(navOrg.projectId, navOrg.orgId, key),
+        label: S.nav.org[key],
+        icon: COMPANY_NAV_ICONS[key],
+      })),
+      // The pages plugins contribute (the proposals page), after the organization's own, each
+      // keyed by its page key so a nav badge can name it.
+      ...orgPageRows(contributedPages, navOrg).map((row) => ({
+        key: row.key,
+        to: row.to,
+        label: S.nav.org[ORG_PAGE_RENDERERS[row.renderer].label],
+        icon: ORG_PAGE_ICONS[row.renderer],
+      })),
+    ],
   };
 }
 
