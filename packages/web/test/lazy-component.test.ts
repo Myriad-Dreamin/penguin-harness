@@ -116,7 +116,9 @@ describe("the boundary deferred code renders under", () => {
   });
 
   it("treats a dynamic import the browser could not fetch as a failed load", () => {
-    const chromium = new TypeError("Failed to fetch dynamically imported module: /api/plugins/x.js");
+    const chromium = new TypeError(
+      "Failed to fetch dynamically imported module: /api/plugins/x.js",
+    );
     expect(isChunkLoadError(chromium)).toBe(true);
     expect(isChunkLoadError(new TypeError("Importing a module script failed."))).toBe(true);
     expect(isChunkLoadError(new TypeError("undefined is not a function"))).toBe(false);
@@ -132,7 +134,8 @@ describe("the boundary deferred code renders under", () => {
     expect(html).not.toContain(S.common.loadPartFailed);
     let next: unknown = null;
     instance.setState = (update: unknown) => {
-      next = typeof update === "function" ? (update as (s: unknown) => unknown)(instance.state) : update;
+      next =
+        typeof update === "function" ? (update as (s: unknown) => unknown)(instance.state) : update;
     };
     (instance as unknown as { retry(): void }).retry();
     expect(next).toMatchObject({ attempt: 1 });

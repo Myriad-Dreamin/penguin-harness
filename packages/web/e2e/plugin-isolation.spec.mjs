@@ -158,10 +158,13 @@ test("a held plugin file: the app boots after the deadline and says why", async 
   const answered = (p) => order.find((e) => e.p === p && e.kind === "res")?.t;
   expect(sent("/api/contributions")).toBeDefined();
   expect(sent("/api/contributions")).toBeLessThanOrEqual(answered("/api/install"));
-  console.log(`[plugin-isolation] boot with a held file: ${bootMs} ms; requests ${JSON.stringify(order.map((e) => [e.kind, e.p, e.t - started]))}`);
+  console.log(
+    `[plugin-isolation] boot with a held file: ${bootMs} ms; requests ${JSON.stringify(order.map((e) => [e.kind, e.p, e.t - started]))}`,
+  );
 
   const installedHeader = page.getByRole("button", { name: /^已安装的插件 \(/ });
-  if ((await installedHeader.getAttribute("aria-expanded")) === "false") await installedHeader.click();
+  if ((await installedHeader.getAttribute("aria-expanded")) === "false")
+    await installedHeader.click();
   const reason = page.getByText(/its files did not load within 4000 ms/).first();
   await expect(reason).toBeVisible();
   await expect(reason).toContainText("Web 模块未装入本页");

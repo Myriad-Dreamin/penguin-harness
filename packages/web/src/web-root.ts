@@ -25,11 +25,7 @@ import {
   Module,
   moduleDefOf,
 } from "@prismshadow/penguin-core/kernel/runtime";
-import type {
-  ManifestTable,
-  ModuleDef,
-  Resources,
-} from "@prismshadow/penguin-core/kernel/runtime";
+import type { ManifestTable, ModuleDef, Resources } from "@prismshadow/penguin-core/kernel/runtime";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import table from "./ifaces.json";
 import type { HashedTable } from "./lib/verify-plugins";
@@ -122,7 +118,13 @@ export async function bootWeb(
   const boot = async (members: readonly PluginModules[]) =>
     (
       await bootVerified(rootWith(members.flatMap((p) => p.defs)), {
-        ifaces: members.length === 0 ? HOST_TABLE : mergeTables(HOST_TABLE, members.map((p) => p.ifaces)),
+        ifaces:
+          members.length === 0
+            ? HOST_TABLE
+            : mergeTables(
+                HOST_TABLE,
+                members.map((p) => p.ifaces),
+              ),
         resources: NO_RESOURCES,
       })
     ).api<Shell>("ShellModule", "shell").Root;

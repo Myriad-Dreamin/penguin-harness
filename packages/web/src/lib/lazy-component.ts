@@ -47,7 +47,8 @@ const IMPORT_FAILED =
 /** Whether an error is a failed code load: a deferred component's, or any dynamic import's. */
 export function isChunkLoadError(error: unknown): boolean {
   return (
-    error instanceof ChunkLoadError || (error instanceof TypeError && IMPORT_FAILED.test(error.message))
+    error instanceof ChunkLoadError ||
+    (error instanceof TypeError && IMPORT_FAILED.test(error.message))
   );
 }
 
