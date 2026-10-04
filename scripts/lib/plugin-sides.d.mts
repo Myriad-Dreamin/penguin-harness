@@ -12,16 +12,22 @@ export interface SideManifest {
   source?: string;
   file?: string;
 }
-export declare function hostTables(): { server: HostTable; web: HostTable };
+export interface Hosts {
+  server: HostTable;
+  web: HostTable;
+  /** Modules of the plugin packages depended on, by name → side. */
+  plugins?: Record<string, Side>;
+}
+export declare function hostTables(pkgDir?: string): Hosts;
 export declare function assignSides(
   manifests: Record<string, SideManifest>,
   sources: ReadonlyMap<string, string>,
   pluginDecl: { modules: string[]; replaces: string[] } | null,
-  hosts?: { server: HostTable; web: HostTable },
+  hosts?: Hosts,
 ): string[];
 export declare function decideSides(
   manifests: Record<string, SideManifest>,
-  hosts: { server: HostTable; web: HostTable },
+  hosts: Hosts,
   replaces?: readonly string[],
 ): { sides: Record<string, Side>; errors: string[] };
 export declare const WEB_DIR: string;

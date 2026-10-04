@@ -4,8 +4,8 @@
  * - gen-ifaces' side decision: a module contributing to a platform slot is a platform module, one
  *   contributing to a web slot a web module; one naming a module neither host has, or a slot its
  *   owner lacks, is an error naming the module; one wired to both sides is an error; a module that
- *   names no module stays on the platform; a module wired to another of the package's modules
- *   takes its side; one source file holding both sides is an error.
+ *   names no module stays on the platform; a module wired to another of the package's modules, or
+ *   to a module of a plugin it depends on, takes its side; one source file holding both sides is an error.
  * - The build emits the main entry with the platform modules only and one browser module per web
  *   module, with a lazy component in its own chunk; the browser module carries no copy of React,
  *   the kernel or the UI package — imported with a page's shared instances in place, it decorates
@@ -45,11 +45,18 @@ describe("the side decision", () => {
         Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
         Plain: m("Plain"),
         Helper: m("Helper", { requires: { player: { iface: "x#P", from: "Player" } } }),
+        Sibling: m("Sibling", { contributes: { "OtherPlugin.actions": [{ id: "s" }] } }),
       },
-      hosts,
+      { ...hosts, plugins: { OtherPlugin: "server" } },
     );
     expect(errors).toEqual([]);
-    expect(sides).toEqual({ Box: "server", Player: "web", Plain: "server", Helper: "web" });
+    expect(sides).toEqual({
+      Box: "server",
+      Player: "web",
+      Plain: "server",
+      Helper: "web",
+      Sibling: "server",
+    });
   });
 
   it("decides a module name both hosts have by the slot, then by the interface required", () => {
