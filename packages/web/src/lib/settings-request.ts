@@ -13,6 +13,8 @@ import type { SettingsSectionKey } from "./settings-sections";
 export interface SettingsRequest {
   /** The page to open on; absent opens the viewer's first page, as the menu row does. */
   section?: SettingsSectionKey;
+  /** On the Plugins page: the card the opening scrolls to (the permission menu's More… asks for `sandbox`). */
+  pluginFocus?: string;
 }
 
 type Listener = (request: SettingsRequest) => void;

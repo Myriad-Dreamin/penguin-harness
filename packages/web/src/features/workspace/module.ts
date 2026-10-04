@@ -1,6 +1,6 @@
 /** The Workspace files: the dock's Files panel (workspace-panel.tsx). */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { WorkspacePanel } from "./workspace-panel";
+import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -17,5 +17,5 @@ import { WorkspacePanel } from "./workspace-panel";
   },
 })
 export class WorkspaceModule {
-  @Bind("workspace.panel") panel = WorkspacePanel;
+  @Bind("workspace.panel") panel = lazyComponent(() => import("./workspace-panel"), "WorkspacePanel");
 }

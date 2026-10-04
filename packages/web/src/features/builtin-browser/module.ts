@@ -4,26 +4,24 @@
  * panel is one set of pages shared by every conversation, not a conversation's view, so it reads
  * no conversation and works on the draft page too.
  */
-import { createElement } from "react";
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
+import { lazyComponent } from "../../lib/lazy-component";
 import type { DockPanel, PanelOffering } from "../dock/iface";
 import { BuiltinBrowserLayer } from "./browser-layer";
 import { builtinBrowserUserEvents } from "./browser-events";
-import { BuiltinBrowserPanel } from "./browser-panel";
 import { isBrowserOffered, subscribeBrowser } from "./browser-store";
-
-function BrowserDockPanel(props: { active: boolean }) {
-  return createElement(BuiltinBrowserPanel, props);
-}
 
 /**
  * The dock's browser panel, offered only where there is an agent browser to show — a live
  * question the store answers a moment after startup, so it brings its own change feed.
  */
-const browserPanel: DockPanel & PanelOffering = Object.assign(BrowserDockPanel, {
-  offered: isBrowserOffered,
-  subscribeOffered: subscribeBrowser,
-});
+const browserPanel: DockPanel & PanelOffering = Object.assign(
+  lazyComponent(() => import("./browser-panel"), "BuiltinBrowserPanel"),
+  {
+    offered: isBrowserOffered,
+    subscribeOffered: subscribeBrowser,
+  },
+);
 
 @Module({
   contributes: {

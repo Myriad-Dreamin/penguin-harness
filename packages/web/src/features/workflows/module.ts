@@ -3,8 +3,11 @@
  * app, outside the shell like the terminal (with and without a tab).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { WorkflowAppPage } from "./workflow-app-page";
+import { lazyComponent } from "../../lib/lazy-component";
 import { WorkflowSessionTab } from "./session-tab";
+
+/** One deferred page for both routes, so its code loads once whichever is opened first. */
+const WorkflowAppPage = lazyComponent(() => import("./workflow-app-page"), "WorkflowAppPage");
 
 @Module({
   contributes: {

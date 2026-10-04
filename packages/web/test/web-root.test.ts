@@ -3,7 +3,9 @@
  * shell receives every page the modules contributed.
  *
  * - bootWeb() boots the tree and hands back the shell's root component.
- * - Every page has a unique id, key and path, and the component its module bound.
+ * - Every page has a unique id, key and path, and the component its module bound — most of them
+ *   deferred (lib/lazy-component.ts), which is checked by loading the binding and reading what it
+ *   renders.
  * - Terminal and the workflow app pages mount outside the shell; everything else inside it.
  * - The main nav is Agents, Models, Plugins, Machines, Usage, Benchmark in that order, all
  *   released, Machines alone admin-only, and every page names its nav title in both languages
@@ -106,6 +108,7 @@ import { TraceDockPanel } from "../src/features/traces/trace-dock-panel";
 import { MessagingDockPanel } from "../src/features/messaging/messaging-dock-panel";
 import { ScheduleDockPanel } from "../src/features/schedules/schedule-dock-panel";
 import { BuiltinBrowserModule } from "../src/features/builtin-browser/module";
+import { BuiltinBrowserPanel } from "../src/features/builtin-browser/browser-panel";
 import type { DockPanelData } from "../src/features/dock/iface";
 import { PortsDockPanel } from "../src/features/ports/ports-dock-panel";
 import { ChatModule } from "../src/features/chat/module";
@@ -124,6 +127,15 @@ let sessionListSection: unknown = null;
 let dockPanels: readonly Contributed[] = [];
 let sessionTabs: readonly Contributed[] = [];
 let fileRenderers: readonly Contributed[] = [];
+
+/**
+ * The component a deferred binding draws: its code loaded, it renders the target directly, so one
+ * call shows which component that is.
+ */
+async function targetOf(code: unknown): Promise<unknown> {
+  await (code as { preload(): Promise<void> }).preload();
+  return (code as (props: object) => ReactElement)({}).type;
+}
 
 /** A slot's code halves in the order the shell mounts them. */
 const codeByOrder = (list: readonly Contributed[]): unknown[] =>
@@ -199,15 +211,15 @@ describe("the booted page table", () => {
     expect(typeof (await bootWeb())).toBe("function");
   });
 
-  it("every page has a unique id, key and path, and its bound component", () => {
+  it("every page has a unique id, key and path, and its bound component", async () => {
     expect(pages.length).toBeGreaterThan(0);
     expect(new Set(pages.map((p) => p.id)).size).toBe(pages.length);
     expect(new Set(pages.map((p) => p.key)).size).toBe(pages.length);
     expect(new Set(pages.map((p) => p.path)).size).toBe(pages.length);
     for (const page of pages) expect(typeof page.Component).toBe("function");
-    expect(pages.find((p) => p.key === "agents")?.Component).toBe(AgentsPage);
-    expect(pages.find((p) => p.key === "terminal")?.Component).toBe(TerminalPage);
-    expect(pages.find((p) => p.path === "/org/*")?.Component).toBe(OrgRoutes);
+    expect(await targetOf(pages.find((p) => p.key === "agents")?.Component)).toBe(AgentsPage);
+    expect(await targetOf(pages.find((p) => p.key === "terminal")?.Component)).toBe(TerminalPage);
+    expect(await targetOf(pages.find((p) => p.path === "/org/*")?.Component)).toBe(OrgRoutes);
   });
 
   it("mounts the terminal and the workflow app pages outside the shell", () => {
@@ -257,7 +269,7 @@ describe("the booted page table", () => {
     expect(member.every((key) => admin.includes(key))).toBe(true);
   });
 
-  it("routes chat, the dashboard and one machine's ports through their modules", () => {
+  it("routes chat, the dashboard and one machine's ports through their modules", async () => {
     const page = (key: string) => pages.find((p) => p.key === key);
     // Chat binds its page under its deps' provider (lib/module-deps.tsx), wrapping the route.
     const chatRoot = page("chat")?.Component as
@@ -265,14 +277,14 @@ describe("the booted page table", () => {
     expect(chatRoot?.({}).props.children.type).toBe(ChatRoute);
     expect(page("dashboard")).toMatchObject({ path: "/dashboard", frame: "shell", nav: "none" });
     expect(page("dashboard")?.admin).toBe(false);
-    expect(page("dashboard")?.Component).toBe(DashboardPage);
+    expect(await targetOf(page("dashboard")?.Component)).toBe(DashboardPage);
     expect(page("machine-ports")).toMatchObject({
       path: "/machines/:machineId/ports",
       frame: "shell",
       nav: "none",
       admin: true,
     });
-    expect(page("machine-ports")?.Component).toBe(MachinePortsPage);
+    expect(await targetOf(page("machine-ports")?.Component)).toBe(MachinePortsPage);
   });
 
   it("leads home through company mode's page, inside the shell and off the nav", () => {
@@ -285,10 +297,9 @@ describe("the booted page table", () => {
     });
   });
 
-  it("receives the proposals page as the renderer named OrgProposalsPage", () => {
-    expect(pageRenderers.map((c) => ({ name: c.data.name, code: c.code }))).toEqual([
-      { name: "OrgProposalsPage", code: OrgProposalsPage },
-    ]);
+  it("receives the proposals page as the renderer named OrgProposalsPage", async () => {
+    expect(pageRenderers.map((c) => c.data.name)).toEqual(["OrgProposalsPage"]);
+    expect(await targetOf(pageRenderers[0]?.code)).toBe(OrgProposalsPage);
   });
 
   it("folds a contributed page in only under a key the app does not own, drawn by its module's renderer", () => {
@@ -329,7 +340,7 @@ describe("the booted page table", () => {
       { key: "org-proposals", path: "proposals/:number?", frame: "shell", nav: "org" },
     ]);
     expect(orgPagesOf(merged).map((p) => [p.key, p.Component])).toEqual([
-      ["org-proposals", OrgProposalsPage],
+      ["org-proposals", renderers.get("OrgProposalsPage")],
     ]);
     expect(contributedPagesOf(pages, answer, new Map())).toEqual(pages);
   });
@@ -394,7 +405,7 @@ describe("the booted sidebar slots", () => {
   it("puts company's unread count on the contributed proposals page's row, anchored by its renderer's name", () => {
     const badges = badgesOf(sidebarSlots.navBadges ?? []);
     // The row is keyed by the renderer it is drawn with, whatever key the plugin gives the page.
-    const renderer = pageRenderers.find((c) => c.code === OrgProposalsPage)?.data.name;
+    const renderer = pageRenderers[0]?.data.name;
     expect(renderer).toBe("OrgProposalsPage");
     expect(badges.filter((b) => b.anchor === renderer).map((b) => b.badge)).toEqual([
       proposalsUnreadBadge,
@@ -409,11 +420,17 @@ describe("the booted sidebar slots", () => {
 });
 
 describe("the booted dock slot", () => {
-  it("the dock receives the eight panels, in their order, each from its module", () => {
-    // In contributed order, as the dock registers them (dock/module.ts).
-    const panels = [...dockPanels]
-      .map((c) => ({ ...(c.data as unknown as DockPanelData), Body: c.code }))
-      .sort((a, b) => a.order - b.order);
+  it("the dock receives the eight panels, in their order, each from its module", async () => {
+    // In contributed order, as the dock registers them (dock/module.ts). Every body is deferred:
+    // compared by the component it draws.
+    const panels = await Promise.all(
+      [...dockPanels]
+        .sort((a, b) => (a.data.order as number) - (b.data.order as number))
+        .map(async (c) => ({
+          ...(c.data as unknown as DockPanelData),
+          Body: await targetOf(c.code),
+        })),
+    );
     expect(
       panels.map(({ kind, title, titleZh, icon, Body }) => ({ kind, title, titleZh, icon, Body })),
     ).toEqual([
@@ -458,8 +475,7 @@ describe("the booted dock slot", () => {
         title: "Browser",
         titleZh: "浏览器",
         icon: "globe",
-        // A wrapper around BuiltinBrowserPanel that carries where the browser is offered.
-        Body: new BuiltinBrowserModule().panel,
+        Body: BuiltinBrowserPanel,
       },
       {
         kind: "ports",
@@ -470,6 +486,11 @@ describe("the booted dock slot", () => {
       },
     ]);
     for (const panel of panels) expect(glyphOf(panel.icon)).not.toBe("");
+    // The browser's binding carries where the browser is offered, which the dock registers with it.
+    expect(dockPanels.find((c) => c.data.kind === "builtin-browser")?.code).toBe(
+      new BuiltinBrowserModule().panel,
+    );
+    expect(new BuiltinBrowserModule().panel.offered).toBeTypeOf("function");
     expect(Object.fromEntries(dockPanels.map((c) => [c.data.kind as string, c.from]))).toEqual({
       agents: "ChatModule",
       memory: "ChatModule",

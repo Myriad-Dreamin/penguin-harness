@@ -6,10 +6,14 @@
  * block that creates one); the organization's ROADMAPS below it, while the roadmaps plugin is
  * there; and the organization's 工位 group, one row per employee's desk, with its Temporary
  * entries.
+ *
+ * The mode itself (its hook, its nav rows, its mark) is read on every render of the column, so it
+ * is here, on the entry's side, with narrow imports. The blocks it shows are drawn only once the
+ * mode is entered: their code (sidebar-sections.tsx, org-switcher.tsx) loads then.
  */
-import { useLocation, useMatch } from "react-router";
-import { RailDivider } from "@prismshadow/penguin-ui";
+import { useLocation } from "react-router";
 import { S } from "../../lib/strings";
+import { lazyComponent } from "../../lib/lazy-component";
 import type { ModeState, SidebarMode, SidebarSection } from "../../lib/sidebar-contributions";
 import { useCompany } from "./company-state";
 import { CompanyBetaBadge } from "./company-beta";
@@ -23,13 +27,9 @@ import {
   parseOrgKey,
 } from "./company-nav";
 import { useOrgPages } from "./use-org-pages";
-import { NoOrganizationsSidebar, OrgSwitcher } from "./org-switcher";
-import { ChannelRailRows, ChannelSidebar, DefaultChannelRailRow } from "./channel-sidebar";
-import { RoadmapsSidebar } from "./roadmaps-sidebar";
-import { DeskRailRows, OrgSessionGroups, TempSessionRailRows } from "./org-session-groups";
 
 /** The organization the sidebar points at: the open one, else the one last opened (the switcher names the same). */
-function useNavOrg(): { projectId: string; orgId: string } | null {
+export function useNavOrg(): { projectId: string; orgId: string } | null {
   const company = useCompany();
   return parseOrgKey(company.currentOrgKey ?? company.lastOrgKey);
 }
@@ -74,85 +74,27 @@ function useCompanyMode(): ModeState {
   };
 }
 
-/** The rail's top slot in company mode: the organization's all-hands channel. */
-function DefaultChannelRail() {
-  return <DefaultChannelRailRow org={useNavOrg()} />;
-}
+const sections = () => import("./sidebar-sections");
 
 export const companyMode: SidebarMode = {
   useMode: useCompanyMode,
-  RailTop: DefaultChannelRail,
+  RailTop: lazyComponent(sections, "DefaultChannelRail"),
   listName: () => S.company.channels.drawerLabel,
   badge: { Node: CompanyBetaBadge, name: () => S.company.beta },
 };
 
-export const companySwitcher: SidebarSection = { Full: OrgSwitcher };
+export const companySwitcher: SidebarSection = {
+  Full: lazyComponent(() => import("./org-switcher"), "OrgSwitcher"),
+};
 
-function Channels({ onNavigate }: { onNavigate?: () => void }) {
-  const navOrg = useNavOrg();
-  // No organization to list: the create block, not an empty channel list.
-  if (navOrg === null) return <NoOrganizationsSidebar {...(onNavigate ? { onNavigate } : {})} />;
-  return (
-    <ChannelSidebar
-      projectId={navOrg.projectId}
-      orgId={navOrg.orgId}
-      {...(onNavigate ? { onNavigate } : {})}
-    />
-  );
-}
+export const companyChannels: SidebarSection = {
+  Full: lazyComponent(sections, "Channels"),
+  Rail: lazyComponent(sections, "ChannelsRail"),
+};
 
-/**
- * The rail's other channels (the all-hands one has the top slot); each carries its own unread
- * count, and the rows draw their own hairline, only when there are any.
- */
-function ChannelsRail() {
-  const navOrg = useNavOrg();
-  if (navOrg === null) return null;
-  return <ChannelRailRows projectId={navOrg.projectId} orgId={navOrg.orgId} />;
-}
+export const companyRoadmaps: SidebarSection = { Full: lazyComponent(sections, "Roadmaps") };
 
-export const companyChannels: SidebarSection = { Full: Channels, Rail: ChannelsRail };
-
-/** The organization's roadmaps, below its channels; the section hides itself without the roadmaps plugin. No rail form. */
-function Roadmaps({ onNavigate }: { onNavigate?: () => void }) {
-  const navOrg = useNavOrg();
-  if (navOrg === null) return null;
-  return (
-    <RoadmapsSidebar
-      projectId={navOrg.projectId}
-      orgId={navOrg.orgId}
-      {...(onNavigate ? { onNavigate } : {})}
-    />
-  );
-}
-
-export const companyRoadmaps: SidebarSection = { Full: Roadmaps };
-
-function Desks({ onNavigate }: { onNavigate?: () => void }) {
-  const navOrg = useNavOrg();
-  const activeSessionId = useMatch("/chat/:sessionId")?.params.sessionId ?? null;
-  if (navOrg === null) return null;
-  return (
-    <OrgSessionGroups
-      projectId={navOrg.projectId}
-      orgId={navOrg.orgId}
-      activeSessionId={activeSessionId}
-      {...(onNavigate ? { onNavigate } : {})}
-    />
-  );
-}
-
-/** The rail's desks and then its Temporary entries, after a hairline; each carries its running dot. */
-function DesksRail() {
-  const navOrg = useNavOrg();
-  if (navOrg === null) return null;
-  return (
-    <>
-      <RailDivider />
-      <DeskRailRows projectId={navOrg.projectId} orgId={navOrg.orgId} />
-      <TempSessionRailRows projectId={navOrg.projectId} orgId={navOrg.orgId} />
-    </>
-  );
-}
-
-export const companyDesks: SidebarSection = { Full: Desks, Rail: DesksRail };
+export const companyDesks: SidebarSection = {
+  Full: lazyComponent(sections, "Desks"),
+  Rail: lazyComponent(sections, "DesksRail"),
+};

@@ -4,7 +4,7 @@
  * navigating between pages never reconnects a terminal.
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { TerminalPage } from "./terminal-page";
+import { lazyComponent } from "../../lib/lazy-component";
 import { TerminalDockRuntime } from "./terminal-view-pool";
 
 @Module({
@@ -25,6 +25,6 @@ import { TerminalDockRuntime } from "./terminal-view-pool";
   },
 })
 export class TerminalModule {
-  @Bind("terminal.page") page = TerminalPage;
+  @Bind("terminal.page") page = lazyComponent(() => import("./terminal-page"), "TerminalPage");
   @Bind("terminal.runtime") runtime = TerminalDockRuntime;
 }
