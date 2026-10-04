@@ -289,10 +289,10 @@ describe("contributed company-mode pages", () => {
     expect(
       orgPageRows([page({ key: "OrgProposalsPage", renderer: { iframe: { src: "x" } } })], org),
     ).toEqual([]);
-    // Two pages with one renderer keep the order they were contributed in.
+    // Of two pages with one renderer, the first contributed draws the row.
     expect(
       orgPageRows([page({ key: "b" }), roadmaps, page({ key: "a" })], org).map((row) => row.key),
-    ).toEqual(["b", "a"]);
+    ).toEqual(["b"]);
   });
 
   it("addresses one proposal by its number under the proposals page", () => {

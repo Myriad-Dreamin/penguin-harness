@@ -61,9 +61,10 @@ import { proposalsUnreadBadge } from "./proposals-badge";
       { id: "company.roadmaps", mode: "company", place: "body", order: 25 },
       { id: "company.desks", mode: "company", place: "body", order: 30 },
     ],
-    // The anchor is the page key the company-proposals plugin contributes its page under.
+    // The anchor is the renderer the proposals page's row is keyed by (sidebar-mode.tsx): the
+    // name ProposalsModule contributes the page under to `ShellModule.pageRenderers`.
     "SidebarModule.navBadges": [
-      { id: "company.proposalsUnread", anchor: "org-proposals", order: 10 },
+      { id: "company.proposalsUnread", anchor: "OrgProposalsPage", order: 10 },
     ],
   },
 })
