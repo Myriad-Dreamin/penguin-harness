@@ -45,6 +45,8 @@ import { ChannelMessageBody } from "./channel-markdown";
 import { orgProposalPath } from "./company-nav";
 import { ErrorLine, PrincipalChip, TitleButton } from "./shared";
 import { roadmapRows } from "./roadmaps";
+import { RoadmapSessionLink, useRoadmapSession } from "./roadmap-session";
+import type { RoadmapSession } from "./roadmap-session";
 import { SubjectActivity } from "../proposals/activity-view";
 import type { RoadmapRow, RoadmapRowStage } from "./roadmaps";
 
@@ -80,6 +82,7 @@ export function RoadmapDetail({
   const [approvable, setApprovable] = useState<ReadonlySet<string>>(new Set());
   /** The last answer as read, so an unchanged answer does not replace the state. */
   const drawn = useRef("");
+  const session = useRoadmapSession(projectId, orgId, number);
 
   const load = useCallback(async () => {
     try {
@@ -178,6 +181,7 @@ export function RoadmapDetail({
             approving={approving}
             onApprove={(key) => void approve(key)}
             onOpenProposal={(n) => navigate(orgProposalPath(projectId, orgId, n))}
+            session={session}
           />
           <SubjectActivity
             projectId={projectId}
@@ -208,6 +212,7 @@ export function RoadmapDetailView({
   approving,
   onApprove,
   onOpenProposal,
+  session = null,
 }: {
   roadmap: OrgRoadmapDetail;
   names: ReadonlyMap<string, string>;
@@ -217,6 +222,8 @@ export function RoadmapDetailView({
   approving: string | null;
   onApprove: (key: string) => void;
   onOpenProposal: (number: number) => void;
+  /** The roadmap's Claude Code session, when the claude-code plugin maps one: "Open session" beside the title. */
+  session?: RoadmapSession | null;
 }) {
   const t = S.company.roadmaps;
   const [showFinished, setShowFinished] = useState(false);
@@ -263,6 +270,12 @@ export function RoadmapDetailView({
             <span className="font-mono text-gray-400 dark:text-gray-500">#{r.number}</span> {r.name}
           </h2>
           <Badge tone={statusTone(r)}>{t.status[r.status] ?? r.status}</Badge>
+          {session !== null && (
+            <RoadmapSessionLink
+              session={session}
+              name={names.get(session.agentId) ?? session.agentId}
+            />
+          )}
         </div>
         {r.moderator !== null && (
           <div

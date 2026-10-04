@@ -5,6 +5,9 @@
  */
 import path from "node:path";
 
+/** A Claude Code session id as it may appear in a path: no separators, no dots. */
+export const CLAUDE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
 /** The file each organization's runs are kept in, under its directory. */
 export const RUNS_FILE = "claude-code-runs.json";
 

@@ -5195,6 +5195,10 @@ Scenarios:
       panelTitle: (n: number) => `Roadmap #${n}`,
       hidePanel: "Back to the room",
       detailLoadFailed: "Could not read the roadmap",
+      /** Beside the title when the claude-code plugin maps the roadmap to a Claude Code session (roadmap-session.tsx). */
+      openSession: "Open session",
+      openSessionTitle: (agent: string) =>
+        `Continue this roadmap's Claude Code session, as ${agent}`,
       status: {
         awaiting_room: "waiting for its room",
         discussing: "discussing",

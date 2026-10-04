@@ -90,6 +90,7 @@ import { claudeRoot, openRoutes } from "./resume.js";
 export { ClaudeCodeQueue, PUMP_MS } from "./queue.js";
 export type { QueueDeps } from "./queue.js";
 export {
+  CLAUDE_SESSION_ID,
   KEEP_ENDED,
   PROMPT_MAX,
   QueueError,
@@ -100,7 +101,6 @@ export {
 } from "./runs.js";
 export type { EndReason, QueueConfig, RowLike, Run, RunStatus, RunView } from "./runs.js";
 export {
-  CLAUDE_SESSION_ID,
   RECORD_SCAN_LINES,
   RunningElsewhere,
   claudeRoot,
@@ -111,6 +111,13 @@ export {
   refusalPage,
 } from "./resume.js";
 export type { LiveSession, OpenRoutesDeps, ProcProbe, SessionRecord } from "./resume.js";
+export {
+  ROADMAP_SESSIONS_FILE,
+  parseRoadmapSessions,
+  readRoadmapSessions,
+  roadmapSessionsPath,
+} from "./roadmap-sessions.js";
+export type { RoadmapSession } from "./roadmap-sessions.js";
 export { QUEUE_PREFIX, QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
 export {
   PAGE_PREFIX,
@@ -880,7 +887,7 @@ export class ClaudeCodeQueueModule {
     effect(() => {
       void queue.stop();
     });
-    this.routes = queueRoutes(queue);
+    this.routes = queueRoutes(queue, this.paths.root);
     this.page = pageRoutes(openRoutes({ queue, root: this.paths.root }));
   }
 }

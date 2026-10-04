@@ -314,6 +314,85 @@ describe("the link", () => {
   });
 });
 
+describe("the link by roadmap", () => {
+  /** The organization's mapping, as the board's script writes it. */
+  const mapping = (text: string) =>
+    fs.writeFile(path.join(root, "p", "organizations", "acme", "claude-sessions.json"), text);
+  const byRoadmap = (n: string | number, extra = "") =>
+    `/api/claude-code/open?org=acme&roadmap=${n}${extra}`;
+
+  it("opens the session the mapping names for the roadmap, as the employee it names", async () => {
+    await mapping(JSON.stringify({ roadmaps: { "3": { sessionId: ID, agentId: "dev" } } }));
+    const q = queue();
+    const res = await app(q).request(byRoadmap(3));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/chat/cc-1");
+    expect(created).toEqual([{ agentId: "dev", workspace }]);
+    expect(resumed).toEqual([["cc-1", ID]]);
+    // The same session by its id: the run already holds it.
+    const again = await app(q).request(link());
+    expect(again.headers.get("location")).toBe("/chat/cc-1");
+    expect(created).toHaveLength(1);
+    await q.stop();
+  });
+
+  it("answers 404 with the reason for a roadmap the mapping does not name, and for no mapping", async () => {
+    const q = queue();
+    const none = await app(q).request(byRoadmap(3));
+    expect(none.status).toBe(404);
+    expect(await none.text()).toContain(
+      "Roadmap #3 of organization acme has no Claude Code session",
+    );
+    await mapping(JSON.stringify({ roadmaps: { "4": { sessionId: ID, agentId: "dev" } } }));
+    expect((await app(q).request(byRoadmap(3))).status).toBe(404);
+    expect(created).toEqual([]);
+    await q.stop();
+  });
+
+  it("reads an invalid mapping as none", async () => {
+    const q = queue();
+    for (const text of [
+      "not json",
+      JSON.stringify({ roadmaps: { "3": { sessionId: "../../etc", agentId: "dev" } } }),
+      JSON.stringify({ roadmaps: { "3": { sessionId: ID, agentId: "dev", extra: 1 } } }),
+      JSON.stringify({ roadmaps: { "03": { sessionId: ID, agentId: "dev" } } }),
+      JSON.stringify({ roadmaps: { "3": { sessionId: ID, agentId: "dev" } }, other: {} }),
+      JSON.stringify([]),
+    ]) {
+      await mapping(text);
+      expect((await app(q).request(byRoadmap(3))).status, text).toBe(404);
+    }
+    expect(created).toEqual([]);
+    await q.stop();
+  });
+
+  it("asks for a roadmap number, and is for the Project's people", async () => {
+    await mapping(JSON.stringify({ roadmaps: { "3": { sessionId: ID, agentId: "dev" } } }));
+    const q = queue();
+    expect((await app(q).request(byRoadmap("x"))).status).toBe(400);
+    expect((await app(q).request("/api/claude-code/open?org=acme")).status).toBe(400);
+    expect((await app(q, "stranger").request(byRoadmap(3))).status).toBe(403);
+    expect(created).toEqual([]);
+    await q.stop();
+  });
+
+  it("sends an organization on another machine there, which reads its own mapping", async () => {
+    orgs.set("acme", org("acme", { machineId: "box" }));
+    const q = queue();
+    const res = await app(q).request(byRoadmap(3));
+    expect(res.status).toBe(302);
+    const to = new URL(res.headers.get("location")!, "http://x");
+    expect(to.pathname).toBe("/server/box/api/claude-code/open");
+    expect(Object.fromEntries(to.searchParams)).toEqual({
+      org: "acme",
+      roadmap: "3",
+      project: "p",
+      machine: "box",
+    });
+    await q.stop();
+  });
+});
+
 describe("the surface", () => {
   it("starts claude --resume with no prompt for a Session planned as a resume", async () => {
     expect(claudeArgv("ignored", { PENGUIN_CLAUDE_BIN: "c" }, ID)).toEqual(["c", "--resume", ID]);

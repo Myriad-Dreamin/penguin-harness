@@ -5,6 +5,7 @@
  *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs            queue one
  *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id        one (`?screen=N`: its last screen lines)
  *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id/release  let go of it
+ *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/sessions        the roadmaps that have a session
  *
  * Behind the cookie gate like every organization route. The calling Session and Agent ride in
  * the body (`sessionId`, `agentId`), or in the query on a read, and count only behind the local
@@ -16,6 +17,7 @@ import type { Context } from "hono";
 import type { OrgActor } from "@prismshadow/penguin-server/plugin";
 import { QueueError } from "./runs.js";
 import type { ClaudeCodeQueue } from "./queue.js";
+import { readRoadmapSessions } from "./roadmap-sessions.js";
 
 /** The route group's contribution id, as the manifest names it. */
 export const QUEUE_ROUTES_ID = "claude-code.queue-routes";
@@ -55,7 +57,8 @@ function idParam(c: Context): number {
   return Number(raw);
 }
 
-export function queueRoutes(queue: ClaudeCodeQueue): Hono {
+/** `root` is the data root, where the organization's `claude-sessions.json` is read. */
+export function queueRoutes(queue: ClaudeCodeQueue, root: string): Hono {
   const app = new Hono();
   app.onError((err, c) =>
     err instanceof QueueError
@@ -81,6 +84,17 @@ export function queueRoutes(queue: ClaudeCodeQueue): Hono {
     const [p, o] = orgOf(c);
     const body = await jsonBody(c);
     return c.json(await queue.release(p, o, idParam(c), actorOf(c, body)));
+  });
+  // The roadmaps whose Claude Code session the organization's mapping names, and as whom: what
+  // the roadmap page needs to offer "Open session" (the link resolves the session itself).
+  app.get("/sessions", async (c) => {
+    const [p, o] = orgOf(c);
+    await queue.organization(p, o, actorOf(c, c.req.query()));
+    const mapping = await readRoadmapSessions(root, p, o);
+    const roadmaps = [...mapping]
+      .sort(([a], [b]) => a - b)
+      .map(([roadmap, { agentId }]) => ({ roadmap, agentId }));
+    return c.json({ roadmaps });
   });
   return app;
 }

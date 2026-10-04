@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-04
 - **Type:** feat
-- **Scope:** `plugins`
+- **Scope:** `plugins`, `web`
 
 [中文版](2026-10-04-claude-code-open-by-session.zh.md)
 
@@ -11,3 +11,5 @@
 One Claude Code session never gets two programs. When a program outside the queue holds the session (an entry under `~/.claude/sessions` with a live pid), the link answers with a page that names its process, terminal and tmux pane instead of starting another. An unknown session id, an unreadable record, or a working directory that is gone answers 404 with the reason.
 
 Resume runs are kept while idle: the idle limit passes them by, and they still take a slot. The console shows a resume run's Claude Code session id, and its **Open** follows the same link, so an ended resume run is continued again.
+
+A roadmap's session opens from the roadmap too. `GET /api/claude-code/open?org=<orgId>&roadmap=<n>` looks roadmap `<n>` up in the organization's `claude-sessions.json` (`{ "roadmaps": { "<n>": { "sessionId": "…", "agentId": "…" } } }`, in the organization's directory) and then opens that session as the employee the entry names, the same way the link by id does. A roadmap the file does not name answers 404 with the reason, and a file that is not that shape counts as none. The plugin only reads the file; whoever creates the sessions writes it. In the web app, a roadmap's column beside its room shows **Open session** next to the title when the file names that roadmap, from the new `GET /api/projects/<p>/organizations/<o>/claude-code/sessions`. Without the claude-code plugin the column shows no button.

@@ -5242,6 +5242,9 @@ Benchmark：
       hidePanel: "回到讨论",
       /** The room's column (roadmap-detail.tsx). */
       detailLoadFailed: "路线图读取失败",
+      /** Beside the title when the claude-code plugin maps the roadmap to a Claude Code session (roadmap-session.tsx). */
+      openSession: "进入会话",
+      openSessionTitle: (agent: string) => `以 ${agent} 的身份续开这份路线图的 Claude Code 会话`,
       status: {
         awaiting_room: "等待讨论室",
         discussing: "讨论中",

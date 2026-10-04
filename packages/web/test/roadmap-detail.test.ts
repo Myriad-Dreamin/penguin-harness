@@ -24,6 +24,7 @@ const roadmapDetail = await import("../src/features/company/roadmap-detail");
 const { RoadmapBody, RoadmapDetailView } = roadmapDetail;
 const { roadmapRows } = await import("../src/features/company/roadmaps");
 const { S } = await import("../src/lib/strings");
+const { roadmapSessionHref } = await import("../src/features/company/roadmap-session");
 
 const roadmap = (over: Partial<OrgRoadmapDetail> = {}): OrgRoadmapDetail => ({
   number: 3,
@@ -236,5 +237,44 @@ describe("finished proposals in the column", () => {
 
   it("offers no toggle when nothing is finished", () => {
     expect(render(roadmap())).not.toContain(S.company.roadmaps.showFinished(1));
+  });
+});
+
+describe("Open session beside the title", () => {
+  const withSession = (session: { href: string; agentId: string } | null) =>
+    renderToStaticMarkup(
+      createElement(RoadmapDetailView, {
+        roadmap: roadmap(),
+        names,
+        proposals: new Map(),
+        approvable: new Set<string>(),
+        approving: null,
+        onApprove: () => {},
+        onOpenProposal: () => {},
+        session,
+      }),
+    );
+
+  it("links to the claude-code plugin's open-by-roadmap route, here or on the organization's machine", () => {
+    expect(roadmapSessionHref("p", "acme", 3, null)).toBe(
+      "/api/claude-code/open?org=acme&project=p&roadmap=3",
+    );
+    expect(roadmapSessionHref("p", "acme", 3, "box 1")).toBe(
+      "/server/box%201/api/claude-code/open?org=acme&project=p&roadmap=3&machine=box+1",
+    );
+  });
+
+  it("is in the header, naming the employee, when the mapping has the roadmap", () => {
+    const href = roadmapSessionHref("p", "acme", 3, null);
+    const html = withSession({ href, agentId: "acme_plugin" });
+    const header = html.slice(0, html.indexOf("</header>"));
+    expect(header).toContain(`href="${href.replace(/&/g, "&amp;")}"`);
+    expect(header).toContain(`>${S.company.roadmaps.openSession}</a>`);
+    expect(header).toContain(S.company.roadmaps.openSessionTitle("Dev (Plugin)"));
+  });
+
+  it("is not there without a mapping for the roadmap", () => {
+    expect(withSession(null)).not.toContain(S.company.roadmaps.openSession);
+    expect(render(roadmap())).not.toContain("data-roadmap-session");
   });
 });

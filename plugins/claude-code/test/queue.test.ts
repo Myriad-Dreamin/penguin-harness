@@ -427,7 +427,7 @@ describe("the routes", () => {
       c.set("sessionVia" as never, (c.req.header("x-via") ?? "password") as never);
       await next();
     });
-    outer.route(QUEUE_PREFIX, queueRoutes(q));
+    outer.route(QUEUE_PREFIX, queueRoutes(q, root));
     return outer;
   }
   const base = "/api/projects/p/organizations/acme/claude-code";

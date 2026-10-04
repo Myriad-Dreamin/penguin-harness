@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-04
 - **Type:** feat
-- **Scope:** `plugins`
+- **Scope:** `plugins`, `web`
 
 [English](2026-10-04-claude-code-open-by-session.md)
 
@@ -11,3 +11,5 @@
 同一条 Claude Code 会话绝不会有两个进程。会话已被队列之外的程序持有（`~/.claude/sessions` 里有它的条目且进程存活）时，链接不再起第二个进程，而是答一个页面，写明那个进程、终端与 tmux 窗格。会话 id 不存在、记录不可读或工作目录已不存在时，答 404 与原因。
 
 续开的运行空闲时不被回收：空闲上限跳过它们，名额照常占用。控制台显示续开运行的 Claude Code 会话 id，它的 **Open** 走同一条链接，所以已结束的续开运行可以再次续开。
+
+roadmap 的会话也能从 roadmap 打开。`GET /api/claude-code/open?org=<orgId>&roadmap=<n>` 在组织目录的 `claude-sessions.json`（`{ "roadmaps": { "<n>": { "sessionId": "…", "agentId": "…" } } }`）里查 roadmap `<n>`，再像按 id 的链接一样，以该条目指名的员工身份打开那条会话。文件里没有这个 roadmap 时答 404 与原因；文件不合这个形状时视为没有映射。插件只读这个文件，由创建会话的一方写入。Web 应用里，讨论室旁的 roadmap 栏在文件有这个 roadmap 时于标题旁显示 **进入会话**，数据来自新增的 `GET /api/projects/<p>/organizations/<o>/claude-code/sessions`。未安装 claude-code 插件时不显示该按钮。

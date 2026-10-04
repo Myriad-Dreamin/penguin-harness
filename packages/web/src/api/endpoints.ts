@@ -2179,6 +2179,15 @@ export interface OrgRoadmapDetail extends OrgRoadmapItem {
 export const getOrgRoadmap = (projectId: string, orgId: string, number: number) =>
   apiFetch<OrgRoadmapDetail>(`${orgBase(projectId, orgId)}/roadmaps/${number}`);
 
+/**
+ * The roadmaps whose Claude Code session the claude-code plugin's mapping names, and the
+ * employee each is continued as (that plugin's route; absent without it).
+ */
+export const listOrgClaudeSessions = (projectId: string, orgId: string) =>
+  apiFetch<{ roadmaps: Array<{ roadmap: number; agentId: string }> }>(
+    `${orgBase(projectId, orgId)}/claude-code/sessions`,
+  );
+
 /** An approval of one proposal item's brief, in the role the server finds for the caller (the `roadmap.item.approve` Action). */
 export const approveOrgRoadmapItem = (
   projectId: string,

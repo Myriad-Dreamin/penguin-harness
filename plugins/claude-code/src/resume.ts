@@ -3,6 +3,10 @@
  * Code conversation, continued as an employee of an organization.
  *
  *   GET /api/claude-code/open/<claudeSessionId>?org=<orgId>&agent=<agentId>[&project=<projectId>]
+ *   GET /api/claude-code/open?org=<orgId>&roadmap=<n>[&project=<projectId>]
+ *
+ * The second is the first for the session the organization's `claude-sessions.json` maps
+ * roadmap <n> to, as the employee it names (roadmap-sessions.ts); no such entry is a 404.
  *
  * Behind the login gate, for the Project's people. The answer is always a redirect or a page:
  *
@@ -30,12 +34,11 @@ import path from "node:path";
 import readline from "node:readline";
 import { Hono } from "hono";
 import type { Context } from "hono";
+import type { OrgActor } from "@prismshadow/penguin-server/plugin";
 import type { ClaudeCodeQueue } from "./queue.js";
 import { actorOf } from "./queue-routes.js";
-import { QueueError } from "./runs.js";
-
-/** A Claude Code session id as it may appear in a path: no separators, no dots. */
-export const CLAUDE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+import { CLAUDE_SESSION_ID, QueueError } from "./runs.js";
+import { ROADMAP_SESSIONS_FILE, readRoadmapSessions } from "./roadmap-sessions.js";
 
 /** How many lines of a transcript are read looking for its first user line. */
 export const RECORD_SCAN_LINES = 2000;
@@ -310,7 +313,40 @@ export interface OpenRoutesDeps {
   probe?: ProcProbe;
 }
 
-/** `GET /:claudeSessionId`, mounted under `/api/claude-code/open`. */
+/** The organization's Project: the one named (`project`), else the only one that has it. */
+async function projectOf(root: string, orgId: string, named: string | undefined): Promise<string> {
+  if (named !== undefined && named !== "") {
+    if (!DIR_ID.test(named))
+      throw new QueueError(400, "bad_project", `Not a Project id: ${named}.`);
+    return named;
+  }
+  const found = await orgProjects(root, orgId);
+  if (found.length !== 1) {
+    throw new QueueError(
+      found.length === 0 ? 404 : 400,
+      found.length === 0 ? "org_not_found" : "project_required",
+      found.length === 0
+        ? `No organization ${orgId}.`
+        : `Organization ${orgId} exists in several Projects (${found.join(", ")}); name one (\`project\`).`,
+    );
+  }
+  return found[0]!;
+}
+
+/** A request admitted to an organization: its query, the organization, and who asks. */
+interface Asked {
+  query: Record<string, string>;
+  orgId: string;
+  projectId: string;
+  actor: OrgActor;
+  machineId: string | null;
+}
+
+/**
+ * `GET /:claudeSessionId` and `GET /?roadmap=<n>`, mounted under `/api/claude-code/open`. The
+ * second finds the roadmap's session in the organization's `claude-sessions.json`
+ * (roadmap-sessions.ts) and then is the first, continued as the employee the mapping names.
+ */
 export function openRoutes(deps: OpenRoutesDeps): Hono {
   const env = deps.env ?? process.env;
   const app = new Hono();
@@ -318,44 +354,34 @@ export function openRoutes(deps: OpenRoutesDeps): Hono {
     const status = err instanceof QueueError ? err.status : 500;
     return c.html(refusalPage(status, err.message), status as 404);
   });
-  app.get("/:id", async (c: Context) => {
-    const id = c.req.param("id") ?? "";
-    if (!CLAUDE_SESSION_ID.test(id)) {
-      throw new QueueError(404, "session_not_found", `Not a Claude Code session id: ${id}.`);
-    }
+
+  /** Who asks, about which organization, after the gate: the Project resolved, the person admitted. */
+  async function admit(c: Context): Promise<Asked> {
     const query = c.req.query();
     const orgId = query.org ?? "";
     if (!DIR_ID.test(orgId))
       throw new QueueError(400, "org_required", "Name the organization (`org`).");
-    let projectId = query.project ?? "";
-    if (projectId === "") {
-      const found = await orgProjects(deps.root, orgId);
-      if (found.length !== 1) {
-        throw new QueueError(
-          found.length === 0 ? 404 : 400,
-          found.length === 0 ? "org_not_found" : "project_required",
-          found.length === 0
-            ? `No organization ${orgId}.`
-            : `Organization ${orgId} exists in several Projects (${found.join(", ")}); name one (\`project\`).`,
-        );
-      }
-      projectId = found[0]!;
-    } else if (!DIR_ID.test(projectId)) {
-      throw new QueueError(400, "bad_project", `Not a Project id: ${projectId}.`);
-    }
+    const projectId = await projectOf(deps.root, orgId, query.project);
     const actor = actorOf(c, query);
     const { org } = await deps.queue.organization(projectId, orgId, actor);
-    if (org.machineId !== null) {
-      // Asked where the organization runs; that server's redirect then names the machine.
-      const params = new URLSearchParams({ ...query, project: projectId, machine: org.machineId });
-      return c.redirect(
-        `/server/${encodeURIComponent(org.machineId)}/api/claude-code/open/${encodeURIComponent(id)}?${params}`,
-        302,
-      );
-    }
-    const result = await deps.queue.resume(projectId, orgId, actor, {
+    return { query, orgId, projectId, actor, machineId: org.machineId };
+  }
+
+  /** Asked where the organization runs; that server's redirect then names the machine. */
+  function elsewhere(c: Context, at: Asked, rest: string) {
+    const machine = at.machineId!;
+    const params = new URLSearchParams({ ...at.query, project: at.projectId, machine });
+    return c.redirect(
+      `/server/${encodeURIComponent(machine)}/api/claude-code/open${rest}?${params}`,
+      302,
+    );
+  }
+
+  /** Enter the run holding session `id`, else queue its resume as `agent`, and go there. */
+  async function enter(c: Context, at: Asked, id: string, agent: string | undefined) {
+    const result = await deps.queue.resume(at.projectId, at.orgId, at.actor, {
       claudeSessionId: id,
-      agent: query.agent,
+      agent,
       workspace: async () => (await findSessionRecord(id, env)).cwd,
       guard: async () => {
         const holder = await liveSession(id, env, deps.probe);
@@ -364,7 +390,7 @@ export function openRoutes(deps: OpenRoutesDeps): Hono {
     });
     const { run } = result;
     if (run.status === "running" && run.sessionId !== undefined) {
-      const machine = query.machine;
+      const machine = at.query.machine;
       return c.redirect(
         `/chat/${encodeURIComponent(run.sessionId)}` +
           (machine ? `?machine=${encodeURIComponent(machine)}` : ""),
@@ -376,6 +402,33 @@ export function openRoutes(deps: OpenRoutesDeps): Hono {
       `/org/${encodeURIComponent(result.projectId)}/${encodeURIComponent(result.orgId)}/claude-code?run=${run.id}`,
       302,
     );
+  }
+
+  app.get("/", async (c: Context) => {
+    const raw = c.req.query("roadmap") ?? "";
+    if (!/^[1-9][0-9]{0,8}$/.test(raw))
+      throw new QueueError(400, "roadmap_required", "Name the roadmap (`roadmap`) by its number.");
+    const at = await admit(c);
+    if (at.machineId !== null) return elsewhere(c, at, "");
+    const mapped = (await readRoadmapSessions(deps.root, at.projectId, at.orgId)).get(Number(raw));
+    if (mapped === undefined) {
+      throw new QueueError(
+        404,
+        "roadmap_without_session",
+        `Roadmap #${raw} of organization ${at.orgId} has no Claude Code session: ${ROADMAP_SESSIONS_FILE} in the organization's directory names none for it.`,
+      );
+    }
+    return enter(c, at, mapped.sessionId, mapped.agentId);
+  });
+
+  app.get("/:id", async (c: Context) => {
+    const id = c.req.param("id") ?? "";
+    if (!CLAUDE_SESSION_ID.test(id)) {
+      throw new QueueError(404, "session_not_found", `Not a Claude Code session id: ${id}.`);
+    }
+    const at = await admit(c);
+    if (at.machineId !== null) return elsewhere(c, at, `/${encodeURIComponent(id)}`);
+    return enter(c, at, id, at.query.agent);
   });
   return app;
 }
