@@ -24,6 +24,8 @@ export type { ChildRef, ContextDecl, Manifest, Requirement } from "./manifest.js
 export type { IfaceDecl, IfaceTable, Mismatch, Sig, SlotDecl, TableLike, TypeExpr } from "./sig.js";
 export type { Resources } from "./boot.js";
 export { tableOf } from "./table.js";
+export type { ModuleTable } from "./table-trees.js";
+export { manifestTrees, mergeTables } from "./table-trees.js";
 export { ifaceKey, splitSlotKey } from "./keys.js";
 export type { CheckResult, ManifestNode, Problem, Published } from "./tree.js";
 export { describeProblem, provided } from "./tree.js";

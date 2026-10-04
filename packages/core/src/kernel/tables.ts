@@ -6,27 +6,20 @@
  * table against the host's when the web first meets it (web lib/verify-plugins.ts).
  */
 import type { IfaceTable } from "./sig.js";
+import { satisfies } from "./sig.js";
 import type { Manifest } from "./manifest.js";
 import { parseManifest } from "./manifest.js";
 import { checkTree } from "./check.js";
+import { ifaceKey } from "./keys.js";
+import type { ModuleTable } from "./table-trees.js";
+import { manifestTrees, mergeTables } from "./table-trees.js";
 import type { ManifestNode, Problem } from "./tree.js";
 
-/** A generated table: interfaces, named types, and the package's module manifests by name. */
-export interface ModuleTable extends IfaceTable {
-  /** sha256 of the canonical content (scripts/gen-ifaces.mjs). */
-  readonly hash?: string;
-  /** Manifests by module name — parsed (and so validated) before use. */
-  readonly modules: Readonly<Record<string, unknown>>;
-}
+export type { ModuleTable } from "./table-trees.js";
+export { mergeTables } from "./table-trees.js";
 
-const childName = (c: Manifest["children"][number]) => (typeof c === "string" ? c : c.keyed);
-
-/**
- * The table's top-level trees: every module no other module of the table lists as a child,
- * with its children nested. Throws on a child the table does not carry, a module listed under
- * two parents, or a cycle.
- */
-export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
+/** A table's manifests, each parsed (and so validated) and named as its key says. */
+function parsedManifests(table: ModuleTable, where: string): Map<string, Manifest> {
   const manifests = new Map<string, Manifest>();
   for (const [name, doc] of Object.entries(table.modules)) {
     const manifest = parseManifest(doc, `${where}: modules.${name}`);
@@ -34,53 +27,61 @@ export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
       throw new Error(`${where}: modules.${name} is named '${manifest.name}'`);
     manifests.set(name, manifest);
   }
-  const listed = new Set(
-    [...manifests.values()].flatMap((m) => m.children.map(childName)).filter((c) => c !== "*"),
-  );
-  // Each module is placed once: a second placement is a module listed under two parents or
-  // its own descendant, and stopping there also bounds the walk on a hostile table.
-  const placed = new Set<string>();
-  const node = (name: string): ManifestNode => {
-    if (placed.has(name))
-      throw new Error(`${where}: '${name}' is listed under two parents, or is its own descendant`);
-    placed.add(name);
-    const manifest = manifests.get(name);
-    if (manifest === undefined) throw new Error(`${where}: child '${name}' is not in the table`);
-    return {
-      manifest,
-      children: manifest.children
-        .map(childName)
-        .filter((c) => c !== "*")
-        .map((c) => node(c)),
-    };
-  };
-  const trees = [...manifests.keys()].filter((name) => !listed.has(name)).map((name) => node(name));
-  const stranded = [...manifests.keys()].filter((name) => !placed.has(name));
-  if (stranded.length > 0)
-    throw new Error(`${where}: [${stranded.join(", ")}] are reachable only through a cycle`);
-  return trees;
+  return manifests;
 }
 
 /**
- * Host and extras as one interface table. On a key both carry (an extra copies the host
- * interfaces it compiled against) the host's entry stands, then the earlier extra's — the
- * rule the server's plugin host folds tables by (server plugin/host.ts).
+ * The table's top-level trees: every module no other module of the table lists as a child,
+ * with its children nested. Throws on a manifest that does not parse, a child the table does
+ * not carry, a module listed under two parents, or a cycle.
  */
-export function mergeTables(host: IfaceTable, extras: readonly IfaceTable[]): IfaceTable {
-  const ifaces = { ...host.ifaces };
-  const types = { ...host.types };
-  for (const extra of extras) {
-    for (const [key, decl] of Object.entries(extra.ifaces)) ifaces[key] ??= decl;
-    for (const [key, decl] of Object.entries(extra.types)) types[key] ??= decl;
+export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
+  return manifestTrees(parsedManifests(table, where), where);
+}
+
+/**
+ * An extra's copies of host interfaces that the host's entry no longer satisfies. An extra
+ * that requires a host interface carries the signature it compiled against under the host's
+ * key (gen-ifaces writes it so, scripts/lib/plugin-sides.mjs), so the merged table — where the
+ * host's entry stands — wires it to the host's provider by identity. What identity does not
+ * say is whether the host still offers what the copy needs; that is asked here, of every
+ * requirement naming such a key, and a gap is the requiring module's `mismatch`.
+ */
+function staleCopies(
+  host: IfaceTable,
+  extra: ModuleTable,
+  merged: IfaceTable,
+  manifests: ReadonlyMap<string, Manifest>,
+  pathOf: (module: string) => string,
+): Problem[] {
+  const problems: Problem[] = [];
+  for (const m of manifests.values()) {
+    for (const [alias, need] of Object.entries(m.requires)) {
+      const key = ifaceKey(m.name, need.iface);
+      const hostDecl = host.ifaces[key];
+      const copy = extra.ifaces[key];
+      if (hostDecl === undefined || copy === undefined) continue;
+      const gap = satisfies(hostDecl, copy, merged)[0];
+      if (gap === undefined) continue;
+      problems.push({
+        path: pathOf(m.name),
+        kind: "mismatch",
+        alias,
+        from: need.from ?? key,
+        method: gap.method,
+        why: `the host's '${key}' no longer offers what this plugin was built against: ${gap.why}`,
+      });
+    }
   }
-  return { ifaces, types };
+  return problems;
 }
 
 /**
  * The full check over a host table with `extras` mounted under its root — each extra's
- * top-level modules become children of the host's one root module, as plugin modules are.
- * Returns the problems ([] = the tree verifies); throws when a table is malformed (a
- * manifest that does not parse, a missing child, a host without exactly one root).
+ * top-level modules become children of the host's one root module, as plugin modules are —
+ * plus, for each extra, that the host still satisfies every host interface the extra copied
+ * (staleCopies). Returns the problems ([] = the tree verifies); throws when a table is
+ * malformed (a manifest that does not parse, a missing child, a host without exactly one root).
  */
 export function checkTables(host: ModuleTable, extras: readonly ModuleTable[] = []): Problem[] {
   const roots = treesOf(host, "host table");
@@ -90,9 +91,25 @@ export function checkTables(host: ModuleTable, extras: readonly ModuleTable[] = 
     );
   }
   const root = roots[0]!;
+  const parsed = extras.map((t, i) => parsedManifests(t, `table ${i + 1}`));
   const tree: ManifestNode = {
     manifest: root.manifest,
-    children: [...root.children, ...extras.flatMap((t, i) => treesOf(t, `table ${i + 1}`))],
+    children: [
+      ...root.children,
+      ...parsed.flatMap((manifests, i) => manifestTrees(manifests, `table ${i + 1}`)),
+    ],
   };
-  return checkTree(tree, mergeTables(host, extras)).problems;
+  const merged = mergeTables(host, extras);
+  const paths = new Map<string, string>();
+  const walk = (node: ManifestNode, path: string) => {
+    paths.set(node.manifest.name, path);
+    for (const c of node.children) walk(c, `${path}/${c.manifest.name}`);
+  };
+  walk(tree, `/${root.manifest.name}`);
+  return [
+    ...checkTree(tree, merged).problems,
+    ...extras.flatMap((extra, i) =>
+      staleCopies(host, extra, merged, parsed[i]!, (name) => paths.get(name) ?? name),
+    ),
+  ];
 }

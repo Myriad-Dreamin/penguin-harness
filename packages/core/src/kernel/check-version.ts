@@ -8,4 +8,5 @@
  * merged or mounted (./tables.ts), or an arktype upgrade that changes what a definition
  * accepts. A refactor that keeps every verdict does not bump it.
  */
-export const CHECK_VERSION = 1;
+// 2: checkTables refuses a plugin whose copy of a host interface the host no longer satisfies.
+export const CHECK_VERSION = 2;
