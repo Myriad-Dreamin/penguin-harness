@@ -227,4 +227,3 @@ features/workflows/workflow-app-page.tsx -> features/palette/app-palette.tsx
 features/workflows/workflow-tabs.tsx -> features/chat/skill-use.ts
 lib/strings-en.ts -> features/terminal/strings.ts
 lib/strings.ts -> features/terminal/strings.ts
-shell/router.tsx -> features/company/index.ts
