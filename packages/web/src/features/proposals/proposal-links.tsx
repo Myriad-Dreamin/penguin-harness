@@ -22,7 +22,7 @@ import type { Components, Options } from "react-markdown";
 import { useInRouterContext, useNavigate } from "react-router";
 import { S } from "../../lib/strings";
 import { toneSurface } from "../../lib/tone";
-import { useCompanyOptional } from "../company/company-state";
+import { useCompanyOptional } from "../company";
 import { orgProposalPath, parseOrgKey } from "../company/company-nav";
 import {
   PROPOSAL_REF_RE,

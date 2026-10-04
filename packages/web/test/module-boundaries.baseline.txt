@@ -197,7 +197,6 @@ features/proposals/proposal-comment-line.tsx -> features/company/shared.tsx
 features/proposals/proposal-diff.tsx -> features/company/org-layout.tsx
 features/proposals/proposal-impl.tsx -> features/company/org-layout.tsx
 features/proposals/proposal-links.tsx -> features/company/company-nav.ts
-features/proposals/proposal-links.tsx -> features/company/company-state.tsx
 features/proposals/proposals-page.tsx -> features/company/company-nav.ts
 features/proposals/proposals-page.tsx -> features/company/employee-avatar.tsx
 features/proposals/proposals-page.tsx -> features/company/org-layout.tsx
