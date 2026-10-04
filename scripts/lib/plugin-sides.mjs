@@ -77,7 +77,10 @@ function dependencyModules(pkgDir) {
     let table;
     try {
       table = JSON.parse(
-        fs.readFileSync(path.join(pkgDir, "node_modules", ...name.split("/"), "ifaces.json"), "utf8"),
+        fs.readFileSync(
+          path.join(pkgDir, "node_modules", ...name.split("/"), "ifaces.json"),
+          "utf8",
+        ),
       );
     } catch {
       continue;
