@@ -2665,3 +2665,5 @@ router
 // ---------------------------------------------------------------------------------------------
 
 router.get("/api/terminals", () => ({ terminals: [] }));
+
+router.get("/api/contributions", () => ({ pages: [], pageRemovals: [], fileRenderers: [], agentTabs: [], sessionTabs: [], quickStarts: [] }));
