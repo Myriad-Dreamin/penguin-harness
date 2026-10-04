@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { writeClassPackage } from "./plugin-fixtures.js";
+import { writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
 import { apiClient, createTestApp, loginAdmin } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
@@ -42,6 +42,8 @@ describe("plugin ui route", () => {
     await fs.writeFile(path.join(dir, "ui", "app.js"), "export {};");
     await fs.writeFile(path.join(dir, "secret.txt"), "not for the frame");
     await fs.symlink(path.join(dir, "secret.txt"), path.join(dir, "ui", "leak.txt"));
+    // An install only takes what the prefix's index lists, as the build writes it.
+    await writeShippedIndex(prefix);
     return dir;
   };
 
