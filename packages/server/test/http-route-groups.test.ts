@@ -118,7 +118,10 @@ describe("a route group's auth flag", () => {
 
 describe("a web contribution", () => {
   it("keeps the server's id and from over data fields of the same name", () => {
-    const web = wire(WebModule, { surfaces: { list: () => [] } });
+    const web = wire(WebModule, {
+      surfaces: { list: () => [] },
+      hmr: { resources: { register: () => () => {}, claim: () => undefined } },
+    });
     web.setup({
       contributions: {
         pages: [

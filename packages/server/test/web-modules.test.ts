@@ -57,7 +57,7 @@ describe("web modules", () => {
     const dir = await tmp();
     await writeWebPackage(dir);
     const before = webBuildId(dir);
-    await fs.writeFile(path.join(dir, "dist", "web", "chunk-AB.js"), "export const x = 2;");
+    await fs.writeFile(path.join(dir, "dist", "web", "chunk-AB.js"), "export const x = 22;");
     expect(webBuildId(dir)).not.toBe(before);
   });
 
