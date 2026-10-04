@@ -4,7 +4,6 @@
 # This list only shrinks: never add a line; delete each line whose edge your change removes.
 cycle: features/ai-create -> features/chat
 cycle: features/builtin-browser -> features/dock
-cycle: features/builtin-browser -> features/settings
 cycle: features/chat -> features/ai-create
 cycle: features/chat -> features/builtin-browser
 cycle: features/chat -> features/company
@@ -70,9 +69,6 @@ features/benchmark/create-benchmark-modal.tsx -> features/semantic-id/semantic-i
 features/benchmark/use-benchmark-modal.tsx -> features/chat/model-select.tsx
 features/builtin-browser/browser-actions.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-layer.tsx -> features/dock/dock-state.ts
-features/builtin-browser/browser-panel.tsx -> features/settings/settings-request.ts
-features/builtin-browser/chrome-surface.tsx -> features/settings/settings-request.ts
-features/builtin-browser/hosted-panel.tsx -> features/settings/settings-request.ts
 features/chat/builtin-dock-panels.tsx -> features/builtin-browser/browser-panel.tsx
 features/chat/builtin-dock-panels.tsx -> features/builtin-browser/browser-store.ts
 features/chat/builtin-dock-panels.tsx -> features/dock/panel-registry.ts
