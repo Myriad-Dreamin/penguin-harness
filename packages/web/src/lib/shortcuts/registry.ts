@@ -84,6 +84,15 @@ export const SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
     // Every editor's save chord: the editors take it from the browser's Save Page on purpose.
     defaults: { default: "Mod+KeyS" },
   },
+  {
+    id: "graph.search",
+    scope: "global",
+    group: "general",
+    // The browser's find, taken on the PR graph page alone: its handler is registered only while
+    // that page is open, and declines while the graph's search box has focus, so a second press
+    // reaches the browser's own find.
+    defaults: { default: "Mod+KeyF" },
+  },
 ];
 
 /** The settings page draws groups in this order. */

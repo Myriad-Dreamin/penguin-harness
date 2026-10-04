@@ -76,12 +76,13 @@ describe("registry defaults", () => {
   });
 
   it("names every default that shares a chord with a browser function", () => {
-    // Save takes the browser's Save Page on purpose; on macOS Chrome binds ⌥⌘P to Page Setup
+    // Save takes the browser's Save Page on purpose, and the PR graph's search its Find (on that
+    // page alone, declining while its box has focus); on macOS Chrome binds ⌥⌘P to Page Setup
     // and ⌥⌘N to split view.
     const expected: Record<Platform, CommandId[]> = {
-      mac: ["palette.toggle", "chat.new", "editor.save"],
-      windows: ["editor.save"],
-      linux: ["editor.save"],
+      mac: ["palette.toggle", "chat.new", "editor.save", "graph.search"],
+      windows: ["editor.save", "graph.search"],
+      linux: ["editor.save", "graph.search"],
     };
     for (const platform of PLATFORMS) {
       const common = SHORTCUT_COMMANDS.filter((cmd) => {
