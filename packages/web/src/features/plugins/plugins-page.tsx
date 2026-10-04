@@ -1096,7 +1096,10 @@ function stateIn(
   selfId: string | undefined,
 ): { state: ModuleState; error?: string } {
   // A plugin the server runs whose web modules this page left out of its tree is failed here too.
-  const webFailure = pluginModuleFailures().get(listed.specifier);
+  // Failures are keyed by package name (plugins/assemble.ts), and only an active row is looked
+  // up: the loader runs a specifier only when it is a bare package name (server
+  // plugin/loader.ts `specifierFault`), so an active row's specifier is its package name.
+  const webFailure = listed.active ? pluginModuleFailures().get(listed.specifier) : undefined;
   const local = (row: InstalledPluginsResponse["plugins"][number]) =>
     row.active && row === listed && webFailure !== undefined
       ? { state: "failed" as const, error: S.plugins.webModulesLeftOut(webFailure) }
