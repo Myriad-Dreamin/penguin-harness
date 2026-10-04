@@ -1,9 +1,14 @@
 /**
- * Draws the Workspace files a reply links below the paragraph that links them: the server's file
- * renderer rules (lib/file-renderers.ts) joined with this build's named renderers (the chat
- * module's `fileRenderers` slot) and the open conversation's Workspace, handed to the reply's
- * Markdown as a block trailer (the UI package's ProseBlockTrailerProvider). The Markdown is not
- * changed: a link stays a link and keeps its click.
+ * Draws the Workspace files a reply links below the paragraph that links them: the chat module's
+ * `fileRenderers` contributions (iface.ts — each one's extensions and its component) joined with
+ * the open conversation's Workspace, handed to the reply's Markdown as a block trailer (the UI
+ * package's ProseBlockTrailerProvider). The Markdown is not changed: a link stays a link and
+ * keeps its click.
+ *
+ * A renderer may be a plugin's lazy component (the music example's player): each is drawn in a
+ * Suspense boundary, whose fallback draws nothing until its code has loaded, and an error
+ * boundary, so a renderer that fails to load or to render takes only itself away — the link above
+ * it still opens the file.
  *
  * Two parts, because the trailer is built where the chat page's state is and applied where a
  * reply is drawn: `ReplyFilesProvider` sits in the chat page's ChatSessionProvider and builds it
@@ -14,21 +19,22 @@
  * Every nested reply (a subagent's) shares the conversation's Workspace, so its files are fetched
  * through the conversation's own Session.
  */
-import { createContext, useContext, useMemo } from "react";
+import { createContext, Suspense, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import { ProseBlockTrailerProvider } from "@prismshadow/penguin-ui";
 import type { ProseBlockTrailer } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { ChatSessionContext } from "../../lib/chat-session";
-import { useFileRendererRules } from "../../lib/file-renderers";
+import { ErrorBoundary } from "../../rescue/error-boundary";
+import { useLocale } from "../../state/locale";
 import { chatDeps } from "./deps";
 import { replyFilesOf } from "./reply-files";
 
 const ReplyTrailerContext = createContext<ProseBlockTrailer | null>(null);
 
 export function ReplyFilesProvider({ children }: { children: ReactNode }) {
-  const rules = useFileRendererRules();
-  const { fileRenderers: registry } = chatDeps.useDeps();
+  const { fileRenderers: rules } = chatDeps.useDeps();
+  const { locale } = useLocale();
   const selected = useContext(ChatSessionContext)?.selected ?? null;
   const sessionId = selected?.sessionId ?? null;
   const workspace = selected?.workspace ?? null;
@@ -39,7 +45,6 @@ export function ReplyFilesProvider({ children }: { children: ReactNode }) {
     const input = {
       workspace,
       rules,
-      registry,
       urlOf: (path: string) => api.workspaceFileUrl(sessionId, path),
     };
     return (hrefs) => {
@@ -48,12 +53,16 @@ export function ReplyFilesProvider({ children }: { children: ReactNode }) {
       return (
         <div data-reply-files className="my-2 flex flex-col gap-2">
           {files.map(({ path, name, url, Renderer }) => (
-            <Renderer key={path} url={url} path={path} name={name} />
+            <ErrorBoundary key={path} fallback={() => null}>
+              <Suspense fallback={null}>
+                <Renderer url={url} path={path} name={name} locale={locale} />
+              </Suspense>
+            </ErrorBoundary>
           ))}
         </div>
       );
     };
-  }, [sessionId, workspace, rules, registry]);
+  }, [sessionId, workspace, rules, locale]);
   return <ReplyTrailerContext.Provider value={trailer}>{children}</ReplyTrailerContext.Provider>;
 }
 

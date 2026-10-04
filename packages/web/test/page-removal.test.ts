@@ -81,7 +81,7 @@ function answer(
 ): ContributionsResponse {
   return {
     pages,
-    fileRenderers: [],
+    webModules: [],
     ...(pageRemovals === undefined ? {} : { pageRemovals }),
     agentTabs: [],
     sessionTabs: [],

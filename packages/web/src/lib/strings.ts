@@ -2452,6 +2452,8 @@ export const zh = {
     /** The Project-level install: the plugin is listed, and running unless the row says otherwise. */
     deploymentInstalledToast: (name: string) => `已安装 ${name}`,
     /** Listed, but the process could not load it: the reason, not a success. */
+    /** A running plugin whose web modules this page could not assemble (plugins/assemble.ts), and why. */
+    webModulesLeftOut: (reason: string) => `已加载，但其 Web 模块未装入本页：${reason}`,
     deploymentFailedToast: (name: string, reason: string) => `${name} 加载失败：${reason}`,
     applyConfirmInstall: (name: string) => `安装 ${name}？`,
     applyConfirmRemove: (name: string) => `移除 ${name}？`,
@@ -3980,17 +3982,6 @@ Benchmark：
 
   files: {
     title: "文件",
-    /**
-     * A reply's audio player (features/audio): the play/pause button's name, the seek bar's name
-     * and value text, what the spinner announces while the file loads, and the line the player
-     * becomes when the file cannot be played.
-     */
-    audioPlay: (name: string) => `播放 ${name}`,
-    audioPause: (name: string) => `暂停 ${name}`,
-    audioSeek: (name: string) => `${name} 的播放位置`,
-    audioPosition: (elapsed: string, total: string) => `${elapsed}，共 ${total}`,
-    audioLoading: (name: string) => `正在加载 ${name}`,
-    audioUnavailable: (name: string) => `无法播放 ${name}：文件不存在或格式不受支持。`,
     upload: "上传",
     download: "下载",
     /** Desktop shell's own window only: opens the previewed file's directory in the OS file manager. */

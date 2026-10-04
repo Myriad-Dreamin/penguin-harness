@@ -3,15 +3,14 @@
  * `fileRenderers` contributions (iface.ts), read once at boot.
  */
 import type { Contributed } from "@prismshadow/penguin-core/kernel";
-import type { FileRenderer } from "../../lib/file-renderers";
 import { createDeps } from "../../lib/module-deps";
-import type { FileRendererData, SessionTab, SessionTabData } from "./iface";
+import type { FileRenderer, FileRendererData, SessionTab, SessionTabData } from "./iface";
 
 export interface ChatDeps {
   /** By `order`, top first. */
   sessionTabs: ReadonlyArray<{ id: string; Tab: SessionTab }>;
-  /** The named file renderers, by name: the registry a server's rule picks from. */
-  fileRenderers: ReadonlyMap<string, FileRenderer>;
+  /** The file renderers, in module order: the first whose extensions list a file draws it. */
+  fileRenderers: readonly FileRendererRule[];
 }
 
 export const chatDeps = createDeps<ChatDeps>();
@@ -26,12 +25,22 @@ export function sessionTabsOf(contributions: readonly Contributed[]): ChatDeps["
     .map((c) => ({ id: c.id, Tab: c.code as SessionTab }));
 }
 
-/** The `fileRenderers` contributions by name; of two with one name, the first in module order. */
+/** One file renderer contribution as the conversation reads it. */
+export interface FileRendererRule {
+  id: string;
+  /** Lowercase, without the dot; never empty. */
+  extensions: readonly string[];
+  Renderer: FileRenderer;
+}
+
+/**
+ * The `fileRenderers` contributions as rules, in module order: extensions lowercased and dropped
+ * of a leading dot. The kernel checked each contribution's data against the slot's type.
+ */
 export function fileRenderersOf(contributions: readonly Contributed[]): ChatDeps["fileRenderers"] {
-  const byName = new Map<string, FileRenderer>();
-  for (const c of contributions) {
-    const { name } = c.data as unknown as FileRendererData;
-    if (!byName.has(name)) byName.set(name, c.code as FileRenderer);
-  }
-  return byName;
+  return contributions.flatMap((c) => {
+    const { extensions } = c.data as unknown as FileRendererData;
+    const exts = extensions.map((e) => e.replace(/^\./, "").toLowerCase()).filter((e) => e !== "");
+    return exts.length === 0 ? [] : [{ id: c.id, extensions: exts, Renderer: c.code as FileRenderer }];
+  });
 }

@@ -41,7 +41,6 @@ import type { ContributionsValue } from "../src/shell/contributions";
 import { shellDeps } from "../src/shell/deps";
 import type { ShellDeps } from "../src/shell/deps";
 import { setSafeMode } from "../src/rescue/safe-mode";
-import { useFileRendererRules } from "../src/lib/file-renderers";
 import type { ShellPage } from "../src/shell";
 import { ThemeProvider } from "../src/state/theme";
 import { SURFACE_RENDERER_NAMES, surfaceLabel } from "../src/features/chat/session-surface-view";
@@ -89,7 +88,7 @@ const frame = (src: string) => ({ iframe: { src, namespace: "hello" } });
 function answer(pages: readonly object[]): ContributionsResponse {
   return {
     pages: pages as ContributionsResponse["pages"],
-    fileRenderers: [],
+    webModules: [],
     pageRemovals: [],
     agentTabs: [],
     sessionTabs: [],
@@ -433,11 +432,10 @@ describe("safe mode", () => {
   function firstRender(): string {
     function Probe() {
       const pages = useShellPages();
-      const rules = useFileRendererRules();
       return createElement(
         "p",
         null,
-        `${pages.map((p) => p.key).join(",")} pending=${String(useShellPagesPending())} rules=${rules.length}`,
+        `${pages.map((p) => p.key).join(",")} pending=${String(useShellPagesPending())}`,
       );
     }
     const Root = shellDeps.provide({ pages: COMPILED } as unknown as ShellDeps, () =>
@@ -448,14 +446,14 @@ describe("safe mode", () => {
 
   it("skips every contribution: the table is the compiled one and nothing is in flight", () => {
     setSafeMode(true);
-    expect(firstRender()).toBe("<p>agents,terminal pending=false rules=0</p>");
+    expect(firstRender()).toBe("<p>agents,terminal pending=false</p>");
   });
 
   it("leaving it makes the signed-in user's request due again", () => {
     setSafeMode(true);
     firstRender();
     setSafeMode(false);
-    expect(firstRender()).toBe("<p>agents,terminal pending=true rules=0</p>");
+    expect(firstRender()).toBe("<p>agents,terminal pending=true</p>");
   });
 
   it("hands out no surfaces, quick starts or org pages; a refresh asks nothing", async () => {

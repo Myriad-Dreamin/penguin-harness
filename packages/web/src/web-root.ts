@@ -6,14 +6,24 @@
  *
  * The manifests and interfaces come from `ifaces.json`, which scripts/gen-ifaces.mjs generates
  * from this package's sources (`pnpm gen:ifaces`; not committed). The tree parks nothing and
- * claims no live resource, so its resource registry is an empty one. Booting does no network
- * and takes a few milliseconds; the kernel and its arktype dependency are a fixed cost in the
- * entry bundle.
+ * claims no live resource, so its resource registry is an empty one. Booting takes a few
+ * milliseconds; the kernel and its arktype dependency are a fixed cost in the entry bundle. The
+ * enabled plugins' web modules join it as the root's runtime children (`"*"`, the way the
+ * platform's root takes plugin modules): the entry hands over what GET /api/contributions
+ * forwarded (main.tsx), and plugins/assemble.ts loads and checks them.
  */
 import type { ComponentType } from "react";
 import { bootModules, Module, moduleDefOf } from "@prismshadow/penguin-core/kernel";
-import type { IfaceTable, ManifestTable, Resources } from "@prismshadow/penguin-core/kernel";
+import type {
+  IfaceTable,
+  ManifestTable,
+  ModuleDef,
+  Resources,
+} from "@prismshadow/penguin-core/kernel";
+import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import table from "./ifaces.json";
+import { assemblePlugins, leaveOutAll, mergedTable } from "./plugins/assemble";
+import type { ImportModule } from "./plugins/assemble";
 import { ShellModule } from "./shell/module";
 import type { Shell } from "./shell/module";
 import { SidebarModule } from "./shell/sidebar/module";
@@ -42,7 +52,6 @@ import { DockModule } from "./features/dock/module";
 import { WorkspaceModule } from "./features/workspace/module";
 import { TracesModule } from "./features/traces/module";
 import { TodosModule } from "./features/todos/module";
-import { AudioModule } from "./features/audio/module";
 
 @Module({
   children: [
@@ -72,7 +81,6 @@ import { AudioModule } from "./features/audio/module";
     TodosModule,
     WorkspaceModule,
     TracesModule,
-    AudioModule,
   ],
 })
 export class WebRoot {}
@@ -82,11 +90,35 @@ const NO_RESOURCES: Resources = {
   claim: () => undefined,
 };
 
-/** Boots the module tree and returns the component the app mounts. */
-export async function bootWeb(): Promise<ComponentType<AppRouterProps>> {
-  const tree = await bootModules(
-    moduleDefOf(WebRoot, { manifests: table.modules as unknown as ManifestTable }),
-    { ifaces: table as unknown as IfaceTable, resources: NO_RESOURCES },
-  );
-  return tree.api<Shell>("ShellModule", "shell").Root;
+/** The root with the plugins' modules as its runtime children (its manifest then accepts `"*"`). */
+const rootWith = (extra: ModuleDef[]): ModuleDef =>
+  moduleDefOf(WebRoot, { manifests: table.modules as unknown as ManifestTable, extra });
+
+const HOST_TABLE = table as unknown as IfaceTable;
+
+/**
+ * Boots the module tree — the app's modules and the plugins' web modules the server forwarded
+ * (plugins/assemble.ts) — and returns the component the app mounts. A plugin that does not fit is
+ * left out; should the tree with the admitted ones still fail to boot, it boots without plugins.
+ */
+export async function bootWeb(
+  packages: readonly WebModulePackage[] = [],
+  load?: ImportModule,
+): Promise<ComponentType<AppRouterProps>> {
+  const plugins = await assemblePlugins(packages, rootWith, HOST_TABLE, load);
+  const boot = async (extra: ModuleDef[], ifaces: IfaceTable) =>
+    (await bootModules(rootWith(extra), { ifaces, resources: NO_RESOURCES })).api<Shell>(
+      "ShellModule",
+      "shell",
+    ).Root;
+  if (plugins.length === 0) return boot([], HOST_TABLE);
+  try {
+    return await boot(
+      plugins.flatMap((p) => p.defs),
+      mergedTable(HOST_TABLE, plugins),
+    );
+  } catch (err) {
+    leaveOutAll(plugins, err);
+    return boot([], HOST_TABLE);
+  }
 }
