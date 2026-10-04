@@ -79,7 +79,7 @@ export function RoadmapSessionLink({ session, name }: { session: RoadmapSession;
   return (
     <a
       href={session.href}
-      title={S.company.roadmaps.openSessionTitle(name)}
+      data-tooltip={S.company.roadmaps.openSessionTitle(name)}
       className={`${buttonClass("secondary", "sm")} ml-auto focus-visible:[outline:var(--ui-focus-ring)] focus-visible:[outline-offset:var(--ui-focus-ring-offset)]`}
       data-roadmap-session=""
     >
