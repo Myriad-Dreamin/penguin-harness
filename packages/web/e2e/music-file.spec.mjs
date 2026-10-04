@@ -127,7 +127,9 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   const card = below.locator("[data-audio-file]");
   const style = await card.evaluate((el) => {
     const cs = getComputedStyle(el);
-    const clock = el.querySelector("[aria-hidden]");
+    const clock = [...el.querySelectorAll("span[aria-hidden]")].find((s) =>
+      s.textContent.includes(" / "),
+    );
     return {
       radius: cs.borderTopLeftRadius,
       maxWidth: cs.maxWidth,
