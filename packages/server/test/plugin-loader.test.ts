@@ -68,7 +68,7 @@ function lower(source: string): string {
 describe("plugin list", () => {
   it("no Project means no plugins — the default deployment shape, not an error", async () => {
     expect(await readPluginClosure(root)).toEqual([]);
-    expect(await loadPlugins(root)).toEqual({ loaded: [], failed: new Map() });
+    expect(await loadPlugins(root)).toEqual({ loaded: [], failed: new Map(), importMs: new Map() });
   });
 
   it("reads the configured specifiers in order", async () => {
@@ -234,33 +234,28 @@ describe("plugin loading", () => {
     expect(result.failed.get("@nope/definitely-not-installed")).toBeTruthy();
   });
 
-  it("times each plugin it imports, a failed one as not ok, and not a reused one", async () => {
+  it("times each plugin it imports, a failed one too, and not a reused one", async () => {
     const good = await writePackage(
       "@acme/timed",
       oneModule,
       `${thingClass}\n export default { modules: [Thing] };`,
     );
     await writeConfig({ plugins: [good] });
-    const seen: Array<[string, boolean]> = [];
-    const observe = (specifier: string, ms: number, ok: boolean) => {
-      expect(ms).toBeGreaterThanOrEqual(0);
-      seen.push([specifier, ok]);
-    };
-    const first = await loadPlugins(root, undefined, new Map(), null, observe);
-    expect(seen).toEqual([[good, true]]);
-    seen.length = 0;
-    await loadPlugins(
+    const first = await loadPlugins(root, undefined, new Map(), null);
+    expect([...first.importMs.keys()]).toEqual([good]);
+    expect(first.importMs.get(good)).toBeGreaterThanOrEqual(0);
+    const again = await loadPlugins(
       root,
       undefined,
       new Map(first.loaded.map((e) => [e.specifier, e])),
       null,
-      observe,
     );
-    expect(seen).toEqual([]);
+    expect(again.importMs.size).toBe(0);
     const bad = await writePackage("@acme/untimed", oneModule, "export default 7;");
     await writeConfig({ plugins: [bad] });
-    await loadPlugins(root, undefined, new Map(), null, observe);
-    expect(seen).toEqual([[bad, false]]);
+    const failed = await loadPlugins(root, undefined, new Map(), null);
+    expect([...failed.importMs.keys()]).toEqual([bad]);
+    expect(failed.failed.has(bad)).toBe(true);
   });
 
   it("a default export that is not a list of classes is a load failure that says so", async () => {

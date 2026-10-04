@@ -233,10 +233,17 @@ export class LiveTailTracker {
     this.sessions.delete(sessionId);
   }
 
-  size(sessionId: string): { fragments: number; bytes: number } {
+  /**
+   * How much a session's open fragments hold: their count and the length of what they buffer —
+   * the text and any tool-output images — in UTF-16 units, as the channel counts.
+   */
+  size(sessionId: string): { fragments: number; units: number } {
     const open = this.sessions.get(sessionId);
-    let bytes = 0;
-    for (const frag of open?.values() ?? []) bytes += frag.buffer.length;
-    return { fragments: open?.size ?? 0, bytes };
+    let units = 0;
+    for (const frag of open?.values() ?? []) {
+      units += frag.buffer.length;
+      for (const image of frag.images ?? []) units += image.length;
+    }
+    return { fragments: open?.size ?? 0, units };
   }
 }

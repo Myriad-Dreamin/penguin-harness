@@ -897,10 +897,10 @@ export class SessionManager {
       const channel = this.deps.channels.peek(entry.sessionId) as
         { bufferedBytes?: number } | undefined;
       const history = entry.session.resumedHistory;
+      // The channel and the live tail count UTF-16 units; two bytes each, as the estimate charges.
       const memoryCost =
         (history === undefined ? 0 : this.historyBytes(history)) +
-        (channel?.bufferedBytes ?? 0) +
-        this.liveTail.size(entry.sessionId).bytes;
+        2 * ((channel?.bufferedBytes ?? 0) + this.liveTail.size(entry.sessionId).units);
       telemetry.record({
         probe: "session.memory",
         keys: { session: entry.sessionId },

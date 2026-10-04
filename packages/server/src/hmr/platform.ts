@@ -22,6 +22,7 @@
  * ones it does not own. A pushed bundle therefore replaces the business wholesale:
  * adding or changing an endpoint or a service needs no runtime change.
  */
+import path from "node:path";
 import type { WebSocket } from "ws";
 import type {
   Impl,
@@ -314,13 +315,14 @@ async function createInner(
           // A Project may list a plugin for one machine only (`[plugins.<machineId>]`); this
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
-          // Telemetry's plugin.load, one per plugin imported — kept like the boot timings.
+          // Telemetry's plugin.load, one per plugin imported — kept like the boot timings. A
+          // plugin named by a path (a dev checkout) goes unnamed: samples carry no paths.
           (plugin, ms, ok) =>
             boot.add({
               probe: "plugin.load",
               durMs: ms,
               status: ok ? "ok" : "error",
-              attrs: { plugin },
+              ...(path.isAbsolute(plugin) ? {} : { attrs: { plugin } }),
             }),
         );
   boot.since("boot.plugins", pluginsAt);
