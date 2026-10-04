@@ -293,7 +293,19 @@ export const KEY_RULES: readonly KeyRule[] = [
     kind: "family",
     key: "penguin.machineSessions.",
     scope: "install",
-    why: "The Sessions each machine was last seen holding, shown until its connection is held again. Project id and machine id in the key, Session ids in the value — a new root knows none of them.",
+    why: "Each machine's last Session rows as earlier releases kept them; replaced by penguin.listCache.sessions. and removed on its first write (list-cache.ts). Session ids in the value — a new root knows none of them.",
+  },
+  {
+    kind: "family",
+    key: "penguin.listCache.sessions.",
+    scope: "install",
+    why: "A Project's last Session rows per source, drawn before the server answers (list-cache.ts). User and Project ids in the key, Session ids in the value — a new root knows none of them.",
+  },
+  {
+    kind: "family",
+    key: "penguin.listCache.organizations.",
+    scope: "install",
+    why: "The user's last organization list with the machine each runs on (list-cache.ts). Organization and machine ids in the value — a new root knows none of them.",
   },
   {
     kind: "family",

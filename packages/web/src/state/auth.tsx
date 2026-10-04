@@ -10,6 +10,7 @@ import type { MeResponse, UploadPolicy, UserInfo } from "@prismshadow/penguin-se
 import * as api from "../api/endpoints";
 import { ApiError, setUnauthorizedHandler } from "../api/client";
 import { probeSession } from "../api/session-probe";
+import { clearListCache } from "../lib/list-cache";
 
 /**
  * A GET /api/me issued right after a successful login failed: does the session it was meant to
@@ -203,13 +204,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Signing out also forgets the lists this browser kept for the user (lib/list-cache.ts):
+  // Session titles and organization names are the user's content, not this browser's.
+  const signedInId = user?.userId ?? null;
   const logout = useCallback(async () => {
     try {
       await api.logout();
     } finally {
+      if (signedInId !== null) clearListCache(signedInId);
       setUser(null);
     }
-  }, []);
+  }, [signedInId]);
 
   const setUserInfo = useCallback((next: UserInfo) => setUser(next), []);
 
