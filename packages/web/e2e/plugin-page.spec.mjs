@@ -8,12 +8,14 @@
  * this spec's own user sees the page too.
  *
  * - The row sits indented directly under the Evaluation Center, named in Chinese and in English,
- *   drawn from the manifest: the page's own code (a lazy chunk) is requested only once the page is
+ *   declared by the module's contribution: the page's own code (a lazy chunk) is requested only once the page is
  *   opened, and the plugin's stylesheet is attached with the app.
  * - Opening it draws the plugin's page in the app's frame: the page's one title, its paragraph and
  *   three cards styled from the host's tokens, in the language the app is in (read through the
  *   `Language` interface the app provides), and in the dark theme when the app is.
  * - The collapsed rail draws no row for it and lights the Evaluation Center while it is open.
+ * - Switching the language in Settings re-draws the open page in the new language, with no reload
+ *   (the page subscribes to the `Language` store).
  * - With `?safe` the row is gone, its path is not routed, and no plugin file is requested.
  * - Screenshots (the page and the nav with its row, light and dark, zh and en) go to E2E_SHOTS_DIR
  *   when it is set.
@@ -133,6 +135,23 @@ test("plugin page: in English, the row and the page", async ({ page }) => {
   await expect(main.getByText("Current language: English")).toBeVisible();
 });
 
+test("plugin page: follows a language switch in Settings without a reload", async ({ page }) => {
+  await page.goto(`${BASE}${PATH}`);
+  const main = page.locator("main");
+  await expect(main.getByText("当前语言：中文")).toBeVisible();
+  // A marker on the window: a reload would drop it.
+  await page.evaluate(() => (window.__sameDocument = true));
+  if (SHOTS) await shootPage(page, "switch-before-zh");
+  await page.getByRole("button", { name: U }).last().click();
+  await page.getByRole("menuitem", { name: "设置" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "English", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(main.getByText("Current language: English")).toBeVisible();
+  await expect(main.getByRole("heading", { level: 1, name: "Plugin page" })).toBeVisible();
+  expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+  if (SHOTS) await shootPage(page, "switch-after-en");
+});
+
 test("plugin page: opened by its URL, it draws without a detour", async ({ page }) => {
   await page.goto(`${BASE}${PATH}`);
   await expect(page).toHaveURL(new RegExp(`${PATH}$`));
@@ -171,6 +190,16 @@ test("plugin page: screenshots", async ({ page, browser }) => {
   await shoot(p, "en");
   await en.close();
 });
+
+/** The page whole, light and dark, as `hello-<tag>-<mode>.png`. */
+async function shootPage(page, tag) {
+  await page.mouse.move(0, 0);
+  for (const mode of ["light", "dark"]) {
+    await dark(page, mode === "dark");
+    await page.screenshot({ path: path.join(SHOTS, `hello-${tag}-${mode}.png`) });
+  }
+  await dark(page, false);
+}
 
 /** The page whole, and the nav around the row, light and dark. */
 async function shoot(page, lang) {
