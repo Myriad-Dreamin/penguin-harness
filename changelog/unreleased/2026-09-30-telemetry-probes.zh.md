@@ -3,7 +3,7 @@
 - **Date:** 2026-09-30
 - **Type:** feature
 - **Scope:** `server`
-- **PR:** [Myriad-Dreamin/penguin-harness#119](https://github.com/Myriad-Dreamin/penguin-harness/pull/119)
+- **PR:** [#970](https://github.com/Prism-Shadow/penguin-harness/pull/970)
 
 [English](2026-09-30-telemetry-probes.md)
 
