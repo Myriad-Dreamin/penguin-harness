@@ -23,8 +23,8 @@ const childName = (c: Manifest["children"][number]) => (typeof c === "string" ? 
 
 /**
  * The table's top-level trees: every module no other module of the table lists as a child,
- * with its children nested. Throws on a child the table does not carry, or a module that is
- * its own descendant.
+ * with its children nested. Throws on a child the table does not carry, a module listed under
+ * two parents, or a cycle.
  */
 export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
   const manifests = new Map<string, Manifest>();
@@ -37,8 +37,13 @@ export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
   const listed = new Set(
     [...manifests.values()].flatMap((m) => m.children.map(childName)).filter((c) => c !== "*"),
   );
-  const node = (name: string, above: readonly string[]): ManifestNode => {
-    if (above.includes(name)) throw new Error(`${where}: '${name}' is its own descendant`);
+  // Each module is placed once: a second placement is a module listed under two parents or
+  // its own descendant, and stopping there also bounds the walk on a hostile table.
+  const placed = new Set<string>();
+  const node = (name: string): ManifestNode => {
+    if (placed.has(name))
+      throw new Error(`${where}: '${name}' is listed under two parents, or is its own descendant`);
+    placed.add(name);
     const manifest = manifests.get(name);
     if (manifest === undefined) throw new Error(`${where}: child '${name}' is not in the table`);
     return {
@@ -46,10 +51,14 @@ export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
       children: manifest.children
         .map(childName)
         .filter((c) => c !== "*")
-        .map((c) => node(c, [...above, name])),
+        .map((c) => node(c)),
     };
   };
-  return [...manifests.keys()].filter((name) => !listed.has(name)).map((name) => node(name, []));
+  const trees = [...manifests.keys()].filter((name) => !listed.has(name)).map((name) => node(name));
+  const stranded = [...manifests.keys()].filter((name) => !placed.has(name));
+  if (stranded.length > 0)
+    throw new Error(`${where}: [${stranded.join(", ")}] are reachable only through a cycle`);
+  return trees;
 }
 
 /**

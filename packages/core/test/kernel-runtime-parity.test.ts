@@ -176,6 +176,14 @@ describe("checkTables", () => {
         modules: { ...host.modules, root: { name: "root", children: ["ghost"] } },
       }),
     ).toThrow(/ghost/);
+    const cycle = {
+      ...plugin({}),
+      modules: {
+        a: manifest({ name: "a", children: ["b"] }),
+        b: manifest({ name: "b", children: ["a"] }),
+      },
+    };
+    expect(() => checkTables(host, [cycle])).toThrow(/\[a, b\] are reachable only through a cycle/);
   });
 });
 
