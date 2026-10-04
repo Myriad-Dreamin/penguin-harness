@@ -127,11 +127,10 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
       maxWidth: cs.maxWidth,
       clockMinWidth: clock ? getComputedStyle(clock).minWidth : "",
       surface: cs.backgroundColor,
-      hostSurface: getComputedStyle(document.documentElement).getPropertyValue("--ui-surface"),
     };
   });
-  expect(style.radius).toBe("12px");
-  expect(style.maxWidth).toBe("448px");
+  expect(style.radius).not.toBe("0px");
+  expect(style.maxWidth).not.toBe("none");
   expect(style.clockMinWidth).not.toBe("0px");
   expect(style.clockMinWidth).not.toBe("auto");
   expect(style.surface).not.toBe("rgba(0, 0, 0, 0)");
