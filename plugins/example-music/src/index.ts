@@ -2,11 +2,11 @@
  * @penguinharness/example-music — the smallest plugin that teaches the web app to draw a kind of
  * Workspace file, with its own browser code.
  *
- * Its one module (module.ts) is a WEB module: it contributes to the web app's
- * `ChatModule.fileRenderers` slot, so the build places it on the web side and emits it as a
- * browser module (`dist/web/ExampleMusic.js`, scripts/build-plugin.mjs). The server only forwards
- * it: GET /api/contributions lists it with the URL of its file, and the web app adds it to its
- * own module tree before it mounts. When a reply links a Workspace file with one of its
+ * Its one module (module.ts) is a WEB module (`@Module({ side: "web" })`): it contributes to the
+ * web app's `ChatModule.fileRenderers` slot, and the build emits it as a browser module
+ * (`dist/web/ExampleMusic.js`, scripts/build-plugin.mjs). The server only forwards it: GET
+ * /api/contributions lists it with the URL of its file, and the web app adds it to its own module
+ * tree before it mounts. When a reply links a Workspace file with one of its
  * extensions, the player draws below the paragraph that holds the link; the link itself is left as
  * it is.
  *

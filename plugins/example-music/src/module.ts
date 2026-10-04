@@ -1,6 +1,6 @@
 /**
- * The plugin's one module, a web module: it contributes to the web app's
- * `ChatModule.fileRenderers` slot, which is what makes gen-ifaces place it on the web side.
+ * The plugin's one module, a web module (`side: "web"`): it contributes to the web app's
+ * `ChatModule.fileRenderers` slot.
  *
  * One contribution carries both halves of the rule. The data — which extensions it draws — is in
  * the manifest, so the web app knows a reply's `song.mp3` is this module's to draw without
@@ -13,6 +13,7 @@ import { Bind, Module } from "@prismshadow/penguin-core/plugin";
 import type { FileRendererProps } from "@prismshadow/penguin-web/plugin-types";
 
 @Module({
+  side: "web",
   contributes: {
     "ChatModule.fileRenderers": [
       { id: "example-music.audio", extensions: ["mp3", "wav", "ogg", "m4a"] },

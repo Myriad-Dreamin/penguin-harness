@@ -1,5 +1,6 @@
 /**
- * The plugin's one module, a web module: one page on the web app's `ShellModule.pages` slot.
+ * The plugin's one module, a web module (`side: "web"`): one page on the web app's
+ * `ShellModule.pages` slot.
  *
  * The contribution's data is the page's route and its nav row — its names in both languages, its
  * glyph, and `parent: "benchmark"`, which draws the row indented under the Evaluation Center. The
@@ -10,7 +11,8 @@
  * interface language the person picked (`Language`, provided by the web app's settings module).
  * The module `@Use`s it — wired by the interface's own key, so neither this class nor its manifest
  * names the module that provides it — and hands it to the component by closure. Its type comes
- * from the web app's plugin-facing types (a type import; see tsconfig.json).
+ * from the web app's plugin-facing types (`@prismshadow/penguin-web/plugin-types`, a type import):
+ * the declaration is the app's own, so the requirement carries the app's key.
  */
 import { createElement, lazy } from "react";
 import type { ComponentType } from "react";
@@ -18,6 +20,7 @@ import { Bind, Module, Use } from "@prismshadow/penguin-core/plugin";
 import type { Language } from "@prismshadow/penguin-web/plugin-types";
 
 @Module({
+  side: "web",
   contributes: {
     "ShellModule.pages": [
       {

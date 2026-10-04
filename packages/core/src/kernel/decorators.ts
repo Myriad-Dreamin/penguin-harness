@@ -33,6 +33,14 @@ export interface ModuleMeta {
   readonly children?: ReadonlyArray<ModuleClass>;
   /** Interfaces this module forwards from its children — what the subtree offers outside. */
   readonly exports?: ReadonlyArray<IfaceClass>;
+  /**
+   * Which side runs a PLUGIN's module: the platform (`"server"`, the default) or the web app
+   * (`"web"`). Read statically by gen-ifaces (scripts/lib/plugin-sides.mjs) and written into the
+   * plugin's table; the plugin build emits a web module as a browser file and the server forwards
+   * it to the page. A module of the harness itself runs where its package does and leaves it out.
+   * Nothing at run time reads it.
+   */
+  readonly side?: "server" | "web";
 }
 
 /** What a @Component declares: a module's meta minus children — a component exports itself. */
