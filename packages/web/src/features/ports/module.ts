@@ -32,6 +32,9 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class PortsModule {
-  @Bind("ports.machine") page = lazyComponent(() => import("./machine-ports-page"), "MachinePortsPage");
+  @Bind("ports.machine") page = lazyComponent(
+    () => import("./machine-ports-page"),
+    "MachinePortsPage",
+  );
   @Bind("ports.panel") panel = lazyComponent(() => import("./ports-dock-panel"), "PortsDockPanel");
 }

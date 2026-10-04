@@ -331,7 +331,12 @@ describe("KaTeX on demand", () => {
     for (const source of ["$$E=mc^2$$", String.raw`\[x\]`, String.raw`see \(x\)`]) {
       expect(mayHoldMath(source), source).toBe(true);
     }
-    for (const source of ["plain prose", "Set $PATH and $HOME", "It costs $5 and $10", "a [link](x)"]) {
+    for (const source of [
+      "plain prose",
+      "Set $PATH and $HOME",
+      "It costs $5 and $10",
+      "a [link](x)",
+    ]) {
       expect(mayHoldMath(source), source).toBe(false);
     }
   });

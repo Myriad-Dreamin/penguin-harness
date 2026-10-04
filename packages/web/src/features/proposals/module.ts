@@ -12,5 +12,8 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class ProposalsModule {
-  @Bind("proposals.page") page = lazyComponent(() => import("./proposals-page"), "OrgProposalsPage");
+  @Bind("proposals.page") page = lazyComponent(
+    () => import("./proposals-page"),
+    "OrgProposalsPage",
+  );
 }

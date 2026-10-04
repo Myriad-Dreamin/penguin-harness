@@ -33,5 +33,8 @@ import { lazyComponent } from "../../lib/lazy-component";
 })
 export class PluginsModule {
   @Bind("plugins.list") list = lazyComponent(() => import("./plugins-page"), "PluginsPage");
-  @Bind("plugins.detail") detail = lazyComponent(() => import("./plugin-detail-page"), "PluginDetailPage");
+  @Bind("plugins.detail") detail = lazyComponent(
+    () => import("./plugin-detail-page"),
+    "PluginDetailPage",
+  );
 }

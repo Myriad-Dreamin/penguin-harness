@@ -51,8 +51,14 @@ import { chatDeps, fileRenderersOf, sessionTabsOf } from "./deps";
 export class ChatModule {
   @Provide() chat!: Chat;
   @Bind("chat.page") page!: ComponentType;
-  @Bind("chat.agents-panel") agentsPanel = lazyComponent(() => import("./panels/agents-panel"), "AgentsPanel");
-  @Bind("chat.memory-panel") memoryPanel = lazyComponent(() => import("./panels/memory-panel"), "MemoryPanel");
+  @Bind("chat.agents-panel") agentsPanel = lazyComponent(
+    () => import("./panels/agents-panel"),
+    "AgentsPanel",
+  );
+  @Bind("chat.memory-panel") memoryPanel = lazyComponent(
+    () => import("./panels/memory-panel"),
+    "MemoryPanel",
+  );
   @Provide() drafts: ChatDrafts = chatDrafts;
   setup({ contributions }: ClassCtx) {
     this.page = chatDeps.provide(

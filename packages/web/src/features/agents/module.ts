@@ -33,5 +33,8 @@ import { lazyComponent } from "../../lib/lazy-component";
 })
 export class AgentsModule {
   @Bind("agents.list") list = lazyComponent(() => import("./agents-page"), "AgentsPage");
-  @Bind("agents.settings") settings = lazyComponent(() => import("./agent-settings-page"), "AgentSettingsPage");
+  @Bind("agents.settings") settings = lazyComponent(
+    () => import("./agent-settings-page"),
+    "AgentSettingsPage",
+  );
 }

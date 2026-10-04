@@ -1026,7 +1026,8 @@ export const en: Strings = {
     discard: "Discard",
     none: "(none)",
     retry: "Retry",
-    loadPartFailed: "This part of the app could not load: the connection may have dropped, or the app was just updated.",
+    loadPartFailed:
+      "This part of the app could not load: the connection may have dropped, or the app was just updated.",
     unknownError: "Request failed, please try again later",
     requiredField: "This field is required",
     /** A menu row that copies what it acts on (the conversation's selection menu); the confirmation is `copied`. */
