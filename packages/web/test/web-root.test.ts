@@ -12,6 +12,7 @@
  * - The chat page is the surface-aware chat route; the dashboard and one machine's ports are
  *   pages of their own modules, off the nav, the ports page admin-only.
  * - Home (`/` and every unmatched path) is company mode's page, since it depends on the mode.
+ * - The proposals page is the one page renderer, under the name its plugin's page names.
  * - Beside the booted table, a contributed page whose key the app owns is ignored, and the
  *   company-mode proposals page passes the renderers company mode carries.
  * - The shell receives company's provider and the update badges' owner for the signed-in
@@ -59,6 +60,7 @@ import { OrgRoutes } from "../src/features/company/org-routes";
 import { HomeRedirect } from "../src/features/company/home-redirect";
 import { ORG_PAGE_RENDERERS } from "../src/features/company/company-nav";
 import { ChatRoute } from "../src/features/chat/chat-route";
+import { OrgProposalsPage } from "../src/features/proposals/proposals-page";
 import { DashboardPage } from "../src/features/dashboard/dashboard-page";
 import { MachinePortsPage } from "../src/features/ports/machine-ports-page";
 import { CompanyProvider, companyUserEvents } from "../src/features/company/company-state";
@@ -108,6 +110,7 @@ import { sessionTabsOf } from "../src/features/chat/deps";
 import { WorkflowSessionTab } from "../src/features/workflows/session-tab";
 
 let pages: readonly ShellPage[] = [];
+let pageRenderers: readonly Contributed[] = [];
 let sessionProviders: readonly Contributed[] = [];
 let layers: readonly Contributed[] = [];
 let userEvents: readonly UserEventHandler[] = [];
@@ -130,6 +133,7 @@ beforeAll(async () => {
   const shell = Object.assign(new ShellModule(), {
     setup({ contributions }: ClassCtx) {
       pages = pageTableOf(contributions.pages ?? []);
+      pageRenderers = contributions.pageRenderers ?? [];
       sessionProviders = contributions.sessionProviders ?? [];
       layers = contributions.layers ?? [];
       userEvents = shell.userEventHandlers.all();
@@ -273,6 +277,12 @@ describe("the booted page table", () => {
       admin: false,
       Component: HomeRedirect,
     });
+  });
+
+  it("receives the proposals page as the renderer named OrgProposalsPage", () => {
+    expect(pageRenderers.map((c) => ({ name: c.data.name, code: c.code }))).toEqual([
+      { name: "OrgProposalsPage", code: OrgProposalsPage },
+    ]);
   });
 
   it("lets a contributed page in beside the table only under a key the app does not own", () => {
