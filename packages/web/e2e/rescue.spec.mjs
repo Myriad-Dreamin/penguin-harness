@@ -53,6 +53,11 @@ const rescuePanel = (page) => page.getByRole("alert").filter({ hasText: "界面�
 
 test.beforeEach(async ({ page }) => {
   await provisionAndLogin(page.request, U, P);
+  // While the page's socket is open the API rides it (api/client.ts), out of `page.route`'s
+  // reach; without a WebSocket every call is a fetch, so the spec can answer the contributions.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "WebSocket", { value: undefined, configurable: true });
+  });
   await page.setViewportSize({ width: 1280, height: 800 });
 });
 
