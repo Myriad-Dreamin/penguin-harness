@@ -4,8 +4,9 @@
  *
  * Two things happen before the mount. The module tree boots (web-root.ts): the router's pages
  * are its contributions, so there is nothing to mount until it has — it takes milliseconds once
- * the server has said which plugin web modules join it (one bounded request, beside the two
- * below), and runs alongside the reconcile below. And the browser's persisted UI
+ * it knows which plugin web modules join it (the list kept from the last answer; only a browser
+ * without one waits for the request, bounded, beside the two below), and runs alongside the
+ * reconcile below. And the browser's persisted UI
  * state is reconciled against the data root the server is actually serving
  * (lib/install-scope.ts). The reconcile has to be HERE and not in a provider, because the
  * state it may clear is read from `useState` initializers scattered through the tree — the
@@ -33,7 +34,7 @@ import { App } from "./app";
 import { bootInstallScope, watchInstallScope } from "./lib/install-scope";
 import { prefetchMe } from "./state/auth";
 import { bootWeb } from "./web-root";
-import { fetchBootContributions, reloadOnSafeModeChange } from "./plugins/forwarded";
+import { bootWebModules, reloadOnSafeModeChange } from "./plugins/forwarded";
 import { bootFailedRoot } from "./rescue/rescue-panel";
 import { adoptSafeModeParam } from "./rescue/safe-mode";
 import type { AppRouterProps } from "./shell/router";
@@ -77,13 +78,12 @@ prefetchMe();
 // app then mounts the rescue panel in the tree's place, with the command palette beside it, so
 // the harness can be rolled back.
 //
-// The enabled plugins' web modules are part of the tree, so the tree boots once the server has
-// said which there are (plugins/forwarded.ts: asked beside the two above, bounded, nothing in
-// safe mode).
-const webModules = fetchBootContributions().then((answer) => answer?.webModules ?? []);
+// The enabled plugins' web modules are part of the tree, so the tree boots once the boot knows
+// which there are (plugins/forwarded.ts: the list this browser kept from the last answer, at
+// once; without one, the answer, asked beside the two above and bounded; nothing in safe mode).
 void Promise.all([
   bootInstallScope().catch(() => "mount" as const),
-  webModules.then((packages) => {
+  bootWebModules().then((packages) => {
     reloadOnSafeModeChange(packages.length > 0);
     return bootWeb(packages).catch((error: unknown) => bootFailedRoot(error));
   }),

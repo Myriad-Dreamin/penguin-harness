@@ -32,8 +32,9 @@
  *
  * The answer also forwards the enabled plugins' web modules (`webModules`); those are not read
  * here but by the boot, which assembles them into the module tree before the first render
- * (plugins/forwarded.ts, whose answer is this store's first one, so the boot's request is not
- * repeated).
+ * (plugins/forwarded.ts, whose request is this store's first one, so it is not repeated). Each
+ * answer is handed back there, to keep the boot's cached list current and to reload once when
+ * the tree holds another list.
  */
 import {
   createContext,
@@ -50,7 +51,7 @@ import type {
   SessionSurfaceSummary,
 } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
-import { assembleIfBootedWithout, takeBootContributions } from "../plugins/forwarded";
+import { reconcileWebModules, takeBootContributions } from "../plugins/forwarded";
 import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -270,7 +271,10 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
     // The boot's answer first (plugins/forwarded.ts), once; every later ask goes to the server.
     createContributionsStore(() => {
       const primed = takeBootContributions();
-      return primed !== null ? Promise.resolve(primed) : api.getContributions();
+      // A boot request that got no answer (signed out then, or failed) is asked again.
+      return primed !== null
+        ? primed.then((answer) => answer ?? api.getContributions())
+        : api.getContributions();
     }),
   );
   useEffect(() => store.setUser(userId), [store, userId]);
@@ -291,9 +295,9 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
     }),
     [compiled, answer, pageRenderers, pending, store],
   );
-  // An answer after a boot that got none (a sign-in, leaving safe mode): the tree was assembled
-  // without the plugins' web modules.
-  useEffect(() => assembleIfBootedWithout(answer), [answer]);
+  // Each answer against the list the tree was assembled from: a different one (a sign-in after a
+  // signed-out boot, leaving safe mode, a plugin enabled or removed) is written and reloads once.
+  useEffect(() => reconcileWebModules(answer, userId), [answer, userId]);
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
 }
 

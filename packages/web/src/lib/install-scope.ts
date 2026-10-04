@@ -311,6 +311,12 @@ export const KEY_RULES: readonly KeyRule[] = [
   },
   {
     kind: "exact",
+    key: "penguin.listCache.webModules",
+    scope: "install",
+    why: "The plugin web modules the server last forwarded, which the boot assembles before the answer (list-cache.ts, plugins/forwarded.ts). Another root has other plugins.",
+  },
+  {
+    kind: "exact",
     key: "penguin.verifiedPlugins",
     scope: "browser",
     why: "Plugin tables already verified against a host table, by content hash (verified-cache.ts). A fact about two tables, true under any data root; names nothing on the server.",
