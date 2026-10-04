@@ -564,6 +564,8 @@ export async function loadPlugins(
   reuse: ReadonlyMap<string, LoadedPlugin> = new Map(),
   /** This server's own machine id, which selects its `[plugins.<id>]` tables; null reads the shared tables alone. */
   machineId: string | null = null,
+  /** Each plugin's import and check, timed (telemetry's plugin.load); absent, nothing is timed. */
+  observe?: (specifier: string, ms: number, ok: boolean) => void,
 ): Promise<PluginLoadResult> {
   const failed = new Map<string, string>();
   const pushedAssets = assetsDir === undefined ? await committedAssetsDir(root) : assetsDir;
@@ -593,6 +595,7 @@ export async function loadPlugins(
       loaded.push(held);
       continue;
     }
+    const startedAt = performance.now();
     try {
       const { module, file, stamp } = await importPlugin(specifier, bases);
       const read = await readPackageTable(file);
@@ -639,6 +642,8 @@ export async function loadPlugins(
       loaded.push({ specifier, file, stamp, modules, replaces, ifaces: read.ifaces });
     } catch (err) {
       failed.set(specifier, err instanceof Error ? err.message : String(err));
+    } finally {
+      observe?.(specifier, performance.now() - startedAt, !failed.has(specifier));
     }
   }
   return { loaded, failed };
@@ -664,13 +669,15 @@ export async function loadPluginHost(
   assetsDir?: string | null,
   /** This server's own machine id (see loadPlugins). */
   machineId: string | null = null,
+  /** Per-plugin timings (see loadPlugins). */
+  observe?: (specifier: string, ms: number, ok: boolean) => void,
 ): Promise<PluginHost> {
   const inherited = pluginHostFrom(resources);
   // An older generation's host may predate `entries()`; then nothing is reused and every
   // specifier is imported again, which the ESM cache makes cheap.
   const reuse =
     typeof inherited.entries === "function" ? inherited.entries() : new Map<string, LoadedPlugin>();
-  const result = await loadPlugins(root, assetsDir, reuse, machineId);
+  const result = await loadPlugins(root, assetsDir, reuse, machineId, observe);
   const host = new PluginHost();
   for (const entry of result.loaded) {
     // A module name clash is a LOAD failure, isolated per entry like an import failure.

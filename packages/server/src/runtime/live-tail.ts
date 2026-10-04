@@ -232,4 +232,11 @@ export class LiveTailTracker {
   clear(sessionId: string): void {
     this.sessions.delete(sessionId);
   }
+
+  size(sessionId: string): { fragments: number; bytes: number } {
+    const open = this.sessions.get(sessionId);
+    let bytes = 0;
+    for (const frag of open?.values() ?? []) bytes += frag.buffer.length;
+    return { fragments: open?.size ?? 0, bytes };
+  }
 }
