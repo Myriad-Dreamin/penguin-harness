@@ -36,6 +36,7 @@ import {
 } from "../src/features/company/company-nav";
 import { DEFAULT_CHANNEL_ID } from "../src/features/company/channel-list";
 import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../src/features/company/company-nav-icons";
+import { glyphOf } from "../src/lib/nav-icons";
 import { zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import {
@@ -239,7 +240,7 @@ describe("contributed company-mode pages", () => {
       const label = ORG_PAGE_RENDERERS[renderer].label;
       expect(typeof zh.nav.org[label]).toBe("string");
       expect(typeof en.nav.org[label]).toBe("string");
-      expect(ORG_PAGE_ICONS[renderer]).toMatch(/^M/);
+      expect(glyphOf(ORG_PAGE_ICONS[renderer])).toMatch(/^M/);
     }
   });
 
