@@ -10,6 +10,7 @@
  * - A member's nav drops admin-only pages and adds nothing the admin lacks.
  * - The chat page is the surface-aware chat route; the dashboard and one machine's ports are
  *   pages of their own modules, off the nav, the ports page admin-only.
+ * - Home (`/` and every unmatched path) is company mode's page, since it depends on the mode.
  * - Beside the booted table, a contributed page whose key the app owns is ignored, and the
  *   company-mode proposals page passes the renderers company mode carries.
  * - The shell receives company's provider for the signed-in session, the four layers in their
@@ -36,6 +37,7 @@ import { NAV_ICONS } from "../src/lib/nav-icons";
 import { AgentsPage } from "../src/features/agents/agents-page";
 import { TerminalPage } from "../src/features/terminal/terminal-page";
 import { OrgRoutes } from "../src/features/company/org-routes";
+import { HomeRedirect } from "../src/features/company/home-redirect";
 import { ORG_PAGE_RENDERERS } from "../src/features/company/company-nav";
 import { ChatRoute } from "../src/features/chat/chat-route";
 import { DashboardPage } from "../src/features/dashboard/dashboard-page";
@@ -146,6 +148,16 @@ describe("the booted page table", () => {
       admin: true,
     });
     expect(page("machine-ports")?.Component).toBe(MachinePortsPage);
+  });
+
+  it("leads home through company mode's page, inside the shell and off the nav", () => {
+    expect(pages.find((p) => p.key === "home")).toMatchObject({
+      path: "*",
+      frame: "shell",
+      nav: "none",
+      admin: false,
+      Component: HomeRedirect,
+    });
   });
 
   it("lets a contributed page in beside the table only under a key the app does not own", () => {
