@@ -14,10 +14,17 @@
  * arktype-free runtime entry: identity wiring and the cheap checks, no shape validation. The
  * enabled plugins' web modules join it as the root's runtime children (`"*"`, the way the
  * platform's root takes plugin modules): the entry hands over what GET /api/contributions
- * forwarded (main.tsx), and plugins/assemble.ts loads and checks them.
+ * forwarded (main.tsx), and plugins/assemble.ts verifies, admits and loads them — through the
+ * same runtime entry; the full kernel is loaded only to verify a plugin table not seen before.
  */
 import type { ComponentType } from "react";
-import { bootVerified, Module, moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
+import {
+  bootVerified,
+  mergeTables,
+  Module,
+  moduleDefOf,
+  moduleMetaOf,
+} from "@prismshadow/penguin-core/kernel/runtime";
 import type {
   IfaceTable,
   ManifestTable,
@@ -26,8 +33,9 @@ import type {
 } from "@prismshadow/penguin-core/kernel/runtime";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import table from "./ifaces.json";
-import { assemblePlugins, leaveOutAll, mergedTable } from "./plugins/assemble";
-import type { ImportModule } from "./plugins/assemble";
+import type { HashedTable } from "./lib/verify-plugins";
+import { assemblePlugins, leaveOutAll } from "./plugins/assemble";
+import type { AssembleOptions } from "./plugins/assemble";
 import { ShellModule } from "./shell/module";
 import type { Shell } from "./shell/module";
 import { SidebarModule } from "./shell/sidebar/module";
@@ -98,18 +106,23 @@ const NO_RESOURCES: Resources = {
 const rootWith = (extra: ModuleDef[]): ModuleDef =>
   moduleDefOf(WebRoot, { manifests: table.modules as unknown as ManifestTable, extra });
 
-const HOST_TABLE = table as unknown as IfaceTable;
+const HOST_TABLE = table as unknown as HashedTable;
 
 /**
- * Boots the module tree — the app's modules and the plugins' web modules the server forwarded
- * (plugins/assemble.ts) — and returns the component the app mounts. A plugin that does not fit is
- * left out; should the tree with the admitted ones still fail to boot, it boots without plugins.
+ * Boots the module tree — the app's modules and the plugins' web modules the server forwarded,
+ * verified and admitted (plugins/assemble.ts) — and returns the component the app mounts. A
+ * plugin that does not fit is left out; should the tree with the admitted ones still fail to
+ * boot, it boots without plugins.
  */
 export async function bootWeb(
   packages: readonly WebModulePackage[] = [],
-  load?: ImportModule,
+  opts: Pick<AssembleOptions, "load" | "verify"> = {},
 ): Promise<ComponentType<AppRouterProps>> {
-  const plugins = await assemblePlugins(packages, rootWith, HOST_TABLE, load);
+  const plugins = await assemblePlugins(packages, {
+    ...opts,
+    host: HOST_TABLE,
+    root: moduleMetaOf(WebRoot).name,
+  });
   const boot = async (extra: ModuleDef[], ifaces: IfaceTable) =>
     (await bootVerified(rootWith(extra), { ifaces, resources: NO_RESOURCES })).api<Shell>(
       "ShellModule",
@@ -119,7 +132,10 @@ export async function bootWeb(
   try {
     return await boot(
       plugins.flatMap((p) => p.defs),
-      mergedTable(HOST_TABLE, plugins),
+      mergeTables(
+        HOST_TABLE,
+        plugins.map((p) => p.ifaces),
+      ),
     );
   } catch (err) {
     leaveOutAll(plugins, err);

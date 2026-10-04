@@ -6,7 +6,8 @@
  * - Only the plugins not verified before are checked, each with the plugins it depends on.
  * - A dependency whose table changed invalidates what was verified with it.
  * - Failures are reported and never remembered; a missing dependency is refused unchecked.
- * - A table whose hash does not match its content is checked on every load, never remembered.
+ * - A plugin table is keyed by its own canonical content: a `hash` it claims is ignored, and the
+ *   same content in another key order is the same key.
  * - Kept: the current host and the most recently used before it, so going back hits; a write
  *   drops plugin hashes no longer installed.
  * - Junk, another version, or blocked storage behave as an empty cache; safe mode neither
@@ -16,7 +17,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Manifest, Problem } from "@prismshadow/penguin-core/kernel/runtime";
-import { hostIdentity, verifyPlugins } from "../src/lib/verify-plugins";
+import { hostIdentity, tableKey, verifyPlugins } from "../src/lib/verify-plugins";
 import type { FullCheck, HashedTable, PluginTable } from "../src/lib/verify-plugins";
 import { KEPT_HOSTS, VERIFIED_CACHE_KEY, VERIFIED_CACHE_VERSION } from "../src/lib/verified-cache";
 import { setSafeMode } from "../src/rescue/safe-mode";
@@ -147,17 +148,19 @@ describe("verifyPlugins", () => {
     expect(second.checked).toEqual([["bad"]]);
   });
 
-  it("checks a table whose hash does not match its content on every load", async () => {
+  it("keys a table by its own content: a claimed hash is ignored, key order does not matter", async () => {
     const h = host();
-    const forged = {
-      ...plugin("a"),
-      table: { ...plugin("a").table, hash: plugin("b").table.hash },
+    const a = plugin("a");
+    await verifyPlugins(h, [a], { loadCheck: fakeCheck().loadCheck });
+    const { modules, types, ifaces } = a.table;
+    const reordered = {
+      ...a,
+      table: { hash: plugin("b").table.hash!, modules, types, ifaces },
     };
-    for (let i = 0; i < 2; i++) {
-      const run = fakeCheck();
-      await verifyPlugins(h, [forged], { loadCheck: run.loadCheck });
-      expect(run.checked).toEqual([["a"]]);
-    }
+    const run = fakeCheck();
+    await verifyPlugins(h, [reordered], { loadCheck: run.loadCheck });
+    expect(run.loadCheck).not.toHaveBeenCalled();
+    expect(await tableKey(reordered.table)).toBe(await tableKey(a.table));
   });
 });
 
@@ -191,7 +194,7 @@ describe("the verified cache", () => {
     const h = host();
     await verifyPlugins(h, [plugin("a"), plugin("b")], { loadCheck: fakeCheck().loadCheck });
     await verifyPlugins(h, [plugin("b")], { loadCheck: fakeCheck().loadCheck });
-    expect(Object.keys(stored().hosts[0]!.plugins)).toEqual([plugin("b").table.hash]);
+    expect(Object.keys(stored().hosts[0]!.plugins)).toEqual([await tableKey(plugin("b").table)]);
   });
 
   it("treats junk or another version as empty, and replaces it", async () => {

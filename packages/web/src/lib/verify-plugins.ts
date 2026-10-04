@@ -13,26 +13,29 @@
  * keyed by each table's content hash, so the next load with the same host and the same
  * plugins returns without loading it. Failures are never remembered.
  *
- * A table's hash is the sha256 of its canonical content (scripts/gen-ifaces.mjs). It is
- * recomputed here, not taken on trust: a table whose `hash` does not match its content, or a
- * page without WebCrypto (`crypto.subtle` is missing outside a secure context, e.g. plain
- * HTTP on a LAN address), is verified on every load and never cached.
+ * A plugin table's cache key is computed here, over exactly the table that is checked, as the
+ * sha256 of its canonical JSON (keys sorted at every level, so no producer's key order matters).
+ * Nothing the server says about it (a `hash` field, the build id in its URLs) is taken on trust
+ * or needed: the key IS the verified content. A page without WebCrypto (`crypto.subtle` is
+ * missing outside a secure context, e.g. plain HTTP on a LAN address) verifies on every load and
+ * caches nothing. The host's identity is the `hash` of the web's own generated table, which is
+ * part of the bundle that runs this code.
  *
  * TODO(post-verify): plugins wait for their verification before they boot; booting first and
  * verifying after is not built. Revisit only if the first-sight verification shows on the boot path.
  */
-import type { ModuleTable } from "@prismshadow/penguin-core/kernel";
 import { CHECK_VERSION } from "@prismshadow/penguin-core/kernel/runtime";
+import type { ModuleTable } from "@prismshadow/penguin-core/kernel/runtime";
 import { readVerified, recordVerified } from "./verified-cache";
 
-/** A generated table with its hash, as gen-ifaces writes it. */
+/** The host's generated table, with the hash gen-ifaces gives it. */
 export type HashedTable = ModuleTable & { readonly hash: string };
 
 export interface PluginTable {
   /** The plugin's name, unique in the list: what dependencies and messages name it by. */
   readonly name: string;
-  /** Its generated `ifaces.json`. */
-  readonly table: HashedTable;
+  /** Its table: interfaces, types and the manifests of the modules that join the host. */
+  readonly table: ModuleTable;
   /** Plugins in the same list its modules need (wire to, contribute to); checked together with it. */
   readonly dependsOn?: readonly string[];
 }
@@ -64,13 +67,30 @@ export function hostIdentity(host: { readonly hash: string }): string {
   return `check${CHECK_VERSION}:${host.hash}`;
 }
 
-/** sha256 over the table without its `hash`, as gen-ifaces computes it; null when it cannot be computed. */
-async function contentHash(table: HashedTable): Promise<string | null> {
+/** JSON with every object's keys sorted, so equal content is equal text whoever produced it. */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    typeof v === "object" && v !== null && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.keys(v)
+            .sort()
+            .map((k) => [k, (v as Record<string, unknown>)[k]]),
+        )
+      : v,
+  );
+}
+
+/**
+ * A plugin table's cache key: sha256 over the canonical JSON of what is checked (its
+ * interfaces, types and manifests; a `hash` it carries is not part of it); null when it cannot
+ * be computed.
+ */
+export async function tableKey(table: ModuleTable): Promise<string | null> {
   const subtle = globalThis.crypto?.subtle;
   if (subtle === undefined) return null;
   try {
-    const { hash: _hash, ...body } = table;
-    const digest = await subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(body)));
+    const body = { ifaces: table.ifaces, types: table.types, modules: table.modules };
+    const digest = await subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(body)));
     return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
   } catch {
     return null;
@@ -112,8 +132,7 @@ export async function verifyPlugins(
   const keys = new Map<PluginTable, string | null>();
   await Promise.all(
     [...byName.values()].map(async (p) => {
-      const computed = await contentHash(p.table);
-      keys.set(p, computed !== null && computed === p.table.hash ? computed : null);
+      keys.set(p, await tableKey(p.table));
     }),
   );
 

@@ -1,32 +1,41 @@
 /**
  * Plugin web modules joining the app's module tree (plugins/assemble.ts, web-root.ts): what
- * GET /api/contributions forwards is loaded, checked and booted beside the app's own modules.
+ * GET /api/contributions forwards is verified, admitted, loaded and booted beside the app's own
+ * modules, through the kernel's runtime entry.
  *
  * - A forwarded module joins: its class is created and its contribution reaches the chat page's
- *   `fileRenderers` slot, rule and component in one.
+ *   `fileRenderers` slot, rule and component in one; its verdict is remembered.
  * - A package whose module does not fit (data of the wrong shape, a slot no module has, a name
  *   the app already uses) or whose file fails to load is left out with the reason, and the app
  *   boots without it; of two packages with one module name, the later is left out.
+ * - A module requiring a host interface by the host's key, carrying its own copy, wires to the
+ *   host's provider by identity — even one that provides several interfaces; a copy the host no
+ *   longer satisfies is refused at verification; a requirement only a structural match meets is
+ *   refused before the boot, not by it.
  * - Nothing forwarded (safe mode, signed out) boots the app's own tree.
- * - The app shares its own React, JSX runtime, kernel and UI package with plugin modules, under
- *   the keys the plugin build resolves them to (scripts/lib/web-shared.mjs).
+ * - The app shares its own React, JSX runtime, kernel runtime entry and UI package with plugin
+ *   modules, under the keys the plugin build resolves them to (scripts/lib/web-shared.mjs).
  */
 import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
-import * as Kernel from "@prismshadow/penguin-core/kernel";
+import * as Kernel from "@prismshadow/penguin-core/kernel/runtime";
 // Aliased: gen-ifaces reads every `@Module` class of this package's program, tests included,
 // into the app's own table — these stand for plugin modules, whose manifests are forwarded.
-import { Bind, Module as PluginModule } from "@prismshadow/penguin-core/kernel";
-import type { ClassCtx, Contributed } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module as PluginModule, Use } from "@prismshadow/penguin-core/kernel/runtime";
+import type { ClassCtx, Contributed, IfaceDecl } from "@prismshadow/penguin-core/kernel/runtime";
 import * as Ui from "@prismshadow/penguin-ui";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SHARED, SHARED_GLOBAL as BUILD_GLOBAL } from "../../../scripts/lib/web-shared.mjs";
 import { bootWeb } from "../src/web-root";
+import table from "../src/ifaces.json";
 import { pluginModuleFailures } from "../src/plugins/assemble";
 import { SHARED_GLOBAL, SHARED_MODULES, shareHostModules } from "../src/plugins/shared";
 import { fileRenderersOf } from "../src/features/chat/deps";
 import { ChatModule } from "../src/features/chat/module";
+import { tableKey } from "../src/lib/verify-plugins";
+import { VERIFIED_CACHE_KEY } from "../src/lib/verified-cache";
+import { memoryStorage, stubLocalStorage } from "./helpers/storage";
 
 const Player = () => null;
 let created: string[] = [];
@@ -73,11 +82,11 @@ const manifest = (name: string, contributes: Record<string, unknown[]> = {}) => 
 const pkg = (
   name: string,
   modules: Array<{ manifest: object; url: string }>,
+  ifaces: Record<string, unknown> = {},
 ): WebModulePackage => ({
   package: name,
   version: "1.0.0",
-  hash: "h",
-  ifaces: { ifaces: {}, types: {} },
+  ifaces: { ifaces, types: {} },
   modules: modules as WebModulePackage["modules"],
   styles: [],
 });
@@ -95,12 +104,14 @@ const load = async (url: string) => {
   if (!(url in classes)) throw new Error(`404 ${url}`);
   return { default: classes[url] };
 };
+const opts = { load };
 
 beforeEach(() => {
   created = [];
   renderers = [];
   (pluginModuleFailures() as Map<string, string>).clear();
   vi.spyOn(console, "warn").mockImplementation(() => {});
+  stubLocalStorage(memoryStorage());
 });
 
 // The chat module hands its slot to its page; the test reads it off the module's setup.
@@ -114,7 +125,7 @@ describe("plugin web modules in the tree", () => {
   it("a forwarded module joins: created, its rule and component on the chat slot", async () => {
     const Root = await bootWeb(
       [pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }])],
-      load,
+      opts,
     );
     expect(typeof Root).toBe("function");
     expect(created).toContain("MusicPlugin");
@@ -126,7 +137,7 @@ describe("plugin web modules in the tree", () => {
   });
 
   it("boots the app's own tree when nothing is forwarded", async () => {
-    await bootWeb([], load);
+    await bootWeb([], opts);
     expect(created).toEqual([]);
     expect(renderers).toEqual([]);
   });
@@ -135,7 +146,7 @@ describe("plugin web modules in the tree", () => {
     const bad = manifest("MusicPlugin", {
       "ChatModule.fileRenderers": [{ id: "music.audio", extensions: 5 }],
     });
-    const Root = await bootWeb([pkg("@acme/bad", [{ manifest: bad, url: "/music.js" }])], load);
+    const Root = await bootWeb([pkg("@acme/bad", [{ manifest: bad, url: "/music.js" }])], opts);
     expect(typeof Root).toBe("function");
     expect(created).not.toContain("MusicPlugin");
     expect(renderers).toEqual([]);
@@ -144,7 +155,7 @@ describe("plugin web modules in the tree", () => {
 
   it("leaves out a package naming a slot no module has", async () => {
     const stray = manifest("SlotProbe", { "NoSuchModule.things": [{ id: "x" }] });
-    await bootWeb([pkg("@acme/stray", [{ manifest: stray, url: "/probe.js" }])], load);
+    await bootWeb([pkg("@acme/stray", [{ manifest: stray, url: "/probe.js" }])], opts);
     expect(created).not.toContain("SlotProbe");
     expect(pluginModuleFailures().get("@acme/stray")).toMatch(/NoSuchModule/);
   });
@@ -155,7 +166,7 @@ describe("plugin web modules in the tree", () => {
         pkg("@acme/gone", [{ manifest: manifest("SlotProbe"), url: "/gone.js" }]),
         pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]),
       ],
-      load,
+      opts,
     );
     expect(pluginModuleFailures().get("@acme/gone")).toMatch(/404 \/gone\.js/);
     expect(created).toEqual(["MusicPlugin"]);
@@ -167,7 +178,7 @@ describe("plugin web modules in the tree", () => {
         pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]),
         pkg("@acme/again", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]),
       ],
-      load,
+      opts,
     );
     expect(pluginModuleFailures().has("@acme/music")).toBe(false);
     expect(pluginModuleFailures().get("@acme/again")).toMatch(/MusicPlugin/);
@@ -176,8 +187,87 @@ describe("plugin web modules in the tree", () => {
 
   it("leaves out a module named like one of the app's own", async () => {
     const clash = manifest("ChatModule");
-    await bootWeb([pkg("@acme/clash", [{ manifest: clash, url: "/clash.js" }])], load);
+    await bootWeb([pkg("@acme/clash", [{ manifest: clash, url: "/clash.js" }])], opts);
     expect(pluginModuleFailures().get("@acme/clash")).toMatch(/ChatModule/);
+  });
+});
+
+describe("verification and wiring by key", () => {
+  it("remembers a verified package by the key computed over what it checked", async () => {
+    const storage = stubLocalStorage(memoryStorage());
+    const music = pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]);
+    await bootWeb([music], opts);
+    expect(created).toEqual(["MusicPlugin"]);
+    const key = await tableKey({
+      ifaces: {},
+      types: {},
+      modules: { MusicPlugin: MUSIC_MANIFEST },
+    });
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    expect(storage.map.get(VERIFIED_CACHE_KEY)).toContain(key!);
+  });
+
+  // The chat module provides two interfaces (`chat`, `drafts`): only identity picks one.
+  const HOST_KEY = (table.modules as Record<string, { provides: Record<string, string> }>)
+    .ChatModule!.provides.drafts!;
+  const hostDrafts = (table.ifaces as Record<string, IfaceDecl>)[HOST_KEY]!;
+  const copyOf = (methods: string[]): IfaceDecl => ({
+    ...hostDrafts,
+    methods: Object.fromEntries(
+      methods.map((m) => [m, hostDrafts.methods[m] ?? { params: [], returns: { void: true } }]),
+    ),
+  });
+  let seen: unknown = null;
+  @PluginModule({})
+  class DraftsProbe {
+    @Use() drafts!: { newChatId: string };
+    setup() {
+      seen = this.drafts.newChatId;
+      created.push("DraftsProbe");
+    }
+  }
+  classes["/drafts.js"] = DraftsProbe;
+  const probe = (iface: string, from?: string) => ({
+    ...manifest("DraftsProbe"),
+    requires: { drafts: { iface, ...(from === undefined ? {} : { from }) } },
+  });
+
+  it("wires a host interface required by the host's key, with the plugin's copy", async () => {
+    seen = null;
+    const copy = { [HOST_KEY]: copyOf(["removeParked", "forgetSession"]) };
+    await bootWeb(
+      [pkg("@acme/drafts", [{ manifest: probe(HOST_KEY, "ChatModule"), url: "/drafts.js" }], copy)],
+      opts,
+    );
+    expect(pluginModuleFailures().size).toBe(0);
+    expect(created).toEqual(["DraftsProbe"]);
+    expect(typeof seen).toBe("string");
+  });
+
+  it("refuses at verification a copy the host no longer satisfies", async () => {
+    const copy = { [HOST_KEY]: copyOf(["removeParked", "frobnicate"]) };
+    await bootWeb(
+      [pkg("@acme/stale", [{ manifest: probe(HOST_KEY, "ChatModule"), url: "/drafts.js" }], copy)],
+      opts,
+    );
+    expect(created).toEqual([]);
+    expect(pluginModuleFailures().get("@acme/stale")).toMatch(/no longer offers.*frobnicate/);
+  });
+
+  it("refuses before the boot a requirement only a structural match meets", async () => {
+    const own = "@acme/shape#ChatDrafts";
+    await bootWeb(
+      [
+        pkg("@acme/shape", [{ manifest: probe(own), url: "/drafts.js" }], {
+          [own]: copyOf(["removeParked"]),
+        }),
+      ],
+      opts,
+    );
+    expect(created).toEqual([]);
+    expect(pluginModuleFailures().get("@acme/shape")).toMatch(
+      /does not wire by interface key.*requires\.drafts/,
+    );
   });
 });
 
@@ -191,7 +281,7 @@ describe("shared instances", () => {
     expect(shared).toBe(SHARED_MODULES);
     expect(shared.react).toBe(React);
     expect(shared["react/jsx-runtime"]).toBe(JsxRuntime);
-    expect(shared["@prismshadow/penguin-core/kernel"]).toBe(Kernel);
+    expect(shared["@prismshadow/penguin-core/kernel/runtime"]).toBe(Kernel);
     expect(shared["@prismshadow/penguin-ui"]).toBe(Ui);
     expect(Object.isFrozen(shared)).toBe(true);
   });

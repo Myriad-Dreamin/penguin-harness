@@ -1,17 +1,22 @@
 /**
  * The app's own instances of what a plugin's web module shares instead of bundling: React, its
- * JSX runtime, the kernel and the UI package. A plugin's build resolves each of these specifiers
- * to a stub that reads the instance from `globalThis[SHARED_GLOBAL]` (scripts/lib/web-shared.mjs —
- * the two lists must agree, which test/plugin-modules.test.ts checks), so a plugin's component
- * renders with the app's React and its hooks, its decorators record onto the classes the app's
- * kernel reads, and the UI package's contexts are the app's.
+ * JSX runtime, the kernel's runtime entry and the UI package. A plugin's build resolves each of
+ * these specifiers to a stub that reads the instance from `globalThis[SHARED_GLOBAL]`
+ * (scripts/lib/web-shared.mjs — the two lists must agree, which test/plugin-modules.test.ts
+ * checks), so a plugin's component renders with the app's React and its hooks, its decorators
+ * record onto the classes the app's kernel reads, and the UI package's contexts are the app's.
  *
- * Put up once, before the first plugin module is imported; the record is frozen, so a plugin
- * cannot swap an instance under the others.
+ * The kernel shared is the runtime entry the page boots through (web-root.ts): the same
+ * decorators, and nothing that loads arktype, so a plugin module cannot pull it onto the page.
+ *
+ * Loaded only when there are plugin modules to assemble (plugins/assemble.ts imports it
+ * dynamically): the namespace imports below keep the whole UI package, which a page without
+ * plugins should not carry in its entry. Put up once, before the first plugin module is
+ * imported; the record is frozen, so a plugin cannot swap an instance under the others.
  */
 import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
-import * as Kernel from "@prismshadow/penguin-core/kernel";
+import * as Kernel from "@prismshadow/penguin-core/kernel/runtime";
 import * as Ui from "@prismshadow/penguin-ui";
 
 export const SHARED_GLOBAL = "__penguinShared";
@@ -20,7 +25,7 @@ export const SHARED_GLOBAL = "__penguinShared";
 export const SHARED_MODULES: Readonly<Record<string, unknown>> = Object.freeze({
   react: React,
   "react/jsx-runtime": JsxRuntime,
-  "@prismshadow/penguin-core/kernel": Kernel,
+  "@prismshadow/penguin-core/kernel/runtime": Kernel,
   "@prismshadow/penguin-ui": Ui,
 });
 

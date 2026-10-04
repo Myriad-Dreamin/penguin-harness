@@ -46,7 +46,6 @@ describe("web modules", () => {
     expect(part).toEqual({
       package: "@acme/player",
       version: "1.2.3",
-      hash: "abc",
       ifaces: { ifaces: { "@acme/player#Thing": { name: "Thing", methods: {} } }, types: {} },
       modules: [
         { manifest: WEB_MANIFEST, url: `/api/plugins/@acme/player/web/${build}/Player.js` },

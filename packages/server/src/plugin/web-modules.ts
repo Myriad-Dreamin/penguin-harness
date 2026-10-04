@@ -93,7 +93,6 @@ export function webModulesOfPackage(pkg: {
   version: string;
 }): WebModulePackage | null {
   let table: {
-    hash?: unknown;
     ifaces?: Record<string, unknown>;
     types?: Record<string, unknown>;
     modules?: Record<string, Record<string, unknown>>;
@@ -115,7 +114,6 @@ export function webModulesOfPackage(pkg: {
   return {
     package: pkg.name,
     version: pkg.version,
-    hash: typeof table.hash === "string" ? table.hash : "",
     ifaces: { ifaces: table.ifaces ?? {}, types: table.types ?? {} },
     modules: web
       .filter((m) => (m.file as string).startsWith(`${WEB_DIR}/`))
