@@ -14,7 +14,9 @@
 import * as React from "react";
 import * as JsxRuntime from "react/jsx-runtime";
 import * as Kernel from "@prismshadow/penguin-core/kernel";
-import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+// Aliased: gen-ifaces reads every `@Module` class of this package's program, tests included,
+// into the app's own table — these stand for plugin modules, whose manifests are forwarded.
+import { Bind, Module as PluginModule } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, Contributed } from "@prismshadow/penguin-core/kernel";
 import * as Ui from "@prismshadow/penguin-ui";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
@@ -30,7 +32,7 @@ const Player = () => null;
 let created: string[] = [];
 let renderers: readonly Contributed[] = [];
 
-@Module({
+@PluginModule({
   contributes: {
     "ChatModule.fileRenderers": [{ id: "music.audio", extensions: ["mp3", "WAV"] }],
   },
@@ -43,7 +45,7 @@ class MusicPlugin {
 }
 
 /** A module that contributes nothing of its own; manifests below give it a stray slot. */
-@Module({})
+@PluginModule({})
 class SlotProbe {
   setup() {
     created.push("SlotProbe");
@@ -52,7 +54,7 @@ class SlotProbe {
 
 /** A plugin module named like one of the app's own. */
 const Clash = (() => {
-  @Module({})
+  @PluginModule({})
   class ChatModule {}
   return ChatModule;
 })();
