@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Example plugin: removes the Evaluation Center from the web app, its routes and the pages under it with it — a web module that is data only. Not shipped; enabled by hand for the e2e suite.",
+  "description": "Example plugin: removes the Evaluation Center from the web app, its routes and the pages under it with it — a web module whose effect is all data. Not shipped; enabled by hand for the e2e suite.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=24"

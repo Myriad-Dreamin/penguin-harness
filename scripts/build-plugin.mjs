@@ -3,19 +3,19 @@
  * build-plugin: one plugin package's build after gen-ifaces, one file per side — run from the
  * package directory (`node ../../scripts/build-plugin.mjs`).
  *
- * The author writes one entry (`src/index.ts`, `export default { modules: [...] }`); gen-ifaces
- * has written each module's `side`, `source` and (web) `file` into `ifaces.json`
- * (lib/plugin-sides.mjs). From that:
+ * The author writes one entry (`src/index.ts`, `export default { modules: [...] }`) and declares
+ * each web module's side on it (`@Module({ side: "web" })`); gen-ifaces has written each module's
+ * `side`, `source` and (web) `file` into `ifaces.json` (lib/plugin-sides.mjs). From that:
  *
  * - `dist/index.js`, the package's main entry, for Node: a generated entry whose default export
  *   lists the PLATFORM modules (and the replacements) only, so the server never imports browser
  *   code. A package with no platform module still has one, listing none.
- * - `dist/web/<Module>.js` per web module with a `file`, for the browser: an ES module whose
- *   default export is the module class, with code split into `chunk-*.js` beside it (a lazy
- *   component in a `@Bind` is fetched when first drawn). The shared dependencies are the HOST's
- *   instances (lib/web-shared.mjs); a second copy of any of them in the output fails the build,
- *   as does a Node builtin. A web module without a `file` is data only (lib/plugin-sides.mjs
- *   `codeless`): nothing is built for it.
+ * - `dist/web/<Module>.js` per web module, for the browser: an ES module whose default export is
+ *   the module class, with code split into `chunk-*.js` beside it (a lazy component in a `@Bind`
+ *   is fetched when first drawn). A module whose effect is all data still gets its file (under
+ *   3 KB, mostly decorator helpers). The shared dependencies are the HOST's instances (lib/web-shared.mjs): a
+ *   second copy of any of them in the output fails the build, as does a Node builtin or a UI name
+ *   the app does not share (packages/web/src/plugins/ui-surface.ts).
  * - `dist/web/styles.css`, when the package has `src/styles.css`: compiled by Tailwind over the
  *   package's sources (utilities only — see the examples' styles.css); the server lists it
  *   beside the modules and the web app attaches it before the modules load. Every utility
@@ -30,7 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
-import { WEB_DIR } from "./lib/plugin-sides.mjs";
+import { WEB_DIR, webFileOf } from "./lib/plugin-sides.mjs";
 import { sharedPlugin, foreignCopies } from "./lib/web-shared.mjs";
 
 /**
@@ -43,15 +43,19 @@ export async function buildPlugin(dir = process.cwd(), { minify = true } = {}) {
   const modules = Object.values(table.modules ?? {});
   const decl = table.plugin ?? { modules: [], replaces: [] };
   const web = modules.filter((m) => m.side === "web");
-  // What the browser imports: the web modules with code (the others are their manifest alone).
-  const built = web.filter((m) => typeof m.file === "string");
   const server = modules.filter((m) => m.side !== "web");
   const abs = (m) => path.resolve(dir, m.source);
-  const webSources = new Set(built.map(abs));
+  const webSources = new Set(web.map(abs));
   const serverSources = new Set(server.map(abs));
 
   fs.rmSync(path.join(dir, "dist"), { recursive: true, force: true });
-  const problems = [];
+  const problems = web
+    .filter((m) => m.file !== webFileOf(m.name))
+    .map(
+      (m) =>
+        `ifaces.json: web module ${m.name} has no file '${webFileOf(m.name)}' — run gen-ifaces`,
+    );
+  if (problems.length > 0) throw new Error(problems.join("\n"));
 
   // ── the platform side: a generated main entry naming the platform modules only ──
   const listed = (names) => names.filter((n) => table.modules[n]?.side !== "web");
@@ -79,53 +83,64 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
   }
 
   // ── the web side: one ES module per web module, the shared dependencies the host's ──
-  if (built.length > 0) {
+  if (web.length > 0) {
     const entry = (name) => `penguin-module:${name}`;
-    const webOut = await esbuild.build({
-      entryPoints: Object.fromEntries(built.map((m) => [m.name, entry(m.name)])),
-      outdir: path.join(dir, WEB_DIR),
-      bundle: true,
-      splitting: true,
-      platform: "browser",
-      format: "esm",
-      target: "es2022",
-      jsx: "automatic",
-      chunkNames: "chunk-[hash]",
-      minify,
-      metafile: true,
-      logLevel: "silent",
-      plugins: [
-        {
-          name: "penguin-module-entry",
-          setup(build) {
-            build.onResolve({ filter: /^penguin-module:/ }, (args) => ({
-              path: args.path.slice("penguin-module:".length),
-              namespace: "penguin-module",
-            }));
-            build.onLoad({ filter: /.*/, namespace: "penguin-module" }, (args) => ({
-              contents: `export { ${args.path} as default } from ${JSON.stringify(abs(table.modules[args.path]))};`,
-              resolveDir: dir,
-              loader: "js",
-            }));
+    const webOut = await esbuild
+      .build({
+        entryPoints: Object.fromEntries(web.map((m) => [m.name, entry(m.name)])),
+        outdir: path.join(dir, WEB_DIR),
+        bundle: true,
+        splitting: true,
+        platform: "browser",
+        format: "esm",
+        target: "es2022",
+        jsx: "automatic",
+        chunkNames: "chunk-[hash]",
+        minify,
+        metafile: true,
+        logLevel: "silent",
+        plugins: [
+          {
+            name: "penguin-module-entry",
+            setup(build) {
+              build.onResolve({ filter: /^penguin-module:/ }, (args) => ({
+                path: args.path.slice("penguin-module:".length),
+                namespace: "penguin-module",
+              }));
+              build.onLoad({ filter: /.*/, namespace: "penguin-module" }, (args) => ({
+                contents: `export { ${args.path} as default } from ${JSON.stringify(abs(table.modules[args.path]))};`,
+                resolveDir: dir,
+                loader: "js",
+              }));
+            },
           },
-        },
-        {
-          name: "penguin-no-node-builtins",
-          setup(build) {
-            const builtins = new Set(builtinModules);
-            build.onResolve({ filter: /^[^./]/ }, (args) => {
-              const bare = args.path.replace(/^node:/, "").split("/")[0];
-              if (args.path.startsWith("node:") || builtins.has(bare))
-                return {
-                  errors: [{ text: `a web module cannot import the Node builtin '${args.path}'` }],
-                };
-              return undefined;
-            });
+          {
+            name: "penguin-no-node-builtins",
+            setup(build) {
+              const builtins = new Set(builtinModules);
+              build.onResolve({ filter: /^[^./]/ }, (args) => {
+                const bare = args.path.replace(/^node:/, "").split("/")[0];
+                if (args.path.startsWith("node:") || builtins.has(bare))
+                  return {
+                    errors: [
+                      { text: `a web module cannot import the Node builtin '${args.path}'` },
+                    ],
+                  };
+                return undefined;
+              });
+            },
           },
-        },
-        sharedPlugin(),
-      ],
-    });
+          sharedPlugin(),
+        ],
+      })
+      .catch((err) => {
+        // A UI name outside the shared surface: say where the surface is listed.
+        for (const e of err?.errors ?? []) {
+          if (/No matching export in "penguin-shared:/.test(e.text))
+            e.text += ` — the web app shares only the names listed in packages/web/src/plugins/ui-surface.ts`;
+        }
+        throw err;
+      });
     for (const input of Object.keys(webOut.metafile.inputs)) {
       if (serverSources.has(path.resolve(dir, input)))
         problems.push(`a web module imports the platform module file ${input}`);
@@ -135,7 +150,7 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
 
   // ── the web side's stylesheet ──
   const css = path.join(dir, "src", "styles.css");
-  if (built.length > 0 && fs.existsSync(css)) {
+  if (web.length > 0 && fs.existsSync(css)) {
     const prefix = stylePrefixOf(fs.readFileSync(css, "utf8"));
     if (prefix === null) {
       problems.push(
