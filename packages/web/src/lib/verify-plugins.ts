@@ -178,7 +178,17 @@ export async function verifyPlugins(
     }
   }
 
-  recordVerified(hostId, verified);
+  // The record keeps what is still installed: every verdict reached now, and the stored one of a
+  // listed plugin refused unchecked (a missing dependency), which holds again once it is back.
+  // A call that lists nothing (every forwarded package failed to form a table) learns nothing
+  // about what is installed, so it writes nothing rather than erase the last good boot's verdicts.
+  if (byName.size > 0) {
+    for (const key of keys.values()) {
+      const stored = key === null ? undefined : known.get(key);
+      if (stored !== undefined && !verified.has(key!)) verified.set(key!, stored);
+    }
+    recordVerified(hostId, verified);
+  }
   const outcome: Verification = { accepted: [], rejected: [] };
   for (const p of plugins) {
     const wrong = problems.get(p);

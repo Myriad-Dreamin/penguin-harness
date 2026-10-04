@@ -9,7 +9,8 @@
  * - A plugin table is keyed by its own canonical content: a `hash` it claims is ignored, and the
  *   same content in another key order is the same key.
  * - Kept: the current host and the most recently used before it, so going back hits; a write
- *   drops plugin hashes no longer installed.
+ *   drops plugin hashes no longer installed, but a load that lists nothing writes nothing, and a
+ *   plugin refused for a missing dependency keeps its verdict.
  * - Junk, another version, or blocked storage behave as an empty cache; safe mode neither
  *   reads nor writes.
  * - With the real kernel, a plugin that does not fit the host is refused with the problem.
@@ -195,6 +196,23 @@ describe("the verified cache", () => {
     await verifyPlugins(h, [plugin("a"), plugin("b")], { loadCheck: fakeCheck().loadCheck });
     await verifyPlugins(h, [plugin("b")], { loadCheck: fakeCheck().loadCheck });
     expect(Object.keys(stored().hosts[0]!.plugins)).toEqual([await tableKey(plugin("b").table)]);
+  });
+
+  it("keeps verdicts through a load that lists nothing or refuses a plugin unchecked", async () => {
+    const h = host();
+    await verifyPlugins(h, [plugin("a"), plugin("b")], { loadCheck: fakeCheck().loadCheck });
+    const before = stored().hosts[0]!.plugins;
+    await verifyPlugins(h, [], { loadCheck: fakeCheck().loadCheck });
+    expect(stored().hosts[0]!.plugins).toEqual(before);
+    const missing = { ...plugin("a"), dependsOn: ["gone"] };
+    const out = await verifyPlugins(h, [missing, plugin("b")], {
+      loadCheck: fakeCheck().loadCheck,
+    });
+    expect(names(out.rejected.map((r) => r.plugin))).toEqual(["a"]);
+    expect(stored().hosts[0]!.plugins).toEqual(before);
+    const back = fakeCheck();
+    await verifyPlugins(h, [plugin("a"), plugin("b")], { loadCheck: back.loadCheck });
+    expect(back.loadCheck).not.toHaveBeenCalled();
   });
 
   it("treats junk or another version as empty, and replaces it", async () => {
