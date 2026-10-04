@@ -72,7 +72,9 @@ export function attachTerminalWebSocket(server: HttpServer, deps: TerminalWebSoc
           return refuse(socket, 404, "Not Found");
         }
         wss.handleUpgrade(req, socket, head, (ws) => {
-          platform.api.attachStream?.(ws, session, url, deps.log);
+          // How the cookie behind this handshake was minted travels with the socket: the
+          // platform sees no cookie, and the API socket's calls are judged by it.
+          platform.api.attachStream?.(ws, session, url, deps.log, { via: authed.via });
         });
       })
       .catch((err: unknown) => {
