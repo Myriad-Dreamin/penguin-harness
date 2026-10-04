@@ -18,6 +18,8 @@
  *   registry actually carries.
  * - Safe mode is the one switch: the provider tells the store nobody is signed in, so the table
  *   is the compiled one with nothing in flight; off again, the signed-in user's request is due.
+ *   The rest of the answer goes with it: no surfaces, no quick starts, no company-mode page,
+ *   and a refresh (after a plugin change) asks nothing.
  */
 import { createElement } from "react";
 import type { ComponentType } from "react";
@@ -25,13 +27,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as api from "../src/api/endpoints";
 import {
   contributedPagesOf,
   createContributionsStore,
   ShellPagesProvider,
+  useContributions,
   useShellPages,
   useShellPagesPending,
 } from "../src/shell/contributions";
+import type { ContributionsValue } from "../src/shell/contributions";
 import { shellDeps } from "../src/shell/deps";
 import type { ShellDeps } from "../src/shell/deps";
 import { setSafeMode } from "../src/rescue/safe-mode";
@@ -392,5 +397,27 @@ describe("safe mode", () => {
     firstRender();
     setSafeMode(false);
     expect(firstRender()).toBe("<p>agents,terminal pending=true</p>");
+  });
+
+  it("hands out no surfaces, quick starts or org pages; a refresh asks nothing", async () => {
+    setSafeMode(true);
+    let value: ContributionsValue | null = null;
+    let orgPages = -1;
+    function Probe() {
+      value = useContributions();
+      orgPages = orgPagesOf(useShellPages()).length;
+      return null;
+    }
+    const Root = shellDeps.provide({ pages: COMPILED } as unknown as ShellDeps, () =>
+      createElement(ShellPagesProvider, null, createElement(Probe)),
+    );
+    renderToStaticMarkup(createElement(Root));
+    const held = value as ContributionsValue | null;
+    expect(held?.surfaces).toEqual([]);
+    expect(held?.quickStarts).toEqual([]);
+    expect(orgPages).toBe(0);
+    const asked = vi.mocked(api.getContributions).mock.calls.length;
+    await expect(held?.refresh()).resolves.toBeNull();
+    expect(vi.mocked(api.getContributions).mock.calls.length).toBe(asked);
   });
 });
