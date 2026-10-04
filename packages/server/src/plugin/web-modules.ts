@@ -25,7 +25,9 @@ export function packageOf(file: string): { dir: string; name: string; version: s
   let dir = path.dirname(file);
   for (;;) {
     try {
-      const { name, version } = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as {
+      const { name, version } = JSON.parse(
+        readFileSync(path.join(dir, "package.json"), "utf8"),
+      ) as {
         name?: unknown;
         version?: unknown;
       };
@@ -74,7 +76,11 @@ export function webBuildId(pkgDir: string): string | null {
   const held = buildIds.get(dir);
   if (held?.stamp === stamp) return held.id;
   const hash = createHash("sha256");
-  for (const f of files) hash.update(f).update("\0").update(readFileSync(path.join(dir, f)));
+  for (const f of files)
+    hash
+      .update(f)
+      .update("\0")
+      .update(readFileSync(path.join(dir, f)));
   const id = hash.digest("hex").slice(0, 16);
   buildIds.set(dir, { stamp, id });
   return id;

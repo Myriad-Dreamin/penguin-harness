@@ -149,14 +149,15 @@ export function decideSides(manifests, hosts, replaces = []) {
       refer(split.module, `its contribution to '${key}'`, split.slot);
     }
     for (const [alias, req] of Object.entries(m.requires ?? {})) {
-      if (req.from !== undefined) refer(req.from, `its requirement '${alias}'`, undefined, req.iface);
+      if (req.from !== undefined)
+        refer(req.from, `its requirement '${alias}'`, undefined, req.iface);
     }
     if (replaces.includes(m.name)) refer(m.name, "its replacement");
     named.set(m.name, refs);
   }
   // Local references lend the side of the module they name: settle until nothing changes.
   const sides = {};
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const [name, refs] of named) {
       if (sides[name] !== undefined) continue;

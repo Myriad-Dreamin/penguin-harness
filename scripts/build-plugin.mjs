@@ -144,9 +144,7 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   buildPlugin().then(
     ({ web, server }) =>
-      console.log(
-        `build-plugin: platform [${server.join(", ")}], web [${web.join(", ")}] → dist/`,
-      ),
+      console.log(`build-plugin: platform [${server.join(", ")}], web [${web.join(", ")}] → dist/`),
     (err) => {
       // esbuild's own failures carry their messages in `errors`.
       const lines = err?.errors?.map((e) => e.text) ?? [err?.message ?? String(err)];

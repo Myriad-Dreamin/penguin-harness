@@ -76,7 +76,9 @@ describe("AudioCard", () => {
 
 describe("AudioFailed", () => {
   it("is a status line naming the file, in the card's shape, with no control left", () => {
-    const html = renderToStaticMarkup(createElement(AudioFailed, { name: "chime.ogg", strings: ZH }));
+    const html = renderToStaticMarkup(
+      createElement(AudioFailed, { name: "chime.ogg", strings: ZH }),
+    );
     expect(html).toContain('data-audio-file="failed"');
     expect(html).toMatch(/role="status"[^>]*>无法播放 chime.ogg：/);
     expect(html).not.toContain("<button");
