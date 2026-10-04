@@ -2,12 +2,23 @@
  * The router's side of the shell's link rows: the UI package draws a nav row or a rail entry, and
  * hands its link over through `renderLink`; the app draws that link as the router's `Link`, so a
  * click navigates in place, and says which link is the current page.
+ *
+ * A row also starts loading the code of the page it leads to as soon as the pointer rests on it or
+ * focus lands on it (pages load on first visit, lib/lazy-component.ts), so by the click the chunk
+ * is usually there. That is the only prefetch the app does.
  */
 import { Link, matchPath } from "react-router";
 import type { NavRowLinkProps } from "@prismshadow/penguin-ui";
+import { preloadComponent } from "../../lib/lazy-component";
+import { useShellPages } from "../contributions";
 
 /** A package row's link as the router's own: the row's classes, state and content, navigating in place. */
 export function renderRouterLink(link: NavRowLinkProps) {
+  return <RouterLink {...link} />;
+}
+
+function RouterLink(link: NavRowLinkProps) {
+  const prefetch = usePrefetchPage(link.href);
   return (
     <Link
       to={link.href}
@@ -17,10 +28,25 @@ export function renderRouterLink(link: NavRowLinkProps) {
       data-tooltip={link["data-tooltip"]}
       draggable={link.draggable}
       onClick={link.onClick}
+      onPointerEnter={prefetch}
+      onFocus={prefetch}
     >
       {link.children}
     </Link>
   );
+}
+
+/**
+ * Starts loading the code of the page that answers `href`: the first page in the table whose
+ * route matches it (an organization's page is company mode's `/org/*`). A page already loaded,
+ * or one that was never deferred, makes it a no-op.
+ */
+function usePrefetchPage(href: string): () => void {
+  const pages = useShellPages();
+  return () => {
+    const page = pages.find((p) => p.path.startsWith("/") && matchPath(p.path, href) !== null);
+    preloadComponent(page?.Component);
+  };
 }
 
 /**
