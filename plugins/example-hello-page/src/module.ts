@@ -4,7 +4,7 @@
  * The contribution's data is the page's route and its nav row — its names in both languages, its
  * glyph, and `parent: "benchmark"`, which draws the row indented under the Evaluation Center. The
  * nav draws that row from the manifest alone. The code half is the page component, lazy: its chunk
- * is fetched the first time someone opens the page, inside the shell's Suspense boundary.
+ * is fetched the first time someone opens the page, inside the shell's page boundary (Deferred).
  *
  * What the page needs of the app's state comes through an interface, never an import: the
  * interface language the person picked (`Language`, provided by the web app's settings module).

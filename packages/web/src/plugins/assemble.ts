@@ -223,8 +223,12 @@ export async function assemblePlugins(
     candidates.filter((c) => verified.has(c.pkg.package)),
   );
   if (admitted.length === 0) return [];
-  const { shareHostModules } = await import("./shared");
-  shareHostModules();
+  // The shared instances are for module files; packages that are data only import none, so a
+  // page with only those never fetches the shared chunk (and the UI namespace it holds).
+  if (admitted.some((c) => c.pkg.modules.some((m) => m.url !== undefined))) {
+    const { shareHostModules } = await import("./shared");
+    shareHostModules();
+  }
   const load = opts.load ?? importModule;
   const loaded = await Promise.all(
     admitted.map((c) =>
