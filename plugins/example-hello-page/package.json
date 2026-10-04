@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Example plugin: a Hello World page under the Evaluation Center, drawn from the plugin's own ui/ in an iframe. Not shipped; enabled by hand for the e2e suite.",
+  "description": "Example plugin: a page under the Evaluation Center, drawn by a React component the plugin ships — a web module that reads the app's interface language through the interface the app provides. Not shipped; enabled by hand for the e2e suite.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=24"
@@ -16,16 +16,23 @@
   },
   "files": [
     "dist",
-    "ui",
     "README.md",
     "ifaces.json"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out ifaces.json && tsup"
+    "test": "vitest run",
+    "build": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out ifaces.json && node ../../scripts/build-plugin.mjs"
   },
   "devDependencies": {
     "@prismshadow/penguin-core": "workspace:*",
-    "tsup": "^8.3.0"
+    "@prismshadow/penguin-ui": "workspace:*",
+    "@tailwindcss/cli": "4.3.2",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.0",
+    "vitest": "^3.2.6"
   }
 }

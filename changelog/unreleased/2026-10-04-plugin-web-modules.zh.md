@@ -3,22 +3,30 @@
 - **Date:** 2026-10-04
 - **Type:** feature
 - **Scope:** `web`, `server`, `tooling`
-- **Breaking:** yes — `ChatModule.fileRenderers` 的贡献改为携带扩展名，服务端的 `WebModule.fileRenderers` 槽位已删除
+- **Breaking:** yes — `ChatModule.fileRenderers` 的贡献改为携带扩展名，服务端的 `WebModule.fileRenderers` 与 `WebModule.pageRemovals` 槽位已删除
 
 [English](2026-10-04-plugin-web-modules.md)
 
-插件包现在可以携带在 Web App 中运行、带代码的模块，写法与 Web App 自己的模块相同。音乐示例是第一个：音频播放器从 Web App 移入了该插件。
+插件包现在可以携带在 Web App 中运行、带代码的模块，写法与 Web App 自己的模块相同。三个示例现在都是 Web 模块：音乐示例的音频播放器从 Web App 移入了该插件，hello 示例的页面是插件自带的 React 组件，页面移除示例是一个完全没有代码的 Web 模块。
 
 ## 细节
 
 - `scripts/gen-ifaces.mjs` 按连线为插件包的每个模块判定归属：它贡献的、依赖的或替换的模块必须属于平台的接口表或 Web App 的接口表；并把 `side`、`source` 以及 Web 模块的产物 `file` 写入该包的 `ifaces.json`。模块指向两边都没有的模块、指向所有者没有的槽位、同时连到两边，或一个源文件同时含两边的模块，都是构建错误并报出模块名。不指向任何模块的模块仍属于平台。
-- `scripts/build-plugin.mjs` 按这份表构建插件包：面向 Node 的主入口只列平台模块；每个 Web 模块产出 `dist/web/<Module>.js`，即面向浏览器的 ES 模块，延迟导入的代码拆成代码块；存在 `src/styles.css` 时由 Tailwind 以 Web App 的主题为参照编译为 `dist/web/styles.css`。Web 模块与 Web App 共用 React、JSX 运行时、kernel 和 UI 包（页面把它们放在 `globalThis.__penguinShared` 上，构建把这些导入解析到那里）；打包进其中任何一个的副本、其同族的其他包或 Node 内建模块都会使构建失败。
+- 只有数据的 Web 模块——类体为空、只向没有代码半边的 Web 槽位贡献、不依赖也不提供任何接口——没有 `file`：构建不为它产出任何东西，服务端转发它的清单而不带 URL，Web App 不导入任何文件就把它加入模块树。
+- `scripts/build-plugin.mjs` 按这份表构建插件包：面向 Node 的主入口只列平台模块；每个 Web 模块产出 `dist/web/<Module>.js`，即面向浏览器的 ES 模块，延迟导入的代码拆成代码块；存在 `src/styles.css` 时由 Tailwind 以 Web App 的主题为参照编译为 `dist/web/styles.css`。Web 模块与 Web App 共用 React、JSX 运行时、kernel 和 UI 包（页面把它们放在 `globalThis.__penguinShared` 上，构建把这些导入解析到那里）；打包进其中任何一个的副本、其同族的其他包或 Node 内建模块都会使构建失败。样式表必须在主题导入上写明 Tailwind 前缀；编译结果里有前缀之外的类名会使构建失败，一起构建的两个插件（`scripts/build-plugins.mjs`）使用同一前缀也会。
 - `GET /api/contributions` 以 `webModules` 转发已启用插件的 Web 模块：每个包的 Web 模块清单、其接口与类型条目，以及产物文件和样式表的 URL。文件经 `/api/plugins/<package>/web/<build>/<file>` 提供，构建标识是产物文件的哈希，缓存一年且不可变；其他构建标识返回 404。
 - Web App 在模块树启动前请求这份清单（最长等 5 秒，安全模式下不请求），加载每个包的文件和样式表，逐个加入并检查模块树，再把它们作为 `WebRoot` 的运行时子模块启动。加载失败或接不上的包被剔除并记下原因，写入日志并在插件页显示；应用不带它照常启动。未登录加载后登录、以及会改变模块树的安全模式切换，会重载页面。
 - 回复中的文件渲染器只来自 `ChatModule.fileRenderers` 的贡献：每条以数据携带扩展名、以代码携带组件，在 Suspense 和错误边界内绘制。渲染器会收到界面语言（`locale`）。
+- shell 新增 `ShellModule.pageRemovals` 槽位（`{ key }`，只有数据）。它点名的页面从首次渲染起即被去掉，连同其路径下的路由和挂在它下面的页面；首页指向的页面保留。服务端的 `WebModule.pageRemovals` 槽位与贡献答复的 `pageRemovals` 字段已删除。
+- `packages/web/src/plugin-types.ts` 收录插件的 Web 模块在编译期可以引用的 Web App 类型，只作类型导入：`FileRendererProps`，以及界面语言接口 `Language`——由设置模块提供，供插件模块 `@Use`。示例插件在各自的 `tsconfig.json` 里映射这个路径。
+- shell 在 Suspense 边界内绘制页面，页面组件因此可以延迟加载；代码加载期间内容区显示加载提示。
+- `plugins/example-hello-page` 改为向 `ShellModule.pages` 贡献页面的 Web 模块，页面位于评估中心之下，由插件自带的延迟组件在应用的页面框架内绘制，界面语言经 `Language` 读取，样式来自它自己带 `hp:` 前缀的样式表。原先的 iframe 文档（`ui/`）已删除。
+- `plugins/example-no-evaluation-center` 改为只有数据的 Web 模块，向 `ShellModule.pageRemovals` 贡献 `{ key: "benchmark" }`。两者同时启用时，hello 页面随评估中心一起被去掉。
+- Web e2e 的第二个插件集合改为 `all-examples`，启用全部三个示例。
 - `plugins/example-music` 改为贡献音频播放器（卡片、进度条、时钟、各状态及中英文案）的 Web 模块，样式来自它自己的样式表，其中的工具类都带 `mp:` 前缀，不与宿主的任何选择器重名。Web App 的 `features/audio/` 与 `AudioModule` 已删除，服务端的 `WebModule.fileRenderers` 槽位、贡献答复的 `fileRenderers` 字段以及 Web App 按名字查找渲染器的逻辑也一并删除。
 
 ## 兼容性
 
 - 向服务端 `WebModule.fileRenderers` 槽位贡献的模块不再能接入平台的模块树。改为写一个向 `ChatModule.fileRenderers` 贡献的 Web 模块：贡献的数据里写 `extensions`，组件用 `@Bind` 绑定。
 - `ChatModule.fileRenderers` 的贡献携带 `extensions`，不再携带 `name`。
+- 向服务端 `WebModule.pageRemovals` 槽位贡献的模块不再能接入平台的模块树。改为写一个向 `ShellModule.pageRemovals` 贡献的 Web 模块，数据同样是 `{ key }`。

@@ -19,7 +19,7 @@ import type { SyntheticEvent } from "react";
 import { loadedEnd } from "./audio-clock";
 import { AudioCard, AudioFailed } from "./audio-card";
 import type { AudioPlayback } from "./audio-card";
-import type { FileRendererProps } from "./file-renderer";
+import type { FileRendererProps } from "@prismshadow/penguin-web/plugin-types";
 import { stringsFor } from "./strings";
 
 const IDLE: AudioPlayback = { playing: false, waiting: false, time: 0, duration: null, loaded: 0 };

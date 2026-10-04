@@ -5,10 +5,11 @@
 #
 # What one Project lists in `[plugins]` is loaded for the whole server, so a plugin that changes
 # the app for everyone gets a server of its own instead of changing it under every other spec:
-#   default               plugins/example-hello-page (plugin-page.spec.mjs) and
-#                         plugins/example-music (music-file.spec.mjs); every spec but those below
-#   no-evaluation-center  plugins/example-hello-page and plugins/example-no-evaluation-center;
-#                         page-removal.spec.mjs only
+#   default       plugins/example-hello-page (plugin-page.spec.mjs) and plugins/example-music
+#                 (music-file.spec.mjs); every spec but those below
+#   all-examples  all three examples, plugins/example-no-evaluation-center among them, which
+#                 removes the Evaluation Center (and so the hello page under it);
+#                 page-removal.spec.mjs only
 # E2E_PLUGIN_SET=<name> runs that set alone; unset runs both, one after the other. Which specs
 # belong to which set is playwright.config.mjs's to say.
 set -uo pipefail
@@ -98,5 +99,5 @@ MOCK_PORT=$MOCK_PORT node "$HERE/mock-llm.mjs" &
 MOCK_PID=$!
 
 round default example-hello-page example-music
-round no-evaluation-center example-hello-page example-no-evaluation-center
+round all-examples example-hello-page example-music example-no-evaluation-center
 exit $STATUS
