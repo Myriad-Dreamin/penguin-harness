@@ -5,7 +5,7 @@
  * binds the component that draws it. `pageTableOf` turns the contributions into the table the
  * router mounts and the sidebar derives its nav group from. Pages the server's modules and
  * plugins contribute are folded in after them by shell/contributions.tsx, which also drops the
- * pages the server's removals name (removedPagesOf).
+ * pages the modules' `pageRemovals` name (removedPagesOf).
  */
 import type { ComponentType } from "react";
 import { matchPath } from "react-router";

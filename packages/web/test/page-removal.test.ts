@@ -1,24 +1,22 @@
 /**
- * Pages removed by the server's contributions (shell/page-table.ts `removedPagesOf`,
- * shell/contributions.tsx `pageRemovalsOf` and `pageTableFor`).
+ * Pages removed by the modules' `ShellModule.pageRemovals` contributions (shell/page-table.ts
+ * `removedPagesOf`, shell/contributions.tsx `pageTableFor`, the shell's provider).
  *
  * - A removal drops the page its key names and every page whose route lies under that page's
  *   path (`benchmark` takes `/benchmark/:benchmarkId`, not the other way round); a key naming no
  *   page does nothing; a page at "/" takes only itself; the pages answering HOME_PATHS stay —
  *   the home page (`*`) and the homes it leads to in both modes (company-nav.ts `homePath`).
- * - Only non-empty string keys are read; an answer without the list removes nothing.
  * - The table: removals apply to compiled and contributed pages alike, before the parent check,
- *   so a removed page's children go too; without an answer the table is the compiled one.
- * - Safe mode asks nothing, so nothing is removed.
+ *   so a removed page's children go too — a module's child page as well as a contributed one.
+ * - The provider applies the shell's removals from the first render, before (and without) any
+ *   answer from the server.
  */
 import { createElement } from "react";
 import type { ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
-  createContributionsStore,
-  pageRemovalsOf,
   pageTableFor,
   ShellPagesProvider,
   useShellPages,
@@ -29,7 +27,6 @@ import type { ShellDeps } from "../src/shell/deps";
 import { homePath } from "../src/features/company/company-nav";
 import { HOME_PATHS, removedPagesOf } from "../src/shell/page-table";
 import type { ShellPage } from "../src/shell/page-table";
-import { setSafeMode } from "../src/rescue/safe-mode";
 
 vi.mock("../src/state/auth", () => ({ useAuth: () => ({ user: { userId: "bob" } }) }));
 vi.mock("../src/api/endpoints", () => ({
@@ -74,32 +71,29 @@ const keysOf = (pages: readonly ShellPage[]) => pages.map((p) => p.key);
 /** No builtin page renderer: the contributed pages here are iframes. */
 const NONE: ReadonlyMap<string, ComponentType> = new Map();
 
-/** An answer as the server might send it: entries the app must check, malformed ones included. */
-function answer(
-  pages: readonly object[],
-  pageRemovals?: readonly unknown[],
-): ContributionsResponse {
+/** An answer as the server might send it. */
+function answer(pages: readonly object[]): ContributionsResponse {
   return {
     pages,
     webModules: [],
-    ...(pageRemovals === undefined ? {} : { pageRemovals }),
     agentTabs: [],
     sessionTabs: [],
   } as unknown as ContributionsResponse;
 }
 
-/** The validation plugins' contributions: a page under the Evaluation Center, and its removal. */
-const HELLO = {
-  id: "hello.page",
-  from: "HelloPage",
-  key: "example-hello",
-  path: "/example-hello",
+/** A page the server contributes under the Evaluation Center. */
+const CONTRIBUTED_CHILD = {
+  id: "child.page",
+  from: "ChildPage",
+  key: "contributed-child",
+  path: "/contributed-child",
   nav: "main",
   admin: false,
   parent: "benchmark",
-  renderer: { iframe: { src: "/hello.html", namespace: "hello" } },
+  renderer: { iframe: { src: "/child.html", namespace: "child" } },
 };
-const REMOVE_BENCHMARK = { id: "r", from: "NoEvaluationCenter", key: "benchmark" };
+/** A module's page under the Evaluation Center, as example-hello-page contributes it. */
+const HELLO = page("example-hello", "/example-hello", { parent: "benchmark", order: 72 });
 
 describe("removedPagesOf", () => {
   it("drops the named page and the routes under its path, not the pages above it", () => {
@@ -154,76 +148,54 @@ describe("removedPagesOf", () => {
   });
 });
 
-describe("pageRemovalsOf", () => {
-  it("reads non-empty string keys in order and skips anything else", () => {
-    const removals = [{ key: "a" }, null, { key: 7 }, { key: "" }, {}, "b", { key: "c" }];
-    expect(pageRemovalsOf(answer([], removals))).toEqual(["a", "c"]);
-  });
-
-  it("is empty without an answer, and for a server that sends no list", () => {
-    expect(pageRemovalsOf(null)).toEqual([]);
-    expect(pageRemovalsOf(answer([]))).toEqual([]);
-    expect(pageRemovalsOf(answer([], "benchmark" as unknown as unknown[]))).toEqual([]);
-  });
-});
-
 describe("pageTableFor", () => {
-  it("is the compiled table without an answer", () => {
+  it("is the compiled table without an answer or a removal", () => {
     expect(pageTableFor(COMPILED, null, NONE)).toBe(COMPILED);
+    expect(pageTableFor(COMPILED, null, NONE, [])).toBe(COMPILED);
   });
 
-  it("removes a compiled page with its children, contributed ones included", () => {
-    const withHello = pageTableFor(COMPILED, answer([HELLO]), NONE);
-    expect(keysOf(withHello)).toContain("example-hello");
-    const removed = keysOf(pageTableFor(COMPILED, answer([HELLO], [REMOVE_BENCHMARK]), NONE));
+  it("removes a compiled page with its children, a module's and a contributed one alike", () => {
+    const compiled = [...COMPILED, HELLO];
+    const kept = keysOf(pageTableFor(compiled, answer([CONTRIBUTED_CHILD]), NONE));
+    expect(kept).toContain("example-hello");
+    expect(kept).toContain("contributed-child");
+    const removed = keysOf(
+      pageTableFor(compiled, answer([CONTRIBUTED_CHILD]), NONE, ["benchmark"]),
+    );
     expect(removed).not.toContain("benchmark");
     expect(removed).not.toContain("benchmark-detail");
     expect(removed).not.toContain("example-hello");
+    expect(removed).not.toContain("contributed-child");
     expect(removed).toContain("agents");
   });
 
   it("removes a contributed page by its key", () => {
-    const table = pageTableFor(
-      COMPILED,
-      answer([HELLO], [{ id: "r", from: "M", key: "example-hello" }]),
-      NONE,
-    );
+    const table = pageTableFor(COMPILED, answer([CONTRIBUTED_CHILD]), NONE, ["contributed-child"]);
     expect(keysOf(table)).toEqual(keysOf(COMPILED));
   });
 
   it("removes nothing in a table that does not hold the key", () => {
-    const table = pageTableFor(
-      COMPILED,
-      answer([], [{ id: "r", from: "M", key: "nowhere" }]),
-      NONE,
-    );
-    expect(keysOf(table)).toEqual(keysOf(COMPILED));
+    expect(keysOf(pageTableFor(COMPILED, null, NONE, ["nowhere"]))).toEqual(keysOf(COMPILED));
   });
 });
 
-describe("safe mode", () => {
-  afterEach(() => setSafeMode(false));
-
-  it("asks nothing, so the removed page is still in the provider's table", () => {
-    setSafeMode(true);
+describe("the shell's provider", () => {
+  it("applies the modules' removals from the first render, before any answer", () => {
     function Probe() {
       const keys = keysOf(useShellPages()).join(",");
       return createElement("p", null, `${keys} pending=${String(useShellPagesPending())}`);
     }
     const Root = shellDeps.provide(
-      { pages: COMPILED, pageRenderers: NONE } as unknown as ShellDeps,
+      {
+        pages: [...COMPILED, HELLO],
+        pageRenderers: NONE,
+        pageRemovals: ["benchmark"],
+      } as unknown as ShellDeps,
       () => createElement(ShellPagesProvider, null, createElement(Probe)),
     );
+    const kept = COMPILED.filter((p) => !p.key.startsWith("benchmark"));
     expect(renderToStaticMarkup(createElement(Root))).toBe(
-      `<p>${keysOf(COMPILED).join(",")} pending=false</p>`,
+      `<p>${keysOf(kept).join(",")} pending=true</p>`,
     );
-  });
-
-  it("a store told nobody is signed in never fetches, so it holds no removal", () => {
-    const fetch = vi.fn(async () => answer([], [REMOVE_BENCHMARK]));
-    const store = createContributionsStore(fetch);
-    store.setUser(null);
-    expect(fetch).not.toHaveBeenCalled();
-    expect(pageTableFor(COMPILED, store.current().answer, NONE)).toBe(COMPILED);
   });
 });

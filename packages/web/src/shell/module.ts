@@ -3,7 +3,8 @@
  * a page is a contribution to `ShellModule.pages` with the component bound by id, a provider of
  * the signed-in session one to `sessionProviders`, an overlay or a headless runtime one to
  * `layers`, a component a server-contributed page may name as its `builtin` renderer one to
- * `pageRenderers` — so the shell imports no feature. What it provides is the root component the app
+ * `pageRenderers`, and taking a page away is one to `pageRemovals` (data only: a plugin removes
+ * a page without shipping code) — so the shell imports no feature. What it provides is the root component the app
  * mounts, with the contributions bound into it (shell/deps.ts), and the user event handlers
  * the sessions module collects (state/user-events.ts), which the router hands to the session
  * list. The layout mounts the sidebar module's column and rail, and opens the chat module's
@@ -43,6 +44,15 @@ export interface PageRendererData {
   name: string;
 }
 
+/**
+ * A `pageRemovals` contribution: the key of a page the shell drops, a module's or a
+ * server-contributed one, with the routes under its path and the pages under it
+ * (page-table.ts removedPagesOf). The pages home leads to stay whatever names them.
+ */
+export interface PageRemovalData {
+  key: string;
+}
+
 export interface ShellSlots {
   /** A routed page; its component is the code half. */
   pages: Slot<PageData, ComponentType>;
@@ -52,6 +62,8 @@ export interface ShellSlots {
   layers: Slot<Ordered, ComponentType>;
   /** A component a page the server contributes (shell/contributions.tsx) may name to be drawn with. */
   pageRenderers: Slot<PageRendererData, ComponentType>;
+  /** A page taken away. */
+  pageRemovals: PageRemovalData;
 }
 
 /** A slot's contributions by `order`, each with the component its module bound. */
@@ -81,12 +93,16 @@ export class ShellModule {
         c.code as ComponentType,
       ]),
     );
+    const pageRemovals: readonly string[] = (contributions.pageRemovals ?? []).map(
+      (c) => (c.data as unknown as PageRemovalData).key,
+    );
     const userEvents = this.userEventHandlers.all();
     this.shell = {
       Root: shellDeps.provide(
         {
           pages,
           pageRenderers,
+          pageRemovals,
           sessionProviders,
           layers,
           userEvents,

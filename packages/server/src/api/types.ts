@@ -6675,23 +6675,10 @@ export type WebPageData = {
 /** A page contribution as GET /api/contributions answers it. */
 export type WebPageContribution = WebContribution & WebPageData;
 
-/**
- * The data of one `WebModule.pageRemovals` contribution: the key of a page the web app drops —
- * one of its own or one another plugin contributed. The app drops the routes under the page's
- * path and the pages under it with it, and keeps the page its catch-all leads to.
- */
-export type WebPageRemovalData = {
-  key: string;
-};
-
-/** A page removal as GET /api/contributions answers it. */
-export type WebPageRemovalContribution = WebContribution & WebPageRemovalData;
-
 export type { WebModulePackage };
 
 export interface ContributionsResponse {
   pages: WebPageContribution[];
-  pageRemovals: WebPageRemovalContribution[];
   agentTabs: WebContribution[];
   sessionTabs: WebContribution[];
   /** Module plugins' quick starts, each named by the module that contributes it (`from`). */

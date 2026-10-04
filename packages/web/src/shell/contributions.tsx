@@ -18,17 +18,17 @@
  * nothing to draw it with. A compiled page wins over a contributed one
  * with the same key or path: a plugin adds pages here, it does not shadow the app's own.
  *
- * The answer may also remove pages by key, the app's own or contributed ones alike: such a page
- * leaves the table with the routes under its path and the pages under it (removedPagesOf), so it
- * has no nav row and its paths fall to the catch-all, company mode's `home` page. Neither that
- * page nor the pages it leads to can be removed (page-table.ts HOME_PATHS). Removal waits for the answer like everything else here: until it arrives the compiled
- * table is drawn, so a removed page shows in the nav for that moment and its URL still opens it,
- * then falls to the catch-all — first paint does not wait on the network.
+ * The modules' page removals (`ShellModule.pageRemovals`, in the module tree from the first
+ * render — a plugin's arrive with its web modules) apply to the merged table, the app's own pages
+ * and contributed ones alike: such a page leaves the table with the routes under its path and the
+ * pages under it (removedPagesOf), so it has no nav row and its paths fall to the catch-all,
+ * company mode's `home` page. Neither that page nor the pages it leads to can be removed
+ * (page-table.ts HOME_PATHS).
  *
  * Safe mode (rescue/safe-mode.ts) is the one switch over all of it: while it is on, the store is
- * told nobody is signed in, so nothing is asked and the table is the compiled one — nothing
- * removed, no company-mode page, no session surface, no quick start, and a refresh asks nothing;
- * leaving it asks again.
+ * told nobody is signed in, so nothing is asked and the table is the compiled one — no
+ * company-mode page, no session surface, no quick start, and a refresh asks nothing; leaving it
+ * asks again. (A safe-mode boot assembles no plugin either, so no plugin's removal applies.)
  *
  * The answer also forwards the enabled plugins' web modules (`webModules`); those are not read
  * here but by the boot, which assembles them into the module tree before the first render
@@ -218,32 +218,17 @@ export function contributedPagesOf(
 }
 
 /**
- * The keys of the pages the answer removes, in the server's order: an entry is read when its key
- * is a non-empty string; anything else, and an answer that sends no such list, is skipped.
- */
-export function pageRemovalsOf(answer: ContributionsResponse | null): readonly string[] {
-  const entries: unknown = answer?.pageRemovals;
-  if (!Array.isArray(entries)) return NO_REMOVALS;
-  return (entries as Array<{ key?: unknown } | null>)
-    .map((entry) => entry?.key)
-    .filter((key): key is string => typeof key === "string" && key !== "");
-}
-
-const NO_REMOVALS: readonly string[] = [];
-
-/**
  * The table the router and the nav read: the compiled pages with the contributed ones appended,
- * the removed ones dropped from both, and then every page whose parent is gone — so a removed
- * page takes the pages under it along.
+ * the removed ones (`removals`, the modules' page removals) dropped from both, and then every
+ * page whose parent is gone — so a removed page takes the pages under it along.
  */
 export function pageTableFor(
   compiled: readonly ShellPage[],
   answer: ContributionsResponse | null,
   renderers: ReadonlyMap<string, ComponentType>,
+  removals: readonly string[] = [],
 ): readonly ShellPage[] {
-  return parentedPagesOf(
-    removedPagesOf(contributedPagesOf(compiled, answer, renderers), pageRemovalsOf(answer)),
-  );
+  return parentedPagesOf(removedPagesOf(contributedPagesOf(compiled, answer, renderers), removals));
 }
 
 /** The answer's parts besides the pages, for the features that read them (shell/index.ts). */
@@ -264,7 +249,7 @@ const PagesContext = createContext<ShellPagesValue | null>(null);
 
 /** Holds the signed-in user's contributions — the merged page table — for everything under the router. */
 export function ShellPagesProvider({ children }: { children: ReactNode }) {
-  const { pages: compiled, pageRenderers } = shellDeps.useDeps();
+  const { pages: compiled, pageRenderers, pageRemovals } = shellDeps.useDeps();
   const signedIn = useAuth().user?.userId ?? null;
   const userId = useSafeMode() ? null : signedIn;
   const [store] = useState(() =>
@@ -286,14 +271,14 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const pending = current ? state.pending : userId !== null;
   const value = useMemo<ShellPagesValue>(
     () => ({
-      pages: pageTableFor(compiled, answer, pageRenderers),
+      pages: pageTableFor(compiled, answer, pageRenderers, pageRemovals),
       pending,
       // A mocked or older server may leave these out.
       surfaces: answer?.sessionSurfaces ?? [],
       quickStarts: answer?.quickStarts ?? [],
       refresh: store.refresh,
     }),
-    [compiled, answer, pageRenderers, pending, store],
+    [compiled, answer, pageRenderers, pageRemovals, pending, store],
   );
   // Each answer against the list the tree was assembled from: a different one (a sign-in after a
   // signed-out boot, leaving safe mode, a plugin enabled or removed) is written and reloads once.

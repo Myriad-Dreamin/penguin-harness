@@ -48,6 +48,19 @@ function initialLang(): LangPref {
   return "system";
 }
 
+/** The language the provider last rendered with (activeLocale). */
+let active: Locale = "zh";
+
+/**
+ * The interface language, read outside React: what the settings module's `Language` interface
+ * answers a plugin's component (plugin-types.ts). Set while the provider renders, before any
+ * child does — the same moment the active dictionary switches — and a switch remounts the tree,
+ * so a component reading it while rendering always reads the current one.
+ */
+export function activeLocale(): Locale {
+  return active;
+}
+
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<LangPref>(initialLang);
   // Re-resolution signal for browser language changes while in system mode.
@@ -57,6 +70,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   // Switch the active dictionary during render (idempotent assignment): children are keyed on
   // locale and render after this component, so they always read the post-switch dictionary.
   setActiveStrings(locale === "en" ? en : zh);
+  active = locale;
 
   useEffect(() => {
     if (lang !== "system") return;
