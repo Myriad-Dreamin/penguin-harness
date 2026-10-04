@@ -61,7 +61,7 @@ const PLUGINS_SRC = path.join(ROOT, "plugins");
 const CACHE = path.join(ROOT, "node_modules", ".cache", "penguin-plugins");
 const COMPLETE = ".complete";
 /** Folded into the cache key: bump when what this script WRITES changes, not only what it reads. */
-const PACK_FORMAT = 15;
+const PACK_FORMAT = 16;
 // The server's own dependency: the store writes its manifests with the same library.
 const { stringify: stringifyToml } = createRequire(
   path.join(ROOT, "packages", "server", "package.json"),
@@ -232,6 +232,17 @@ async function pluginPackages() {
 }
 
 /**
+ * The scripts a plugin's own build runs: what they write is part of the pack, so they are part of
+ * its key (a plugin's sources alone would serve a pack built by an older generator).
+ */
+const BUILD_TOOLS = [
+  "scripts/gen-ifaces.mjs",
+  "scripts/build-plugin.mjs",
+  "scripts/lib/plugin-sides.mjs",
+  "scripts/lib/web-shared.mjs",
+];
+
+/**
  * Builds, packs and installs every builtin plugin into one staged prefix (from cache when
  * nothing changed) and returns `{ dir, files, plugins }`: the prefix directory, the relative
  * paths to ship, and `[{ name, version }]` of what it holds.
@@ -239,6 +250,7 @@ async function pluginPackages() {
 export async function buildBuiltinPlugins({ log = () => {} } = {}) {
   const plugins = await pluginPackages();
   const h = createHash("sha256").update(`pack ${PACK_FORMAT}\0`);
+  for (const tool of BUILD_TOOLS) h.update(await fsp.readFile(path.join(ROOT, tool))).update("\0");
   for (const plugin of plugins) {
     h.update(plugin.name).update("\0");
     await sourceHash(plugin.dir, h);
