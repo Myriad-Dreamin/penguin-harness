@@ -228,6 +228,7 @@ export function Sidebar({ onNavigate, onCollapse, initialSearchOpen = false }: S
         nav={nav}
         modeItems={inDefault ? null : modeStates[current]!.navItems}
         notes={notes}
+        marksFor={(anchor) => marksFor(badges, anchor)}
         onNavigate={onNavigate}
       />
       {renderSections("body")}

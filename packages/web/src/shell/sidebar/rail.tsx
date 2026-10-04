@@ -103,7 +103,10 @@ export function CollapsedRail({ onExpand }: SidebarRailProps) {
     note: string | null;
   }> =
     current >= 0
-      ? modeStates[current]!.navItems.map((item) => ({ ...item, note: null }))
+      ? modeStates[current]!.navItems.map((item) => ({
+          ...item,
+          note: notes.get(item.key) ?? null,
+        }))
       : navKeysFor(navPages, user?.isAdmin === true).flatMap((key) => {
           const page = navPages.find((p) => p.key === key);
           return page === undefined
