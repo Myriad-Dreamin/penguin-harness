@@ -20,7 +20,12 @@
  * and loads at boot, the component's chunk when a slot first draws it, inside the slot owner's
  * Suspense boundary.
  */
-import { checkTree, describeProblem, moduleDefOf, parseManifest } from "@prismshadow/penguin-core/kernel";
+import {
+  checkTree,
+  describeProblem,
+  moduleDefOf,
+  parseManifest,
+} from "@prismshadow/penguin-core/kernel";
 import type {
   IfaceTable,
   ManifestNode,

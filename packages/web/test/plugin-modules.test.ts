@@ -70,7 +70,10 @@ const manifest = (name: string, contributes: Record<string, unknown[]> = {}) => 
   file: `dist/web/${name}.js`,
 });
 
-const pkg = (name: string, modules: Array<{ manifest: object; url: string }>): WebModulePackage => ({
+const pkg = (
+  name: string,
+  modules: Array<{ manifest: object; url: string }>,
+): WebModulePackage => ({
   package: name,
   version: "1.0.0",
   hash: "h",
@@ -109,7 +112,10 @@ ChatModule.prototype.setup = function (this: InstanceType<typeof ChatModule>, ct
 
 describe("plugin web modules in the tree", () => {
   it("a forwarded module joins: created, its rule and component on the chat slot", async () => {
-    const Root = await bootWeb([pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }])], load);
+    const Root = await bootWeb(
+      [pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }])],
+      load,
+    );
     expect(typeof Root).toBe("function");
     expect(created).toContain("MusicPlugin");
     expect(pluginModuleFailures().size).toBe(0);
@@ -178,7 +184,10 @@ describe("plugin web modules in the tree", () => {
 describe("shared instances", () => {
   it("shares the app's own React, JSX runtime, kernel and UI package", () => {
     shareHostModules();
-    const shared = (globalThis as Record<string, unknown>)[SHARED_GLOBAL] as Record<string, unknown>;
+    const shared = (globalThis as Record<string, unknown>)[SHARED_GLOBAL] as Record<
+      string,
+      unknown
+    >;
     expect(shared).toBe(SHARED_MODULES);
     expect(shared.react).toBe(React);
     expect(shared["react/jsx-runtime"]).toBe(JsxRuntime);

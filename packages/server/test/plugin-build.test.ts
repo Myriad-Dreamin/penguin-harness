@@ -55,7 +55,10 @@ describe("the side decision", () => {
   it("decides a module name both hosts have by the slot, then by the interface required", () => {
     const both = {
       server: {
-        modules: { ...hosts.server.modules, AgentsModule: { provides: { agents: "server#Agents" } } },
+        modules: {
+          ...hosts.server.modules,
+          AgentsModule: { provides: { agents: "server#Agents" } },
+        },
         ifaces: { ...hosts.server.ifaces, "server#Agents": {} },
       },
       web: {
@@ -107,12 +110,17 @@ describe("the side decision", () => {
 
   it("refuses one file holding modules of both sides", () => {
     expect(
-      mixedFiles({ Box: "src/a.ts", Player: "src/a.ts", Other: "src/b.ts" }, {
-        Box: "server",
-        Player: "web",
-        Other: "web",
-      }),
-    ).toEqual(["src/a.ts: holds web module(s) [Player] and platform module(s) [Box] — one side per file"]);
+      mixedFiles(
+        { Box: "src/a.ts", Player: "src/a.ts", Other: "src/b.ts" },
+        {
+          Box: "server",
+          Player: "web",
+          Other: "web",
+        },
+      ),
+    ).toEqual([
+      "src/a.ts: holds web module(s) [Player] and platform module(s) [Box] — one side per file",
+    ]);
   });
 });
 
@@ -223,7 +231,12 @@ describe("the plugin build", () => {
     const def = moduleDefOf(mod.default, { manifests: table.modules });
     expect(def.manifest.name).toBe("Player");
     const inst = await def.create(
-      { use: {}, contributions: {}, resources: { register: () => () => {}, claim: () => undefined }, effect: () => {} },
+      {
+        use: {},
+        contributions: {},
+        resources: { register: () => () => {}, claim: () => undefined },
+        effect: () => {},
+      },
       null,
     );
     const view = inst.bind?.p as { lazy: boolean; load: () => Promise<{ default: () => string }> };
@@ -239,9 +252,13 @@ describe("the plugin build", () => {
   });
 
   it("refuses bundling a copy of a package the page does not share", async () => {
-    const dir = await pkgDir(`import { createPortal } from "react-dom";\n${PLAYER}\nexport const x = createPortal;\n`);
+    const dir = await pkgDir(
+      `import { createPortal } from "react-dom";\n${PLAYER}\nexport const x = createPortal;\n`,
+    );
     await expect(buildPlugin(dir)).rejects.toMatchObject({
-      errors: [expect.objectContaining({ text: expect.stringMatching(/'react-dom' is not shared/) })],
+      errors: [
+        expect.objectContaining({ text: expect.stringMatching(/'react-dom' is not shared/) }),
+      ],
     });
   });
 });

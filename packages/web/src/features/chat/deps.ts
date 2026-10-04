@@ -41,6 +41,8 @@ export function fileRenderersOf(contributions: readonly Contributed[]): ChatDeps
   return contributions.flatMap((c) => {
     const { extensions } = c.data as unknown as FileRendererData;
     const exts = extensions.map((e) => e.replace(/^\./, "").toLowerCase()).filter((e) => e !== "");
-    return exts.length === 0 ? [] : [{ id: c.id, extensions: exts, Renderer: c.code as FileRenderer }];
+    return exts.length === 0
+      ? []
+      : [{ id: c.id, extensions: exts, Renderer: c.code as FileRenderer }];
   });
 }

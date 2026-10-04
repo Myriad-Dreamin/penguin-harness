@@ -2367,7 +2367,8 @@ export const en: Strings = {
     /** The Project-level install: the plugin is listed, and running unless the row says otherwise. */
     deploymentInstalledToast: (name: string) => `Installed ${name}`,
     /** Listed, but the process could not load it: the reason, not a success. */
-    webModulesLeftOut: (reason: string) => `Loaded, but its web modules were left out of this page: ${reason}`,
+    webModulesLeftOut: (reason: string) =>
+      `Loaded, but its web modules were left out of this page: ${reason}`,
     deploymentFailedToast: (name: string, reason: string) => `${name} failed to load: ${reason}`,
     applyConfirmInstall: (name: string) => `Install ${name}?`,
     applyConfirmRemove: (name: string) => `Remove ${name}?`,
