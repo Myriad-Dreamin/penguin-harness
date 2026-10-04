@@ -31,6 +31,8 @@ type LifecycleParams = Pick<
   | "reloadSessions"
   | "addSession"
   | "isSessionDeleted"
+  | "isSessionUnconfirmed"
+  | "dropUnconfirmedSession"
   | "setStatus"
 > &
   Pick<
@@ -56,6 +58,8 @@ export function useSessionLifecycle({
   reloadSessions,
   addSession,
   isSessionDeleted,
+  isSessionUnconfirmed,
+  dropUnconfirmedSession,
   setStatus,
   draft,
   setFetchedSession,
@@ -123,11 +127,20 @@ export function useSessionLifecycle({
    * connection is back (state/sessions.tsx: OFFLINE_RECHECK_MS).
    */
   const routeSessionOffline = routeSessionPending && probeFailedKey === probeKey;
+  /**
+   * The routed row is an organization Session drawn from the list cache: it is on screen and its
+   * conversation is being read at once, but no list round will ever confirm it (`excludeOrg`).
+   * The same lookup does, without waiting for the list — it decides nothing about absence until
+   * it answers: found, the row is adopted as the server has it; not found, the cached row is
+   * dropped and the failed lookup takes the ordinary not-found path below.
+   */
+  const routeSessionUnconfirmed = listed !== null && isSessionUnconfirmed(listed.sessionId);
   useEffect(() => {
-    if (draft || !projectId || !routeSessionId || !probeKey || sessionsLoading) return;
+    if (draft || !projectId || !routeSessionId || !probeKey) return;
+    if (sessionsLoading && !routeSessionUnconfirmed) return;
     // Settled (row loaded, or the lookup already failed): nothing to probe — and a failed
     // key must not be re-probed just because the list's identity churned.
-    if (!routeSessionPending) return;
+    if (!routeSessionPending && !routeSessionUnconfirmed) return;
     // We deleted this Session ourselves: the row is gone from the list on purpose, so the
     // lookup below could only 404 (and the server would record that as an error). Deleting
     // the conversation you are looking at is the normal way to discard a Session fork, so
@@ -148,10 +161,17 @@ export function useSessionLifecycle({
           // A Session of an Agent the list has not loaded (company mode creates Agents
           // server-side): fetch the list, or the page has no Agent to render under.
           if (!agents.some((a) => a.agentId === session.agentId)) void reloadAgents();
-        } else setProbeFailedKey(probeKey);
+        } else {
+          // Failed first, then dropped: the render between the two must not read the dropped
+          // row as an unprobed one and ask again.
+          setProbeFailedKey(probeKey);
+          dropUnconfirmedSession(routeSessionId);
+        }
       },
       () => {
-        if (!cancelled) setProbeFailedKey(probeKey);
+        if (cancelled) return;
+        setProbeFailedKey(probeKey);
+        dropUnconfirmedSession(routeSessionId);
       },
     );
     return () => {
@@ -167,9 +187,11 @@ export function useSessionLifecycle({
     probeKey,
     sessionsLoading,
     routeSessionPending,
+    routeSessionUnconfirmed,
     selected,
     addSession,
     isSessionDeleted,
+    dropUnconfirmedSession,
   ]);
 
   // Auto-select the last conversation when the route doesn't select one: the most recently

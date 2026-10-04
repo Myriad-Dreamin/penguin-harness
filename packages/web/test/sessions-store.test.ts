@@ -80,7 +80,11 @@ import {
   workspaceGroupKey,
 } from "../src/lib/session-grouping";
 import { forgetSessionMachines, machineForSession } from "../src/lib/session-machines";
-import { cachedMachineSessions, rememberMachineSessions } from "../src/lib/machine-cache";
+import {
+  TEST_INSTALL_ID,
+  cachedMachineSessions,
+  rememberMachineSessions,
+} from "./helpers/list-cache";
 import { apiError, json, stubFetch } from "./helpers/fetch";
 import type { FakeFetch, FetchHandler } from "./helpers/fetch";
 import { stubLocalStorage } from "./helpers/storage";
@@ -123,6 +127,8 @@ beforeEach(() => {
   answers.clear();
   served.clear();
   stubLocalStorage();
+  // The data root the list cache is keyed on (lib/list-cache.ts); the boot records it.
+  localStorage.setItem("penguin.installId", TEST_INSTALL_ID);
   fetch = stubFetch(serve);
 });
 
@@ -230,7 +236,7 @@ const page = (
 
 function boot(machineIds: string[] = [], offlineMachineIds: string[] = [], agentIds = ["a1"]) {
   const store = createSessionsStore();
-  store.setState({ projectId: "p", agentIds, machineIds, offlineMachineIds });
+  store.setState({ projectId: "p", cacheUser: "u", agentIds, machineIds, offlineMachineIds });
   return store;
 }
 

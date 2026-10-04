@@ -42,7 +42,11 @@ vi.mock("../src/api/endpoints", () => ({
 
 import { applyUserEvent, createSessionsStore } from "../src/state/sessions";
 import { machineForSession } from "../src/lib/session-machines";
-import { cachedMachineSessions, rememberMachineSessions } from "../src/lib/machine-cache";
+import {
+  TEST_INSTALL_ID,
+  cachedMachineSessions,
+  rememberMachineSessions,
+} from "./helpers/list-cache";
 
 const row = (sessionId: string, createdAt: string, agentId = "a1"): SessionInfo =>
   ({
@@ -88,6 +92,7 @@ describe("the list across machines", () => {
     gates.clear();
     asked.length = 0;
     (globalThis as { localStorage?: Storage }).localStorage = memoryStorage();
+    localStorage.setItem("penguin.installId", TEST_INSTALL_ID);
   });
   afterEach(() => {
     (globalThis as { localStorage?: Storage }).localStorage = originalStorage;
@@ -95,7 +100,13 @@ describe("the list across machines", () => {
 
   const boot = (machineIds: string[], offlineMachineIds: string[] = []) => {
     const store = createSessionsStore();
-    store.setState({ projectId: "p", agentIds: ["a1"], machineIds, offlineMachineIds });
+    store.setState({
+      projectId: "p",
+      cacheUser: "u",
+      agentIds: ["a1"],
+      machineIds,
+      offlineMachineIds,
+    });
     return store;
   };
 

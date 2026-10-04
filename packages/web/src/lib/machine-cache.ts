@@ -1,36 +1,26 @@
 /**
- * What each machine was last seen holding, kept across a restart.
+ * What Agents each machine was last seen running, kept across a restart.
  *
  * A machine can only be asked over a held connection, and the moment this page comes up the
  * server may still be re-holding them (a hot push closes every connection its generation
- * opened; the successor brings each back). Everything built only from what answers RIGHT NOW
- * is then this server's answer alone: its Sessions in the list, and — for a workspace that
- * lives over there — no Agents at all to start one with. The remote half of someone's work
- * is simply not there, which reads as lost rather than as pending.
+ * opened; the successor brings each back). For a workspace that lives over there, everything
+ * built only from what answers RIGHT NOW offers no Agents at all to start a conversation with.
  *
- * So the last answer each machine gave is written down, and shown while that machine is out
+ * So the last answer each machine gave is written down, and offered while that machine is out
  * of reach. It is replaced wholesale the moment the machine answers again — never merged,
- * because something the machine no longer has would then outlive it.
- *
- * Per machine rather than per list: this server's own answers are always available and never
- * need caching, and a machine that answers must replace ITS entries without touching a
- * neighbour's.
+ * because something the machine no longer has would then outlive it. (Each machine's Session
+ * rows are kept with this server's in the list cache, lib/list-cache.ts.)
  *
  * Storage is best-effort in both directions. Every browser can refuse it (private windows,
  * cleared site data, storage disabled), and reading back something that no longer parses is
  * the same as having nothing — in every one of those cases the page degrades to exactly what
  * it did before there was a cache.
  */
-import type { AgentSummary, SessionInfo } from "@prismshadow/penguin-server/api";
+import type { AgentSummary } from "@prismshadow/penguin-server/api";
 
-const SESSIONS_PREFIX = "penguin.machineSessions.";
 const AGENTS_PREFIX = "penguin.machineAgents.";
 
-/**
- * Rows kept per machine. Comfortably more than the sidebar's first page, and far short of
- * what would make the write worth worrying about — this is a placeholder for a list that is
- * about to be refetched, not a copy of the machine's history.
- */
+/** Agents kept per machine — far more than a machine runs; a bound on the write, not a policy. */
 export const CACHED_ROWS_PER_MACHINE = 200;
 
 const keyFor = (prefix: string, projectId: string, machineId: string) =>
@@ -69,25 +59,6 @@ function cached<T>(
   } catch {
     return [];
   }
-}
-
-/** Replaces the Sessions this machine is remembered as holding. */
-export function rememberMachineSessions(
-  projectId: string,
-  machineId: string,
-  sessions: readonly SessionInfo[],
-): void {
-  remember(SESSIONS_PREFIX, projectId, machineId, [...sessions]);
-}
-
-/** The Sessions this machine was last seen holding. Empty when nothing is remembered. */
-export function cachedMachineSessions(projectId: string, machineId: string): SessionInfo[] {
-  return cached<SessionInfo>(
-    SESSIONS_PREFIX,
-    projectId,
-    machineId,
-    (row) => typeof (row as SessionInfo).sessionId === "string",
-  );
 }
 
 /**

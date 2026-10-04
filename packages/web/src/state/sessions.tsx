@@ -71,12 +71,8 @@ import {
   machineForSession,
   rememberSessionMachine,
 } from "../lib/session-machines";
-import {
-  cachedMachineAgents,
-  cachedMachineSessions,
-  rememberMachineAgents,
-  rememberMachineSessions,
-} from "../lib/machine-cache";
+import { cachedMachineAgents, rememberMachineAgents } from "../lib/machine-cache";
+import { readSessionCache } from "../lib/list-cache";
 import { setTerminalMachines } from "../lib/terminal-machines";
 import { machineIdOf } from "../lib/workspace-machines";
 import {
@@ -92,7 +88,9 @@ import {
   workspaceGroupQuery,
 } from "../lib/session-grouping";
 import type { ActivityKey, StreamPosition } from "../lib/session-grouping";
+import { useAuth } from "./auth";
 import { useProject } from "./project";
+import { drawSessionList, writeSessionList } from "./session-list-cache";
 import type { UserEventHandler } from "./user-events";
 
 /** A reload this server answered nothing to is tried again after this, doubling up to the ceiling. */
@@ -171,6 +169,15 @@ interface SessionsContextValue {
    */
   sourcesPending: boolean;
   /**
+   * Whether the row is an organization Session drawn from the list cache (lib/list-cache.ts)
+   * that no server answer has confirmed yet. A list round never returns organization rows
+   * (`excludeOrg`), so the round cannot settle one: the chat page opens it at once and looks it
+   * up to confirm it (`add`) or to drop it (`dropUnconfirmed`).
+   */
+  isUnconfirmed: (sessionId: string) => boolean;
+  /** Removes an unconfirmed cached row its lookup did not find (and from the cache); no-op for any other id. */
+  dropUnconfirmed: (sessionId: string) => void;
+  /**
    * Whether a machine of this Project could not be asked this round — no connection is held
    * to it, or the server behind the connection did not answer.
    *
@@ -183,7 +190,7 @@ interface SessionsContextValue {
   machinesUnreachable: boolean;
   /**
    * The Project's machines that did not answer this round, by machine id. Their rows on
-   * screen come from the cache (lib/machine-cache.ts), so a caller that has to decide whether
+   * screen come from the cache (lib/list-cache.ts), so a caller that has to decide whether
    * a Session is REACHABLE — not merely whether it is listed — asks this.
    */
   offlineMachineIds: string[];
@@ -327,6 +334,8 @@ export function watermarkFor(
 interface SessionsStoreState {
   /** Provider-synced fetch context: the current Project and its Agent set (what reload() targets). */
   projectId: string | null;
+  /** Provider-synced: whose list cache this list draws from and writes back to (null = none). */
+  cacheUser: string | null;
   agentIds: string[];
   /**
    * Machines whose Sessions are merged into this list, alongside this server's: the ones this
@@ -379,8 +388,18 @@ interface SessionsStoreState {
   loading: boolean;
   /** See the context's `sourcesPending`. */
   sourcesPending: boolean;
+  /** Organization rows drawn from the cache and not yet confirmed (see the context's `isUnconfirmed`). */
+  unconfirmed: ReadonlySet<string>;
 
   reload: () => Promise<void>;
+  /**
+   * Puts the Project's cached rows on screen — the last list the servers answered — for the
+   * moment until this round's answers replace them. Called by the Provider right after a
+   * context change emptied the list. Raises `sourcesPending`, so nothing reads the drawn list
+   * as an answer; lowers `loading` when there is a row of the list's own to show.
+   */
+  drawCached: () => void;
+  dropUnconfirmed: (sessionId: string) => void;
   loadMoreFor: (
     agentIds: string[],
     category: SessionCategory,
@@ -437,6 +456,13 @@ const LIVE_STATUS_MAX = 1000;
  * Same eviction as DELETED_IDS_MAX; a dropped entry costs one more lookup.
  */
 const DECLINED_IDS_MAX = 1000;
+
+/** `ids` less `id`, as a new set. */
+function without(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(ids);
+  next.delete(id);
+  return next;
+}
 
 /** `live` with `sessionId` at `status` — the same map when nothing changed, so no render is spent on a repeat. */
 function rememberStatus(
@@ -591,7 +617,25 @@ export function createSessionsStore() {
       }
       set({
         sessions: [session, ...get().sessions.filter((s) => s.sessionId !== session.sessionId)],
+        // A row a server handed over is confirmed, whatever the cache said about it.
+        ...(get().unconfirmed.has(session.sessionId)
+          ? { unconfirmed: without(get().unconfirmed, session.sessionId) }
+          : {}),
       });
+    };
+
+    /**
+     * Writes the list on screen back to the cache, each row with the server it lives on. Called
+     * once a round's whole answer is applied, and after this client's own edits to a settled
+     * list; never over a list still waiting on answers (it would remember the half it has).
+     */
+    const writeCache = () => {
+      const { cacheUser, projectId, sessions } = get();
+      if (cacheUser !== null && projectId !== null)
+        writeSessionList(cacheUser, projectId, sessions);
+    };
+    const writeCacheIfSettled = () => {
+      if (!get().loading && !get().sourcesPending) writeCache();
     };
 
     /** Remembers an id as not this list's (DECLINED_IDS_MAX bounds the set, oldest out first). */
@@ -606,7 +650,8 @@ export function createSessionsStore() {
      * applied. Only ever started through `reload()`'s queue (`startRound`).
      */
     const round = async (): Promise<void> => {
-      const { projectId, agentIds, machineIds, offlineMachineIds, agentIdsByMachine } = get();
+      const { projectId, cacheUser, agentIds, machineIds, offlineMachineIds, agentIdsByMachine } =
+        get();
       // No context to fetch against yet. `loading` is deliberately left alone rather than
       // cleared: nothing was loaded, so reporting "done" here would be a lie — and one the
       // empty state renders. The Provider's reset step raised it and a later reload,
@@ -717,12 +762,15 @@ export function createSessionsStore() {
        * `final` build — every source's answer in — retries an unreadable server, rewrites the
        * machine cache and retires adoption marks; an early one (the answers in so far, every
        * machine still answering silent) only puts rows on screen sooner, and waits for at
-       * least one of this server's.
+       * least one of this server's. `pending` are this server's Agents still answering in an
+       * early build: like an Agent it could not answer about, each keeps the rows it has on
+       * screen — the cached ones, when the list was drawn from the cache.
        */
       const apply = (
         results: Awaited<ReturnType<typeof fetchJob>>[],
         silent: ReadonlySet<string>,
         final: boolean,
+        pending: ReadonlySet<string> = new Set(),
       ): boolean => {
         // Agents this server did not answer about. Per Agent, not per server: a damaged
         // index or a 500 on ONE Agent is a different event from this server being
@@ -760,11 +808,9 @@ export function createSessionsStore() {
           return false;
         }
         if (final) retries = 0;
+        for (const agentId of pending) unanswered.add(agentId);
         const nextSessions: SessionInfo[] = [];
         const seen = new Set<string>();
-        // What each machine answered, kept so it can be shown after the next restart while
-        // the server re-holds its connection to that machine (lib/machine-cache.ts).
-        const rowsByMachine = new Map<string, SessionInfo[]>();
         const nextPageState = new Map<string, PagePosition>();
         const nextCounts = new Map<string, SessionCategoryCounts>();
         const nextWorkspaceCounts = new Map<
@@ -816,8 +862,6 @@ export function createSessionsStore() {
               if (seen.has(s.sessionId)) continue;
               seen.add(s.sessionId);
               nextSessions.push(s);
-              if (r.source !== null)
-                rowsByMachine.set(r.source, [...(rowsByMachine.get(r.source) ?? []), s]);
               // Where this row lives, so the two dozen Session-scoped calls about it reach
               // the machine that holds it. Rebuilt by the very list that displays them,
               // which is why the map is in memory and this is the only place it is filled.
@@ -848,16 +892,9 @@ export function createSessionsStore() {
           }
           nextWorkspaceCounts.set(agentId, out);
         }
-        // Only a machine that ANSWERED replaces what it is remembered as holding — including
-        // with nothing, which is how a Session deleted over there stops coming back from
-        // the cache. A machine that went quiet during the fetch keeps its cache: erasing it
-        // would leave the fallback with nothing to fall back to.
-        for (const machineId of final ? machineIds : []) {
-          if (silent.has(machineId)) continue;
-          rememberMachineSessions(projectId, machineId, rowsByMachine.get(machineId) ?? []);
-        }
-        // And every machine this list could not read contributes what it last held — the
-        // ones with no connection held, and the ones that went quiet during the fetch.
+        // Every machine this list could not read contributes what it last held (the list
+        // cache, lib/list-cache.ts) — the ones with no connection held, and the ones that went
+        // quiet during the fetch.
         // `seen` still guards, so a live answer always wins over a remembered one. Their
         // owner entries are recorded the same way, so opening such a Session addresses the
         // machine that has it rather than this server — which would answer 404 about
@@ -867,13 +904,15 @@ export function createSessionsStore() {
         // answered, so an out-of-reach machine's rows show without being counted. Better
         // than the alternative — a count is a claim about what a server holds now, and the
         // cache cannot make that claim.
-        for (const machineId of new Set([...offlineMachineIds, ...silent])) {
-          for (const s of cachedMachineSessions(projectId, machineId)) {
-            if (seen.has(s.sessionId)) continue;
-            seen.add(s.sessionId);
-            nextSessions.push(s);
-            rememberSessionMachine(s.sessionId, machineId);
-          }
+        const standIns = new Set([...offlineMachineIds, ...silent]);
+        const cached =
+          standIns.size > 0 && cacheUser !== null ? readSessionCache(cacheUser, projectId) : null;
+        for (const { row: s, source } of cached ?? []) {
+          if (source === null || !standIns.has(source) || isOrgSession(s)) continue;
+          if (seen.has(s.sessionId)) continue;
+          seen.add(s.sessionId);
+          nextSessions.push(s);
+          rememberSessionMachine(s.sessionId, source);
         }
         // An Agent this server could not answer about keeps everything it already had: its
         // rows here, the page positions they were loaded at, and its badge counts. The list
@@ -935,6 +974,10 @@ export function createSessionsStore() {
           // answer "no Sessions", which only the whole round can give (`loading`'s contract).
           ...(!final && sessions.length > 0 ? { loading: false } : {}),
         });
+        // The whole answer is the list as the servers have it: it replaces the cache. A machine
+        // that answered replaces its rows there — with none, which is how a Session deleted
+        // over there stops coming back — and one that did not keeps the rows it stood in with.
+        if (final) writeCache();
         return true;
       };
       // The first list on screen does not wait for every answer. Opening a Session needs the
@@ -944,7 +987,9 @@ export function createSessionsStore() {
       // far each time more arrive (at least one of this server's among them), machines still
       // answering contributing their cached rows. The whole round then replaces it.
       // `sourcesPending` says so meanwhile, so nothing reads the early list as complete.
-      const firstLoad = get().sessions.length === 0 && jobs.length > 1;
+      // A list drawn from the cache is no answer either (`sourcesPending`): it is rebuilt the
+      // same way, each Agent still answering keeping its cached rows until its own list lands.
+      const firstLoad = (get().sessions.length === 0 || get().sourcesPending) && jobs.length > 1;
       const settled: (Awaited<ReturnType<typeof fetchJob>> | undefined)[] = jobs.map(
         () => undefined,
       );
@@ -958,7 +1003,12 @@ export function createSessionsStore() {
             job.source !== null && settled[i] === undefined ? [job.source] : [],
           ),
         );
-        apply(done, new Set([...answering, ...rested]), false);
+        const pending = new Set(
+          jobs.flatMap((job, i) =>
+            job.source === null && settled[i] === undefined ? [job.agentId] : [],
+          ),
+        );
+        apply(done, new Set([...answering, ...rested]), false, pending);
       };
       const answers = jobs.map((job, i) => {
         const answer = fetchJob(job);
@@ -1018,6 +1068,7 @@ export function createSessionsStore() {
 
     return {
       projectId: null,
+      cacheUser: null,
       agentIds: [],
       machineIds: [],
       offlineMachineIds: [],
@@ -1032,6 +1083,29 @@ export function createSessionsStore() {
       liveStatuses: new Map(),
       loading: true,
       sourcesPending: false,
+      unconfirmed: new Set(),
+
+      drawCached: () => {
+        const { projectId, cacheUser } = get();
+        if (projectId === null || cacheUser === null) return;
+        const drawn = drawSessionList(cacheUser, projectId);
+        if (drawn === null) return;
+        set({
+          sessions: drawn.sessions,
+          unconfirmed: new Set(drawn.org),
+          sourcesPending: true,
+          ...(drawn.hasOwnRows ? { loading: false } : {}),
+        });
+      },
+
+      dropUnconfirmed: (sessionId) => {
+        if (!get().unconfirmed.has(sessionId)) return;
+        set({
+          sessions: get().sessions.filter((s) => s.sessionId !== sessionId),
+          unconfirmed: without(get().unconfirmed, sessionId),
+        });
+        writeCacheIfSettled();
+      },
 
       reload: () => {
         // One round in flight and at most one queued behind it: every trigger that arrives
@@ -1183,6 +1257,7 @@ export function createSessionsStore() {
         // Invalidate any in-flight reload: the newly created entry mustn't be wiped by a stale snapshot.
         gen += 1;
         insert(session);
+        writeCacheIfSettled();
       },
 
       adoptLiveSession: (sessionId, source, status, row) => {
@@ -1265,6 +1340,7 @@ export function createSessionsStore() {
           deletedSessionIds: deleted,
           sessions: get().sessions.filter((s) => s.sessionId !== sessionId),
         });
+        writeCacheIfSettled();
       },
 
       replace: (session) => {
@@ -1277,6 +1353,7 @@ export function createSessionsStore() {
         set({
           sessions: get().sessions.map((s) => (s.sessionId === session.sessionId ? session : s)),
         });
+        writeCacheIfSettled();
       },
 
       /**
@@ -1531,6 +1608,7 @@ export function SessionsProvider({
 }) {
   const { currentProject, agents } = useProject();
   const projectId = currentProject?.projectId ?? null;
+  const cacheUser = useAuth().user?.userId ?? null;
   // Stable key for the Agent set: the list object is a new reference on every reload,
   // so join the ids to avoid unnecessary reloads.
   const agentIdsKey = agents.map((a) => a.agentId).join(",");
@@ -1654,8 +1732,15 @@ export function SessionsProvider({
     // reused, so a Session deleted before a Project switch is still deleted after it — and
     // re-arming its lookup would just re-create the 404 this set exists to prevent.
     // liveStatuses stays for the same reason: a status is a fact about the Session.
+    // Which machine owns which Session is rebuilt by the very fetch below, so the old
+    // answers are dropped with the rows they described: a stale entry would route a call at
+    // a machine that may no longer hold — or no longer have — that Session. Only alongside
+    // the rows themselves: dropped while they are still displayed, every one of them would
+    // route at THIS server until the refetch lands.
+    if (contextChanged) forgetSessionMachines();
     store.setState({
       projectId,
+      cacheUser,
       agentIds: agentIdsKey === "" ? [] : agentIdsKey.split(","),
       machineIds: machineIdsKey === "" ? [] : machineIdsKey.split(","),
       offlineMachineIds: offlineMachineIdsKey === "" ? [] : offlineMachineIdsKey.split(","),
@@ -1680,19 +1765,18 @@ export function SessionsProvider({
             // — from flapping the app-wide flag.
             loading: true,
             sourcesPending: false,
+            unconfirmed: new Set(),
           }
         : {}),
     });
-    // Which machine owns which Session is rebuilt by the very fetch below, so the old
-    // answers are dropped with the rows they described: a stale entry would route a call at
-    // a machine that may no longer hold — or no longer have — that Session. Only alongside
-    // the rows themselves: dropped while they are still displayed, every one of them would
-    // route at THIS server until the refetch lands.
-    if (contextChanged) forgetSessionMachines();
+    // The emptied list is drawn from the cache at once — the rows the servers last answered —
+    // and the fetch below replaces them (state/sessions.tsx `drawCached`).
+    if (contextChanged) store.getState().drawCached();
     void store.getState().reload();
   }, [
     store,
     projectId,
+    cacheUser,
     agentIdsKey,
     machineIdsKey,
     offlineMachineIdsKey,
@@ -1808,6 +1892,10 @@ export function SessionsProvider({
     (sessionId: string) => store.getState().deletedSessionIds.has(sessionId),
     [store],
   );
+  const isUnconfirmed = useCallback(
+    (sessionId: string) => store.getState().unconfirmed.has(sessionId),
+    [store],
+  );
 
   // Keyed on the rows alone: the outer value memo re-runs on every store change (status,
   // titles, page state), and rebuilding + re-sorting every Agent's bucket for those would be
@@ -1854,11 +1942,22 @@ export function SessionsProvider({
       add: state.add,
       remove: state.remove,
       isDeleted,
+      isUnconfirmed,
+      dropUnconfirmed: state.dropUnconfirmed,
       replace: state.replace,
       setStatus: state.setStatus,
       setTitle: state.setTitle,
     };
-  }, [state, byAgent, machineLabels, isLoadedFor, hasMoreFor, activityWatermarkFor, isDeleted]);
+  }, [
+    state,
+    byAgent,
+    machineLabels,
+    isLoadedFor,
+    hasMoreFor,
+    activityWatermarkFor,
+    isDeleted,
+    isUnconfirmed,
+  ]);
 
   return <SessionsContext.Provider value={value}>{children}</SessionsContext.Provider>;
 }
