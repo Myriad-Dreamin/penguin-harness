@@ -214,7 +214,7 @@ async function pluginPackages() {
     // A repository example (plugins/example-*) is not shipped unless asked for (the header). It
     // is known by its directory, not by `private`: several shipped plugins (languages, the
     // company plugins, claude-code, discord-bot) are private packages too, kept off npm.
-    if (dirName.startsWith("example-") && process.env.PENGUIN_PLUGIN_EXAMPLES !== "1") continue;
+    if (dirName.startsWith("example-") && process.env.PENGUIN_PLUGIN_EXAMPLES === "0") continue;
     const unbundled = Object.keys(pkg.dependencies ?? {}).filter(
       (d) => !NATIVE_DEPENDENCIES.has(d),
     );
