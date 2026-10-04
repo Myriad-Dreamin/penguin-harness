@@ -17,6 +17,7 @@
  * sub-sessions are left out of its fetches and totals by the server, and out of every group,
  * bucket and folder here should one still arrive.
  */
+import { useRef } from "react";
 import { useNavigate } from "react-router";
 import {
   Dropdown,
@@ -43,6 +44,7 @@ import { AgentGroups } from "./group-by-agent";
 import { WorkspaceGroups } from "./group-by-workspace";
 import { TimeGroups } from "./group-by-time";
 import type { SessionListController } from "./use-session-list";
+import { useReconcileMotion } from "./use-reconcile-motion";
 
 /** Collapse-state key of the parked-drafts group ("\0" keeps it clear of Agent ids and Workspace paths). */
 const DRAFTS_GROUP_KEY = "\0drafts";
@@ -85,7 +87,10 @@ export function SessionList({
     activeSessionId,
     go,
     setDeletingDraft,
+    provisional,
   } = list;
+  const groupsRef = useRef<HTMLDivElement | null>(null);
+  useReconcileMotion(groupsRef, provisional);
   return (
     <>
       {/* The list's header: its label and the controls (icon + tooltip family) — search, list
@@ -271,8 +276,9 @@ export function SessionList({
       )}
 
       {/* The grouped list, one piece per grouping: a switch of the grouping remounts it, and
-          the regrouped list surfaces as a whole under the theme's reveal. */}
-      <div key={groupMode} {...(regrouped ? { "data-reveal": true } : {})}>
+          the regrouped list surfaces as a whole under the theme's reveal. When the server's
+          answer replaces a provisional list, its rows reconcile quietly (useReconcileMotion). */}
+      <div ref={groupsRef} key={groupMode} {...(regrouped ? { "data-reveal": true } : {})}>
         {groupMode === "agent" ? <AgentGroups list={list} /> : null}
         {groupMode === "workspace" ? <WorkspaceGroups list={list} /> : null}
         {groupMode === "time" ? <TimeGroups list={list} /> : null}

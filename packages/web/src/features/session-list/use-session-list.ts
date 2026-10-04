@@ -61,8 +61,15 @@ export function useSessionList({
   const { user } = useAuth();
   const { locale } = useLocale();
   const { currentProject, agents, setCurrentAgentId } = useProject();
-  const { countsByAgent, machineLabels, hasMoreFor, activityWatermarkFor, loading, replace } =
-    useSessions();
+  const {
+    countsByAgent,
+    machineLabels,
+    hasMoreFor,
+    activityWatermarkFor,
+    loading,
+    sourcesPending,
+    replace,
+  } = useSessions();
   const chatMatch = useMatch("/chat/:sessionId");
   const activeSessionId = chatMatch?.params.sessionId ?? null;
   const currentProjectId = currentProject?.projectId ?? null;
@@ -315,6 +322,8 @@ export function useSessionList({
     agents,
     countsByAgent,
     loading,
+    /** The rows on screen are provisional (the cache's, or some sources' only): see useReconcileMotion. */
+    provisional: sourcesPending,
     hasMoreFor,
     activityWatermarkFor,
     replace,
