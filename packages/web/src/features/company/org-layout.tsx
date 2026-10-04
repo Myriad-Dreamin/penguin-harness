@@ -263,10 +263,12 @@ export function OrgLayout() {
   const org =
     company.organizations.find((o) => o.projectId === projectId && o.orgId === orgId) ?? null;
   if (org === null && company.orgsLoaded) return <OrgGone />;
-  // No page before the list: it is what says which machine this organization runs on
-  // (lib/org-machines.ts), and a page that fetched any earlier would ask this server — whose
-  // copy of an organization that runs elsewhere is a mirror without its employees' Agents.
-  if (!company.orgsLoaded) {
+  // No page before the list holds this organization: it is what says which machine the
+  // organization runs on (lib/org-machines.ts), and a page that fetched any earlier would ask
+  // this server — whose copy of an organization that runs elsewhere is a mirror without its
+  // employees' Agents. The cached list (org-list-cache.ts) may hold it before the server's
+  // answers; only that answer can say it is gone (above).
+  if (org === null) {
     return (
       <PageFrame width="xl">
         <OrgPageSkeleton />

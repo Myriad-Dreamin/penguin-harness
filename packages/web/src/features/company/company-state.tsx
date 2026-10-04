@@ -83,6 +83,7 @@ import { channelBadgeCounts } from "./channel-list";
 import { homePath, orgKey, parseOrgKey } from "./company-nav";
 import type { WorkMode } from "./company-nav";
 import { withDeskMessagingChannel } from "./org-sessions";
+import { drawOrganizations, writeOrganizations } from "./org-list-cache";
 import {
   clearLastOrgKey,
   initialLastOrgKey,
@@ -250,10 +251,17 @@ interface CompanyStoreState {
   lastOrgKey: string | null;
   /** The organization the shell is currently inside (set by the org routes), or null elsewhere. */
   currentOrgKey: string | null;
-  /** Every organization of every Project the user can reach. */
+  /**
+   * Every organization of every Project the user can reach. Until the first read answers, the
+   * list cache's (`orgsLoaded` false): enough to route an organization's requests to its
+   * machine, never evidence that one is gone.
+   */
   organizations: OrganizationSummary[];
   orgsLoading: boolean;
+  /** A read of the server's list has answered (the cached list drawn at start is not one). */
   orgsLoaded: boolean;
+  /** Whose list cache the organization list is drawn from and written to (null = none). */
+  cacheUser: string | null;
   /**
    * At least one Project's listing failed in the last read, so `organizations` is missing
    * whatever that Project holds. An absent organization then means "not listed this time",
@@ -406,18 +414,24 @@ export async function heldMachines(projectId: string): Promise<HeldMachine[]> {
  * `serverEnabled` seeds the server's master switch (the Provider passes the auth context's), so
  * the first render already knows whether company mode may be entered.
  */
-export function createCompanyStore(options: { serverEnabled?: boolean } = {}) {
+export function createCompanyStore(
+  options: { serverEnabled?: boolean; cacheUser?: string | null } = {},
+) {
   const proposalsRetry = createProposalsRetry();
   /** Organization list reads started, counted: only the newest one's answer is applied. */
   let orgsReads = 0;
+  const cacheUser = options.cacheUser ?? null;
+  // Drawn only where company mode is on: a server with it off lists no organizations at all.
+  const cached = cacheUser !== null && options.serverEnabled ? drawOrganizations(cacheUser) : [];
   return createStore<CompanyStoreState>((set, get) => ({
     serverEnabled: options.serverEnabled ?? false,
+    cacheUser,
     personalEnabled: true,
     workMode: initialWorkMode(),
     modeChosen: false,
     lastOrgKey: initialLastOrgKey(),
     currentOrgKey: null,
-    organizations: [],
+    organizations: cached,
     orgsLoading: false,
     orgsLoaded: false,
     orgsPartial: false,
@@ -604,11 +618,11 @@ export function createCompanyStore(options: { serverEnabled?: boolean } = {}) {
         for (const org of organizations) {
           rememberOrgMachine(org.projectId, org.orgId, org.machineId ?? null);
         }
-        set({
-          organizations,
-          orgsLoaded: true,
-          orgsPartial: partial || sources.some((list) => list === null),
-        });
+        const complete = !partial && sources.every((list) => list !== null);
+        set({ organizations, orgsLoaded: true, orgsPartial: !complete });
+        // Only a complete answer replaces the cache: a partial one would forget the rest.
+        const { cacheUser: user } = get();
+        if (complete && user !== null) writeOrganizations(user, organizations);
       } finally {
         if (seq === orgsReads) set({ orgsLoading: false });
       }
@@ -943,9 +957,11 @@ const CompanyContext = createContext<CompanyContextValue | null>(null);
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const { user, companyMode } = useAuth();
-  const { projects, currentProject } = useProject();
+  const { projects, projectsLoading, currentProject } = useProject();
   const contributedPages = useOrgPages();
-  const [store] = useState(() => createCompanyStore({ serverEnabled: companyMode }));
+  const [store] = useState(() =>
+    createCompanyStore({ serverEnabled: companyMode, cacheUser: user?.userId ?? null }),
+  );
   const state = useStore(store);
   const { serverEnabled } = state;
   const userId = user?.userId ?? null;
@@ -979,8 +995,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   // The organization list spans every Project the user can reach; it refreshes when the
   // Project set changes and whenever an event says a summary moved.
   const { orgs: orgsVersion, runs: runsVersion, tickets: ticketsVersion } = state.versions;
+  // While the Project list is still on its way the cached organizations stand (they route an
+  // organization page opened by URL); a user with no Projects, or company mode off, has none.
   useEffect(() => {
-    if (!serverEnabled || projectIdsKey === "") {
+    if (!serverEnabled || (projectIdsKey === "" && !projectsLoading)) {
       store.setState({
         organizations: [],
         orgsLoaded: false,
@@ -989,8 +1007,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+    if (projectIdsKey === "") return;
     void store.getState().reloadOrganizations(projectIdsKey.split(","));
-  }, [store, serverEnabled, projectIdsKey, orgsVersion]);
+  }, [store, serverEnabled, projectIdsKey, projectsLoading, orgsVersion]);
 
   // An organization page opened by URL names its Project: that Project's list is read at once,
   // without waiting for the Project list the full read above needs — an organization page
@@ -1031,24 +1050,28 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   // machine an organization runs on, and the open organization is known before it (the shell
   // adopts the last one from storage). Asked any earlier, the request goes to this server,
   // whose copy of an organization that runs elsewhere is a mirror — its employees' Agents are
-  // not here, so every one of them would come back named by its id.
+  // not here, so every one of them would come back named by its id. The cached list
+  // (org-list-cache.ts) says it as well, for an organization it holds: those reads start at
+  // once, and the server's list re-asks only if it names another machine (`openMachine`).
   const { currentOrgKey, versions } = state;
   const messageVersion = versions.messages;
   const openMachine = machineOfOpenOrg(state.organizations, currentOrgKey);
+  const openRoutable =
+    orgsLoaded || state.organizations.some((o) => orgKey(o.projectId, o.orgId) === currentOrgKey);
   useEffect(() => {
     const open = parseOrgKey(currentOrgKey);
-    if (!serverEnabled || open === null || !orgsLoaded) return;
+    if (!serverEnabled || open === null || !openRoutable) return;
     void store.getState().reloadChannels(open.projectId, open.orgId);
-  }, [store, serverEnabled, currentOrgKey, orgsLoaded, openMachine, messageVersion]);
+  }, [store, serverEnabled, currentOrgKey, openRoutable, openMachine, messageVersion]);
 
   // The open organization's roster: the sidebar's 工位 group has a row per employee, desk or
   // no desk. Re-read when the organization changes and when a run or a personnel change
   // (both bump `orgs`) says the chart moved.
   useEffect(() => {
     const open = parseOrgKey(currentOrgKey);
-    if (!serverEnabled || open === null || !orgsLoaded) return;
+    if (!serverEnabled || open === null || !openRoutable) return;
     void store.getState().reloadOrgChart(open.projectId, open.orgId);
-  }, [store, serverEnabled, currentOrgKey, orgsLoaded, openMachine, orgsVersion]);
+  }, [store, serverEnabled, currentOrgKey, openRoutable, openMachine, orgsVersion]);
 
   // In company mode the shell always has a current organization: the one its sidebar names.
   // The organization routes announce it, but a desk or ticket conversation lives at
@@ -1093,14 +1116,14 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   }, [store, openMachineOffline]);
   useEffect(() => {
     const open = parseOrgKey(currentOrgKey);
-    if (!serverEnabled || !proposalsEnabled || open === null || !orgsLoaded) return;
+    if (!serverEnabled || !proposalsEnabled || open === null || !openRoutable) return;
     void store.getState().reloadProposals(open.projectId, open.orgId);
   }, [
     store,
     serverEnabled,
     proposalsEnabled,
     currentOrgKey,
-    orgsLoaded,
+    openRoutable,
     openMachine,
     proposalsVersion,
   ]);
