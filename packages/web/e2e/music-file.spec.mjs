@@ -1,20 +1,26 @@
 /**
  * A reply's link to an audio file in the Workspace, end to end: nothing here is intercepted.
  *
- * run.sh enables plugins/example-music for default_project before the server starts, so the
- * server answers GET /api/contributions with its rule (`mp3`/`wav`/`ogg`/`m4a` → the app's builtin
- * `audio`). The mock model answers "music link test" with a reply whose first paragraph links
+ * run.sh enables plugins/example-music for default_project before the server starts. The plugin
+ * ships a WEB module: GET /api/contributions forwards it (its manifest — the rule `mp3`/`wav`/
+ * `ogg`/`m4a` — and the URL of its built file), and the app adds it to its module tree before it
+ * mounts. The mock model answers "music link test" with a reply whose first paragraph links
  * music/evening.wav twice and shows a look-alike link inside a code span, and whose second paragraph
  * links chime.ogg, which does not exist.
  *
+ * - The module's file loads with the app; the player's own code (a lazy chunk) is requested only
+ *   once a reply links an audio file, and the plugin's stylesheet is attached and applied (a
+ *   utility only the player uses resolves).
  * - One player sits directly below each linking paragraph, one per file; the code span gets none.
  *   It is the app's own card (a named play button, a seek bar) over an `<audio>` without the
  *   browser's controls, and pressing play loads the file and reads its length into the card.
  * - The links stay links: same href, no new tab.
  * - The player's src is the Workspace file URL, answering 200 with an audio content type, and the
  *   browser decodes the file; the missing file's player turns into a line saying so.
- * - With `?safe` the reply renders without a player.
+ * - With `?safe` the reply renders without a player, and no plugin file is requested.
+ * - Screenshots of the player (light and dark, zh and en) go to E2E_SHOTS_DIR when it is set.
  */
+import path from "node:path";
 import { test, expect } from "@playwright/test";
 import { provisionAndLogin } from "./auth.mjs";
 
@@ -22,6 +28,9 @@ const BASE = process.env.BASE_URL;
 const MOCK = process.env.MOCK_URL;
 const U = `music_${Date.now().toString(36)}`;
 const P = "password123";
+const SHOTS = process.env.E2E_SHOTS_DIR;
+/** Where the plugin's built web files are served (plugin/web-modules.ts in the server). */
+const WEB_FILES = /\/api\/plugins\/@penguinharness\/example-music\/web\/[0-9a-f]{16}\//;
 
 /** A short mono 16-bit WAV: a quarter second of A4. */
 function wav() {
@@ -47,7 +56,12 @@ function wav() {
 
 test("music: a reply's link to an audio file gets a player below its paragraph", async ({
   page,
+  browser,
 }) => {
+  const requested = [];
+  page.on("request", (req) => {
+    if (WEB_FILES.test(req.url())) requested.push(new URL(req.url()).pathname);
+  });
   await provisionAndLogin(page.request, U, P);
   const projects = await (await page.request.get(`${BASE}/api/projects`)).json();
   const projectId = projects.projects[0].projectId;
@@ -78,9 +92,18 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   );
   expect(up.ok(), "upload wav").toBeTruthy();
 
+  const forwarded = await (await page.request.get(`${BASE}/api/contributions`)).json();
+  expect(forwarded.webModules.map((p) => p.package)).toEqual(["@penguinharness/example-music"]);
+  expect(forwarded.webModules[0].modules.map((m) => m.manifest.name)).toEqual(["ExampleMusic"]);
+
   await page.goto(`${BASE}/chat/${sessionId}`);
   const ta = page.getByPlaceholder(/输入消息/);
   await ta.waitFor();
+  // The module's file and stylesheet came with the app; the player's chunk has not.
+  expect(requested.some((p) => p.endsWith("/ExampleMusic.js"))).toBe(true);
+  expect(requested.some((p) => p.endsWith("/styles.css"))).toBe(true);
+  expect(requested.filter((p) => /\/chunk-[^/]+\.js$/.test(p))).toEqual([]);
+  await expect(page.locator('link[data-plugin="@penguinharness/example-music"]')).toHaveCount(1);
   await ta.fill("music link test");
   await page.getByRole("button", { name: "发送" }).click();
 
@@ -91,6 +114,27 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   await expect(below).toHaveAttribute("data-reply-files");
   await expect(below.locator("audio")).toHaveCount(1);
   const player = below.locator("audio");
+  // The reply linked an audio file: now the player's chunk is fetched.
+  expect(requested.filter((p) => /\/chunk-[^/]+\.js$/.test(p)).length).toBeGreaterThan(0);
+  // The card is drawn with the plugin's own stylesheet: the clock's `min-w-[11ch]` is a utility
+  // only the player uses, and the card's radius and surface read the host's tokens.
+  const card = below.locator("[data-audio-file]");
+  const style = await card.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const clock = el.querySelector("[aria-hidden]");
+    return {
+      radius: cs.borderTopLeftRadius,
+      maxWidth: cs.maxWidth,
+      clockMinWidth: clock ? getComputedStyle(clock).minWidth : "",
+      surface: cs.backgroundColor,
+      hostSurface: getComputedStyle(document.documentElement).getPropertyValue("--ui-surface"),
+    };
+  });
+  expect(style.radius).toBe("12px");
+  expect(style.maxWidth).toBe("448px");
+  expect(style.clockMinWidth).not.toBe("0px");
+  expect(style.clockMinWidth).not.toBe("auto");
+  expect(style.surface).not.toBe("rgba(0, 0, 0, 0)");
   await expect(player).not.toHaveAttribute("controls");
   await expect(player).toHaveAttribute("preload", "none");
   const play = below.getByRole("button", { name: "播放 evening.wav" });
@@ -144,9 +188,52 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
     .evaluate((el) => el.load());
   await expect(page.getByRole("status").filter({ hasText: "无法播放 chime.ogg" })).toBeVisible();
 
-  // Safe mode: the same reply, no player.
+  if (SHOTS) await shoot(page, browser, sessionId);
+
+  // Safe mode: the same reply, no player, and no plugin file asked for.
+  requested.length = 0;
   await page.goto(`${BASE}/chat/${sessionId}?safe`);
   await expect(page.locator("p", { hasText: "Here is your tune" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Evening Theme" })).toBeVisible();
   await expect(page.locator("audio")).toHaveCount(0);
+  expect(requested).toEqual([]);
+  await expect(page.locator('link[data-plugin="@penguinharness/example-music"]')).toHaveCount(0);
 });
+
+/** The player, light and dark, in Chinese and (in a fresh English context) in English. */
+async function shoot(page, browser, sessionId) {
+  const dark = (on) =>
+    page.evaluate((v) => document.documentElement.classList.toggle("dark", v), on);
+  const paragraph = page.locator("p", { hasText: "Here is your tune" });
+  const region = async (p, file) => {
+    const box = await p.locator("p", { hasText: "Here is your tune" }).boundingBox();
+    const files = await p.locator("[data-reply-files]").first().boundingBox();
+    await p.screenshot({
+      path: path.join(SHOTS, file),
+      clip: {
+        x: Math.max(0, box.x - 16),
+        y: Math.max(0, box.y - 16),
+        width: Math.max(box.width, files.width) + 32,
+        height: files.y + files.height - box.y + 32,
+      },
+    });
+  };
+  await paragraph.scrollIntoViewIfNeeded();
+  await dark(false);
+  await region(page, "player-zh-light.png");
+  await dark(true);
+  await region(page, "player-zh-dark.png");
+  await dark(false);
+
+  const en = await browser.newContext({
+    locale: "en-US",
+    storageState: await page.context().storageState(),
+  });
+  const p = await en.newPage();
+  await p.goto(`${BASE}/chat/${sessionId}`);
+  await expect(p.getByRole("button", { name: "Play evening.wav" })).toBeVisible();
+  await region(p, "player-en-light.png");
+  await p.evaluate(() => document.documentElement.classList.add("dark"));
+  await region(p, "player-en-dark.png");
+  await en.close();
+}
