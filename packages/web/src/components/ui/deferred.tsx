@@ -6,9 +6,10 @@
  * While a chunk is in flight it shows `fallback` — by default the boot status (boot-pending.tsx),
  * which fades in only after a short delay, so a load that is over in a few hundred milliseconds
  * never blinks a word, and which fills its box, so the layout around it does not move. A slot that
- * lists things (the sidebar) passes `null` and stays empty instead. The router's navigations are
- * transitions, so a boundary already on screen keeps the page it shows until the next page's chunk
- * has arrived; the fallback is only seen on a first mount.
+ * lists things (the sidebar) passes `null` and stays empty instead. A boundary already on screen
+ * whose children suspend again keeps them mounted (held under a transition, hidden otherwise),
+ * effects and all, so an owner whose children change identity gives each its own boundary (a
+ * key): the router does, per page (shell/router.tsx pageElement).
  *
  * ONE RULE: every error thrown below stops here — a chunk that did not arrive (a dropped
  * connection, a build or a plugin rebuilt under the tab) and a component that threw while

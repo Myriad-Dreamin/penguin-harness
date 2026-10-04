@@ -8,7 +8,7 @@
  * transform would trap the menus it opens); the package's components say how.
  */
 import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router";
+import { Outlet } from "react-router";
 import {
   AppShell,
   CloseIcon,
@@ -49,7 +49,6 @@ export function AppLayout() {
   // Desktop shell only: keeps the tray menu in the language this window is in.
   useTrayLocale();
   const layers = useShellLayers();
-  const { pathname } = useLocation();
   // The drawer holds the sidebar, so the drawer button is named after what the sidebar lists:
   // conversations in development mode, the current mode's own list in another; its badge
   // covers every one inside (the sidebar's `menu` anchor).
@@ -222,12 +221,8 @@ export function AppLayout() {
       )}
 
       <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        {/* Pages load their code on first visit (lib/lazy-component.ts). One boundary for all of
-            them, already on screen: a navigation is a transition, so the page being left stays
-            until the next one's code has arrived. */}
-        <Deferred resetKey={pathname}>
-          <Outlet />
-        </Deferred>
+        {/* Each page brings its own boundary, keyed by the page (router.tsx PageBoundary). */}
+        <Outlet />
       </main>
       {/* The layers modules contributed (ShellModule.layers): overlays and headless runtimes,
           mounted once here, outside every page, so navigating never remounts or re-parents

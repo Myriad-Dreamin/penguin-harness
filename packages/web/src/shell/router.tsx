@@ -11,7 +11,8 @@
  * instead: the router then runs in memory from that path, so the app navigates without
  * touching the host document's URL — the only seam the app needs to be mounted elsewhere.
  */
-import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router";
+import type { ComponentType, ReactElement, ReactNode } from "react";
 import { useAuth } from "../state/auth";
 import { useRuntimeLanguages } from "../lib/use-runtime-languages";
 import { ProjectProvider } from "../state/project";
@@ -34,7 +35,7 @@ function RequireAuth() {
   if (user === undefined) return <BootPending />; // GET /api/me is still initializing
   if (user === null) return <Navigate to="/login" replace />;
   // The contributed providers nest outermost first, inside the session list they may read.
-  const layout = sessionProviders.reduceRight<React.ReactNode>(
+  const layout = sessionProviders.reduceRight<ReactNode>(
     (inner, { id, Component }) => <Component key={id}>{inner}</Component>,
     <AppLayout />,
   );
@@ -51,7 +52,7 @@ function RequireAuth() {
  * in — the terminal WebSocket authenticates with the same session cookie. A workflow's page
  * as the whole app is the other one; the command palette it mounts is the way back.
  */
-function RequireAuthBare({ children }: { children: React.ReactNode }) {
+function RequireAuthBare({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   if (user === undefined) return <BootPending />;
   if (user === null) return <Navigate to="/login" replace />;
@@ -65,10 +66,46 @@ function LoginRoute() {
   return <LoginPage />;
 }
 
+/**
+ * The boundary a page's code loads under (lib/lazy-component.ts); a changed path forgets a
+ * failure, so navigating within the page leaves the notice behind.
+ */
+function PageBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <Deferred resetKey={pathname}>{children}</Deferred>;
+}
+
+/**
+ * A page's route element: the page under a boundary of its own, keyed by the page, so a
+ * navigation to another page mounts a new boundary — which shows its fallback while the page's
+ * code loads — instead of reusing one already on screen, which would keep the page being left
+ * drawn (hidden or not) and its effects running. Within one page (`/chat/a` → `/chat/b`) the
+ * boundary stays, and so does the page. See AppRouter for why the page being left must be gone.
+ */
+export function pageElement(id: string, Page: ComponentType): ReactElement {
+  return (
+    <PageBoundary key={id}>
+      <Page />
+    </PageBoundary>
+  );
+}
+
 export interface AppRouterProps {
   initialPath?: string;
 }
 
+/**
+ * Navigations are not transitions (`useTransitions={false}`): the route the tree is drawn for is
+ * always the address. Pages decide where to go from effects — the conversation page opens the
+ * draft when no Session is selected, home leads to the mode's page, a parked draft that is gone
+ * falls back to the new one — and each decides for the route it is drawn for. Under a transition
+ * that route lags the address for as long as the next page takes to render or to load its code
+ * (lib/lazy-component.ts), and an urgent update meanwhile (the Session list arriving) re-runs the
+ * old page's effects against its old route, whose redirect then replaces the navigation in
+ * flight: the mode switch's `/org` became `/chat/new`, which then claimed development mode. With
+ * the page boundary keyed per page (pageElement), nothing of the page being left outlives the
+ * navigation.
+ */
 export function AppRouter({ initialPath }: AppRouterProps = {}) {
   const tree = (
     <ShellPagesProvider>
@@ -76,9 +113,11 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
     </ShellPagesProvider>
   );
   return initialPath === undefined ? (
-    <BrowserRouter>{tree}</BrowserRouter>
+    <BrowserRouter useTransitions={false}>{tree}</BrowserRouter>
   ) : (
-    <MemoryRouter initialEntries={[initialPath]}>{tree}</MemoryRouter>
+    <MemoryRouter initialEntries={[initialPath]} useTransitions={false}>
+      {tree}
+    </MemoryRouter>
   );
 }
 
@@ -100,13 +139,7 @@ function RouteTree() {
           <Route
             key={id}
             path={path}
-            element={
-              <RequireAuthBare>
-                <Deferred>
-                  <Component />
-                </Deferred>
-              </RequireAuthBare>
-            }
+            element={<RequireAuthBare>{pageElement(id, Component)}</RequireAuthBare>}
           />
         ))}
       <Route element={<RequireAuth />}>
@@ -123,7 +156,7 @@ function RouteTree() {
               key={id}
               path={path}
               // The catch-all waits while a server-contributed page may still claim the path.
-              element={path === "*" && pending ? null : <Component />}
+              element={path === "*" && pending ? null : pageElement(id, Component)}
             />
           ))}
       </Route>

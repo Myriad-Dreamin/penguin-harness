@@ -11,10 +11,14 @@
  *   for a load, a remount otherwise; a changed reset key forgets the failure.
  * - A nav row prefetches the page its address lands on: the first rooted route that matches, never
  *   the catch-all home.
+ * - Every page renders under a boundary of its own, keyed by the page: a navigation into a page
+ *   still loading never holds the page being left on screen, where its effects would act on the
+ *   route it was drawn for (shell/router.tsx pageElement).
  */
 import { createElement } from "react";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { Deferred } from "../src/components/ui/deferred";
 import {
@@ -25,6 +29,7 @@ import {
 } from "../src/lib/lazy-component";
 import { S } from "../src/lib/strings";
 import { pageForHref } from "../src/shell/sidebar/router-link";
+import { pageElement } from "../src/shell/router";
 import type { ShellPage } from "../src/shell";
 
 function Greeting({ name }: { name: string }) {
@@ -188,5 +193,28 @@ describe("the page a nav row prefetches", () => {
   it("is never the catch-all home, nor a page relative to an organization", () => {
     expect(pageForHref(pages, "/nowhere")).toBeUndefined();
     expect(pageForHref(pages, "/proposals")).toBeUndefined();
+  });
+});
+
+describe("a page's route element", () => {
+  it("is a boundary of the page's own: one element type, keyed by the page", () => {
+    const Lazy = lazyComponent(loader().load, "Greeting");
+    const chat = pageElement("chat.page", Greeting as never);
+    const org = pageElement("company.org", Lazy as never);
+    expect(chat.type).toBe(org.type);
+    expect(chat.key).toBe("chat.page");
+    expect(org.key).toBe("company.org");
+  });
+
+  it("draws the page under that boundary, fallback first while its code loads", async () => {
+    const Lazy = lazyComponent(loader().load, "Greeting");
+    const Page = () => createElement(Lazy, { name: "org" });
+    const draw = () =>
+      renderToStaticMarkup(
+        createElement(MemoryRouter, { initialEntries: ["/org"] }, pageElement("org", Page)),
+      );
+    expect(draw()).not.toContain("hello org");
+    await Lazy.preload();
+    expect(draw()).toBe("<p>hello org</p>");
   });
 });
