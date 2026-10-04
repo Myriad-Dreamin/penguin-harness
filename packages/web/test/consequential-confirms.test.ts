@@ -22,7 +22,7 @@ const GUARDED: ReadonlyArray<readonly [string, string]> = [
   ["features/projects/project-dialogs/security-policy-section.tsx", "restoreDefaults"],
   ["features/agents/agent-settings-page.tsx", "runImport"],
   ["features/machines/machines-page.tsx", "stopUsing"],
-  ["features/chat/chat-page.tsx", "onKillProcess"],
+  ["features/chat/session/session-dialogs.tsx", "onKillProcess"],
   ["features/workflows/workflow-tabs.tsx", "rollback"],
   ["features/settings/plugins-section.tsx", "runAction"],
   ["features/company/org-dialogs.tsx", "dropDraft"],
@@ -71,11 +71,14 @@ function references(file: string, action: string): { unguarded: string[]; confir
   let inside = 0;
   const visit = (node: ts.Node): void => {
     const p = node.parent;
-    // A declaration, a member name (`S.machines.stopUsing`) or a key is not a call site.
+    // A declaration (a prop's type member and its destructured parameter included), a member
+    // name (`S.machines.stopUsing`) or a key is not a call site.
     const notReference =
       p !== undefined &&
       ((ts.isVariableDeclaration(p) && p.name === node) ||
         (ts.isFunctionDeclaration(p) && p.name === node) ||
+        (ts.isPropertySignature(p) && p.name === node) ||
+        (ts.isBindingElement(p) && p.name === node) ||
         (ts.isPropertyAccessExpression(p) && p.name === node) ||
         (ts.isPropertyAssignment(p) && p.name === node));
     if (ts.isIdentifier(node) && node.text === action && !notReference) {
