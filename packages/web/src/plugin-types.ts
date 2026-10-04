@@ -33,10 +33,17 @@ export interface FileRendererProps {
 
 /**
  * The interface language the person picked (Settings → General), for a component's own words.
- * Read while rendering: a language switch remounts the whole tree (state/locale.tsx), so every
- * component reads it again — there is nothing to subscribe to. Provided by the settings module.
+ * Provided by the settings module.
+ *
+ * It is a store, and this is the shape every piece of the app's state offered to a plugin takes:
+ * `get()` returns the current committed value (a snapshot, equal from call to call until a
+ * subscriber has been told otherwise), and `subscribe` calls back with each new value, once per
+ * change, returning the unsubscribe. A component reads it with React's own
+ * `useSyncExternalStore(language.subscribe, language.get)`, so it re-renders on a change; both
+ * members work unbound. An action on the state, when one is needed, is a separate method.
  */
 @Interface()
 export abstract class Language {
-  abstract current(): "zh" | "en";
+  abstract get(): "zh" | "en";
+  abstract subscribe(onChange: (value: "zh" | "en") => void): () => void;
 }

@@ -225,7 +225,7 @@ describe("plugin web modules in the tree", () => {
     const page = shellSlots.pages?.find((c) => c.id === "hello.page");
     expect(page?.data).toMatchObject({ key: "example-hello", parent: "benchmark" });
     expect(page?.code).toBe(HelloView);
-    expect(["zh", "en"]).toContain(helloLanguage?.current());
+    expect(["zh", "en"]).toContain(helloLanguage?.get());
   });
 
   it("boots the app's own tree when nothing is forwarded", async () => {
