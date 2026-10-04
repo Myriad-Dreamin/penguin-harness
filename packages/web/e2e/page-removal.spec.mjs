@@ -5,12 +5,12 @@
  * run.sh runs this spec in a plugin set of its own ("all-examples"): a server whose
  * default_project enables all three examples — plugins/example-hello-page, whose page sits under
  * the Evaluation Center; plugins/example-music; and plugins/example-no-evaluation-center, whose one
- * module is data only and removes the page keyed `benchmark`. What a Project lists is loaded for
+ * module is an empty class whose manifest removes the page keyed `benchmark`. What a Project lists is loaded for
  * the whole server, so no other spec runs against this one.
  *
- * - The three packages are forwarded and all three join the tree: the removal's module without a
- *   file (nothing of it is requested), the other two with theirs and a stylesheet each, and no
- *   package is left out.
+ * - The three packages are forwarded and all three join the tree, each module with its file (the
+ *   removal's too), the music and hello packages with a stylesheet each, and no package is left
+ *   out.
  * - The Evaluation Center has no row in the sidebar or the collapsed rail — not even for a moment
  *   after a reload, since the removal is in the tree from the first render — and neither has the
  *   hello page under it: removing a page drops its children.
@@ -73,6 +73,9 @@ test("all three examples: the removal, the page under it and the player's sheet 
           ],
         },
       }),
+      url: expect.stringMatching(
+        /^\/api\/plugins\/@penguinharness\/example-no-evaluation-center\/web\/[0-9a-f]{16}\/NoEvaluationCenter\.js$/,
+      ),
     },
   ]);
   expect(removal.styles).toEqual([]);
@@ -83,11 +86,12 @@ test("all three examples: the removal, the page under it and the player's sheet 
   await expect(sidebar.locator('a[href="/agents"]')).toBeVisible();
   await expect(sidebar.locator('a[href="/benchmark"]')).toHaveCount(0);
   await expect(sidebar.locator(`a[href="${CHILD}"]`)).toHaveCount(0);
-  // Two sheets, one per plugin with code; nothing fetched for the data-only one.
+  // Two sheets (the removal has none); every package's module file fetched.
   await expect(page.locator("link[data-plugin]")).toHaveCount(2);
   expect([...fetched].sort()).toEqual([
     "@penguinharness/example-hello-page",
     "@penguinharness/example-music",
+    "@penguinharness/example-no-evaluation-center",
   ]);
   expect(leftOut).toEqual([]);
 

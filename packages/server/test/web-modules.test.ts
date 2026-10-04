@@ -8,7 +8,7 @@
  *   build is not listed.
  * - The URLs name a build id that hashes the built files: a byte changed is a new id.
  * - The stylesheet the build emits is listed beside the modules.
- * - A data-only web module (no `file`) is forwarded without a URL; its package needs no build.
+ * - Every forwarded module has a URL: a web module without a built file is not forwarded.
  * - GET /api/contributions without plugins forwards none.
  * - A Workspace audio file — what a file renderer plays through files/content — is read with its
  *   audio content type.
@@ -77,7 +77,7 @@ describe("web modules", () => {
     expect(webModulesOf(entries)).toEqual([]);
   });
 
-  it("forwards a data-only web module without a URL, with no build to serve", async () => {
+  it("forwards no web module without a built file, nor its package with no build", async () => {
     const dir = await tmp();
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
@@ -94,26 +94,24 @@ describe("web modules", () => {
       side: "web",
       source: "src/index.ts",
     };
-    await fs.writeFile(
-      path.join(dir, "ifaces.json"),
-      JSON.stringify({
-        hash: "h",
-        ifaces: {},
-        types: {},
-        modules: { Removal: manifest },
-        plugin: { modules: ["Removal"], replaces: [] },
-      }),
-    );
-    expect(webBuildId(dir)).toBeNull();
-    expect(webModulesOf([path.join(dir, "dist", "index.js")])).toEqual([
-      {
-        package: "@acme/removal",
-        version: "1.0.0",
-        ifaces: { ifaces: {}, types: {} },
-        modules: [{ manifest }],
-        styles: [],
-      },
-    ]);
+    const writeTable = (m: object) =>
+      fs.writeFile(
+        path.join(dir, "ifaces.json"),
+        JSON.stringify({
+          hash: "h",
+          ifaces: {},
+          types: {},
+          modules: { Removal: m },
+          plugin: { modules: ["Removal"], replaces: [] },
+        }),
+      );
+    const entry = path.join(dir, "dist", "index.js");
+    // No `file` (a table from before every web module was built): not forwarded.
+    await writeTable(manifest);
+    expect(webModulesOf([entry])).toEqual([]);
+    // A `file`, not built yet: the package is not offered.
+    await writeTable({ ...manifest, file: "dist/web/Removal.js" });
+    expect(webModulesOf([entry])).toEqual([]);
   });
 
   it("forwards none without plugins", async () => {

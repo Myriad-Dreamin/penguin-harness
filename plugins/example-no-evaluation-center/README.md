@@ -3,11 +3,11 @@
 The smallest plugin that removes a page from the PenguinHarness web app — with no code at all. It
 demonstrates:
 
-- **A data-only web module.** The plugin's one module contributes `{ key: "benchmark" }` to the
-  web app's `ShellModule.pageRemovals` slot. Its class is empty and the slot has no code half,
-  so gen-ifaces gives the module no built file and `scripts/build-plugin.mjs` emits no browser
-  code for it; the server forwards its manifest alone (`GET /api/contributions`, `webModules`),
-  and the web app adds it to its module tree without importing anything.
+- **A web module that is all data.** The plugin's one module declares `side: "web"` and
+  contributes `{ key: "benchmark" }` to the web app's `ShellModule.pageRemovals` slot. Its class
+  is empty, yet it is built and forwarded like any web module: `scripts/build-plugin.mjs` emits a
+  browser file of under 3 KB (mostly the decorator helpers), the server forwards it with its
+  manifest (`GET /api/contributions`, `webModules`), and the web app imports it at boot.
 - **A page goes with what belongs to it.** The Evaluation Center loses its row in the sidebar
   and in the collapsed rail, and its route. The routes under its path go too (one Benchmark's
   page, `/benchmark/:benchmarkId`), and so do the pages under it in the nav (such as the page of
@@ -28,8 +28,8 @@ shipped with the builtin plugins either (`scripts/build-plugins.mjs` skips the e
 ## Build it
 
 `pnpm --filter @penguinharness/example-no-evaluation-center build` runs gen-ifaces and then
-`scripts/build-plugin.mjs`, which writes the platform entry (listing no module) and nothing for
-the web.
+`scripts/build-plugin.mjs`, which writes the platform entry (listing no module) and
+`dist/web/NoEvaluationCenter.js`.
 
 ## Enable it
 

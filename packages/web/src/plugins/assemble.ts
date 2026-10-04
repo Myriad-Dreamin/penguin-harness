@@ -15,8 +15,7 @@
  * 2. LOADED, each package within PLUGIN_LOAD_DEADLINE_MS: its stylesheets are attached and its
  *    module files imported (an ES module whose default export is the module class, decorated
  *    through the app's own kernel — shared.ts); each class is paired with the manifest it was
- *    forwarded with. A module forwarded without a file only contributes data and is defined by
- *    its manifest alone. A package that misses the deadline is left out and the boot goes on.
+ *    forwarded with. A package that misses the deadline is left out and the boot goes on.
  *
  * The root then boots the loaded ones in ONE identity check (`bootVerified`, web-root.ts). Only
  * when that boot fails does it find the package to blame, by booting them in order and leaving
@@ -40,6 +39,7 @@ import type {
 } from "@prismshadow/penguin-core/kernel/runtime";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import { verifyPlugins } from "../lib/verify-plugins";
+import { shareHostModules } from "./shared";
 import type { HashedTable, PluginTable } from "../lib/verify-plugins";
 
 /**
@@ -131,14 +131,6 @@ function withDeadline<T>(work: Promise<T>, ms: number, what: string): Promise<T>
   return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
-/**
- * The definition of a module that only contributes data (the server forwards it without a file,
- * scripts/lib/plugin-sides.mjs `codeless`): nothing to import, nothing to create.
- */
-function dataOnlyDef(manifest: ManifestTable[string]): ModuleDef {
-  return { manifest, create: () => ({ api: {} }) };
-}
-
 /** A forwarded package with the table verification checks: its interfaces and its manifests by name. */
 interface Candidate {
   pkg: WebModulePackage;
@@ -173,8 +165,6 @@ async function loadModules(c: Candidate, load: ImportModule): Promise<ModuleDef[
   return Promise.all(
     c.pkg.modules.map(async ({ manifest, url }) => {
       const name = (manifest as { name: string }).name;
-      // A module forwarded without a file is data only: its manifest is all of it.
-      if (url === undefined) return dataOnlyDef(manifests[name]!);
       const cls = ((await load(url)) as { default?: unknown }).default;
       if (typeof cls !== "function") {
         throw new Error(`${name}: ${url} has no module class as its default export`);
@@ -189,17 +179,15 @@ async function loadModules(c: Candidate, load: ImportModule): Promise<ModuleDef[
 }
 
 /**
- * The package's modules and stylesheets within the deadline; `shared` is the host's shared
- * instances being installed, which a module file needs before it is evaluated.
+ * The package's modules and stylesheets within the deadline.
  */
 async function loadPackage(
   c: Candidate,
   load: ImportModule,
-  shared: Promise<void>,
   deadlineMs: number,
 ): Promise<PluginModules | null> {
   const styled = attachStyles(c.pkg.package, c.pkg.styles);
-  const work = Promise.all([shared.then(() => loadModules(c, load)), styled]);
+  const work = Promise.all([loadModules(c, load), styled]);
   try {
     const [defs] = await withDeadline(work, deadlineMs, "its files");
     return { package: c.pkg.package, defs, ifaces: c.table };
@@ -207,12 +195,6 @@ async function loadPackage(
     leaveOut(c.pkg.package, message(err));
     return null;
   }
-}
-
-/** Installs the host's shared instances, once, when some module has a file to evaluate. */
-async function shareHostModules(): Promise<void> {
-  const { shareHostModules: share } = await import("./shared");
-  share();
 }
 
 /**
@@ -239,13 +221,9 @@ export async function assemblePlugins(
   const verified = new Set(accepted.map((p) => p.name));
   const admitted = candidates.filter((c) => verified.has(c.pkg.package));
   if (admitted.length === 0) return [];
-  // The shared instances are for module files; packages that are data only import none, so a
-  // page with only those never fetches the shared chunk (and the UI namespace it holds).
-  const shared = admitted.some((c) => c.pkg.modules.some((m) => m.url !== undefined))
-    ? shareHostModules()
-    : Promise.resolve();
+  shareHostModules();
   const load = opts.load ?? importModule;
   const deadlineMs = opts.deadlineMs ?? PLUGIN_LOAD_DEADLINE_MS;
-  const loaded = await Promise.all(admitted.map((c) => loadPackage(c, load, shared, deadlineMs)));
+  const loaded = await Promise.all(admitted.map((c) => loadPackage(c, load, deadlineMs)));
   return loaded.filter((p): p is PluginModules => p !== null);
 }
