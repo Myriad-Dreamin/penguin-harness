@@ -51,13 +51,16 @@ import { CompanyBetaBadge } from "../../features/company/company-beta";
 import { ChannelSidebar } from "../../features/company/channel-sidebar";
 import { RoadmapsSidebar } from "../../features/company/roadmaps-sidebar";
 import { OrgSessionGroups } from "../../features/company/org-session-groups";
-import { COMPANY_NAV_ICONS } from "../../features/company/company-nav-icons";
+import { COMPANY_NAV_ICONS, ORG_PAGE_ICONS } from "../../features/company/company-nav-icons";
 import {
   COMPANY_NAV_KEYS,
+  ORG_PAGE_RENDERERS,
   isOrgRoute,
   orgPagePath,
+  orgPageRows,
   parseOrgKey,
 } from "../../features/company/company-nav";
+import { useOrgPages } from "../../features/company/use-org-pages";
 import type { WorkMode } from "../../features/company/company-nav";
 
 /** Manual drag-reordering needs a pointer that can drag (HTML5 DnD never fires from touch) — the outline rail's query. */
@@ -84,6 +87,8 @@ export function Sidebar({
   const inCompany = company.workMode === "company";
   /** The organization the company nav points at: the open one, else the one last opened (the switcher names the same). */
   const navOrg = parseOrgKey(company.currentOrgKey ?? company.lastOrgKey);
+  /** The company-mode pages plugins contribute (the proposals page): rows after the organization's six. */
+  const contributedOrgPages = useOrgPages();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const newChatTitle = useShortcutTitle(S.chat.newSessionMenu, "chat.new");
   const collapseTitle = useShortcutTitle(S.nav.collapseSidebar, "sidebar.toggle");
@@ -127,15 +132,31 @@ export function Sidebar({
    * mounted — the fold animates their height to zero and turns them inert.
    */
   const companyNavItems: CompanyNavItem[] | null = inCompany
-    ? COMPANY_NAV_KEYS.map((key) => ({
-        key,
-        // Company mode with no organization keeps its six rows and disables them: the pages
-        // exist, they just have no organization to show yet, and a nav that empties itself
-        // reads as a broken shell rather than as an empty one.
-        to: navOrg === null ? null : orgPagePath(navOrg.projectId, navOrg.orgId, key),
-        label: S.nav.org[key],
-        icon: COMPANY_NAV_ICONS[key],
-      }))
+    ? [
+        ...COMPANY_NAV_KEYS.map((key) => ({
+          key,
+          // Company mode with no organization keeps its six rows and disables them: the pages
+          // exist, they just have no organization to show yet, and a nav that empties itself
+          // reads as a broken shell rather than as an empty one.
+          to: navOrg === null ? null : orgPagePath(navOrg.projectId, navOrg.orgId, key),
+          label: S.nav.org[key],
+          icon: COMPANY_NAV_ICONS[key],
+        })),
+        // The pages plugins contribute, after the organization's own. The proposals row wears
+        // the unread total of the open organization's proposals, the way a channel row wears
+        // its unread count; the tooltip says what the number is.
+        ...orgPageRows(contributedOrgPages, navOrg).map((row) => {
+          const count = row.renderer === "OrgProposalsPage" ? company.unreadProposals : 0;
+          return {
+            key: row.key,
+            to: row.to,
+            label: S.nav.org[ORG_PAGE_RENDERERS[row.renderer].label],
+            icon: ORG_PAGE_ICONS[row.renderer],
+            note: count > 0 ? S.company.proposals.unreadNote(count) : null,
+            count: count > 0 ? count : null,
+          };
+        }),
+      ]
     : null;
 
   /**
