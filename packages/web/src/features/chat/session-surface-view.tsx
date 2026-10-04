@@ -16,10 +16,11 @@ import { ActivityIcon, Button, toastError } from "@prismshadow/penguin-ui";
 import { apiErrorText } from "../../lib/api-error";
 import { sessionActivity, sessionActivityLabel } from "../../lib/session-activity";
 import { S } from "../../lib/strings";
-import { surfaceLabel, useContributions } from "../../state/contributions";
+import { useContributions } from "../../shell";
 import { machineForSession } from "../../lib/session-machines";
 import { rememberTerminalMachine } from "../../lib/terminal-machines";
 import { useLocale } from "../../state/locale";
+import type { Locale } from "../../state/locale";
 import { useSessions } from "../../state/sessions";
 import {
   TerminalView,
@@ -27,6 +28,11 @@ import {
   type TerminalInfo,
   type TerminalStatus,
 } from "../terminal/terminal-view";
+
+/** The "New chat" entry's text for a surface, in the interface's language. */
+export function surfaceLabel(surface: SessionSurfaceSummary, locale: Locale): string {
+  return locale === "zh" ? (surface.labelZh ?? surface.label) : surface.label;
+}
 
 interface SurfaceRendererProps {
   session: SessionInfo;

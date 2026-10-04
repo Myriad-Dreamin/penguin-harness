@@ -3,7 +3,9 @@
  * to the web slots, as data, folded into the shell's page table. The fetch, its failure and the
  * merge all live here, so the interface can be swapped by changing this file alone; the router
  * and the sidebar read the merged table through `useShellPages()` and never learn where a page
- * came from.
+ * came from. The rest of the answer is handed out as it came (`useContributions()`): the
+ * session surfaces the chat page offers and draws, and the module plugins' quick starts the
+ * Plugins page pre-fills, which also asks for everything again after a plugin change.
  *
  * The module tree boots before anyone signs in and does no network, so the contributions are
  * state of the signed-in session, held by a provider under the shell's root: fetched once per
@@ -25,7 +27,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ComponentType, ReactNode } from "react";
-import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
+import type { ContributionsResponse, SessionSurfaceSummary } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -45,6 +47,12 @@ export interface ContributionsState {
 export interface ContributionsStore {
   /** The signed-in user (null = nobody): a change drops the last user's answer and asks again. */
   setUser(userId: string | null): void;
+  /**
+   * Asks again for the signed-in user (after a plugin is installed or removed) and answers the
+   * new response, or null when nobody is signed in or the request failed — which keeps the
+   * answer held so far.
+   */
+  refresh(): Promise<ContributionsResponse | null>;
   current(): ContributionsState;
   subscribe(listener: () => void): () => void;
 }
@@ -75,6 +83,21 @@ export function createContributionsStore(
           // Nothing to fold in: the compiled table is a complete app. No retry — the next
           // sign-in asks again.
           if (asked === mine) set({ user: next, answer: null, pending: false });
+        },
+      );
+    },
+    refresh() {
+      const user = state.user;
+      if (user === null) return Promise.resolve(null);
+      const mine = ++asked;
+      return fetch().then(
+        (answer) => {
+          if (asked === mine) set({ user, answer, pending: false });
+          return answer;
+        },
+        () => {
+          if (asked === mine && state.pending) set({ ...state, pending: false });
+          return null;
         },
       );
     },
@@ -147,7 +170,16 @@ export function contributedPagesOf(
   return out;
 }
 
-interface ShellPagesValue {
+/** The answer's parts besides the pages, for the features that read them (shell/index.ts). */
+export interface ContributionsValue {
+  /** The session surfaces the server's plugins contribute; none until the server answers. */
+  surfaces: readonly SessionSurfaceSummary[];
+  /** The module plugins' quick starts; none until the server answers. */
+  quickStarts: ContributionsResponse["quickStarts"];
+  refresh: () => Promise<ContributionsResponse | null>;
+}
+
+interface ShellPagesValue extends ContributionsValue {
   pages: readonly ShellPage[];
   pending: boolean;
 }
@@ -166,9 +198,16 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const current = state.user === userId;
   const answer = current ? state.answer : null;
   const pending = current ? state.pending : userId !== null;
-  const value = useMemo(
-    () => ({ pages: contributedPagesOf(compiled, answer, pageRenderers), pending }),
-    [compiled, answer, pageRenderers, pending],
+  const value = useMemo<ShellPagesValue>(
+    () => ({
+      pages: contributedPagesOf(compiled, answer, pageRenderers),
+      pending,
+      // A mocked or older server may leave these out.
+      surfaces: answer?.sessionSurfaces ?? [],
+      quickStarts: answer?.quickStarts ?? [],
+      refresh: store.refresh,
+    }),
+    [compiled, answer, pageRenderers, pending, store],
   );
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
 }
@@ -182,6 +221,11 @@ function usePagesValue(): ShellPagesValue {
 /** Every page: the modules' contributions by `order`, then the server's. */
 export function useShellPages(): readonly ShellPage[] {
   return usePagesValue().pages;
+}
+
+/** The session surfaces and the quick starts the server contributes, and the way to ask again. */
+export function useContributions(): ContributionsValue {
+  return usePagesValue();
 }
 
 /**
