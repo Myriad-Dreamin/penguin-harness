@@ -81,10 +81,9 @@ describe("plugin boot through the runtime entry", () => {
     expect("$ark" in globalThis).toBe(false);
 
     created.length = 0;
-    await bootWeb(
-      [pkg("@acme/seen", SEEN, "/seen.js"), pkg("@acme/first", FIRST, "/first.js")],
-      { load },
-    );
+    await bootWeb([pkg("@acme/seen", SEEN, "/seen.js"), pkg("@acme/first", FIRST, "/first.js")], {
+      load,
+    });
     expect(created.sort()).toEqual(["FirstSight", "SeenBefore"]);
     expect(pluginModuleFailures().size).toBe(0);
     expect("$ark" in globalThis).toBe(true);

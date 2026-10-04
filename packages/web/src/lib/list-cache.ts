@@ -269,7 +269,9 @@ function isWebModulePackage(value: unknown): value is WebModulePackage {
     isRecord(ifaces.ifaces) &&
     isRecord(ifaces.types) &&
     Array.isArray(modules) &&
-    modules.every((m: unknown) => isRecord(m) && isRecord(m.manifest) && typeof m.url === "string") &&
+    modules.every(
+      (m: unknown) => isRecord(m) && isRecord(m.manifest) && typeof m.url === "string",
+    ) &&
     isStringArray(styles)
   );
 }
@@ -280,7 +282,11 @@ export function readWebModuleCache(): { userId: string; packages: WebModulePacka
   const doc = readDoc(WEB_MODULES_KEY, {});
   if (doc === null) return null;
   const { userId, packages } = doc;
-  if (typeof userId !== "string" || !Array.isArray(packages) || !packages.every(isWebModulePackage)) {
+  if (
+    typeof userId !== "string" ||
+    !Array.isArray(packages) ||
+    !packages.every(isWebModulePackage)
+  ) {
     drop(WEB_MODULES_KEY);
     return null;
   }

@@ -18,7 +18,8 @@ const BASE = process.env.BASE_URL;
 const U = `plc_${Date.now().toString(36)}`;
 const P = "password123";
 const KEY = "penguin.listCache.webModules";
-const MODULE_FILE = /\/api\/plugins\/@penguinharness\/example-music\/web\/[0-9a-f]{16}\/ExampleMusic\.js$/;
+const MODULE_FILE =
+  /\/api\/plugins\/@penguinharness\/example-music\/web\/[0-9a-f]{16}\/ExampleMusic\.js$/;
 
 test("plugin web modules boot from the kept list, and a changed list reloads once", async ({
   page,
