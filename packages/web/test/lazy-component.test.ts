@@ -4,7 +4,7 @@
  *
  * - A deferred component draws the quiet fallback while its code is in flight and the target once
  *   it has arrived; preload() loads it once, however often it is asked.
- * - A failed load is forgotten: the next ask loads again, so a retry can succeed.
+ * - A failed load is a ChunkLoadError, and is not asked again within the document.
  * - preloadComponent() leaves a component that was never deferred alone.
  * - The boundary shows a Retry for a failed load and nothing else: any other error goes on up to
  *   the app's rescue path; a changed reset key forgets the failure.
@@ -60,19 +60,22 @@ describe("a deferred component", () => {
   it("loads once however often it is asked", async () => {
     const { state, load } = loader();
     const Lazy = lazyComponent(load, "Greeting");
-    await Promise.all([Lazy.preload(), Lazy.preload(), Lazy.preload()]);
+    const [a, b] = await Promise.all([Lazy.preload(), Lazy.preload(), Lazy.preload()]);
+    expect(a).toBe(Greeting);
+    expect(b).toBe(Greeting);
     preloadComponent(Lazy);
     expect(state.calls).toBe(1);
   });
 
-  it("forgets a failed load, so the next ask loads again", async () => {
+  it("marks a failed load as one, and does not ask again within the document", async () => {
     const { state, load } = loader(1);
     const Lazy = lazyComponent(load, "Greeting");
-    await Lazy.preload(); // fails, swallowed: preload is a hint
+    await expect(Lazy.preload()).rejects.toBeInstanceOf(ChunkLoadError);
+    // The browser keeps a failed import for the document's life; the boundary's retry reloads.
+    await expect(Lazy.preload()).rejects.toBeInstanceOf(ChunkLoadError);
     expect(state.calls).toBe(1);
-    await Lazy.preload();
-    expect(state.calls).toBe(2);
-    expect(inBoundary(createElement(Lazy, { name: "again" }))).toBe("<p>hello again</p>");
+    // As a hint, a failed preload is swallowed.
+    expect(() => preloadComponent(Lazy)).not.toThrow();
   });
 
   it("leaves a component that was never deferred alone", () => {
@@ -119,7 +122,7 @@ describe("the boundary deferred code renders under", () => {
     expect(() => instance.render()).toThrow(error);
   });
 
-  it("forgets a failure when its reset key changes", () => {
+  it("forgets a failure when its reset key changes (the router passes the path)", () => {
     const { Boundary, instance } = boundaryFor("/agents");
     instance.state = Boundary.getDerivedStateFromError(new ChunkLoadError("x", null));
     let next: unknown = "unset";

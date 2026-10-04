@@ -6,7 +6,7 @@
  * - Every page of the main nav, the dashboard and the terminal opens by its address and by a
  *   click from the nav, its code arriving on the way.
  * - A page whose code fails to arrive shows a notice with a Retry instead of a blank page, and the
- *   Retry loads it.
+ *   Retry (a reload: the browser keeps a failed import for the document's life) loads it.
  *
  * Chunk files are named after the module they start at (Vite), which is what the patterns match.
  */
@@ -20,7 +20,7 @@ const P = "password123";
 
 const COMPANY = /\/assets\/(org-routes|sidebar-sections|org-switcher)-[^/]*\.js$/;
 const PROPOSALS = /\/assets\/proposals-page-[^/]*\.js$/;
-const KATEX = /\/assets\/math-stage-[^/]*\.(js|css)$/;
+const KATEX = /\/assets\/(math-stage|katex)-[^/]*\.(js|css)$/;
 
 /** Every script and stylesheet the page asks for, by path, as they are asked. */
 function assetRequests(page) {
@@ -120,6 +120,8 @@ test("every page opens by its address and by a click, its code loading on the wa
 }) => {
   test.setTimeout(120_000);
   await login(page.request, ADMIN_ID, ADMIN_PASSWORD);
+  // Company mode is on (the first test turned it on): its one-time beta notice would cover the nav.
+  await page.addInitScript(() => localStorage.setItem("penguin.companyBetaNoticeShown", "1"));
   for (const path of [...NAV_PAGES, "/dashboard", "/terminal"]) {
     await page.goto(`${BASE}${path}`);
     await expect(page).toHaveURL(new RegExp(`${path}$`));
@@ -146,6 +148,7 @@ test("a page whose code does not arrive offers a retry instead of a blank page",
   page,
 }) => {
   await login(page.request, ADMIN_ID, ADMIN_PASSWORD);
+  await page.addInitScript(() => localStorage.setItem("penguin.companyBetaNoticeShown", "1"));
   const block = (route) => route.abort("connectionreset");
   await page.route(/\/assets\/usage-page-[^/]*\.js$/, block);
   await page.goto(`${BASE}/usage`);

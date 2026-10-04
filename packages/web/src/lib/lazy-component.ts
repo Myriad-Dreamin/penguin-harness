@@ -10,18 +10,21 @@
  * (components/ui/deferred.tsx), which shows the quiet pending state while the chunk is in flight
  * and a retry when it fails.
  *
- * Not `React.lazy`, for two reasons. A `React.lazy` that rejected once stays rejected for the
- * life of the page, so a chunk lost to a dropped connection could never be retried short of a
- * reload; here a failed load forgets its promise and the next render (the boundary's retry)
- * asks again. And it exposes `preload()`, which the nav calls on hover and focus (shell/sidebar/
- * router-link.tsx), so the click finds the chunk already there. Once loaded, the component
- * renders the target directly, with no suspension, on every later mount.
+ * Not `React.lazy`: this one exposes `preload()`, which the nav calls on hover and focus
+ * (shell/sidebar/router-link.tsx), so the click finds the chunk already there, and it marks a
+ * failed load as a `ChunkLoadError`, which is what the boundary tells apart from a bug. Once
+ * loaded, the component renders the target directly, with no suspension, on every later mount. A
+ * failed load stays failed: the browser would answer the same `import()` with the same failure
+ * for the rest of the document's life, so the boundary's retry is a reload.
  */
 import { createElement, use } from "react";
 import type { ComponentType, FunctionComponent } from "react";
 
-/** A deferred component: render it under a `<Deferred>` boundary; `preload()` starts its load early. */
-export type LazyComponent<P> = FunctionComponent<P> & { preload(): Promise<void> };
+/**
+ * A deferred component: render it under a `<Deferred>` boundary. `preload()` starts its load early
+ * and settles with the target, or a `ChunkLoadError`.
+ */
+export type LazyComponent<P> = FunctionComponent<P> & { preload(): Promise<ComponentType<P>> };
 
 /**
  * The failure a deferred component throws when its chunk does not arrive. `<Deferred>` catches
@@ -59,8 +62,6 @@ export function lazyComponent<P extends object, K extends string>(
         return target;
       },
       (error: unknown) => {
-        // Forgotten, so the boundary's retry starts a fresh load rather than rethrowing this one.
-        pending = null;
         throw new ChunkLoadError(name, error);
       },
     ));
@@ -68,16 +69,15 @@ export function lazyComponent<P extends object, K extends string>(
     return createElement(loaded ?? use(start()), props);
   }
   Lazy.displayName = `Lazy(${name})`;
-  Lazy.preload = () =>
-    start().then(
-      () => undefined,
-      () => undefined,
-    );
+  Lazy.preload = start;
   return Lazy;
 }
 
-/** Starts loading a component's code if it is a deferred one; anything else is already loaded. */
+/**
+ * Starts loading a component's code if it is a deferred one; anything else is already loaded. A
+ * hint only: a failure here is left for the render to meet, under its boundary.
+ */
 export function preloadComponent(component: unknown): void {
   const preload = (component as { preload?: unknown } | null)?.preload;
-  if (typeof preload === "function") void (preload as () => Promise<void>)();
+  if (typeof preload === "function") (preload as () => Promise<unknown>)().catch(() => undefined);
 }

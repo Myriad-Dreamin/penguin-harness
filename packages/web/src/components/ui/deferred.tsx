@@ -10,7 +10,9 @@
  * has arrived; the fallback is only seen on a first mount.
  *
  * A chunk that does not arrive (a dropped connection, a build replaced under the tab) stops here as
- * a short notice with a Retry, which loads it again, rather than as a blank box. Only that failure
+ * a short notice with a Retry rather than as a blank box. The Retry reloads the page: a browser
+ * keeps a failed module import for the life of the document (Chromium answers the same `import()`
+ * with the same failure), so only a new document can fetch the chunk again. Only that failure
  * stops here: any other error rethrows to the boundary above, the app's rescue path, exactly as it
  * did before the code was deferred. `resetKey` clears a failure when it changes (the router passes
  * the path, so navigating away from a page whose chunk failed leaves the notice behind).
@@ -56,7 +58,7 @@ class ChunkBoundary extends Component<Props, State> {
         className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-fg-muted"
       >
         <p>{S.common.loadPartFailed}</p>
-        <Button size="sm" onClick={() => this.setState({ error: null })}>
+        <Button size="sm" onClick={() => window.location.reload()}>
           {S.common.retry}
         </Button>
       </div>
