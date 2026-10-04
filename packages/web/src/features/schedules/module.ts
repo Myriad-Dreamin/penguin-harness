@@ -4,9 +4,9 @@
  * dock's scheduled-tasks panel (schedule-dock-panel.tsx).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
+import { lazyComponent } from "../../lib/lazy-component";
 import { scheduleUserEvents } from "./schedule-store";
 import { scheduledRowMark } from "./session-row-mark";
-import { ScheduleDockPanel } from "./schedule-dock-panel";
 
 @Module({
   contributes: {
@@ -27,5 +27,5 @@ import { ScheduleDockPanel } from "./schedule-dock-panel";
 export class SchedulesModule {
   @Bind("schedules.events") events = scheduleUserEvents;
   @Bind("schedules.mark") mark = scheduledRowMark;
-  @Bind("schedules.panel") panel = ScheduleDockPanel;
+  @Bind("schedules.panel") panel = lazyComponent(() => import("./schedule-dock-panel"), "ScheduleDockPanel");
 }

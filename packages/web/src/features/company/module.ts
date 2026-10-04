@@ -7,7 +7,7 @@
  * (proposals-badge.tsx).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
-import { OrgRoutes } from "./org-routes";
+import { lazyComponent } from "../../lib/lazy-component";
 import { HomeRedirect } from "./home-redirect";
 import { CompanyProvider, companyUserEvents } from "./company-state";
 import {
@@ -69,7 +69,7 @@ import { proposalsUnreadBadge } from "./proposals-badge";
   },
 })
 export class CompanyModule {
-  @Bind("company.org") org = OrgRoutes;
+  @Bind("company.org") org = lazyComponent(() => import("./org-routes"), "OrgRoutes");
   @Bind("company.home") home = HomeRedirect;
   @Bind("company.provider") provider = CompanyProvider;
   @Bind("company.events") events = companyUserEvents;

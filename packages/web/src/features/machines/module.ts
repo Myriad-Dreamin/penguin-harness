@@ -1,6 +1,6 @@
 /** The machines page, admin-only: it installs onto other hosts with the server account's ssh keys. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
-import { MachinesPage } from "./machines-page";
+import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -22,5 +22,5 @@ import { MachinesPage } from "./machines-page";
   },
 })
 export class MachinesModule {
-  @Bind("machines.page") page = MachinesPage;
+  @Bind("machines.page") page = lazyComponent(() => import("./machines-page"), "MachinesPage");
 }

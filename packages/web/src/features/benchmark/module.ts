@@ -1,7 +1,6 @@
 /** The benchmarks list and one benchmark's detail. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
-import { BenchmarkPage } from "./benchmark-page";
-import { BenchmarkDetailPage } from "./benchmark-detail-page";
+import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -33,6 +32,6 @@ import { BenchmarkDetailPage } from "./benchmark-detail-page";
   },
 })
 export class BenchmarkModule {
-  @Bind("benchmark.list") list = BenchmarkPage;
-  @Bind("benchmark.detail") detail = BenchmarkDetailPage;
+  @Bind("benchmark.list") list = lazyComponent(() => import("./benchmark-page"), "BenchmarkPage");
+  @Bind("benchmark.detail") detail = lazyComponent(() => import("./benchmark-detail-page"), "BenchmarkDetailPage");
 }

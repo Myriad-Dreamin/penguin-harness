@@ -1,6 +1,6 @@
 /** The usage page. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
-import { UsagePage } from "./usage-page";
+import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -22,5 +22,5 @@ import { UsagePage } from "./usage-page";
   },
 })
 export class UsageModule {
-  @Bind("usage.page") page = UsagePage;
+  @Bind("usage.page") page = lazyComponent(() => import("./usage-page"), "UsagePage");
 }

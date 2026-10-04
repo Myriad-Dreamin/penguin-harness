@@ -10,7 +10,6 @@ cycle: features/chat -> features/model-picker
 cycle: features/chat -> features/models
 cycle: features/chat -> features/proposals
 cycle: features/chat -> features/schedules
-cycle: features/chat -> features/settings
 cycle: features/chat -> features/skills
 cycle: features/chat -> shell
 cycle: features/company -> features/chat
@@ -31,8 +30,6 @@ cycle: features/proposals -> features/company
 cycle: features/schedules -> features/ai-create
 cycle: features/schedules -> features/model-picker
 cycle: features/schedules -> features/models
-cycle: features/settings -> features/chat
-cycle: features/settings -> features/company
 cycle: features/skills -> features/chat
 cycle: features/terminal -> features/dock
 cycle: features/todos -> features/models
@@ -74,7 +71,6 @@ features/chat/chat-page.tsx -> features/terminal/terminal-list.ts
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
 features/chat/message-item.tsx -> features/proposals/proposal-links.tsx
 features/chat/model-switch.ts -> features/models/model-grouping.ts
-features/chat/permission-select.tsx -> features/settings/settings-dialog.tsx
 features/chat/session-surface-view.tsx -> features/terminal/terminal-view.tsx
 features/chat/session/stream-context.ts -> features/dock/dock-state.ts
 features/chat/session/use-chat-controller.ts -> features/company/company-nav.ts

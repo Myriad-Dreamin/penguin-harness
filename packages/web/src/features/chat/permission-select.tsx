@@ -38,7 +38,7 @@ import {
 } from "../../lib/permission-level";
 import type { LevelBlock } from "../../lib/permission-level";
 import { useAuth } from "../../state/auth";
-import { SettingsDialog } from "../settings/settings-dialog";
+import { requestSettings } from "../../lib/settings-request";
 
 const FS_MODES: SessionSandbox["mode"][] = ["read-only", "workspace-write", "danger-full-access"];
 const NETWORK_MODES: SessionSandbox["network"][] = ["open", "local", "none"];
@@ -107,7 +107,6 @@ export function PermissionSelect({
   const [pending, setPending] = useState<PendingPick | null>(null);
   const approvalMode = pending?.approvalMode ?? savedApprovalMode;
   const sandbox: SessionSandbox = { ...savedSandbox, ...pending?.sandbox };
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // The Sandbox card lives on the Plugins page, which only an administrator can open.
   const isAdmin = useAuth().user?.isAdmin === true;
   const P = S.chat.permission;
@@ -149,102 +148,92 @@ export function PermissionSelect({
     else setPending(null);
   };
   return (
-    <>
-      <Dropdown
-        open={open}
-        setOpen={setOpen}
-        menuClass="w-max min-w-44"
-        portal={{ direction, align: "left" }}
-        button={
-          <button
-            type="button"
-            aria-label={`${P.label}: ${levelName}`}
-            data-tooltip={`${P.label}：${levelName}\n${summary}`}
-            data-level={level}
-            disabled={disabled}
-            onClick={() => setOpen((v) => !v)}
-            // Icon only, the + button's square and its look (the package's ToolbarTrigger, which
-            // this cannot be: that one dims while disabled): the level is in the icon's shape and
-            // colour, and spelled out in the accessible name and the title.
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors duration-150 hover:bg-surface-muted hover:text-fg"
-          >
-            {/* Keyed by level: a new level mounts a new icon, which swaps in. */}
-            <span key={level} className={animate ? "anim-icon-swap" : undefined}>
-              <GlyphIcon
-                d={PERMISSION_LEVEL_GLYPH[level]}
-                size={15}
-                className={toneInk[PERMISSION_LEVEL_TONE[level]]}
-              />
-            </span>
-          </button>
-        }
-      >
-        <Menu label={P.label} density="sm" className="pb-1">
-          <MenuLabel>{P.fs}</MenuLabel>
-          {FS_MODES.map((mode) => (
-            <Choice
-              key={mode}
-              label={P.fsModes[mode] ?? mode}
-              selected={sandbox.mode === mode}
-              {...blocked(fsModeBlock(sandbox, mode))}
-              onPick={() =>
-                mode === sandbox.mode
-                  ? setOpen(false)
-                  : pick({ sandbox: { mode } }, () => onChangeSandbox({ mode }))
-              }
+    <Dropdown
+      open={open}
+      setOpen={setOpen}
+      menuClass="w-max min-w-44"
+      portal={{ direction, align: "left" }}
+      button={
+        <button
+          type="button"
+          aria-label={`${P.label}: ${levelName}`}
+          data-tooltip={`${P.label}：${levelName}\n${summary}`}
+          data-level={level}
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          // Icon only, the + button's square and its look (the package's ToolbarTrigger, which
+          // this cannot be: that one dims while disabled): the level is in the icon's shape and
+          // colour, and spelled out in the accessible name and the title.
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors duration-150 hover:bg-surface-muted hover:text-fg"
+        >
+          {/* Keyed by level: a new level mounts a new icon, which swaps in. */}
+          <span key={level} className={animate ? "anim-icon-swap" : undefined}>
+            <GlyphIcon
+              d={PERMISSION_LEVEL_GLYPH[level]}
+              size={15}
+              className={toneInk[PERMISSION_LEVEL_TONE[level]]}
             />
-          ))}
-          <MenuLabel>{P.network}</MenuLabel>
-          {NETWORK_MODES.map((network) => (
-            <Choice
-              key={network}
-              label={P.networkModes[network] ?? network}
-              selected={sandbox.network === network}
-              {...blocked(networkBlock(sandbox, network))}
-              onPick={() =>
-                network === sandbox.network
-                  ? setOpen(false)
-                  : pick({ sandbox: { network } }, () => onChangeSandbox({ network }))
-              }
+          </span>
+        </button>
+      }
+    >
+      <Menu label={P.label} density="sm" className="pb-1">
+        <MenuLabel>{P.fs}</MenuLabel>
+        {FS_MODES.map((mode) => (
+          <Choice
+            key={mode}
+            label={P.fsModes[mode] ?? mode}
+            selected={sandbox.mode === mode}
+            {...blocked(fsModeBlock(sandbox, mode))}
+            onPick={() =>
+              mode === sandbox.mode
+                ? setOpen(false)
+                : pick({ sandbox: { mode } }, () => onChangeSandbox({ mode }))
+            }
+          />
+        ))}
+        <MenuLabel>{P.network}</MenuLabel>
+        {NETWORK_MODES.map((network) => (
+          <Choice
+            key={network}
+            label={P.networkModes[network] ?? network}
+            selected={sandbox.network === network}
+            {...blocked(networkBlock(sandbox, network))}
+            onPick={() =>
+              network === sandbox.network
+                ? setOpen(false)
+                : pick({ sandbox: { network } }, () => onChangeSandbox({ network }))
+            }
+          />
+        ))}
+        <MenuLabel>{P.approval}</MenuLabel>
+        {approvalModes.map((mode) => (
+          <Choice
+            key={mode}
+            label={S.chat.approvalModes[mode] ?? mode}
+            selected={approvalMode === mode}
+            onPick={() =>
+              mode === approvalMode
+                ? setOpen(false)
+                : pick({ approvalMode: mode }, () => onChangeApprovalMode(mode))
+            }
+          />
+        ))}
+        {isAdmin && (
+          <>
+            <MenuSeparator />
+            {/* More…: the rest of the sandbox (masked paths, the temp directory, the backend)
+              is on the Settings page's Sandbox card, where this opens. */}
+            <MenuItem
+              label={P.more}
+              onSelect={() => {
+                setOpen(false);
+                requestSettings({ section: "plugins", pluginFocus: "sandbox" });
+              }}
             />
-          ))}
-          <MenuLabel>{P.approval}</MenuLabel>
-          {approvalModes.map((mode) => (
-            <Choice
-              key={mode}
-              label={S.chat.approvalModes[mode] ?? mode}
-              selected={approvalMode === mode}
-              onPick={() =>
-                mode === approvalMode
-                  ? setOpen(false)
-                  : pick({ approvalMode: mode }, () => onChangeApprovalMode(mode))
-              }
-            />
-          ))}
-          {isAdmin && (
-            <>
-              <MenuSeparator />
-              {/* More…: the rest of the sandbox (masked paths, the temp directory, the backend)
-                is on the Settings page's Sandbox card, where this opens. */}
-              <MenuItem
-                label={P.more}
-                onSelect={() => {
-                  setOpen(false);
-                  setSettingsOpen(true);
-                }}
-              />
-            </>
-          )}
-        </Menu>
-      </Dropdown>
-      {isAdmin && (
-        <SettingsDialog
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          section="plugins"
-          pluginFocus="sandbox"
-        />
-      )}
-    </>
+          </>
+        )}
+      </Menu>
+    </Dropdown>
   );
 }
