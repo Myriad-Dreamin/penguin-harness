@@ -11,6 +11,7 @@ import { Link, matchPath } from "react-router";
 import type { NavRowLinkProps } from "@prismshadow/penguin-ui";
 import { preloadComponent } from "../../lib/lazy-component";
 import { useShellPages } from "../contributions";
+import type { ShellPage } from "../page-table";
 
 /** A package row's link as the router's own: the row's classes, state and content, navigating in place. */
 export function renderRouterLink(link: NavRowLinkProps) {
@@ -37,16 +38,20 @@ function RouterLink(link: NavRowLinkProps) {
 }
 
 /**
- * Starts loading the code of the page that answers `href`: the first page in the table whose
- * route matches it (an organization's page is company mode's `/org/*`). A page already loaded,
- * or one that was never deferred, makes it a no-op.
+ * The page that answers `href`: the first in the table whose rooted route matches it (an
+ * organization's page is company mode's `/org/*`; the catch-all home is never one).
+ */
+export function pageForHref(pages: readonly ShellPage[], href: string): ShellPage | undefined {
+  return pages.find((p) => p.path.startsWith("/") && matchPath(p.path, href) !== null);
+}
+
+/**
+ * Starts loading the code of the page that answers `href`. A page already loaded, or one that was
+ * never deferred, makes it a no-op.
  */
 function usePrefetchPage(href: string): () => void {
   const pages = useShellPages();
-  return () => {
-    const page = pages.find((p) => p.path.startsWith("/") && matchPath(p.path, href) !== null);
-    preloadComponent(page?.Component);
-  };
+  return () => preloadComponent(pageForHref(pages, href)?.Component);
 }
 
 /**
