@@ -103,7 +103,7 @@ export function decideSides(manifests, hosts, replaces = []) {
   const named = new Map();
   for (const m of Object.values(manifests)) {
     const refs = [];
-    const refer = (name, why, slot) => {
+    const refer = (name, why, slot, iface) => {
       if (name in manifests && name !== m.name) {
         refs.push({ local: name, why });
         return;
@@ -115,10 +115,21 @@ export function decideSides(manifests, hosts, replaces = []) {
         );
         return;
       }
-      // A name both hosts carry (none today) is decided by the slot, when there is one.
-      const side = found.length === 1 ? found[0] : found.find((s) => hasSlot(hosts[s], name, slot));
+      // A name both hosts carry (CompanyModule, AgentsModule, …) is decided by the slot, or by
+      // the interface it is required as; failing both, the platform, where every plugin module
+      // ran before the web could take one.
+      const side =
+        found.length === 1
+          ? found[0]
+          : (found.find((s) =>
+              slot !== undefined
+                ? hasSlot(hosts[s], name, slot)
+                : Object.values(hosts[s].modules[name].provides ?? {}).includes(iface),
+            ) ?? (slot === undefined ? "server" : undefined));
       if (side === undefined) {
-        errors.push(`${m.name}: ${why} names '${name}', which both hosts have`);
+        errors.push(
+          `${m.name}: ${why}: neither host's module '${name}' has a slot '${slot}' (no-such-slot)`,
+        );
         return;
       }
       if (slot !== undefined && !hasSlot(hosts[side], name, slot)) {
@@ -138,7 +149,7 @@ export function decideSides(manifests, hosts, replaces = []) {
       refer(split.module, `its contribution to '${key}'`, split.slot);
     }
     for (const [alias, req] of Object.entries(m.requires ?? {})) {
-      if (req.from !== undefined) refer(req.from, `its requirement '${alias}'`);
+      if (req.from !== undefined) refer(req.from, `its requirement '${alias}'`, undefined, req.iface);
     }
     if (replaces.includes(m.name)) refer(m.name, "its replacement");
     named.set(m.name, refs);

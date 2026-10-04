@@ -52,6 +52,29 @@ describe("the side decision", () => {
     expect(sides).toEqual({ Box: "server", Player: "web", Plain: "server", Helper: "web" });
   });
 
+  it("decides a module name both hosts have by the slot, then by the interface required", () => {
+    const both = {
+      server: {
+        modules: { ...hosts.server.modules, AgentsModule: { provides: { agents: "server#Agents" } } },
+        ifaces: { ...hosts.server.ifaces, "server#Agents": {} },
+      },
+      web: {
+        modules: { ...hosts.web.modules, AgentsModule: { provides: { tabs: "web#Tabs" } } },
+        ifaces: { ...hosts.web.ifaces, "web#Tabs": { slots: { tabs: {} } } },
+      },
+    };
+    const { sides, errors } = decideSides(
+      {
+        Tab: m("Tab", { contributes: { "AgentsModule.tabs": [{ id: "t" }] } }),
+        User: m("User", { requires: { a: { iface: "server#Agents", from: "AgentsModule" } } }),
+        Shaped: m("Shaped", { requires: { a: { iface: "own#Agents", from: "AgentsModule" } } }),
+      },
+      both,
+    );
+    expect(errors).toEqual([]);
+    expect(sides).toEqual({ Tab: "web", User: "server", Shaped: "server" });
+  });
+
   it("refuses a module that fits neither side, naming it", () => {
     const { errors } = decideSides(
       {
