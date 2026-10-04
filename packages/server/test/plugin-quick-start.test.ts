@@ -69,6 +69,8 @@ describe("quick start", () => {
   it("every builtin module plugin contributes a demo", () => {
     const modulePlugins = fs
       .readdirSync(pluginsRoot)
+      // A repository example is not builtin (scripts/build-plugins.mjs skips plugins/example-*).
+      .filter((name) => !name.startsWith("example-"))
       .filter((name) => fs.existsSync(path.join(pluginsRoot, name, "src", "index.ts")));
     expect(modulePlugins.length).toBeGreaterThan(0);
     for (const name of modulePlugins) {
