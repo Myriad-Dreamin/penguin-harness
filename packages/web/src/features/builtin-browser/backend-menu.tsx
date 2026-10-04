@@ -2,13 +2,17 @@
  * The top of the Browser panel's menu: which browser the agents drive, and the user's Chrome.
  * Nothing where neither applies (an older server); the caller draws the rule under the rows.
  *
- * - The choice, Built-in / System Chrome, only where both are offered (the desktop app, for its
- *   admin). Picking one asks the server; while an agent acts the server refuses and a toast says
- *   to wait (browser-actions.ts `switchBrowserBackend`).
+ * - The choice among the backends the panel's server offers — Built-in, System Chrome, Chrome on
+ *   this machine (the server's own, for its admins) — only where there is more than one. Picking
+ *   one asks that server; while an agent acts the server refuses and a toast says to wait
+ *   (browser-actions.ts `switchBrowserBackend`).
  * - The Chrome row wherever Chrome is offered: an icon and a line saying how the user's Chrome
  *   stands — connected (named), not connected, none paired, switched off by the admin — never in
  *   red. Its action is the pairing dialog while none is paired, Settings › Browser once one is,
  *   and nothing while the admin's switch is off.
+ *
+ * A machine's panel has neither the user's Chrome nor its row: a Chrome is paired to the server
+ * this window is on, and the machine's server is reached only through it.
  */
 import type { BrowserBackend, BrowserBackendInfo } from "@prismshadow/penguin-server/api";
 import {
@@ -47,28 +51,52 @@ export function chromeStatusText(info: BrowserBackendInfo): string {
   }
 }
 
-/** Whether the menu has these rows to show: a choice of backends, or the user's Chrome. */
-export function backendRowsShown(state: BrowserState): boolean {
+/** The backends the menu lets the user choose among on `server`, in the order it lists them. */
+export function backendChoices(
+  state: BrowserState,
+  server: string | null = null,
+): BrowserBackend[] {
   const offered = state.backends.map((entry) => entry.backend);
-  return (offered.includes("builtin") && offered.includes("chrome")) || chromeInfo(state) !== null;
+  return (["builtin", "chrome", "hosted"] as const).filter(
+    (backend) => offered.includes(backend) && (server === null || backend !== "chrome"),
+  );
 }
+
+/** The user's Chrome as the menu's row shows it; none on a machine's panel. */
+function chromeRow(state: BrowserState, server: string | null): BrowserBackendInfo | null {
+  return server === null ? chromeInfo(state) : null;
+}
+
+/** Whether the menu has these rows to show: a choice of backends, or the user's Chrome. */
+export function backendRowsShown(state: BrowserState, server: string | null = null): boolean {
+  return backendChoices(state, server).length > 1 || chromeRow(state, server) !== null;
+}
+
+const BACKEND_LABEL: Record<BrowserBackend, () => string> = {
+  builtin: () => S.builtinBrowser.backendBuiltin,
+  chrome: () => S.builtinBrowser.backendChrome,
+  hosted: () => S.builtinBrowser.backendHosted,
+};
 
 export function BackendMenuRows({
   state,
+  server = null,
   onPick,
   onConnect,
   onManage,
 }: {
   state: BrowserState;
+  /** The server the panel belongs to: null for this one, a machine id otherwise. */
+  server?: string | null;
   onPick: (backend: BrowserBackend) => void;
   /** Opens the pairing dialog. */
   onConnect: () => void;
   /** Opens Settings › Browser. */
   onManage: () => void;
 }) {
-  const offered = state.backends.map((entry) => entry.backend);
-  const choosable = offered.includes("builtin") && offered.includes("chrome");
-  const chrome = chromeInfo(state);
+  const choices = backendChoices(state, server);
+  const choosable = choices.length > 1;
+  const chrome = chromeRow(state, server);
   if (!choosable && chrome === null) return null;
   const standing = chrome === null ? null : chromeStanding(chrome);
   const action =
@@ -82,16 +110,14 @@ export function BackendMenuRows({
       {choosable && (
         <>
           <MenuLabel>{S.builtinBrowser.backendGroup}</MenuLabel>
-          <MenuRadioItem
-            checked={state.backend === "builtin"}
-            label={S.builtinBrowser.backendBuiltin}
-            onSelect={() => onPick("builtin")}
-          />
-          <MenuRadioItem
-            checked={state.backend === "chrome"}
-            label={S.builtinBrowser.backendChrome}
-            onSelect={() => onPick("chrome")}
-          />
+          {choices.map((backend) => (
+            <MenuRadioItem
+              key={backend}
+              checked={state.backend === backend}
+              label={BACKEND_LABEL[backend]()}
+              onSelect={() => onPick(backend)}
+            />
+          ))}
         </>
       )}
       {chrome !== null && (

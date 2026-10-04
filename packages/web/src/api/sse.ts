@@ -12,7 +12,11 @@
  * Docs: /docs/server-api § "Streaming (SSE)".
  */
 import type { OmniMessage } from "@prismshadow/penguin-core/omnimessage";
-import type { ServerEvent } from "@prismshadow/penguin-server/api";
+import type {
+  HostedBrowserFrame,
+  HostedBrowserViewport,
+  ServerEvent,
+} from "@prismshadow/penguin-server/api";
 import { apiUrl } from "../lib/server-context";
 import { machineForSession } from "../lib/session-machines";
 
@@ -81,4 +85,45 @@ export function openUserEvents(
   machineId: string | null = null,
 ): StreamConnection {
   return subscribe(apiUrl("/api/events", machineId), handlers);
+}
+
+export interface BrowserViewHandlers {
+  /** One frame of the tab's picture. */
+  onFrame: (frame: HostedBrowserFrame) => void;
+  /**
+   * The stream is over: the server ended it (the tab closed, its Chrome exited), refused it, or
+   * the connection broke. Called once; the connection is closed by then.
+   */
+  onEnd: () => void;
+}
+
+/**
+ * Watches a hosted tab (GET /api/builtin-browser/tabs/:id/view): the picture of a tab of the
+ * Chrome that `server` runs — this server, or a machine through the same-origin proxy — laid out
+ * to `viewport`. Unlike the event channels this stream has no replay and ends for good with its
+ * tab, so the browser's own reconnect is switched off: the first error closes it and the caller
+ * decides whether to watch again.
+ */
+export function openBrowserView(
+  tabId: number,
+  viewport: HostedBrowserViewport,
+  server: string | null,
+  handlers: BrowserViewHandlers,
+): StreamConnection {
+  const query = `width=${viewport.width}&height=${viewport.height}`;
+  const source = new EventSource(
+    apiUrl(`/api/builtin-browser/tabs/${tabId}/view?${query}`, server),
+  );
+  source.addEventListener("frame", (e: MessageEvent<string>) => {
+    try {
+      handlers.onFrame(JSON.parse(e.data) as HostedBrowserFrame);
+    } catch {
+      // A frame that fails to parse is skipped; the next one replaces it anyway.
+    }
+  });
+  source.onerror = () => {
+    source.close();
+    handlers.onEnd();
+  };
+  return { close: () => source.close() };
 }
