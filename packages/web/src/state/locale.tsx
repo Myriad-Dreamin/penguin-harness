@@ -1,21 +1,20 @@
 /**
- * Language context: zh / en / system (tracks navigator.language, listens for languagechange).
- * On switch, first synchronously calls setActiveStrings (assigned during render, idempotent),
- * then remounts the whole tree keyed on locale so every `S.x` read immediately reflects the
- * new language; the preference persists to localStorage. The shared UI package's accessibility
+ * Language context over the interface-language store (locale-store.ts): zh / en / system, the
+ * last tracking navigator.language. On a switch the provider swaps the active dictionary
+ * (setActiveStrings, idempotent) before its children render, then remounts the whole tree keyed on
+ * locale so every `S.x` read reflects the new language. The shared UI package's accessibility
  * fallbacks (a close cross's name, a "Copied" announcement) are handed the same language here.
  */
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { UiStringsProvider } from "@prismshadow/penguin-ui";
 import { setActiveStrings, zh } from "../lib/strings";
 import { en } from "../lib/strings-en";
 import { uiStringsFor } from "../lib/ui-strings";
+import { localeStore } from "./locale-store";
+import type { LangPref, Locale } from "./locale-store";
 
-export type LangPref = "zh" | "en" | "system";
-export type Locale = "zh" | "en";
-
-const STORAGE_KEY = "penguin.lang";
+export type { LangPref, Locale } from "./locale-store";
 
 interface LocaleContextValue {
   lang: LangPref;
@@ -25,67 +24,15 @@ interface LocaleContextValue {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
-/**
- * Device language → UI language (default when no stored preference exists; also applies on the
- * login page): a language tag starting with zh (zh-CN/zh-TW…) → zh; anything else or
- * unavailable → falls back to en. Exported as a pure function for unit tests (test/locale.test.ts).
- */
-export function resolveSystemLocale(language: string | undefined): Locale {
-  return language?.toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-
-function systemLocale(): Locale {
-  return resolveSystemLocale(navigator.language);
-}
-
-function resolve(lang: LangPref): Locale {
-  return lang === "system" ? systemLocale() : lang;
-}
-
-function initialLang(): LangPref {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "zh" || stored === "en" || stored === "system") return stored;
-  return "system";
-}
-
-/** The language the provider last rendered with (activeLocale). */
-let active: Locale = "zh";
-
-/**
- * The interface language, read outside React: what the settings module's `Language` interface
- * answers a plugin's component (plugin-types.ts). Set while the provider renders, before any
- * child does — the same moment the active dictionary switches — and a switch remounts the tree,
- * so a component reading it while rendering always reads the current one.
- */
-export function activeLocale(): Locale {
-  return active;
-}
-
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<LangPref>(initialLang);
-  // Re-resolution signal for browser language changes while in system mode.
-  const [, setSysTick] = useState(0);
-
-  const locale = resolve(lang);
+  const lang = useSyncExternalStore(localeStore.watch, localeStore.pref, localeStore.pref);
+  const locale = useSyncExternalStore(localeStore.watch, localeStore.get, localeStore.get);
   // Switch the active dictionary during render (idempotent assignment): children are keyed on
   // locale and render after this component, so they always read the post-switch dictionary.
   setActiveStrings(locale === "en" ? en : zh);
-  active = locale;
-
-  useEffect(() => {
-    if (lang !== "system") return;
-    const onChange = () => setSysTick((t) => t + 1);
-    window.addEventListener("languagechange", onChange);
-    return () => window.removeEventListener("languagechange", onChange);
-  }, [lang]);
-
-  const setLang = useCallback((next: LangPref) => {
-    localStorage.setItem(STORAGE_KEY, next);
-    setLangState(next);
-  }, []);
 
   return (
-    <LocaleContext.Provider value={{ lang, locale, setLang }}>
+    <LocaleContext.Provider value={{ lang, locale, setLang: localeStore.setPref }}>
       <UiStringsProvider strings={uiStringsFor(locale)}>{children}</UiStringsProvider>
     </LocaleContext.Provider>
   );
