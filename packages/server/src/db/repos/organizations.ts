@@ -134,10 +134,11 @@ export class OrgCacheRepo implements OrgCache {
     rows: Array<{ sessionId: string; agentId: string; current: boolean }>,
   ): void {
     const keep = new Set(rows.map((r) => r.sessionId));
+    const held = new Map<string, OrgSessionRow>();
     for (const existing of this.deskSessions(projectId, orgId)) {
       if (!keep.has(existing.sessionId)) {
         this.db.prepare("DELETE FROM org_sessions WHERE session_id = ?").run(existing.sessionId);
-      }
+      } else held.set(existing.sessionId, existing);
     }
     const upsert = this.db.prepare(
       `INSERT INTO org_sessions (session_id, project_id, org_id, agent_id, current)
@@ -145,7 +146,18 @@ export class OrgCacheRepo implements OrgCache {
        ON CONFLICT(session_id) DO UPDATE SET project_id = excluded.project_id, org_id = excluded.org_id,
          agent_id = excluded.agent_id, current = excluded.current`,
     );
-    for (const r of rows) upsert.run(r.sessionId, projectId, orgId, r.agentId, r.current ? 1 : 0);
+    for (const r of rows) {
+      // Read paths project the ledger on every call: a row that already says this is not
+      // written again (the upsert would leave it as it is).
+      const row = held.get(r.sessionId);
+      if (row !== undefined && row.agentId === r.agentId && row.current === r.current) continue;
+      upsert.run(r.sessionId, projectId, orgId, r.agentId, r.current ? 1 : 0);
+      held.set(r.sessionId, {
+        ...(row ?? { sessionId: r.sessionId, projectId, orgId, triggerHop: 0 }),
+        agentId: r.agentId,
+        current: r.current,
+      });
+    }
   }
 
   // ---- ticket sessions ----
@@ -172,7 +184,9 @@ export class OrgCacheRepo implements OrgCache {
     rows: Array<{ ticketId: string; sessionId: string; agentId: string }>,
   ): void {
     const keep = new Set(rows.map((r) => `${r.ticketId}\0${r.sessionId}`));
+    const held = new Map<string, string>();
     for (const existing of this.ticketSessions(projectId, orgId)) {
+      held.set(`${existing.ticketId}\0${existing.sessionId}`, existing.agentId);
       if (!keep.has(`${existing.ticketId}\0${existing.sessionId}`)) {
         this.db
           .prepare(
@@ -186,7 +200,11 @@ export class OrgCacheRepo implements OrgCache {
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(project_id, org_id, ticket_id, session_id) DO UPDATE SET agent_id = excluded.agent_id`,
     );
-    for (const r of rows) upsert.run(projectId, orgId, r.ticketId, r.sessionId, r.agentId);
+    for (const r of rows) {
+      if (held.get(`${r.ticketId}\0${r.sessionId}`) === r.agentId) continue; // already says this
+      upsert.run(projectId, orgId, r.ticketId, r.sessionId, r.agentId);
+      held.set(`${r.ticketId}\0${r.sessionId}`, r.agentId);
+    }
   }
 
   addTicketSession(

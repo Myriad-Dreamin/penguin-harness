@@ -238,7 +238,11 @@ export class TraceIndexService implements TraceIndex {
         } catch {
           continue; // Vanished between readdir and stat: skip; a later pass settles it.
         }
-        this.repo.upsertFile({ projectId, agentId, sessionId, fileIndex, date, sizeBytes: size });
+        // A shard already indexed under this date at this size: the upsert would write the
+        // same row back (same date, same size, page stats kept), so it is skipped.
+        if (known.get(fileKey)?.sizeBytes !== size) {
+          this.repo.upsertFile({ projectId, agentId, sessionId, fileIndex, date, sizeBytes: size });
+        }
         known.delete(fileKey);
         if (this.repo.getSession(sessionId)?.metaRead !== true) newSessions.add(sessionId);
       }
