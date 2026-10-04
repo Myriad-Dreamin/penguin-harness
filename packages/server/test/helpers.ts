@@ -80,7 +80,8 @@ import { MachinesModule, machinesServerProxyRoutes } from "../src/machines/servi
 import { OrganizationModule } from "../src/runtime/organization/service.js";
 import { machinesRoutes } from "../src/http/routes/machines.js";
 import type { Access } from "../src/mechanisms/projects.js";
-import { ProcessShellPort } from "../src/builtin-browser/module.js";
+import type { ChromeHost } from "../src/builtin-browser/hosted-chrome.js";
+import { ProcessShellPort, SystemChromeHost } from "../src/builtin-browser/module.js";
 import type { BrowserShellPort } from "../src/builtin-browser/shell-link.js";
 
 export async function makeTempRoot(): Promise<string> {
@@ -303,6 +304,8 @@ export interface TestAppOptions {
   reveal?: (filePath: string) => Promise<void>;
   /** Test double: the desktop shell's port as the built-in browser reaches it (a fake shell). */
   browserShellPort?: BrowserShellPort;
+  /** Test double: this machine's Chrome as the hosted browser backend finds and launches it. Without one the machine has no Chrome, whatever the real one has installed. */
+  hostedChrome?: ChromeHost;
   /** Test double: the password work factor (scrypt at full strength is seconds per hash). */
   passwordHashCost?: number;
   log?: (line: string) => void;
@@ -323,6 +326,14 @@ function accessDouble(): Access {
     requireProjectOwner: () => ({}) as never,
   } as unknown as Access;
 }
+
+/** A machine with no Chrome: a test never launches the one its own machine happens to have. */
+const NO_CHROME: ChromeHost = {
+  find: () => null,
+  launch: () => {
+    throw new Error("this test machine has no Chrome");
+  },
+};
 
 export function replacementsFor(o: TestAppOptions): Replacements {
   const out: Array<readonly [ModuleClass, object]> = [];
@@ -346,6 +357,8 @@ export function replacementsFor(o: TestAppOptions): Replacements {
     const port = o.browserShellPort;
     out.push([ProcessShellPort, { current: () => port }]);
   }
+  const chromeHost = o.hostedChrome ?? NO_CHROME;
+  out.push([SystemChromeHost, { current: () => chromeHost }]);
   if (o.feishuSdk) out.push([FeishuSdkProvider, { feishuSdk: { sdk: o.feishuSdk } }]);
   if (o.telegramTransport)
     out.push([

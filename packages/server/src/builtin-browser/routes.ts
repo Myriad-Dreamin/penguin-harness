@@ -14,10 +14,13 @@
  *   POST   /tabs/:tab/activate         focus a tab (the user) or switch to it (the agent)
  *   DELETE /tabs/:tab                  close a tab
  *   POST   /tabs/:tab/navigate|scan|exec|click|type|screenshot|cdp   the agent's actions
+ *   GET    /tabs/:id/view              a hosted tab's picture, as an event stream (hosted-routes.ts)
+ *   POST   /tabs/:id/input             a viewer's mouse, wheel and keys for a hosted tab
  *   GET    /import/sources             system browser profiles that can be imported (built-in)
  *   POST   /import                     import cookies and / or history from one (built-in)
- *   GET    /settings                   the browser's settings (its homepage); admins
- *   PUT    /settings                   replace them: {homepage: address | null}; admins
+ *   GET    /settings                   the browser's settings (its homepage, the hosted Chrome's path); admins
+ *   PUT    /settings                   change them: {homepage?: address | null, chromePath?: path | null},
+ *                                      a field left out kept as it is; admins
  *   GET    /history?q=&limit=          search the history (built-in)
  *   DELETE /history                    forget it (built-in)
  *   POST   /clear-data                 clear the browser's cookies, cache or site storage (built-in)
@@ -32,9 +35,10 @@
  * the admin API token with a `sessionId` (in the JSON body, or the query for a GET or DELETE)
  * acts for the human driving that session (runtime/session-drivers.ts), whose Chrome it is.
  * The built-in browser and its import, history and data are admins' (403 `admin_required`); on
- * chrome those answer 405 `not_supported`. Choosing a backend and minting a pairing code are the
+ * the other backends those answer 405 `not_supported`. The hosted backend is admins' too. Choosing a backend and minting a pairing code are the
  * signed-in person's own gestures: the API token gets 403 `human_required`. An unavailable
- * browser answers 503 `browser_unavailable` with a `reason` beside the code.
+ * browser answers 503 `browser_unavailable` with a `reason` beside the code (and, for a hosted
+ * Chrome that did not start, what it printed as `detail`).
  */
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -57,6 +61,8 @@ import { HttpError, errorBody } from "../http/errors.js";
 import { badRequest } from "../http/validate.js";
 import { isPenguinExtensionOrigin } from "./extension-origin.js";
 import type { ExtensionPairing } from "./extension-pairing.js";
+import { mountHostedRoutes } from "./hosted-routes.js";
+import type { ViewRevocation } from "./hosted-routes.js";
 import { BrowserUnavailableError } from "./service.js";
 import type { Actor, BuiltinBrowser } from "./service.js";
 
@@ -130,7 +136,7 @@ function sessionIdQuery(c: Context<AppEnv>): string | undefined {
 }
 
 const STORAGES = new Set(["cookies", "cache", "storage"]);
-const BACKENDS: readonly BrowserBackend[] = ["builtin", "chrome"];
+const BACKENDS: readonly BrowserBackend[] = ["builtin", "chrome", "hosted"];
 
 /** What the routes need beside the browser. */
 export interface BrowserRouteDeps {
@@ -138,6 +144,8 @@ export interface BrowserRouteDeps {
   driverOf?(sessionId: string): Actor | null;
   /** The extension pairing; absent, the server offers no chrome and the extension routes 404. */
   pairing?: ExtensionPairing;
+  /** How a signed-out session ends the picture stream it opened; absent only in a test. */
+  revocation?: ViewRevocation;
 }
 
 const adminRequired = () =>
@@ -163,7 +171,17 @@ export function builtinBrowserRoutes(
   // The reason travels beside the code; every other error goes to the App's own handler.
   app.onError((err, c) => {
     if (err instanceof BrowserUnavailableError) {
-      return c.json({ error: { code: err.code, message: err.message, reason: err.reason } }, 503);
+      return c.json(
+        {
+          error: {
+            code: err.code,
+            message: err.message,
+            reason: err.reason,
+            ...(err.detail !== undefined ? { detail: err.detail } : {}),
+          },
+        },
+        503,
+      );
     }
     throw err;
   });
@@ -200,7 +218,7 @@ export function builtinBrowserRoutes(
     const body = await jsonBody(c);
     const backend = body.backend;
     if (typeof backend !== "string" || !BACKENDS.includes(backend as BrowserBackend)) {
-      throw badRequest('backend is "builtin" or "chrome".');
+      throw badRequest('backend is "builtin", "chrome" or "hosted".');
     }
     const actor = { userId: c.var.user.userId, isAdmin: c.var.user.isAdmin };
     return c.json(
@@ -269,6 +287,8 @@ export function builtinBrowserRoutes(
     browser.setOnScreen(actorOf(c, undefined), tabId);
     return c.body(null, 204);
   });
+
+  mountHostedRoutes(app, browser, queryActor, deps.revocation);
 
   app.post("/tabs/:tab/activate", async (c) => {
     const body = await jsonBody(c);
@@ -451,10 +471,13 @@ export function builtinBrowserRoutes(
   app.put("/settings", async (c) => {
     if (!c.var.user.isAdmin) throw adminRequired();
     const body = await jsonBody(c);
-    if (!("homepage" in body)) {
+    if (!("homepage" in body) && !("chromePath" in body)) {
       throw badRequest("homepage is required: a web address, or null for none.");
     }
-    const saved = await browser.updateSettings({ homepage: body.homepage });
+    const saved = await browser.updateSettings({
+      ...("homepage" in body ? { homepage: body.homepage } : {}),
+      ...("chromePath" in body ? { chromePath: body.chromePath } : {}),
+    });
     return c.json(saved satisfies BuiltinBrowserSettings);
   });
 
