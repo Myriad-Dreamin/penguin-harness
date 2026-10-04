@@ -8,6 +8,10 @@
  *   the app already uses) or whose file fails to load is left out with the reason, and the app
  *   boots without it; of two packages with one module name, the later is left out.
  * - Nothing forwarded (safe mode, signed out) boots the app's own tree.
+ * - A module forwarded without a file (data only) joins from its manifest, nothing imported: its
+ *   page removal reaches the shell's `pageRemovals` slot.
+ * - A plugin page joins the shell's `pages` slot with its `parent`, and its module `@Use`s an
+ *   interface the app provides (`Language`, by its own key, no `from`).
  * - The app shares its own React, JSX runtime, kernel and UI package with plugin modules, under
  *   the keys the plugin build resolves them to (scripts/lib/web-shared.mjs).
  */
@@ -16,7 +20,7 @@ import * as JsxRuntime from "react/jsx-runtime";
 import * as Kernel from "@prismshadow/penguin-core/kernel";
 // Aliased: gen-ifaces reads every `@Module` class of this package's program, tests included,
 // into the app's own table — these stand for plugin modules, whose manifests are forwarded.
-import { Bind, Module as PluginModule } from "@prismshadow/penguin-core/kernel";
+import { Bind, Module as PluginModule, Use } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, Contributed } from "@prismshadow/penguin-core/kernel";
 import * as Ui from "@prismshadow/penguin-ui";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
@@ -27,6 +31,8 @@ import { pluginModuleFailures } from "../src/plugins/assemble";
 import { SHARED_GLOBAL, SHARED_MODULES, shareHostModules } from "../src/plugins/shared";
 import { fileRenderersOf } from "../src/features/chat/deps";
 import { ChatModule } from "../src/features/chat/module";
+import { ShellModule } from "../src/shell/module";
+import type { Language } from "../src/plugin-types";
 
 const Player = () => null;
 let created: string[] = [];
@@ -52,6 +58,20 @@ class SlotProbe {
   }
 }
 
+const HelloView = () => null;
+let helloLanguage: Language | null = null;
+
+/** A plugin page whose module reads the app's interface language. */
+@PluginModule({})
+class HelloPlugin {
+  @Use() language!: Language;
+  @Bind("hello.page") page = HelloView;
+  setup() {
+    helloLanguage = this.language;
+    created.push("HelloPlugin");
+  }
+}
+
 /** A plugin module named like one of the app's own. */
 const Clash = (() => {
   @PluginModule({})
@@ -72,7 +92,7 @@ const manifest = (name: string, contributes: Record<string, unknown[]> = {}) => 
 
 const pkg = (
   name: string,
-  modules: Array<{ manifest: object; url: string }>,
+  modules: Array<{ manifest: object; url?: string }>,
 ): WebModulePackage => ({
   package: name,
   version: "1.0.0",
@@ -86,7 +106,41 @@ const MUSIC_MANIFEST = manifest("MusicPlugin", {
   "ChatModule.fileRenderers": [{ id: "music.audio", extensions: ["mp3", "WAV"] }],
 });
 
+const HELLO_MANIFEST = {
+  ...manifest("HelloPlugin", {
+    "ShellModule.pages": [
+      {
+        id: "hello.page",
+        key: "example-hello",
+        path: "/example-hello",
+        frame: "shell",
+        nav: "main",
+        admin: false,
+        released: true,
+        order: 72,
+        parent: "benchmark",
+        title: "Plugin page",
+        titleZh: "插件页面",
+        icon: "sparkle",
+      },
+    ],
+  }),
+  requires: { language: { iface: "@prismshadow/penguin-web#Language" } },
+};
+
+/** A data-only module as the server forwards it: no `file`, no URL. */
+const REMOVAL_MANIFEST = {
+  name: "NoBenchmark",
+  kind: "module",
+  requires: {},
+  provides: {},
+  contributes: { "ShellModule.pageRemovals": [{ id: "no-benchmark", key: "benchmark" }] },
+  children: [],
+  side: "web",
+};
+
 const classes: Record<string, unknown> = {
+  "/hello.js": HelloPlugin,
   "/music.js": MusicPlugin,
   "/probe.js": SlotProbe,
   "/clash.js": Clash,
@@ -99,6 +153,8 @@ const load = async (url: string) => {
 beforeEach(() => {
   created = [];
   renderers = [];
+  shellSlots = {};
+  helloLanguage = null;
   (pluginModuleFailures() as Map<string, string>).clear();
   vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -108,6 +164,14 @@ const chatSetup = ChatModule.prototype.setup;
 ChatModule.prototype.setup = function (this: InstanceType<typeof ChatModule>, ctx: ClassCtx) {
   renderers = ctx.contributions.fileRenderers ?? [];
   chatSetup.call(this, ctx);
+};
+
+// The shell keeps its slots; the test reads them off its setup.
+let shellSlots: Record<string, readonly Contributed[]> = {};
+const shellSetup = ShellModule.prototype.setup;
+ShellModule.prototype.setup = function (this: InstanceType<typeof ShellModule>, ctx: ClassCtx) {
+  shellSlots = ctx.contributions;
+  shellSetup.call(this, ctx);
 };
 
 describe("plugin web modules in the tree", () => {
@@ -123,6 +187,26 @@ describe("plugin web modules in the tree", () => {
       { id: "music.audio", extensions: ["mp3", "wav"], Renderer: Player },
     ]);
     expect(renderers.map((c) => c.from)).toEqual(["MusicPlugin"]);
+  });
+
+  it("a data-only module joins from its manifest, nothing imported", async () => {
+    const load = vi.fn(async () => ({}));
+    await bootWeb([pkg("@acme/no-benchmark", [{ manifest: REMOVAL_MANIFEST }])], load);
+    expect(load).not.toHaveBeenCalled();
+    expect(pluginModuleFailures().size).toBe(0);
+    expect(shellSlots.pageRemovals?.map((c) => [c.from, c.data.key])).toEqual([
+      ["NoBenchmark", "benchmark"],
+    ]);
+  });
+
+  it("a plugin page joins with its parent; its module reads the app's language by interface", async () => {
+    await bootWeb([pkg("@acme/hello", [{ manifest: HELLO_MANIFEST, url: "/hello.js" }])], load);
+    expect(pluginModuleFailures().size).toBe(0);
+    expect(created).toContain("HelloPlugin");
+    const page = shellSlots.pages?.find((c) => c.id === "hello.page");
+    expect(page?.data).toMatchObject({ key: "example-hello", parent: "benchmark" });
+    expect(page?.code).toBe(HelloView);
+    expect(["zh", "en"]).toContain(helloLanguage?.current());
   });
 
   it("boots the app's own tree when nothing is forwarded", async () => {

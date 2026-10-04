@@ -2135,7 +2135,6 @@ router
   .get("/api/contributions", (): ContributionsResponse => ({
     pages: [],
     webModules: [],
-    pageRemovals: [],
     agentTabs: [],
     sessionTabs: [],
     sessionSurfaces: [],

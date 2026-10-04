@@ -15,6 +15,7 @@
 import type { ComponentType } from "react";
 import { Interface } from "@prismshadow/penguin-core/kernel";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
+import type { FileRendererProps } from "../../plugin-types";
 
 /** One parked draft as a list shows it: unsent new-chat text set aside for later. */
 export interface ParkedDraft {
@@ -64,18 +65,7 @@ export interface SessionTabProps {
  */
 export type SessionTab = ComponentType<SessionTabProps>;
 
-/** What a file renderer is handed. */
-export interface FileRendererProps {
-  /** Where the file is fetched from: the open conversation's Workspace file URL. */
-  url: string;
-  /** The file's Workspace-relative path. */
-  path: string;
-  /** Its last path segment. */
-  name: string;
-  /** The interface language, for the renderer's own words. */
-  locale: "zh" | "en";
-}
-
+/** What a file renderer is handed: declared with the app's other plugin-facing types. */
 export type FileRenderer = ComponentType<FileRendererProps>;
 
 /** The data half of a `fileRenderers` contribution: the files it draws. */

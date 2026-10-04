@@ -7,7 +7,7 @@
  * The shell's chrome uses solid fills and makes no stacking context (a frosted glass or a
  * transform would trap the menus it opens); the package's components say how.
  */
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Outlet } from "react-router";
 import {
   AppShell,
@@ -28,6 +28,7 @@ import { useCompletionNotifications } from "../state/use-completion-notification
 import { useTrayLocale } from "../state/use-tray-locale";
 import { ChangePasswordDialog } from "../components/account/change-password-dialog";
 import { AppInfoDialog } from "../components/account/app-info-dialog";
+import { BootPending } from "../components/ui/boot-pending";
 
 /**
  * Whether the pinned sidebar (or its rail) is on screen: the shell's navigation column is
@@ -220,7 +221,11 @@ export function AppLayout() {
       )}
 
       <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
-        <Outlet />
+        {/* A page's component may be lazy (a plugin's page loads its code when first opened):
+            the content area shows the delayed loading line meanwhile, the nav stays. */}
+        <Suspense fallback={<BootPending />}>
+          <Outlet />
+        </Suspense>
       </main>
       {/* The layers modules contributed (ShellModule.layers): overlays and headless runtimes,
           mounted once here, outside every page, so navigating never remounts or re-parents
