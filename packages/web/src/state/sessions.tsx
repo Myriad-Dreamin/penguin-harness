@@ -162,6 +162,14 @@ interface SessionsContextValue {
    */
   loading: boolean;
   /**
+   * The rows on screen are this server's (and each machine's cached ones) while the machines'
+   * own answers are still on their way — the first list does not wait for them (see `round`).
+   * Not "a fetch is in flight": it is raised only for a list built before the machines
+   * answered. A caller deciding that a Session is NOT in the list, or which conversation is
+   * the latest, waits for this to fall; one showing a listed Session does not.
+   */
+  machinesPending: boolean;
+  /**
    * Whether a machine of this Project could not be asked this round — no connection is held
    * to it, or the server behind the connection did not answer.
    *
@@ -368,6 +376,8 @@ interface SessionsStoreState {
    */
   liveStatuses: ReadonlyMap<string, SessionStatus>;
   loading: boolean;
+  /** See the context's `machinesPending`. */
+  machinesPending: boolean;
 
   reload: () => Promise<void>;
   loadMoreFor: (
@@ -641,82 +651,77 @@ export function createSessionsStore() {
           source,
         }));
       });
-      try {
-        const results = await Promise.all(
-          jobs.map(async ({ agentId, source }) => {
-            // The Agent's whole-stream active first page (with per-category totals)
-            // always; plus the first page of every other pair already on screen — an
-            // open folder, and each Workspace group paging its own stream — because a
-            // reload triggered by a server event must refresh them, not blank them.
-            const pairs: { category: SessionCategory; scope: string }[] = [
-              { category: "active", scope: "" },
-            ];
-            for (const key of get().pageState.keys()) {
-              const parsed = parsePageKey(key);
-              if (parsed === null || parsed.agentId !== agentId || parsed.source !== source)
-                continue;
-              if (parsed.category === "active" && parsed.scope === "") continue;
-              pairs.push({ category: parsed.category, scope: parsed.scope });
-            }
-            try {
-              const pages = await Promise.all(
-                pairs.map(async ({ category, scope }) => {
-                  const res = await api.listSessions(
-                    projectId,
-                    agentId,
-                    {
-                      limit: SIDEBAR_PAGE_SIZE + 1,
-                      order: "activity",
-                      category,
-                      excludeOrg: true,
-                      ...(scope === "" ? {} : { workspaceGroup: scope }),
-                      ...(category === "active" && scope === "" ? { withCounts: true } : {}),
-                    },
-                    source,
-                  );
-                  return {
-                    category,
-                    scope,
-                    counts: res.counts,
-                    workspaceCounts: res.workspaceCounts,
-                    workspaceLatest: res.workspaceLatest,
-                    ...splitPage(res.sessions, SIDEBAR_PAGE_SIZE),
-                  };
-                }),
-              );
-              return { agentId, source, pages, answered: true };
-            } catch (err) {
-              // Two very different things arrive here, and treating them alike is what
-              // emptied the sidebar. An Agent is per-server, so a server simply not
-              // having this one answers 404: an ANSWER, and the ordinary case. Anything
-              // else — this server mid-swap, a connection held to a server that is not
-              // serving, the network — is a failure to answer at all, and an empty
-              // result standing in for it replaces rows that are perfectly alive.
-              const absent = err instanceof ApiError && err.status === 404;
-              return {
-                agentId,
-                source,
-                pages: [],
-                answered: absent,
-                reason: err instanceof Error ? err.message : String(err),
-              };
-            }
-          }),
-        );
-        // Whether each machine answered is a fact about the machine, whichever reload is
-        // current by now — recorded before a newer one discards this one's rows.
-        const unansweredMachines = new Set(
-          results.flatMap((r) => (r.source !== null && !r.answered ? [r.source] : [])),
-        );
-        for (const source of sources) {
-          if (source === null) continue;
-          noteMachineAnswer(
-            source,
-            results.some((r) => r.source === source && r.answered),
-            probed.has(source),
-          );
+      /** One (Agent, source) question: its pages, or why it was not answered. */
+      const fetchJob = async ({ agentId, source }: { agentId: string; source: string | null }) => {
+        // The Agent's whole-stream active first page (with per-category totals)
+        // always; plus the first page of every other pair already on screen — an
+        // open folder, and each Workspace group paging its own stream — because a
+        // reload triggered by a server event must refresh them, not blank them.
+        const pairs: { category: SessionCategory; scope: string }[] = [
+          { category: "active", scope: "" },
+        ];
+        for (const key of get().pageState.keys()) {
+          const parsed = parsePageKey(key);
+          if (parsed === null || parsed.agentId !== agentId || parsed.source !== source) continue;
+          if (parsed.category === "active" && parsed.scope === "") continue;
+          pairs.push({ category: parsed.category, scope: parsed.scope });
         }
-        if (g !== gen) return;
+        try {
+          const pages = await Promise.all(
+            pairs.map(async ({ category, scope }) => {
+              const res = await api.listSessions(
+                projectId,
+                agentId,
+                {
+                  limit: SIDEBAR_PAGE_SIZE + 1,
+                  order: "activity",
+                  category,
+                  excludeOrg: true,
+                  ...(scope === "" ? {} : { workspaceGroup: scope }),
+                  ...(category === "active" && scope === "" ? { withCounts: true } : {}),
+                },
+                source,
+              );
+              return {
+                category,
+                scope,
+                counts: res.counts,
+                workspaceCounts: res.workspaceCounts,
+                workspaceLatest: res.workspaceLatest,
+                ...splitPage(res.sessions, SIDEBAR_PAGE_SIZE),
+              };
+            }),
+          );
+          return { agentId, source, pages, answered: true };
+        } catch (err) {
+          // Two very different things arrive here, and treating them alike is what
+          // emptied the sidebar. An Agent is per-server, so a server simply not
+          // having this one answers 404: an ANSWER, and the ordinary case. Anything
+          // else — this server mid-swap, a connection held to a server that is not
+          // serving, the network — is a failure to answer at all, and an empty
+          // result standing in for it replaces rows that are perfectly alive.
+          const absent = err instanceof ApiError && err.status === 404;
+          return {
+            agentId,
+            source,
+            pages: [],
+            answered: absent,
+            reason: err instanceof Error ? err.message : String(err),
+          };
+        }
+      };
+      /**
+       * Builds the list from `results` and applies it; false when there was nothing to apply.
+       * `silent` machines contribute their cached rows, as ones out of reach do. Only the
+       * `final` build — every source's answer in — retries an unreadable server, rewrites the
+       * machine cache and retires adoption marks; an early one (this server's answers alone,
+       * every machine silent) only puts rows on screen sooner.
+       */
+      const apply = (
+        results: Awaited<ReturnType<typeof fetchJob>>[],
+        silent: ReadonlySet<string>,
+        final: boolean,
+      ): boolean => {
         // Agents this server did not answer about. Per Agent, not per server: a damaged
         // index or a 500 on ONE Agent is a different event from this server being
         // unreadable, and reading the first as the second is what leaves the page on a
@@ -733,6 +738,8 @@ export function createSessionsStore() {
         // again. This is the ordinary state during a hot swap and for the moment after a
         // reconnect.
         if (unanswered.size === agentIds.length && agentIds.length > 0) {
+          // Not yet: the whole round decides, and says so (below).
+          if (!final) return false;
           // Said out loud, and asked again on a timer: a page that opened during a swap or
           // a hiccup used to sit on the skeleton until some event happened to fire.
           const reasons = results
@@ -747,13 +754,9 @@ export function createSessionsStore() {
           setTimeout(() => {
             if (g === gen) void get().reload();
           }, delay);
-          return;
+          return false;
         }
-        retries = 0;
-        // Machines that did not answer are treated exactly like machines that were never
-        // asked: their rows come from the cache below, and their cache is left alone.
-        // So are resting ones, and a probed one: one Agent's answer is not the machine's list.
-        const silent = new Set([...unansweredMachines, ...rested]);
+        if (final) retries = 0;
         const nextSessions: SessionInfo[] = [];
         const seen = new Set<string>();
         // What each machine answered, kept so it can be shown after the next restart while
@@ -846,7 +849,7 @@ export function createSessionsStore() {
         // with nothing, which is how a Session deleted over there stops coming back from
         // the cache. A machine that went quiet during the fetch keeps its cache: erasing it
         // would leave the fallback with nothing to fall back to.
-        for (const machineId of machineIds) {
+        for (const machineId of final ? machineIds : []) {
           if (silent.has(machineId)) continue;
           rememberMachineSessions(projectId, machineId, rowsByMachine.get(machineId) ?? []);
         }
@@ -907,7 +910,9 @@ export function createSessionsStore() {
           seen.add(s.sessionId);
           nextSessions.push(s);
         }
-        for (const [sessionId, at] of adoptedAt) if (at <= adoptMark) adoptedAt.delete(sessionId);
+        if (final) {
+          for (const [sessionId, at] of adoptedAt) if (at <= adoptMark) adoptedAt.delete(sessionId);
+        }
         // Most recently active first across every source: each answered sorted, and
         // concatenating sorted lists does not give a sorted list.
         nextSessions.sort(mostRecentFirst);
@@ -915,13 +920,54 @@ export function createSessionsStore() {
         // through add() for the page showing it (an open desk or ticket session) and no
         // reload can bring it back: carry it over, or that page's writes stop reaching it.
         const held = get().sessions.filter((s) => isOrgSession(s) && !seen.has(s.sessionId));
+        const sessions = [...nextSessions, ...held];
         set({
-          sessions: [...nextSessions, ...held],
+          sessions,
           pageState: nextPageState,
           countsByAgent: nextCounts,
           workspaceCountsByAgent: nextWorkspaceCounts,
           workspaceLatestByAgent: nextWorkspaceLatest,
+          machinesPending: !final,
+          // An early list with rows in it is something to show; an empty one is not yet the
+          // answer "no Sessions", which only the whole round can give (`loading`'s contract).
+          ...(!final && sessions.length > 0 ? { loading: false } : {}),
         });
+        return true;
+      };
+      const answers = jobs.map(fetchJob);
+      // The first list on screen does not wait for the machines. Opening a Session of this
+      // server needs this server's rows only, and a machine's answer costs round trips over its
+      // connection: this server's rows (and each machine's cached ones) are applied as soon as
+      // they are in, and the whole round replaces them when the machines have answered.
+      // `machinesPending` says so meanwhile, so nothing reads the early list as complete.
+      const machineSources = sources.filter((source): source is string => source !== null);
+      if (get().sessions.length === 0 && machineSources.length > 0) {
+        const own = answers.filter((_, i) => jobs[i]!.source === null);
+        void Promise.all(own).then((ownResults) => {
+          if (g !== gen || applied) return;
+          apply(ownResults, new Set([...machineSources, ...rested]), false);
+        });
+      }
+      try {
+        const results = await Promise.all(answers);
+        // Whether each machine answered is a fact about the machine, whichever reload is
+        // current by now — recorded before a newer one discards this one's rows.
+        const unansweredMachines = new Set(
+          results.flatMap((r) => (r.source !== null && !r.answered ? [r.source] : [])),
+        );
+        for (const source of sources) {
+          if (source === null) continue;
+          noteMachineAnswer(
+            source,
+            results.some((r) => r.source === source && r.answered),
+            probed.has(source),
+          );
+        }
+        if (g !== gen) return;
+        // Machines that did not answer are treated exactly like machines that were never
+        // asked: their rows come from the cache, and their cache is left alone.
+        // So are resting ones, and a probed one: one Agent's answer is not the machine's list.
+        if (!apply(results, new Set([...unansweredMachines, ...rested]), true)) return;
         applied = true;
       } finally {
         // Only a reload that produced a list may report one. Abandoning above leaves the
@@ -959,6 +1005,7 @@ export function createSessionsStore() {
       workspaceLatestByAgent: new Map(),
       liveStatuses: new Map(),
       loading: true,
+      machinesPending: false,
 
       reload: () => {
         // One round in flight and at most one queued behind it: every trigger that arrives
@@ -1606,6 +1653,7 @@ export function SessionsProvider({
             // an unrelated reloadAgents() — same agent set, fired after every completed turn
             // — from flapping the app-wide flag.
             loading: true,
+            machinesPending: false,
           }
         : {}),
     });
@@ -1772,6 +1820,7 @@ export function SessionsProvider({
       hasMoreFor,
       activityWatermarkFor,
       loading: state.loading,
+      machinesPending: state.machinesPending,
       machinesUnreachable: state.offlineMachineIds.length > 0,
       offlineMachineIds: state.offlineMachineIds,
       reload: state.reload,

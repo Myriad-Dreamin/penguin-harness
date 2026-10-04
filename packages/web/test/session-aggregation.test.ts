@@ -18,6 +18,8 @@ const answers = new Map<string, Answer>();
 /** Which servers were asked, and for which Workspace group — what the fan-out tests read. */
 const asked: { machineId: string | null; workspaceGroup?: string }[] = [];
 const key = (machineId: string | null, agentId: string) => `${machineId ?? ""}|${agentId}`;
+/** Answers held back until their gate opens — a machine whose answer is still on its way. */
+const gates = new Map<string, Promise<void>>();
 
 vi.mock("../src/api/endpoints", () => ({
   listSessions: async (
@@ -30,6 +32,7 @@ vi.mock("../src/api/endpoints", () => ({
       machineId: machineId ?? null,
       ...(opts?.workspaceGroup === undefined ? {} : { workspaceGroup: opts.workspaceGroup }),
     });
+    await gates.get(key(machineId ?? null, agentId));
     const answer = answers.get(key(machineId ?? null, agentId));
     if (answer === undefined) throw new ApiError(0, "network_error", "no answer");
     if (answer instanceof Error) throw answer;
@@ -82,6 +85,7 @@ describe("the list across machines", () => {
   const originalStorage = (globalThis as { localStorage?: Storage }).localStorage;
   beforeEach(() => {
     answers.clear();
+    gates.clear();
     asked.length = 0;
     (globalThis as { localStorage?: Storage }).localStorage = memoryStorage();
   });
@@ -239,6 +243,95 @@ describe("the list across machines", () => {
     asked.length = 0;
     await store.getState().loadMoreFor(["a1"], "active", "/w");
     expect(asked).toEqual([{ machineId: null, workspaceGroup: "/w" }]);
+  });
+
+  /** Holds `machineId`'s answers about a1 back until the returned function is called. */
+  const holdBack = (machineId: string): (() => void) => {
+    let open: () => void = () => undefined;
+    gates.set(key(machineId, "a1"), new Promise<void>((resolve) => (open = resolve)));
+    return open;
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("the first list does not wait for the machines: this server's rows show, then theirs join", async () => {
+    // Opening a Session of this server needs this server's row alone; waiting for every
+    // machine put each machine's round trips in front of every local open.
+    answers.set(key(null, "a1"), page([row("here", "2026-01-02T00:00:00Z")], 1));
+    answers.set(key("M1", "a1"), page([row("there", "2026-01-03T00:00:00Z")], 2));
+    rememberMachineSessions("p", "M1", [row("m1-cached", "2026-01-01T00:00:00Z")]);
+    const release = holdBack("M1");
+    const store = boot(["M1"]);
+    const done = store.getState().reload();
+    await settle();
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["here", "m1-cached"]);
+    expect(store.getState().loading).toBe(false);
+    expect(store.getState().machinesPending).toBe(true);
+    // A cached row is routed to its machine, as an offline machine's is.
+    expect(machineForSession("m1-cached")).toBe("M1");
+    // Nothing the early list holds is remembered as the machine's answer.
+    expect(cachedMachineSessions("p", "M1").map((s) => s.sessionId)).toEqual(["m1-cached"]);
+
+    release();
+    await done;
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["there", "here"]);
+    expect(store.getState().machinesPending).toBe(false);
+    expect(store.getState().countsByAgent.get("a1")?.active).toBe(3);
+    expect(cachedMachineSessions("p", "M1").map((s) => s.sessionId)).toEqual(["there"]);
+  });
+
+  it("a machine that fails after the early list keeps its cached rows and settles the list", async () => {
+    answers.set(key(null, "a1"), page([row("here", "2026-01-02T00:00:00Z")], 1));
+    rememberMachineSessions("p", "M1", [row("m1-cached", "2026-01-01T00:00:00Z")]);
+    const release = holdBack("M1"); // and no answer behind the gate: a network error
+    const store = boot(["M1"]);
+    const done = store.getState().reload();
+    await settle();
+    expect(store.getState().machinesPending).toBe(true);
+    release();
+    await done;
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["here", "m1-cached"]);
+    expect(store.getState().machinesPending).toBe(false);
+    expect(machineForSession("m1-cached")).toBe("M1");
+  });
+
+  it("an early list with nothing in it is not yet 'no Sessions'", async () => {
+    answers.set(key(null, "a1"), page([], 0));
+    answers.set(key("M1", "a1"), page([row("there", "2026-01-03T00:00:00Z")], 1));
+    const release = holdBack("M1");
+    const store = boot(["M1"]);
+    const done = store.getState().reload();
+    await settle();
+    expect(store.getState().loading).toBe(true);
+    release();
+    await done;
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["there"]);
+    expect(store.getState().loading).toBe(false);
+    expect(store.getState().machinesPending).toBe(false);
+  });
+
+  it("a refresh over rows on screen waits for every source, as before", async () => {
+    answers.set(key(null, "a1"), page([row("here", "2026-01-02T00:00:00Z")], 1));
+    answers.set(key("M1", "a1"), page([row("there", "2026-01-03T00:00:00Z")], 1));
+    const store = boot(["M1"]);
+    await store.getState().reload();
+    answers.set(
+      key(null, "a1"),
+      page([row("here", "2026-01-02T00:00:00Z"), row("new", "2026-01-04T00:00:00Z")], 2),
+    );
+    const release = holdBack("M1");
+    let pending = false;
+    const unsubscribe = store.subscribe((state) => {
+      if (state.machinesPending) pending = true;
+    });
+    const done = store.getState().reload();
+    await settle();
+    // Not rebuilt from this server's half: "there" would leave and come back.
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["there", "here"]);
+    release();
+    await done;
+    unsubscribe();
+    expect(pending).toBe(false);
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["new", "there", "here"]);
   });
 
   it("a refresh over rows already on screen does not raise loading", async () => {
