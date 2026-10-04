@@ -11,7 +11,7 @@
  * - Opened, the licences fold's links and buttons join the ring after its toggle, and Tab from
  *   the last of them still wraps to the close button.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { nextFocusIndex } from "@prismshadow/penguin-ui";
@@ -70,6 +70,14 @@ function panelContent(html: string, id: string): string | null {
   const end = html.indexOf(`</${m[1]}>`, m.index);
   return html.slice(m.index + m[0].length, end);
 }
+
+// The licences load on their fold's first opening (a deferred component): one opened render starts
+// the load, and once the module has arrived every later render draws them directly.
+beforeAll(async () => {
+  render({ licensesExpanded: true });
+  await import("../src/components/account/credits-list");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+});
 
 afterEach(() => {
   setActiveStrings(zh);

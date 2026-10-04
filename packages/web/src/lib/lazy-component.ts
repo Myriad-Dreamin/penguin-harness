@@ -18,7 +18,7 @@
  * renders the target directly, with no suspension, on every later mount.
  */
 import { createElement, use } from "react";
-import type { ComponentProps, ComponentType, FunctionComponent } from "react";
+import type { ComponentType, FunctionComponent } from "react";
 
 /** A deferred component: render it under a `<Deferred>` boundary; `preload()` starts its load early. */
 export type LazyComponent<P> = FunctionComponent<P> & { preload(): Promise<void> };
@@ -43,17 +43,17 @@ export function isChunkLoadError(error: unknown): error is ChunkLoadError {
  * The named export `name` of the module `load` imports, as a deferred component. `load` must be
  * an `import()` of a file in the binding module's own directory (test/module-boundaries.test.ts).
  */
-export function lazyComponent<
-  M extends Record<K, ComponentType<never>>,
-  K extends keyof M & string,
->(load: () => Promise<M>, name: K): LazyComponent<ComponentProps<M[K]>> {
-  type C = ComponentType<ComponentProps<M[K]>>;
+export function lazyComponent<P extends object, K extends string>(
+  load: () => Promise<Record<K, ComponentType<P>>>,
+  name: K,
+): LazyComponent<P> {
+  type C = ComponentType<P>;
   let loaded: C | null = null;
   let pending: Promise<C> | null = null;
   const start = (): Promise<C> =>
     (pending ??= load().then(
       (module) => {
-        const target = module[name] as unknown as C | undefined;
+        const target = module[name] as C | undefined;
         if (target === undefined) throw new ChunkLoadError(name, new Error(`no export ${name}`));
         loaded = target;
         return target;
@@ -64,7 +64,7 @@ export function lazyComponent<
         throw new ChunkLoadError(name, error);
       },
     ));
-  function Lazy(props: ComponentProps<M[K]>) {
+  function Lazy(props: P) {
     return createElement(loaded ?? use(start()), props);
   }
   Lazy.displayName = `Lazy(${name})`;
