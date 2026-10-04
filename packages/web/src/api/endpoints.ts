@@ -276,7 +276,7 @@ import type {
   WorkspacePullRequestResponse,
 } from "@prismshadow/penguin-server/api";
 import type { MCPServerConfig } from "@prismshadow/penguin-core/interfaces";
-import { apiFetch, apiFetchWithMeta } from "./client";
+import { apiFetch, apiFetchWithMeta, sharedRead } from "./client";
 import { rememberSessionsIn, rememberOrgMachine } from "../lib/org-machines";
 import { machineForSession, rememberSessionMachine } from "../lib/session-machines";
 import { apiUrl } from "../lib/server-context";
@@ -312,7 +312,8 @@ export const changePassword = (body: PasswordChangeRequest) =>
 export const updateProfile = (body: UpdateProfileRequest) =>
   apiFetch<UpdateProfileResponse>("/api/me/profile", { method: "PUT", body });
 
-export const getPrefs = () => apiFetch<PrefsResponse>("/api/me/prefs");
+/** Shared while in flight: several surfaces read the prefs as the page mounts (client.ts sharedRead). */
+export const getPrefs = () => sharedRead("prefs", () => apiFetch<PrefsResponse>("/api/me/prefs"));
 
 export const putPrefs = (prefs: UiPrefs) =>
   apiFetch<PrefsResponse>("/api/me/prefs", { method: "PUT", body: prefs });
@@ -443,10 +444,13 @@ export const putCommandPolicy = (
 // Model configuration -------------------------------------------------------------------
 
 /** The Project's models on this server, or on the machine named: model config is per server. */
+/** Shared while in flight: the chat page and the todo list both read it as the page mounts (client.ts sharedRead). */
 export const getModels = (projectId: string, machineId: string | null = null) =>
-  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {
-    server: machineId,
-  });
+  sharedRead(`models\u0000${projectId}\u0000${machineId ?? ""}`, () =>
+    apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {
+      server: machineId,
+    }),
+  );
 
 export const putModels = (projectId: string, body: ModelsUpdateRequest) =>
   apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {

@@ -25,10 +25,15 @@ export function useProjectModels(projectId: string | null) {
     setModels(null);
     void (async () => {
       try {
+        // Asked together, so the prefs read joins the one the page's other surfaces are
+        // already making (api/client.ts sharedRead) instead of following the models in a
+        // request of its own.
+        const prefsRead = api.getPrefs();
+        prefsRead.catch(() => undefined); // read below, after the models; never unhandled
         const res = await api.getModels(projectId);
         if (cancelled) return;
         setModels(res);
-        const { prefs } = await api.getPrefs();
+        const { prefs } = await prefsRead;
         if (cancelled || prefs.credentialGuideSeen) return;
         const def = res.models.find((m) => sameModelRef(m, res.defaultModel));
         const missing = !res.defaultModel || !def || !hasConfiguredKey(def);

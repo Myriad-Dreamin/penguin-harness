@@ -96,6 +96,37 @@ export interface ApiFetchMeta {
   etag: string | null;
 }
 
+/**
+ * Writes this page has sent, counted. A shared read (below) is joined only by callers asking
+ * under the same count, so no read sent before a write is handed to a caller who asked after it.
+ */
+let writes = 0;
+
+/** Reads in flight that later callers may join, by the key their endpoint gave them. */
+const sharedReads = new Map<string, { writes: number; answer: Promise<unknown> }>();
+
+/**
+ * One request for every caller that asks while it is in flight and no write has been sent
+ * since it left — several surfaces mounting at once each read the same resource (the user's
+ * prefs, a Project's models), and each used to send its own copy. Nothing is kept once it
+ * settles: the next caller after that asks the server again. Every caller gets its own copy
+ * of the answer, so one that edits what it got cannot change another's.
+ */
+export function sharedRead<T>(key: string, read: () => Promise<T>): Promise<T> {
+  let entry = sharedReads.get(key);
+  if (entry === undefined || entry.writes !== writes) {
+    const answer: Promise<unknown> = read();
+    const held = { writes, answer };
+    const settled = () => {
+      if (sharedReads.get(key) === held) sharedReads.delete(key);
+    };
+    answer.then(settled, settled);
+    sharedReads.set(key, held);
+    entry = held;
+  }
+  return entry.answer.then((value) => structuredClone(value) as T);
+}
+
 /** Whether this runtime can open a WebSocket at all (one without it only ever fetches). */
 const socketPossible = (): boolean => typeof WebSocket !== "undefined";
 
@@ -127,6 +158,7 @@ export async function apiFetchWithMeta<T>(
   }
 
   const method = options.method ?? "GET";
+  if (!isReadMethod(method)) writes += 1;
   // Over the socket when it is open, except what stays on HTTP by design: the auth routes
   // and `/api/me` are the runtime's (the socket answers them 421), and `/api/me` is also
   // where the cookie's own session facts come from — the socket knows only the user.
@@ -293,6 +325,7 @@ async function callOverHttp(method: string, url: string, body: unknown): Promise
 export async function apiRequest(url: string, init: { method?: string } = {}): Promise<Response> {
   const path = url.split("?")[0] ?? url;
   const local = !url.startsWith("/server/");
+  if (!isReadMethod(init.method ?? "GET")) writes += 1;
   const overSocket = !(local && httpOnly(path)) && socketPossible() && (await apiSocket.ready());
   if (overSocket) {
     try {

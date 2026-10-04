@@ -77,6 +77,14 @@ export async function apiFetchWithMeta<T>(
 }
 
 /** `fetch` for the callers that read the Response themselves (the app's `apiRequest`), answered by the router. */
+/**
+ * The app's in-flight read sharing, reduced to a plain read: the demo store answers locally,
+ * so there is no duplicate request to save.
+ */
+export function sharedRead<T>(_key: string, read: () => Promise<T>): Promise<T> {
+  return read();
+}
+
 export async function apiRequest(url: string, init: { method?: string } = {}): Promise<Response> {
   await beat();
   return answerAsResponse((init.method ?? "GET") as Method, url, undefined);
