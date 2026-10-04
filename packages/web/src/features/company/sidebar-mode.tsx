@@ -1,10 +1,11 @@
 /**
  * Company mode in the sidebar (`SidebarModule.modes` and `.sections`): the work mode beside
  * development, with the organization's six pages and the company-mode pages plugins contribute
- * as its nav rows, and its three sections — the organization switcher where the Project switcher
+ * as its nav rows, and its four sections — the organization switcher where the Project switcher
  * stands; the channel list where the conversation list is (or, with no organization yet, the
- * block that creates one); and the organization's 工位 group, one row per employee's desk, with
- * its Temporary entries.
+ * block that creates one); the organization's ROADMAPS below it, while the roadmaps plugin is
+ * there; and the organization's 工位 group, one row per employee's desk, with its Temporary
+ * entries.
  */
 import { useLocation, useMatch } from "react-router";
 import { RailDivider } from "@prismshadow/penguin-ui";
@@ -24,6 +25,7 @@ import {
 import { useOrgPages } from "./use-org-pages";
 import { NoOrganizationsSidebar, OrgSwitcher } from "./org-switcher";
 import { ChannelRailRows, ChannelSidebar, DefaultChannelRailRow } from "./channel-sidebar";
+import { RoadmapsSidebar } from "./roadmaps-sidebar";
 import { DeskRailRows, OrgSessionGroups, TempSessionRailRows } from "./org-session-groups";
 
 /** The organization the sidebar points at: the open one, else the one last opened (the switcher names the same). */
@@ -109,6 +111,21 @@ function ChannelsRail() {
 }
 
 export const companyChannels: SidebarSection = { Full: Channels, Rail: ChannelsRail };
+
+/** The organization's roadmaps, below its channels; the section hides itself without the roadmaps plugin. No rail form. */
+function Roadmaps({ onNavigate }: { onNavigate?: () => void }) {
+  const navOrg = useNavOrg();
+  if (navOrg === null) return null;
+  return (
+    <RoadmapsSidebar
+      projectId={navOrg.projectId}
+      orgId={navOrg.orgId}
+      {...(onNavigate ? { onNavigate } : {})}
+    />
+  );
+}
+
+export const companyRoadmaps: SidebarSection = { Full: Roadmaps };
 
 function Desks({ onNavigate }: { onNavigate?: () => void }) {
   const navOrg = useNavOrg();
