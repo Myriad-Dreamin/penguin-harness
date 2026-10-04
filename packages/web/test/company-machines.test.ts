@@ -65,4 +65,31 @@ describe("the organization listing", () => {
     expect(store.getState().organizations.map((o) => o.orgId)).toEqual(["acme"]);
     expect(store.getState().orgsPartial).toBe(true);
   });
+
+  it("reads the routed Project alone as a partial list, and lets the later full read win", async () => {
+    // An organization page opened by URL reads its Project's list before the Project list is
+    // in; that early answer must never replace the full one if it lands after it.
+    let answerEarly: (v: unknown) => void = () => undefined;
+    listOrganizations
+      .mockImplementationOnce(() => new Promise((resolve) => (answerEarly = resolve)))
+      .mockImplementation(async (projectId: string) => ({
+        organizations: [projectId === "p1" ? org("acme") : org("lab", { projectId })],
+      }));
+    const store = createCompanyStore();
+    const early = store.getState().reloadOrganizations(["p1"], true);
+    await store.getState().reloadOrganizations(["p1", "p2"]);
+    answerEarly({ organizations: [org("acme")] });
+    await early;
+    expect(store.getState().organizations.map((o) => o.orgId)).toEqual(["acme", "lab"]);
+    expect(store.getState().orgsPartial).toBe(false);
+    expect(store.getState().orgsLoading).toBe(false);
+  });
+
+  it("marks the routed Project's early list partial, so nothing is forgotten from it", async () => {
+    listOrganizations.mockResolvedValue({ organizations: [org("acme")] });
+    const store = createCompanyStore();
+    await store.getState().reloadOrganizations(["p1"], true);
+    expect(store.getState().orgsLoaded).toBe(true);
+    expect(store.getState().orgsPartial).toBe(true);
+  });
 });

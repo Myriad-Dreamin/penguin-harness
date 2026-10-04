@@ -2056,8 +2056,11 @@ const orgBase = (projectId: string, orgId?: string) =>
  * RUNS there and says so (`machineId`); that is remembered (lib/org-machines.ts), which is what
  * routes every organization-scoped call below without any of them naming a machine.
  */
+/** Shared while in flight: an organization page opened by URL reads its Project's list before the full read does (client.ts sharedRead). */
 export const listOrganizations = (projectId: string) =>
-  apiFetch<OrganizationsResponse>(orgBase(projectId));
+  sharedRead(`organizations\u0000${projectId}`, () =>
+    apiFetch<OrganizationsResponse>(orgBase(projectId)),
+  );
 
 /**
  * Creates the organization in this Project. With `workspaceMachine` it is created ON that

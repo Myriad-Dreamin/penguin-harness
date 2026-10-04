@@ -310,7 +310,12 @@ interface CompanyStoreState {
   adoptLastOrg: () => void;
   reloadChannels: (projectId: string, orgId: string) => Promise<void>;
   markChannelRead: (channelId: string) => void;
-  reloadOrganizations: (projectIds: readonly string[]) => Promise<void>;
+  /**
+   * Reads the organization lists of `projectIds`. `partial` marks the result as covering only
+   * some of the user's Projects (the routed one, read before the Project list has arrived).
+   * A read started later wins over one still in flight.
+   */
+  reloadOrganizations: (projectIds: readonly string[], partial?: boolean) => Promise<void>;
   forgetMissingOrganizations: () => void;
   reloadOrgSessions: (projectId: string) => Promise<void>;
   /** A desk was bound to a messaging bot here (or unbound: null): its row's mark follows without a re-read. */
@@ -403,6 +408,8 @@ export async function heldMachines(projectId: string): Promise<HeldMachine[]> {
  */
 export function createCompanyStore(options: { serverEnabled?: boolean } = {}) {
   const proposalsRetry = createProposalsRetry();
+  /** Organization list reads started, counted: only the newest one's answer is applied. */
+  let orgsReads = 0;
   return createStore<CompanyStoreState>((set, get) => ({
     serverEnabled: options.serverEnabled ?? false,
     personalEnabled: true,
@@ -571,7 +578,8 @@ export function createCompanyStore(options: { serverEnabled?: boolean } = {}) {
       });
     },
 
-    reloadOrganizations: async (projectIds) => {
+    reloadOrganizations: async (projectIds, partial = false) => {
+      const seq = ++orgsReads;
       set({ orgsLoading: true });
       try {
         // One list, from this server: an organization belongs to the Project. One whose shared
@@ -588,6 +596,9 @@ export function createCompanyStore(options: { serverEnabled?: boolean } = {}) {
           ),
         );
         const sources = lists;
+        // Overtaken by a later read (the full list after the routed Project's alone, a version
+        // bump): that one's answer is the newer, and this one must not replace it.
+        if (seq !== orgsReads) return;
         const organizations = sources.filter((list) => list !== null).flat();
         forgetOrgMachines();
         for (const org of organizations) {
@@ -596,10 +607,10 @@ export function createCompanyStore(options: { serverEnabled?: boolean } = {}) {
         set({
           organizations,
           orgsLoaded: true,
-          orgsPartial: sources.some((list) => list === null),
+          orgsPartial: partial || sources.some((list) => list === null),
         });
       } finally {
-        set({ orgsLoading: false });
+        if (seq === orgsReads) set({ orgsLoading: false });
       }
     },
 
@@ -980,6 +991,17 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
     void store.getState().reloadOrganizations(projectIdsKey.split(","));
   }, [store, serverEnabled, projectIdsKey, orgsVersion]);
+
+  // An organization page opened by URL names its Project: that Project's list is read at once,
+  // without waiting for the Project list the full read above needs — an organization page
+  // renders only once the list says which machine the organization runs on (org-layout.tsx),
+  // so this wait was one more round trip in front of every such page. The full read replaces
+  // it when the Projects are known (and joins this request if it is still in flight).
+  const routedProjectId = parseOrgKey(state.currentOrgKey)?.projectId ?? null;
+  useEffect(() => {
+    if (!serverEnabled || projectIdsKey !== "" || routedProjectId === null) return;
+    void store.getState().reloadOrganizations([routedProjectId], true);
+  }, [store, serverEnabled, projectIdsKey, routedProjectId, orgsVersion]);
 
   const { orgsLoaded, orgsPartial } = state;
   const orgListKey = state.organizations.map((o) => orgKey(o.projectId, o.orgId)).join(",");
