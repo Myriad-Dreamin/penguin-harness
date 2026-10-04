@@ -12,6 +12,7 @@ cycle: features/chat -> features/proposals
 cycle: features/chat -> features/schedules
 cycle: features/chat -> features/settings
 cycle: features/chat -> features/skills
+cycle: features/chat -> shell
 cycle: features/company -> features/chat
 cycle: features/company -> features/model-picker
 cycle: features/company -> features/models

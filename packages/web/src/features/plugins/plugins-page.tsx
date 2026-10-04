@@ -91,7 +91,7 @@ import { agentDisplayName, useProject } from "../../state/project";
 import { useSessions } from "../../state/sessions";
 import { MachinePicker, type MachineChoice } from "../machines/machine-picker";
 import { NAV_ICONS } from "../../lib/nav-icons";
-import { useContributions } from "../../state/contributions";
+import { useContributions } from "../../shell";
 import {
   DRAFT_SESSION_ID,
   draftKey,
