@@ -99,10 +99,16 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   await page.goto(`${BASE}/chat/${sessionId}`);
   const ta = page.getByPlaceholder(/输入消息/);
   await ta.waitFor();
-  // The module's file and stylesheet came with the app; the player's chunk has not.
-  expect(requested.some((p) => p.endsWith("/ExampleMusic.js"))).toBe(true);
+  // The module's file and stylesheet came with the app; the player's chunk — the one the module
+  // file imports lazily — has not.
+  const moduleUrl = forwarded.webModules[0].modules[0].url;
+  expect(requested).toContain(moduleUrl);
   expect(requested.some((p) => p.endsWith("/styles.css"))).toBe(true);
-  expect(requested.filter((p) => /\/chunk-[^/]+\.js$/.test(p))).toEqual([]);
+  const moduleCode = await (await page.request.get(`${BASE}${moduleUrl}`)).text();
+  const lazyChunk = /import\("\.\/(chunk-[^"]+\.js)"\)/.exec(moduleCode)?.[1];
+  expect(lazyChunk, "the module file imports the player lazily").toBeTruthy();
+  const playerRequested = () => requested.some((p) => p.endsWith(`/${lazyChunk}`));
+  expect(playerRequested()).toBe(false);
   await expect(page.locator('link[data-plugin="@penguinharness/example-music"]')).toHaveCount(1);
   await ta.fill("music link test");
   await page.getByRole("button", { name: "发送" }).click();
@@ -115,7 +121,7 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   await expect(below.locator("audio")).toHaveCount(1);
   const player = below.locator("audio");
   // The reply linked an audio file: now the player's chunk is fetched.
-  expect(requested.filter((p) => /\/chunk-[^/]+\.js$/.test(p)).length).toBeGreaterThan(0);
+  expect(playerRequested()).toBe(true);
   // The card is drawn with the plugin's own stylesheet: the clock's `min-w-[11ch]` is a utility
   // only the player uses, and the card's radius and surface read the host's tokens.
   const card = below.locator("[data-audio-file]");

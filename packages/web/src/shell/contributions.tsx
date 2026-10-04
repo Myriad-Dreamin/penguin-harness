@@ -50,7 +50,7 @@ import type {
   SessionSurfaceSummary,
 } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
-import { assembleAfterSignIn, takeBootContributions } from "../plugins/forwarded";
+import { assembleIfBootedWithout, takeBootContributions } from "../plugins/forwarded";
 import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -291,8 +291,9 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
     }),
     [compiled, answer, pageRenderers, pending, store],
   );
-  // A sign-in after a signed-out boot: the tree was assembled without the plugins' web modules.
-  useEffect(() => assembleAfterSignIn(answer), [answer]);
+  // An answer after a boot that got none (a sign-in, leaving safe mode): the tree was assembled
+  // without the plugins' web modules.
+  useEffect(() => assembleIfBootedWithout(answer), [answer]);
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
 }
 

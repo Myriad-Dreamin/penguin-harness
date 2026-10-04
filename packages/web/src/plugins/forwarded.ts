@@ -7,11 +7,12 @@
  * The same answer is the shell's first contributions answer (shell/contributions.tsx takes it
  * once instead of asking again): the list is the server's, the same for every user.
  *
- * Nothing is asked in safe mode, and a signed-out boot (401) gets no plugins. Both change only
- * with a reload, which these do:
- * - a sign-in after a signed-out boot, once the shell's answer shows web modules to assemble;
- * - a safe mode switch, either way, when it changes what the tree would hold.
- * The tree is assembled once per page; re-assembling in place is not done.
+ * Nothing is asked in safe mode, and a signed-out boot (401) or one whose request failed gets no
+ * plugins. The tree is assembled once per page — re-assembling in place is not done — so a change
+ * of what it should hold is a reload:
+ * - the shell's first answer after a boot that got none (a sign-in, leaving safe mode, a failed
+ *   boot request) reloads once it shows web modules to assemble;
+ * - entering safe mode while plugin modules are assembled reloads without them.
  */
 import type { ContributionsResponse } from "@prismshadow/penguin-server/api";
 import { isSafeMode, onSafeModeChange } from "../rescue/safe-mode";
@@ -20,7 +21,8 @@ import { isSafeMode, onSafeModeChange } from "../rescue/safe-mode";
 const BOOT_WAIT_MS = 5000;
 
 let primed: ContributionsResponse | null = null;
-let anonymous = false;
+/** Whether the boot's request was answered: the tree then holds what the server forwarded. */
+let answered = false;
 
 /** The boot's answer; null in safe mode, signed out, on any failure, or after BOOT_WAIT_MS. */
 export async function fetchBootContributions(): Promise<ContributionsResponse | null> {
@@ -31,9 +33,9 @@ export async function fetchBootContributions(): Promise<ContributionsResponse | 
     // Not through the api client: its 401 handler signs the app out, and a signed-out boot is
     // not a failure here.
     const res = await fetch("/api/contributions", { signal: ctrl.signal });
-    if (res.status === 401) anonymous = true;
     if (!res.ok) return null;
     primed = (await res.json()) as ContributionsResponse;
+    answered = true;
     return primed;
   } catch {
     return null;
@@ -59,26 +61,22 @@ function reloadOnce(): void {
     if (Date.now() - last < RELOAD_GUARD_MS) return;
     sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
   } catch {
-    // No storage: reload anyway; a signed-in reload asks with the cookie and stops here.
+    // No storage: reload anyway; the reloaded boot is answered and stops here.
   }
   location.reload();
 }
 
 /**
- * Called with the shell's answer for a signed-in user: after a signed-out boot, web modules to
- * assemble mean the tree was booted without them, and a reload boots it with them.
+ * Called with each of the shell's answers: after a boot that got none, web modules to assemble
+ * mean the tree was booted without them, and a reload boots it with them.
  */
-export function assembleAfterSignIn(answer: ContributionsResponse | null): void {
-  if (anonymous && (answer?.webModules?.length ?? 0) > 0) reloadOnce();
+export function assembleIfBootedWithout(answer: ContributionsResponse | null): void {
+  if (!answered && (answer?.webModules?.length ?? 0) > 0) reloadOnce();
 }
 
-/**
- * After the boot: a safe mode switch reloads when it changes the tree — leaving safe mode (the
- * boot asked for nothing), or entering it while plugin modules are assembled.
- */
+/** After the boot: entering safe mode while plugin modules are assembled reloads without them. */
 export function reloadOnSafeModeChange(assembledPlugins: boolean): void {
-  const bootedSafe = isSafeMode();
   onSafeModeChange((safe) => {
-    if (bootedSafe ? !safe : safe && assembledPlugins) location.reload();
+    if (safe && assembledPlugins) location.reload();
   });
 }
