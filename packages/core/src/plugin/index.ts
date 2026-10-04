@@ -39,7 +39,7 @@
  */
 import type { ModuleClass } from "../kernel/decorators.js";
 
-export type { ClassCtx } from "../kernel/module.js";
+export type { ClassCtx } from "../kernel/module-def.js";
 export type { ComponentMeta, ModuleClass, ModuleMeta } from "../kernel/decorators.js";
 export { Bind, Component, Module, Provide, Use } from "../kernel/decorators.js";
 export type { Opaque, Slot } from "../kernel/markers.js";

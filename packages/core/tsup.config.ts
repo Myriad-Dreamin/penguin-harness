@@ -21,6 +21,10 @@ export default defineConfig({
     "src/llm/context-limits.ts",
     // Hot-update kernel: zero-dependency subpath so web can bundle it directly.
     "src/kernel/index.ts",
+    // The kernel's runtime half: boots a verified module tree with no arktype in its import
+    // graph — what the web's boot path imports. Shares its chunks (the decorators' state
+    // among them) with the full kernel entry and the plugin entry.
+    "src/kernel/runtime.ts",
     // A2UI block grammar: pure TypeScript, no Node dependency, so the web renderer bundles the
     // same parser and fallback the checker script uses (cli.ts is bundled separately by
     // scripts/build-a2ui-check.mjs and is deliberately not an entry here).

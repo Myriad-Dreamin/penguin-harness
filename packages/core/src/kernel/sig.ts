@@ -16,6 +16,7 @@
 import type { Json } from "./json.js";
 import type { TypeTable } from "./data.js";
 import { acceptsUndefined, dataExtends } from "./data.js";
+import { tableOf } from "./table.js";
 
 /** A type, as data. */
 export type TypeExpr =
@@ -87,14 +88,6 @@ export interface IfaceTable {
 
 /** The table as functions take it: the full form, or just the interface map. */
 export type TableLike = IfaceTable | Record<string, IfaceDecl>;
-
-export function tableOf(t: TableLike | undefined): IfaceTable {
-  if (t === undefined) return { ifaces: {}, types: {} };
-  if ("ifaces" in t && "types" in t && typeof t.ifaces === "object" && !("methods" in t.ifaces)) {
-    return t as IfaceTable;
-  }
-  return { ifaces: t as Record<string, IfaceDecl>, types: {} };
-}
 
 export interface Mismatch {
   /** The method or field. */
