@@ -1,26 +1,27 @@
 /**
  * A plugin's two sides at build time (scripts/lib/plugin-sides.mjs, scripts/build-plugin.mjs).
  *
- * - gen-ifaces' side decision: a module contributing to a platform slot is a platform module, one
- *   contributing to a web slot a web module; one naming a module neither host has, or a slot its
- *   owner lacks, is an error naming the module; one wired to both sides is an error; a module that
- *   names no module stays on the platform; a module wired to another of the package's modules, or
- *   to a module of a plugin it depends on, takes its side; one source file holding both sides is an error.
+ * - A module runs on the side it declares (`@Module({ side: "web" })`), the platform when it
+ *   declares none; a side that is neither is an error. Every web module gets its built file.
+ *   One source file holding both sides is an error.
+ * - A web module requiring an interface its own package restates (declares, provides nowhere)
+ *   is an error naming the interface: it must import the web app's declaration. A module
+ *   requiring the other host's interface is on the wrong side.
+ * - With the host tables at hand, a module naming a module only the other host has (a slot's
+ *   owner, a `from`) is declared on the wrong side; without them, that check is skipped.
  * - The build emits the main entry with the platform modules only and one browser module per web
- *   module, with a lazy component in its own chunk; the browser module carries no copy of React,
- *   the kernel or the UI package — imported with a page's shared instances in place, it decorates
- *   through and renders with those very instances.
- * - A web module importing a Node builtin, a package that is not shared, or the full kernel (the
- *   page shares only its arktype-free runtime entry) fails the build.
- * - A web module's requirement of a web-app interface, restated in the plugin, takes the app's key
- *   (scripts/lib/host-keys.mjs): by export name among the named module's provisions or the whole
- *   app's, its copy moved under that key; several matches is an error asking for the module.
- * - A web module that is data only — an empty class contributing to web slots with no code half,
- *   requiring and providing nothing — gets no built file, and the build emits no browser code
- *   for it.
+ *   module — an empty one included — with a lazy component in its own chunk; the browser module
+ *   carries no copy of React, the kernel or the UI package — imported with a page's shared
+ *   instances in place, it decorates through and renders with those very instances.
+ * - A web module importing a Node builtin, a package that is not shared, the full kernel (the
+ *   page shares only its arktype-free runtime entry) or a UI name outside the app's shared surface
+ *   fails the build; a shared UI name resolves to the page's instance.
  * - A web stylesheet names its Tailwind prefix; a compiled class outside it, or two plugins with
  *   one prefix, is an error.
+ * - The plugin pack's cache key folds in the host inputs: the plugin-facing types, the UI
+ *   surface, and the host tables by their hash.
  */
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,209 +29,121 @@ import { afterEach, describe, expect, it } from "vitest";
 import * as Kernel from "@prismshadow/penguin-core/kernel/runtime";
 import { moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ManifestTable, ModuleClass } from "@prismshadow/penguin-core/kernel/runtime";
-import { adoptHostKeys } from "../../../scripts/lib/host-keys.mjs";
-import { assignSides, decideSides, mixedFiles } from "../../../scripts/lib/plugin-sides.mjs";
-import type { HostTable } from "../../../scripts/lib/plugin-sides.mjs";
+import { assignSides, mixedFiles } from "../../../scripts/lib/plugin-sides.mjs";
+import type { Hosts } from "../../../scripts/lib/plugin-sides.mjs";
+import { uiSurfaceNames } from "../../../scripts/lib/web-shared.mjs";
 import {
   buildPlugin,
   prefixClashes,
   stylePrefixOf,
   unprefixedClasses,
 } from "../../../scripts/build-plugin.mjs";
+import { hashBuildInputs } from "../../../scripts/build-plugins.mjs";
 import { makeTempRoot } from "./helpers.js";
 
-const hosts: { server: HostTable; web: HostTable } = {
-  server: {
-    modules: { SandboxModule: { provides: { sandbox: "server#Sandbox" } } },
-    ifaces: { "server#Sandbox": { slots: { providers: {} } } },
-  },
-  web: {
-    modules: { ChatModule: { provides: { chat: "web#Chat" } } },
-    ifaces: { "web#Chat": { slots: { fileRenderers: {} } } },
-  },
+const hosts: Hosts = {
+  server: { modules: { SandboxModule: { provides: { sandbox: "server#Sandbox" } } } },
+  web: { modules: { ChatModule: { provides: { chat: "web#Chat" } } } },
 };
 
-const m = (name: string, more: object = {}) => ({ name, requires: {}, contributes: {}, ...more });
+const m = (name: string, more: object = {}) => ({
+  name,
+  requires: {} as Record<string, { iface: string; from?: string }>,
+  provides: {} as Record<string, string>,
+  contributes: {},
+  ...more,
+});
 
-describe("the side decision", () => {
-  it("places a module by the slots it contributes to and the modules it is wired to", () => {
-    const { sides, errors } = decideSides(
+/** assignSides over `manifests`, each module in its own file; returns the errors and the result. */
+const assign = (
+  manifests: Record<string, ReturnType<typeof m>>,
+  declared: Record<string, string>,
+  opts: Parameters<typeof assignSides>[3] = {},
+) => {
+  const sources = new Map(Object.keys(manifests).map((n) => [n, `src/${n}.ts`]));
+  const errors = assignSides(manifests, sources, new Map(Object.entries(declared)), opts);
+  return {
+    errors,
+    out: manifests as Record<string, { side?: string; file?: string; source?: string }>,
+  };
+};
+
+describe("the declared side", () => {
+  it("is the platform unless the module declares the web; every web module gets its file", () => {
+    const { errors, out } = assign(
       {
         Box: m("Box", { contributes: { "SandboxModule.providers": [{ id: "b" }] } }),
         Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
-        Plain: m("Plain"),
-        Helper: m("Helper", { requires: { player: { iface: "x#P", from: "Player" } } }),
-        Sibling: m("Sibling", { contributes: { "OtherPlugin.actions": [{ id: "s" }] } }),
+        Removal: m("Removal", { contributes: { "ShellModule.pageRemovals": [{ id: "r" }] } }),
       },
-      { ...hosts, plugins: { OtherPlugin: "server" } },
+      { Player: "web", Removal: "web" },
     );
     expect(errors).toEqual([]);
-    expect(sides).toEqual({
-      Box: "server",
-      Player: "web",
-      Plain: "server",
-      Helper: "web",
-      Sibling: "server",
-    });
+    expect(out.Box).toMatchObject({ side: "server", source: "src/Box.ts" });
+    expect(out.Box!.file).toBeUndefined();
+    expect(out.Player).toMatchObject({ side: "web", file: "dist/web/Player.js" });
+    expect(out.Removal).toMatchObject({ side: "web", file: "dist/web/Removal.js" });
   });
 
-  it("decides a module name both hosts have by the slot, then by the interface required", () => {
-    const both = {
-      server: {
-        modules: {
-          ...hosts.server.modules,
-          AgentsModule: { provides: { agents: "server#Agents" } },
-        },
-        ifaces: { ...hosts.server.ifaces, "server#Agents": {} },
-      },
-      web: {
-        modules: { ...hosts.web.modules, AgentsModule: { provides: { tabs: "web#Tabs" } } },
-        ifaces: { ...hosts.web.ifaces, "web#Tabs": { slots: { tabs: {} } } },
-      },
-    };
-    const { sides, errors } = decideSides(
-      {
-        Tab: m("Tab", { contributes: { "AgentsModule.tabs": [{ id: "t" }] } }),
-        User: m("User", { requires: { a: { iface: "server#Agents", from: "AgentsModule" } } }),
-        Shaped: m("Shaped", { requires: { a: { iface: "own#Agents", from: "AgentsModule" } } }),
-      },
-      both,
-    );
-    expect(errors).toEqual([]);
-    expect(sides).toEqual({ Tab: "web", User: "server", Shaped: "server" });
-  });
-
-  it("refuses a module that fits neither side, naming it", () => {
-    const { errors } = decideSides(
-      {
-        Lost: m("Lost", { contributes: { "Nowhere.things": [{ id: "l" }] } }),
-        Typo: m("Typo", { contributes: { "ChatModule.fileRenderer": [{ id: "t" }] } }),
-      },
-      hosts,
-    );
-    expect(errors).toEqual([
-      "Lost: its contribution to 'Nowhere.things' names module 'Nowhere', which neither the platform nor the web app has",
-      "Typo: its contribution to 'ChatModule.fileRenderer': the web app's module 'ChatModule' has no slot 'fileRenderer' (no-such-slot)",
-    ]);
-  });
-
-  it("refuses a module wired to both sides", () => {
-    const { errors } = decideSides(
-      {
-        Both: m("Both", {
-          contributes: {
-            "SandboxModule.providers": [{ id: "a" }],
-            "ChatModule.fileRenderers": [{ id: "b" }],
-          },
-        }),
-      },
-      hosts,
-    );
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/^Both: wired to both sides/);
+  it("refuses a side that is neither", () => {
+    const { errors } = assign({ Odd: m("Odd") }, { Odd: "browser" });
+    expect(errors).toEqual([`Odd: side 'browser' is neither "server" nor "web"`]);
   });
 
   it("refuses one file holding modules of both sides", () => {
     expect(
       mixedFiles(
         { Box: "src/a.ts", Player: "src/a.ts", Other: "src/b.ts" },
-        {
-          Box: "server",
-          Player: "web",
-          Other: "web",
-        },
+        { Box: "server", Player: "web", Other: "web" },
       ),
     ).toEqual([
       "src/a.ts: holds web module(s) [Player] and platform module(s) [Box] — one side per file",
     ]);
   });
-});
 
-describe("host interface keys", () => {
-  const host = {
-    modules: {
-      ChatModule: { provides: { chat: "web#Chat", drafts: "web#ChatDrafts" } },
-      DockModule: { provides: { dock: "web#Dock" } },
-      OtherModule: { provides: { drafts: "other#ChatDrafts" } },
-    },
-    ifaces: { "web#Chat": {}, "web#ChatDrafts": {}, "web#Dock": {}, "other#ChatDrafts": {} },
-  };
-  const COPY = { name: "ChatDrafts", methods: {}, slots: {} };
-  const web = <R extends Record<string, { iface: string; from?: string }>>(requires: R) => ({
-    Probe: { name: "Probe", side: "web", provides: {} as Record<string, string>, requires },
-  });
-
-  it("re-keys a requirement to the named module's interface of the same name, copying it there", () => {
-    const manifests = web({ drafts: { iface: "@acme/p#ChatDrafts", from: "ChatModule" } });
-    const ifaces: Record<string, unknown> = { "@acme/p#ChatDrafts": COPY };
-    expect(adoptHostKeys(manifests, ifaces, host)).toEqual([]);
-    expect(manifests.Probe.requires.drafts.iface).toBe("web#ChatDrafts");
-    expect(ifaces["web#ChatDrafts"]).toBe(COPY);
-  });
-
-  it("takes a named module's one provision, and matches by name across the app when none is named", () => {
-    const named = web({ dock: { iface: "@acme/p#MyDock", from: "DockModule" } });
-    expect(adoptHostKeys(named, { "@acme/p#MyDock": COPY }, host)).toEqual([]);
-    expect(named.Probe.requires.dock.iface).toBe("web#Dock");
-    const unnamed = web({ chat: { iface: "@acme/p#Chat" } });
-    expect(adoptHostKeys(unnamed, { "@acme/p#Chat": COPY }, host)).toEqual([]);
-    expect(unnamed.Probe.requires.chat.iface).toBe("web#Chat");
-  });
-
-  it("refuses an ambiguous name, and a named module without it; leaves an unmatched one", () => {
-    const ambiguous = web({ drafts: { iface: "@acme/p#ChatDrafts" } });
-    expect(adoptHostKeys(ambiguous, { "@acme/p#ChatDrafts": COPY }, host)).toEqual([
-      expect.stringMatching(/several interfaces named 'ChatDrafts'.*@Use\("<Module>"\)/),
-    ]);
-    const missing = web({ x: { iface: "@acme/p#Nope", from: "ChatModule" } });
-    expect(adoptHostKeys(missing, { "@acme/p#Nope": COPY }, host)).toEqual([
-      expect.stringMatching(/'ChatModule' provides no interface named 'Nope'/),
-    ]);
-    const unmatched = web({ x: { iface: "@acme/p#Nope" } });
-    expect(adoptHostKeys(unmatched, { "@acme/p#Nope": COPY }, host)).toEqual([]);
-    expect(unmatched.Probe.requires.x.iface).toBe("@acme/p#Nope");
-  });
-});
-
-describe("a data-only web module", () => {
-  const web = {
-    modules: {
-      ShellModule: { provides: { shell: "web#Shell" } },
-      ChatModule: hosts.web.modules!.ChatModule!,
-    },
-    ifaces: {
-      "web#Shell": { slots: { pageRemovals: { data: {} }, pages: { data: {}, code: {} } } },
-      "web#Chat": { slots: { fileRenderers: { data: {}, code: {} } } },
-    },
-  };
-  const removal = () =>
-    m("Removal", { contributes: { "ShellModule.pageRemovals": [{ id: "r", key: "benchmark" }] } });
-  const sides = (manifests: Record<string, ReturnType<typeof m>>, bodyless: string[]) => {
-    const sources = new Map(Object.keys(manifests).map((n) => [n, `src/${n}.ts`]));
-    const errors = assignSides(
-      manifests,
-      sources,
-      { modules: Object.keys(manifests), replaces: [] },
-      { server: hosts.server, web },
-      new Set(bodyless),
+  it("refuses a web module requiring a restated copy of a host interface, naming it", () => {
+    const { errors } = assign(
+      {
+        Copy: m("Copy", { requires: { lang: { iface: "@acme/p#Language" } } }),
+        Host: m("Host", { requires: { lang: { iface: "@prismshadow/penguin-web#Language" } } }),
+        Own: m("Own", { requires: { thing: { iface: "@acme/p#Thing" } } }),
+        Maker: m("Maker", { provides: { thing: "@acme/p#Thing" } }),
+        // On the platform a requirement is met structurally: a consumer-declared shape is fine.
+        Shaped: m("Shaped", { requires: { lang: { iface: "@acme/p#Shape" } } }),
+      },
+      { Copy: "web", Host: "web", Own: "web", Maker: "web" },
+      { pkgName: "@acme/p" },
     );
-    expect(errors).toEqual([]);
-    return manifests as Record<string, { side?: string; file?: string }>;
-  };
-
-  it("gets no built file: an empty class contributing data to a slot with no code half", () => {
-    const out = sides({ Removal: removal() }, ["Removal"]);
-    expect(out.Removal).toMatchObject({ side: "web" });
-    expect(out.Removal!.file).toBeUndefined();
+    expect(errors).toEqual([
+      expect.stringMatching(
+        /^Copy: requires\.lang names '@acme\/p#Language', an interface this package declares and none of its modules provides .*@prismshadow\/penguin-web\/plugin-types$/,
+      ),
+    ]);
   });
 
-  it("keeps its file with a body, a requirement, or a contribution to a slot with code", () => {
-    const page = m("Page", { contributes: { "ShellModule.pages": [{ id: "p" }] } });
-    const using = { ...removal(), name: "Using", requires: { l: { iface: "web#Language" } } };
-    const out = sides({ Removal: removal(), Page: page, Using: using }, ["Page", "Using"]);
-    expect(out.Removal!.file).toBe("dist/web/Removal.js");
-    expect(out.Page!.file).toBe("dist/web/Page.js");
-    expect(out.Using!.file).toBe("dist/web/Using.js");
+  it("refuses a module requiring the other host's interface", () => {
+    const { errors } = assign(
+      { Lost: m("Lost", { requires: { lang: { iface: "@prismshadow/penguin-web#Language" } } }) },
+      {},
+    );
+    expect(errors).toEqual([
+      `Lost: requires.lang is the web app's interface '@prismshadow/penguin-web#Language', but the module is declared for the platform — declare @Module({ side: "web" })`,
+    ]);
+  });
+
+  it("refuses, with the host tables, a module naming a module only the other host has", () => {
+    const manifests = () => ({
+      Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
+      Box: m("Box", { requires: { s: { iface: "x#S", from: "SandboxModule" } } }),
+      Elsewhere: m("Elsewhere", { contributes: { "OtherPlugin.actions": [{ id: "e" }] } }),
+    });
+    const { errors } = assign(manifests(), { Box: "web" }, { hosts });
+    expect(errors).toEqual([
+      `Player: its contribution to 'ChatModule.fileRenderers' names the web app's module 'ChatModule', but the module is declared for the platform — declare @Module({ side: "web" })`,
+      `Box: its requirement 's' names the platform's module 'SandboxModule', but the module is declared for the web app — declare @Module({ side: "server" })`,
+    ]);
+    // Without both tables (a plugin built before the hosts) the check is skipped.
+    expect(assign(manifests(), { Box: "web" }, { hosts: { web: hosts.web } }).errors).toEqual([]);
   });
 });
 
@@ -392,18 +305,79 @@ describe("the plugin build", () => {
     expect((await view.load()).default()).toBe("the player");
   });
 
-  it("emits no browser code for a data-only web module", async () => {
+  it("emits a browser module for a web module whose class is empty", async () => {
+    const dir = await pkgDir(`import { Module } from "@prismshadow/penguin-core/plugin";
+@Module({ contributes: { "ChatModule.fileRenderers": [{ id: "p", extensions: ["mp3"] }] } })
+export class Player {}
+`);
+    expect(await buildPlugin(dir)).toEqual({ web: ["Player"], server: ["Box"] });
+    const file = path.join(dir, "dist", "web", "Player.js");
+    expect((await fs.stat(file)).size).toBeLessThan(4096);
+    (globalThis as Record<string, unknown>).__penguinShared = Object.freeze({
+      "@prismshadow/penguin-core/kernel/runtime": Kernel,
+    });
+    const mod = (await import(pathToFileURL(file).href)) as { default: ModuleClass };
+    const table = JSON.parse(await fs.readFile(path.join(dir, "ifaces.json"), "utf8")) as {
+      modules: ManifestTable;
+    };
+    expect(moduleDefOf(mod.default, { manifests: table.modules }).manifest.name).toBe("Player");
+  });
+
+  it("refuses a table whose web module has no file", async () => {
     const dir = await pkgDir();
     const table = JSON.parse(await fs.readFile(path.join(dir, "ifaces.json"), "utf8")) as {
       modules: Record<string, { file?: string }>;
     };
     delete table.modules.Player!.file;
     await fs.writeFile(path.join(dir, "ifaces.json"), JSON.stringify(table));
-    expect(await buildPlugin(dir, { minify: false })).toEqual({ web: ["Player"], server: ["Box"] });
-    await expect(fs.readdir(path.join(dir, "dist", "web"))).rejects.toMatchObject({
-      code: "ENOENT",
+    await expect(buildPlugin(dir)).rejects.toThrow(
+      "ifaces.json: web module Player has no file 'dist/web/Player.js' — run gen-ifaces",
+    );
+  });
+
+  it("resolves a shared UI name to the page's instance, and refuses one the app does not share", async () => {
+    const using = (name: string) => `import { ${name} } from "@prismshadow/penguin-ui";
+import { Bind, Module } from "@prismshadow/penguin-core/plugin";
+@Module({ contributes: { "ChatModule.fileRenderers": [{ id: "p", extensions: ["mp3"] }] } })
+export class Player {
+  @Bind("p") view = ${name};
+}
+`;
+    const shared = uiSurfaceNames()[0]!;
+    const dir = await pkgDir(using(shared));
+    await buildPlugin(dir, { minify: false });
+    const marker = { shared: true };
+    (globalThis as Record<string, unknown>).__penguinShared = Object.freeze({
+      "@prismshadow/penguin-core/kernel/runtime": Kernel,
+      "@prismshadow/penguin-ui": { [shared]: marker },
     });
-    expect(await fs.readFile(path.join(dir, "dist", "index.js"), "utf8")).not.toContain("Player");
+    const mod = (await import(pathToFileURL(path.join(dir, "dist", "web", "Player.js")).href)) as {
+      default: ModuleClass;
+    };
+    const table = JSON.parse(await fs.readFile(path.join(dir, "ifaces.json"), "utf8")) as {
+      modules: ManifestTable;
+    };
+    const inst = await moduleDefOf(mod.default, { manifests: table.modules }).create(
+      {
+        use: {},
+        contributions: {},
+        resources: { register: () => () => {}, claim: () => undefined },
+        effect: () => {},
+      },
+      null,
+    );
+    expect(inst.bind?.p).toBe(marker);
+
+    const bad = await pkgDir(using("NotOnTheSurface"));
+    await expect(buildPlugin(bad)).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({
+          text: expect.stringMatching(
+            /No matching export .*"NotOnTheSurface".*packages\/web\/src\/plugins\/ui-surface\.ts/,
+          ),
+        }),
+      ],
+    });
   });
 
   it("refuses a web module importing a Node builtin", async () => {
@@ -435,5 +409,54 @@ describe("the plugin build", () => {
         expect.objectContaining({ text: expect.stringMatching(/'react-dom' is not shared/) }),
       ],
     });
+  });
+});
+
+describe("the plugin pack's cache key", () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
+  });
+  const FILES = [
+    "scripts/gen-ifaces.mjs",
+    "scripts/build-plugin.mjs",
+    "scripts/lib/plugin-sides.mjs",
+    "scripts/lib/web-shared.mjs",
+    "packages/web/src/plugin-types.ts",
+    "packages/web/src/plugins/ui-surface.ts",
+  ];
+  const write = async (root: string, rel: string, text: string) => {
+    await fs.mkdir(path.dirname(path.join(root, rel)), { recursive: true });
+    await fs.writeFile(path.join(root, rel), text);
+  };
+  const key = async (root: string) => {
+    const h = createHash("sha256");
+    await hashBuildInputs(h, root);
+    return h.digest("hex");
+  };
+
+  it("changes with the UI surface, the plugin-facing types and a host table's hash", async () => {
+    const root = await makeTempRoot();
+    roots.push(root);
+    for (const f of FILES) await write(root, f, `// ${f}\n`);
+    const table = (hash: string, pad = "") =>
+      `${JSON.stringify({ hash, ifaces: {}, types: {}, modules: {} }, null, pad.length)}\n`;
+    await write(root, "packages/server/src/ifaces.json", table("s1"));
+    await write(root, "packages/web/src/ifaces.json", table("w1"));
+    const base = await key(root);
+    // Regenerated with the same content (same hash, other bytes): the same key.
+    await write(root, "packages/web/src/ifaces.json", table("w1", "  "));
+    expect(await key(root)).toBe(base);
+    await write(root, "packages/web/src/ifaces.json", table("w2"));
+    const host = await key(root);
+    expect(host).not.toBe(base);
+    await write(root, "packages/web/src/plugins/ui-surface.ts", "export { Button } from 'x';\n");
+    const surface = await key(root);
+    expect(surface).not.toBe(host);
+    await write(root, "packages/web/src/plugin-types.ts", "// changed\n");
+    const types = await key(root);
+    expect(types).not.toBe(surface);
+    await fs.rm(path.join(root, "packages/server/src/ifaces.json"));
+    expect(await key(root)).not.toBe(types);
   });
 });

@@ -245,15 +245,44 @@ async function pluginPackages() {
 }
 
 /**
- * The scripts a plugin's own build runs: what they write is part of the pack, so they are part of
- * its key (a plugin's sources alone would serve a pack built by an older generator).
+ * The scripts a plugin's own build runs, and the host files it reads: what they write or say is
+ * part of the pack, so they are part of its key (a plugin's sources alone would serve a pack built
+ * by an older generator, or against an older host). The host's plugin-facing types are copied
+ * into a web plugin's table (gen-ifaces), the UI surface is the web build's shared-name list
+ * (lib/web-shared.mjs), and the host tables are what gen-ifaces checks a declared side against
+ * (lib/plugin-sides.mjs).
  */
-const BUILD_TOOLS = [
+const BUILD_INPUTS = [
   "scripts/gen-ifaces.mjs",
   "scripts/build-plugin.mjs",
   "scripts/lib/plugin-sides.mjs",
   "scripts/lib/web-shared.mjs",
+  "packages/web/src/plugin-types.ts",
+  "packages/web/src/plugins/ui-surface.ts",
 ];
+/**
+ * The generated host tables, keyed by their content hash rather than their bytes (a table
+ * regenerated unchanged keeps its key); a table not generated yet keys as absent.
+ */
+const HOST_TABLES = ["packages/server/src/ifaces.json", "packages/web/src/ifaces.json"];
+
+/** Folds the build inputs and the host tables into `h`. */
+export async function hashBuildInputs(h, root = ROOT) {
+  for (const rel of BUILD_INPUTS)
+    h.update(rel)
+      .update("\0")
+      .update(await fsp.readFile(path.join(root, rel)))
+      .update("\0");
+  for (const rel of HOST_TABLES) {
+    let id = "absent";
+    try {
+      id = JSON.parse(await fsp.readFile(path.join(root, rel), "utf8")).hash ?? "unhashed";
+    } catch {
+      // Not generated yet: keyed as absent, so generating it later changes the key.
+    }
+    h.update(rel).update("\0").update(id).update("\0");
+  }
+}
 
 /**
  * Builds, packs and installs every builtin plugin into one staged prefix (from cache when
@@ -263,7 +292,7 @@ const BUILD_TOOLS = [
 export async function buildBuiltinPlugins({ log = () => {} } = {}) {
   const plugins = await pluginPackages();
   const h = createHash("sha256").update(`pack ${PACK_FORMAT}\0`);
-  for (const tool of BUILD_TOOLS) h.update(await fsp.readFile(path.join(ROOT, tool))).update("\0");
+  await hashBuildInputs(h);
   for (const plugin of plugins) {
     h.update(plugin.name).update("\0");
     await sourceHash(plugin.dir, h);
