@@ -42,8 +42,8 @@ export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
 /**
  * An extra's copies of host interfaces that the host's entry no longer satisfies. An extra
  * that requires a host interface carries the signature it compiled against under the host's
- * key (gen-ifaces writes it so, scripts/lib/plugin-sides.mjs), so the merged table — where the
- * host's entry stands — wires it to the host's provider by identity. What identity does not
+ * key (it imports the host's declaration, so gen-ifaces keys it the host's way), so the merged
+ * table — where the host's entry stands — wires it to the host's provider by identity. What identity does not
  * say is whether the host still offers what the copy needs; that is asked here, of every
  * requirement naming such a key, and a gap is the requiring module's `mismatch`.
  */

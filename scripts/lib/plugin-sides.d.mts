@@ -2,7 +2,7 @@
 export type Side = "server" | "web";
 export interface HostTable {
   modules?: Record<string, { provides?: Record<string, string> }>;
-  ifaces?: Record<string, { slots?: Record<string, { data?: unknown; code?: unknown }> }>;
+  ifaces?: Record<string, unknown>;
 }
 export interface SideManifest {
   name: string;
@@ -15,31 +15,30 @@ export interface SideManifest {
   file?: string;
 }
 export interface Hosts {
-  server: HostTable;
-  web: HostTable;
-  /** Modules of the plugin packages depended on, by name → side. */
-  plugins?: Record<string, Side>;
+  server?: HostTable;
+  web?: HostTable;
 }
-export declare function hostTables(pkgDir?: string): Hosts;
+export declare const SIDES: readonly Side[];
+export declare const WEB_DIR: string;
+export declare function webFileOf(moduleName: string): string;
+export declare function readHostTables(root?: string): Hosts;
 export declare function assignSides(
   manifests: Record<string, SideManifest>,
   sources: ReadonlyMap<string, string>,
-  pluginDecl: { modules: string[]; replaces: string[] } | null,
-  hosts?: Hosts,
-  bodyless?: ReadonlySet<string>,
+  declared: ReadonlyMap<string, string>,
+  opts?: { pkgName?: string; replaces?: readonly string[]; hosts?: Hosts },
 ): string[];
-export declare function codeless(
-  m: SideManifest,
-  web: HostTable,
-  bodyless: ReadonlySet<string>,
-): boolean;
-export declare function decideSides(
+export declare function foreignKeys(
   manifests: Record<string, SideManifest>,
+  sides: Record<string, Side>,
+  pkgName?: string,
+): string[];
+export declare function misplaced(
+  manifests: Record<string, SideManifest>,
+  sides: Record<string, Side>,
   hosts: Hosts,
   replaces?: readonly string[],
-): { sides: Record<string, Side>; errors: string[] };
-export declare const WEB_DIR: string;
-export declare function webFileOf(moduleName: string): string;
+): string[];
 export declare function mixedFiles(
   sources: Record<string, string>,
   sides: Record<string, Side>,

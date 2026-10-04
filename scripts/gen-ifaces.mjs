@@ -42,16 +42,15 @@
  * A type that recurses into itself is cut at the cycle and compared by name (a warning).
  *
  * For a PLUGIN package (one whose default export names modules) every manifest also says
- * which side runs it — `side: "server" | "web"`, decided from its wiring against the two host
- * tables — with its `source` file and, for a web module, the built `file` the plugin build
- * emits (lib/plugin-sides.mjs).
+ * which side runs it — `side: "server" | "web"`, as the class declares it
+ * (`@Module({ side: "web" })`; none = the platform) — with its `source` file and, for a web
+ * module, the built `file` the plugin build emits (lib/plugin-sides.mjs).
  */
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
-import { adoptHostKeys } from "./lib/host-keys.mjs";
-import { assignSides, hostTables } from "./lib/plugin-sides.mjs";
+import { assignSides, readHostTables } from "./lib/plugin-sides.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name) => {
@@ -121,8 +120,8 @@ const manifests = {};
 let pluginDecl = null;
 /** Module (class) name → the source file declaring it, relative to the working directory. */
 const moduleSources = new Map();
-/** Module classes declared with an empty body: a web module among them may be data only. */
-const bodylessClasses = new Set();
+/** Module name → the side its decorator declares (`@Module({ side })`), when it declares one. */
+const declaredSides = new Map();
 
 for (const project of projects) {
   const configPath = path.resolve(project);
@@ -326,7 +325,6 @@ for (const project of projects) {
           errors.push(`${file}: class '${node.name.text}' is both a @Module and a @Component`);
         if (call && call.arguments.length <= 1) {
           moduleSources.set(node.name.text, file.split(path.sep).join("/"));
-          if (node.members.length === 0) bodylessClasses.add(node.name.text);
           moduleClasses.set(checker.getSymbolAtLocation(node.name), {
             node,
             meta: call.arguments.length === 0 ? {} : refLiteral(call.arguments[0], file),
@@ -1132,6 +1130,7 @@ for (const project of projects) {
       children: [],
     };
     if (meta.context !== undefined) m.context = meta.context;
+    if (meta.side !== undefined) declaredSides.set(m.name, meta.side);
     if (kind === "component") {
       m.provides[className] = componentKeyBySymbol.get(sym);
       // `implements Users`: the component declares the mechanism it implements; the
@@ -1264,14 +1263,24 @@ for (const project of projects) {
   }
 }
 
-// A plugin package's modules each run on one side, decided here from their wiring
-// (lib/plugin-sides.mjs) and written into the table with the file the plugin build emits; a web
-// module's requirements of the web app's interfaces take the app's keys (lib/host-keys.mjs).
-// A web module whose class body is empty and which only contributes data gets no built file.
+// A plugin package's modules each run on the side they declare, written into the table with the
+// file the plugin build emits (lib/plugin-sides.mjs). A web module requires a web-app interface by
+// the app's own key: it imports the declaration (`@prismshadow/penguin-web/plugin-types`), so the
+// key is the app's with nothing re-keyed; a restated copy is an error naming the interface.
 if (pluginDecl !== null) {
-  const hosts = hostTables();
-  errors.push(...assignSides(manifests, moduleSources, pluginDecl, hosts, bodylessClasses));
-  errors.push(...adoptHostKeys(manifests, table, hosts.web));
+  let pkgName;
+  try {
+    pkgName = JSON.parse(fs.readFileSync("package.json", "utf8")).name;
+  } catch {
+    // No manifest beside the project: the restated-copy check has no package to compare.
+  }
+  errors.push(
+    ...assignSides(manifests, moduleSources, declaredSides, {
+      pkgName,
+      replaces: pluginDecl.replaces,
+      hosts: readHostTables(),
+    }),
+  );
 }
 
 for (const w of warnings) console.warn(`gen-ifaces: warning: ${w}`);
@@ -1312,7 +1321,7 @@ if (checkOnly) {
   );
 } else if (existing !== text) {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  // Through a rename: a plugin build may generate a host table while another reads it.
+  // Through a rename: a plugin build may read a host table while the host writes it.
   const tmp = `${outPath}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, outPath);
