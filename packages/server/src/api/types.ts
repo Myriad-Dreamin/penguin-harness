@@ -27,6 +27,7 @@ import type {
 import type { HarnessInfo, VersionReport, HarnessHistory } from "@prismshadow/penguin-core";
 import type { IfacesDiff } from "@prismshadow/penguin-hmr";
 import type { WorkflowInfo, WorkflowVersion } from "../mechanisms/workflows.js";
+import type { WebModulePackage } from "./web-modules.js";
 import type {
   PackageManifest as PackageManifestType,
   PublishedGist as PublishedGistType,
@@ -6675,19 +6676,6 @@ export type WebPageData = {
 export type WebPageContribution = WebContribution & WebPageData;
 
 /**
- * The data of one `WebModule.fileRenderers` contribution: the Workspace files it draws, by
- * extension (without the dot, compared case-insensitively), and the renderer that draws one.
- * Where the app shows it is the app's own choice (below a reply's paragraph that links the file).
- */
-export type WebFileRendererData = {
-  extensions: string[];
-  renderer: RendererRef;
-};
-
-/** A file renderer contribution as GET /api/contributions answers it. */
-export type WebFileRendererContribution = WebContribution & WebFileRendererData;
-
-/**
  * The data of one `WebModule.pageRemovals` contribution: the key of a page the web app drops —
  * one of its own or one another plugin contributed. The app drops the routes under the page's
  * path and the pages under it with it, and keeps the page its catch-all leads to.
@@ -6699,9 +6687,10 @@ export type WebPageRemovalData = {
 /** A page removal as GET /api/contributions answers it. */
 export type WebPageRemovalContribution = WebContribution & WebPageRemovalData;
 
+export type { WebModulePackage };
+
 export interface ContributionsResponse {
   pages: WebPageContribution[];
-  fileRenderers: WebFileRendererContribution[];
   pageRemovals: WebPageRemovalContribution[];
   agentTabs: WebContribution[];
   sessionTabs: WebContribution[];
@@ -6709,6 +6698,8 @@ export interface ContributionsResponse {
   quickStarts: Array<QuickStartItem & { id: string; from: string }>;
   /** The surfaces this process's plugins contribute; empty without any. */
   sessionSurfaces: SessionSurfaceSummary[];
+  /** The enabled plugins' web modules (api/web-modules.ts), forwarded as their packages ship them. */
+  webModules: WebModulePackage[];
 }
 
 /**

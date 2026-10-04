@@ -8,11 +8,14 @@
  * - Nothing outside the package's `ui/` is reachable: an encoded `..`, a symlink pointing out of
  *   `ui/`, a directory, a file beside `ui/`. A package name that is not loaded is 404.
  * - The route requires a signed-in user, like its neighbours.
+ * - A loaded package's built web modules are listed by GET /api/contributions and served under
+ *   their build id, cached for good; another id, or a path out of `dist/web/`, is 404.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
+import { WEB_MANIFEST, writeClassPackage, writeShippedIndex } from "./plugin-fixtures.js";
+import type { ContributionsResponse } from "../src/api/types.js";
 import { apiClient, createTestApp, loginAdmin } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
@@ -102,6 +105,31 @@ describe("plugin ui route", () => {
     }
     expect((await admin.get("/api/plugins/@acme/pages/secret.txt")).status).toBe(404);
     expect((await admin.get("/api/plugins/@acme/idle/ui/index.html")).status).toBe(404);
+  });
+
+  it("lists and serves a loaded plugin's web modules under their build id", async () => {
+    const dir = await ship("@acme/pages", "Pages");
+    const tableFile = path.join(dir, "ifaces.json");
+    const table = JSON.parse(await fs.readFile(tableFile, "utf8"));
+    table.modules.Player = WEB_MANIFEST;
+    await fs.writeFile(tableFile, JSON.stringify(table));
+    await fs.mkdir(path.join(dir, "dist", "web"), { recursive: true });
+    await fs.writeFile(path.join(dir, "dist", "web", "Player.js"), "export default class {}");
+    await install("@acme/pages");
+
+    const body = (await (await admin.get("/api/contributions")).json()) as ContributionsResponse;
+    expect(body.webModules.map((p) => p.package)).toEqual(["@acme/pages"]);
+    const url = body.webModules[0]!.modules[0]!.url;
+    expect(url).toMatch(/^\/api\/plugins\/@acme\/pages\/web\/[0-9a-f]{16}\/Player\.js$/);
+    const js = await admin.get(url);
+    expect(js.status).toBe(200);
+    expect(js.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(js.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+    expect(await js.text()).toBe("export default class {}");
+    const stale = url.replace(/\/web\/[0-9a-f]{16}\//, "/web/0000000000000000/");
+    expect((await admin.get(stale)).status).toBe(404);
+    const out = url.replace(/Player\.js$/, "..%2F..%2Fpackage.json");
+    expect((await admin.get(out)).status).toBe(404);
   });
 
   it("requires a signed-in user", async () => {

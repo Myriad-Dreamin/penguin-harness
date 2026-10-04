@@ -11,10 +11,12 @@
  * knows how it will be installed. Any other name answers 404, as does a path that leaves the
  * package's `ui/` (http/static-files.ts).
  *
+ * Beside it, GET /api/plugins/<package>/web/<build>/* serves the package's built web modules
+ * (plugin/web-modules.ts says what the build id is).
+ *
  * Like a workflow's `ui/*`, it is a plain authenticated route: the frame is same-origin and
  * carries the user's cookie, which is what lets the app theme it (lib/workflow-theme.ts in web).
  */
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -23,6 +25,7 @@ import type { AppEnv } from "../../auth/middleware.js";
 import type { Hmr } from "../../hmr/capabilities.js";
 import { pluginHostFrom } from "../../plugin/host.js";
 import { PACKAGE_NAME } from "../../plugin/loader.js";
+import { packageOf, WEB_DIR, webBuildId } from "../../plugin/web-modules.js";
 import { HttpError } from "../errors.js";
 import { containedFile, uiFileResponse } from "../static-files.js";
 
@@ -34,56 +37,59 @@ export interface PluginUiRouteDeps {
   loadedEntries: () => Iterable<string | null | undefined>;
 }
 
-/** The package above an entry file — its directory and its manifest's name — or null. */
-function packageOf(file: string): { dir: string; name: string } | null {
-  let dir = path.dirname(file);
-  for (;;) {
-    try {
-      const { name } = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as {
-        name?: unknown;
-      };
-      return typeof name === "string" ? { dir, name } : null;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
 const notFound = () =>
   new HttpError(404, "not_found", "No such file in an installed plugin's ui/.");
 
 export function pluginUiRoutes(deps: PluginUiRouteDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-  const serve = async (c: Context<AppEnv>, name: string) => {
+  /** The loaded package named `name`, or 404. */
+  const loadedPackage = (name: string) => {
     if (!PACKAGE_NAME.test(name)) throw notFound();
-    let pkg: { dir: string; name: string } | null = null;
     for (const file of deps.loadedEntries()) {
       if (file == null) continue;
       const found = packageOf(file);
-      if (found?.name === name) {
-        pkg = found;
-        break;
-      }
+      if (found?.name === name) return found;
     }
-    if (pkg === null) throw notFound();
-    const raw = c.req.path.split(`/${name}/${PLUGIN_UI_DIR}/`)[1] ?? "";
-    let rel: string;
+    throw notFound();
+  };
+  /** The decoded remainder of the request path after `marker`, or 404. */
+  const restAfter = (c: Context<AppEnv>, marker: string) => {
     try {
-      rel = decodeURIComponent(raw);
+      return decodeURIComponent(c.req.path.split(marker)[1] ?? "");
     } catch {
       throw notFound();
     }
+  };
+  const serve = async (c: Context<AppEnv>, name: string) => {
+    const pkg = loadedPackage(name);
+    const rel = restAfter(c, `/${name}/${PLUGIN_UI_DIR}/`);
     const file = await containedFile(path.join(pkg.dir, PLUGIN_UI_DIR), rel);
     if (file === null) throw notFound();
     return uiFileResponse(c, file);
+  };
+  /**
+   * A built web file (plugin/web-modules.ts): served only under the build id its files hash to
+   * now, and then for good — the id names the bytes.
+   */
+  const serveWeb = async (c: Context<AppEnv>, name: string) => {
+    const pkg = loadedPackage(name);
+    const build = c.req.param("build");
+    if (build === undefined || webBuildId(pkg.dir) !== build) throw notFound();
+    const rel = restAfter(c, `/${name}/web/${build}/`);
+    const file = await containedFile(path.join(pkg.dir, WEB_DIR), rel);
+    if (file === null) throw notFound();
+    const res = await uiFileResponse(c, file);
+    res.headers.set("cache-control", "private, max-age=31536000, immutable");
+    return res;
   };
   app.get("/:scope{@[^/]+}/:name/ui/*", (c) =>
     serve(c, `${c.req.param("scope")}/${c.req.param("name")}`),
   );
   app.get("/:name/ui/*", (c) => serve(c, c.req.param("name")));
+  app.get("/:scope{@[^/]+}/:name/web/:build/*", (c) =>
+    serveWeb(c, `${c.req.param("scope")}/${c.req.param("name")}`),
+  );
+  app.get("/:name/web/:build/*", (c) => serveWeb(c, c.req.param("name")));
   return app;
 }
 

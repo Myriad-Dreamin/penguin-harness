@@ -6,7 +6,7 @@
  * decorators the host reads.
  */
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import fs, { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { stringify as stringifyToml } from "smol-toml";
@@ -119,4 +119,49 @@ export async function writeShippedIndex(prefix: string): Promise<void> {
     }
   }
   await writeFile(path.join(prefix, "index.json"), JSON.stringify(sortIndex(index)));
+}
+
+/** A web module's manifest as gen-ifaces writes it into a plugin table. */
+export const WEB_MANIFEST = {
+  name: "Player",
+  kind: "module",
+  requires: {},
+  provides: {},
+  contributes: { "ChatModule.fileRenderers": [{ id: "p.audio", extensions: ["mp3"] }] },
+  children: [],
+  side: "web",
+  source: "src/module.ts",
+  file: "dist/web/Player.js",
+};
+
+/** A built plugin package: table, main entry, and (optionally) its web build. */
+export async function writeWebPackage(
+  dir: string,
+  opts: { name?: string; web?: boolean; styles?: boolean } = {},
+): Promise<string> {
+  const { name = "@acme/player", web = true, styles = true } = opts;
+  await fs.mkdir(path.join(dir, "dist", "web"), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name, version: "1.2.3", type: "module", main: "./dist/index.js" }),
+  );
+  await fs.writeFile(
+    path.join(dir, "ifaces.json"),
+    JSON.stringify({
+      hash: "abc",
+      ifaces: { "@acme/player#Thing": { name: "Thing", methods: {} } },
+      types: {},
+      modules: {
+        Player: web ? WEB_MANIFEST : { ...WEB_MANIFEST, side: "server", file: undefined },
+        Helper: { ...WEB_MANIFEST, name: "Helper", side: "server", file: undefined },
+      },
+      plugin: { modules: ["Player", "Helper"], replaces: [] },
+    }),
+  );
+  const entry = path.join(dir, "dist", "index.js");
+  await fs.writeFile(entry, "export default { modules: [] };");
+  await fs.writeFile(path.join(dir, "dist", "web", "Player.js"), "export default class {}");
+  await fs.writeFile(path.join(dir, "dist", "web", "chunk-AB.js"), "export const x = 1;");
+  if (styles) await fs.writeFile(path.join(dir, "dist", "web", "styles.css"), ".a{color:red}");
+  return entry;
 }
