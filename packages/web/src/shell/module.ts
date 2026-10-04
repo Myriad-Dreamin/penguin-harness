@@ -2,7 +2,8 @@
  * The shell module: the app's frame and its router. Features reach it only through its slots —
  * a page is a contribution to `ShellModule.pages` with the component bound by id, a provider of
  * the signed-in session one to `sessionProviders`, an overlay or a headless runtime one to
- * `layers` — so the shell imports no feature. What it provides is the root component the app
+ * `layers`, a component a server-contributed page may name as its `builtin` renderer one to
+ * `pageRenderers` — so the shell imports no feature. What it provides is the root component the app
  * mounts, with the contributions bound into it (shell/deps.ts), and the user event handlers
  * the sessions module collects (state/user-events.ts), which the router hands to the session
  * list. The layout mounts the sidebar module's column and rail, and opens the chat module's
@@ -37,6 +38,11 @@ export interface Ordered {
   order: number;
 }
 
+/** The data half of a `pageRenderers` contribution: the name a server-contributed page's `builtin` renderer gives. */
+export interface PageRendererData {
+  name: string;
+}
+
 export interface ShellSlots {
   /** A routed page; its component is the code half. */
   pages: Slot<PageData, ComponentType>;
@@ -44,6 +50,8 @@ export interface ShellSlots {
   sessionProviders: Slot<Ordered, ComponentType<{ children: ReactNode }>>;
   /** Mounted once beside every page: overlays and headless runtimes. */
   layers: Slot<Ordered, ComponentType>;
+  /** A component a page the server contributes (shell/contributions.tsx) may name to be drawn with. */
+  pageRenderers: Slot<PageRendererData, ComponentType>;
 }
 
 /** A slot's contributions by `order`, each with the component its module bound. */
@@ -67,10 +75,24 @@ export class ShellModule {
       contributions.sessionProviders ?? [],
     );
     const layers: readonly ShellLayer[] = byOrder(contributions.layers ?? []);
+    const pageRenderers: ReadonlyMap<string, ComponentType> = new Map(
+      (contributions.pageRenderers ?? []).map((c) => [
+        (c.data as unknown as PageRendererData).name,
+        c.code as ComponentType,
+      ]),
+    );
     const userEvents = this.userEventHandlers.all();
     this.shell = {
       Root: shellDeps.provide(
-        { pages, sessionProviders, layers, userEvents, sidebar: this.sidebar, drafts: this.drafts },
+        {
+          pages,
+          pageRenderers,
+          sessionProviders,
+          layers,
+          userEvents,
+          sidebar: this.sidebar,
+          drafts: this.drafts,
+        },
         AppRouter,
       ),
     };
