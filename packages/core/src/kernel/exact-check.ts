@@ -35,7 +35,12 @@ export function checkExact(
   for (const m of locate(root)) {
     const other = byName.get(m.manifest.name);
     if (other !== undefined) {
-      problems.push({ path: m.path, kind: "duplicate-module", name: m.manifest.name, other: other.path });
+      problems.push({
+        path: m.path,
+        kind: "duplicate-module",
+        name: m.manifest.name,
+        other: other.path,
+      });
       continue;
     }
     byName.set(m.manifest.name, m);
@@ -109,7 +114,8 @@ export function checkExact(
       }
       for (const entry of entries) {
         const other = ids.get(entry.id);
-        if (other !== undefined) problems.push({ path: m.path, kind: "duplicate-id", id: entry.id, other });
+        if (other !== undefined)
+          problems.push({ path: m.path, kind: "duplicate-id", id: entry.id, other });
         else ids.set(entry.id, m.path);
       }
     }

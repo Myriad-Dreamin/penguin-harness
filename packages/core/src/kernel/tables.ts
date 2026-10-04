@@ -30,7 +30,8 @@ export function treesOf(table: ModuleTable, where = "table"): ManifestNode[] {
   const manifests = new Map<string, Manifest>();
   for (const [name, doc] of Object.entries(table.modules)) {
     const manifest = parseManifest(doc, `${where}: modules.${name}`);
-    if (manifest.name !== name) throw new Error(`${where}: modules.${name} is named '${manifest.name}'`);
+    if (manifest.name !== name)
+      throw new Error(`${where}: modules.${name} is named '${manifest.name}'`);
     manifests.set(name, manifest);
   }
   const listed = new Set(

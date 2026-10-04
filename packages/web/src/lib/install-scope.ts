@@ -308,6 +308,12 @@ export const KEY_RULES: readonly KeyRule[] = [
     why: "The user's last organization list with the machine each runs on (list-cache.ts). Organization and machine ids in the value — a new root knows none of them.",
   },
   {
+    kind: "exact",
+    key: "penguin.verifiedPlugins",
+    scope: "browser",
+    why: "Plugin tables already verified against a host table, by content hash (verified-cache.ts). A fact about two tables, true under any data root; names nothing on the server.",
+  },
+  {
     kind: "family",
     key: "penguin.machineAgents.",
     scope: "install",

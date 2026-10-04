@@ -56,12 +56,25 @@ describe("KaTeX fonts ship locally, woff2 only", () => {
 
 describe("arktypeOnBootPath", () => {
   const chunk = (fileName: string, over: Partial<Rollup.OutputChunk>) =>
-    ({ type: "chunk", fileName, isEntry: false, imports: [], moduleIds: [], ...over }) as Rollup.OutputChunk;
+    ({
+      type: "chunk",
+      fileName,
+      isEntry: false,
+      imports: [],
+      moduleIds: [],
+      ...over,
+    }) as Rollup.OutputChunk;
   const ark = "/repo/node_modules/.pnpm/arktype@2.2.3/node_modules/arktype/out/index.js";
   const schema = "/repo/node_modules/.pnpm/@ark+schema@0.56.2/node_modules/@ark/schema/out/node.js";
   const bundle = (shared: string[], lazy: string[]): Rollup.OutputBundle => ({
-    "index.js": chunk("index.js", { isEntry: true, imports: ["shared.js"], dynamicImports: ["lazy.js"] }),
-    "shared.js": chunk("shared.js", { moduleIds: ["/repo/packages/core/dist/kernel/runtime.js", ...shared] }),
+    "index.js": chunk("index.js", {
+      isEntry: true,
+      imports: ["shared.js"],
+      dynamicImports: ["lazy.js"],
+    }),
+    "shared.js": chunk("shared.js", {
+      moduleIds: ["/repo/packages/core/dist/kernel/runtime.js", ...shared],
+    }),
     "lazy.js": chunk("lazy.js", { moduleIds: lazy }),
   });
 

@@ -68,7 +68,12 @@ function tree(log: string[]): ModuleDef {
     create: () => ({ api: {} }),
     children: [
       defineModule(
-        manifest({ name: "group", provides: { sessions: "core#Sessions" }, exports: ["sessions"], children: ["core"] }),
+        manifest({
+          name: "group",
+          provides: { sessions: "core#Sessions" },
+          exports: ["sessions"],
+          children: ["core"],
+        }),
         {
           create: (ctx) => (record("group")(ctx), { api: {} }),
           children: [
@@ -81,7 +86,10 @@ function tree(log: string[]): ModuleDef {
       defineModule(
         manifest({
           name: "client",
-          requires: { exact: { iface: "core#Sessions" }, narrow: { iface: "Narrow", from: "group" } },
+          requires: {
+            exact: { iface: "core#Sessions" },
+            narrow: { iface: "Narrow", from: "group" },
+          },
         }),
         {
           create: (ctx) => {
@@ -162,9 +170,12 @@ describe("checkTables", () => {
   });
 
   it("throws on a malformed table", () => {
-    expect(() => checkTables({ ...host, modules: { ...host.modules, root: { name: "root", children: ["ghost"] } } })).toThrow(
-      /ghost/,
-    );
+    expect(() =>
+      checkTables({
+        ...host,
+        modules: { ...host.modules, root: { name: "root", children: ["ghost"] } },
+      }),
+    ).toThrow(/ghost/);
   });
 });
 
@@ -187,7 +198,9 @@ describe.skipIf(!built)("the built kernel entries", () => {
   });
 
   it("a class decorated through one entry is read through the other", async () => {
-    const runtime = (await import(join(dist, "runtime.js"))) as typeof import("../src/kernel/runtime.js");
+    const runtime = (await import(
+      join(dist, "runtime.js")
+    )) as typeof import("../src/kernel/runtime.js");
     const full = (await import(join(dist, "index.js"))) as typeof import("../src/kernel/index.js");
     class Shared {}
     runtime.Module()(Shared, { name: "Shared", kind: "class" } as ClassDecoratorContext);

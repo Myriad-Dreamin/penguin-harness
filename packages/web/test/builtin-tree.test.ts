@@ -40,7 +40,9 @@ describe("the builtin module tree", () => {
 
   it("passes the build step, which refuses a broken table", () => {
     expect(runScript().status).toBe(0);
-    const root = Object.values(host.modules).find((m) => (m as { name: string }).name === "WebRoot") as {
+    const root = Object.values(host.modules).find(
+      (m) => (m as { name: string }).name === "WebRoot",
+    ) as {
       children: string[];
     };
     const broken = {
@@ -66,7 +68,9 @@ describe("the builtin module tree", () => {
       writeFileSync(path, JSON.stringify(broken));
       const run = runScript(path);
       expect(run.status).toBe(1);
-      expect(run.output).toContain("/WebRoot/BrokenModule: requires.ghost from 'NoSuchModule': no such module");
+      expect(run.output).toContain(
+        "/WebRoot/BrokenModule: requires.ghost from 'NoSuchModule': no such module",
+      );
       expect(run.output).toContain("'missing' names interface 'Nowhere#Nothing'");
     } finally {
       rmSync(dir, { recursive: true, force: true });

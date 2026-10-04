@@ -36,7 +36,7 @@ export type VerifiedPlugins = ReadonlyMap<string, readonly string[]>;
 
 interface HostEntry {
   host: string;
-  plugins: Record<string, string[]>;
+  plugins: Record<string, readonly string[]>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -101,10 +101,7 @@ export function recordVerified(host: string, plugins: VerifiedPlugins): void {
   const entry: HostEntry = { host, plugins: Object.fromEntries(plugins) };
   const hosts = [entry, ...readHosts().filter((h) => h.host !== host)].slice(0, KEPT_HOSTS);
   try {
-    localStorage.setItem(
-      VERIFIED_CACHE_KEY,
-      JSON.stringify({ v: VERIFIED_CACHE_VERSION, hosts }),
-    );
+    localStorage.setItem(VERIFIED_CACHE_KEY, JSON.stringify({ v: VERIFIED_CACHE_VERSION, hosts }));
   } catch {
     drop();
   }

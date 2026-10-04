@@ -50,6 +50,9 @@ export type FullCheck = Pick<
   "checkTables" | "describeProblem"
 >;
 
+// The one sanctioned load of the full kernel on the page: dynamic, so it is a lazy chunk off the
+// boot path (the lint rule is there to keep every other import of it type-only).
+// oxlint-disable-next-line no-restricted-imports
 const loadFullCheck = (): Promise<FullCheck> => import("@prismshadow/penguin-core/kernel");
 
 /**
@@ -116,7 +119,12 @@ export async function verifyPlugins(
 
   const known = readVerified(hostId);
   const verified = new Map<string, readonly string[]>();
-  const pending: Array<{ p: PluginTable; deps: PluginTable[]; key: string | null; depKeys: string[] }> = [];
+  const pending: Array<{
+    p: PluginTable;
+    deps: PluginTable[];
+    key: string | null;
+    depKeys: string[];
+  }> = [];
   for (const p of byName.values()) {
     const closure = withDependencies(p, byName);
     if ("missing" in closure) {

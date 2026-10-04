@@ -20,15 +20,8 @@ vi.mock("arktype", () => {
   throw new Error("arktype was loaded by the runtime entry");
 });
 
-const {
-  bootVerified,
-  defineModule,
-  Module,
-  ModuleBootError,
-  moduleDefOf,
-  Provide,
-  Use,
-} = await import("../src/kernel/runtime.js");
+const { bootVerified, defineModule, Module, ModuleBootError, moduleDefOf, Provide, Use } =
+  await import("../src/kernel/runtime.js");
 type Manifest = import("../src/kernel/runtime.js").Manifest;
 type IfaceDecl = import("../src/kernel/runtime.js").IfaceDecl;
 type Resources = import("../src/kernel/runtime.js").Resources;
@@ -51,7 +44,9 @@ const Runner: IfaceDecl = {
 };
 const Http: IfaceDecl = {
   name: "Http",
-  methods: { handle: { params: [{ opaque: "Request" }], returns: { promise: { opaque: "Response" } } } },
+  methods: {
+    handle: { params: [{ opaque: "Request" }], returns: { promise: { opaque: "Response" } } },
+  },
   slots: { routes: { data: { prefix: "string" }, code: { opaque: "Handler" } } },
 };
 const table = {
@@ -71,43 +66,62 @@ const manifest = (m: Partial<Manifest> & { name: string }): Manifest => ({
 const sessionsApi = { startTask: async () => ({ sessionId: "s" }), statusOf: () => "idle" };
 
 function fixture(order: string[], extra: Partial<Record<string, Partial<Manifest>>> = {}) {
-  const leaf = (name: string, m: Partial<Manifest>, create: Parameters<typeof defineModule>[1]["create"]) =>
-    defineModule(manifest({ name, ...m, ...extra[name] }), { create });
-  return defineModule(manifest({ name: "platform", children: ["scheduler", "http", "sessions", "watcher"] }), {
-    create: () => ({ api: {} }),
-    children: [
-      leaf("scheduler", { requires: { runner: { iface: "Runner", from: "sessions" } } }, (ctx) => {
-        order.push(`scheduler:${(ctx.use.runner as { statusOf(id: string): string }).statusOf("x")}`);
-        return { api: {} };
-      }),
-      leaf("http", { provides: { http: "Http" } }, (ctx) => {
-        order.push(`http:${ctx.contributions.routes!.map((c) => `${c.id}=${String(c.code)}`).join(",")}`);
-        return { api: { http: { handle: async () => null } } };
-      }),
-      leaf(
-        "sessions",
-        {
-          provides: { sessions: "Sessions" },
-          contributes: { "http.routes": [{ id: "sessions.routes", prefix: "/api/sessions" }] },
-        },
-        () => {
-          order.push("sessions");
-          return { api: { sessions: sessionsApi }, bind: { "sessions.routes": "HANDLER" } };
-        },
-      ),
-      leaf("watcher", { requires: { sessions: { iface: "sessions#Sessions" } } }, (ctx) => {
-        order.push(`watcher:${ctx.use.sessions === sessionsApi}`);
-        return { api: {} };
-      }),
-    ],
-  });
+  const leaf = (
+    name: string,
+    m: Partial<Manifest>,
+    create: Parameters<typeof defineModule>[1]["create"],
+  ) => defineModule(manifest({ name, ...m, ...extra[name] }), { create });
+  return defineModule(
+    manifest({ name: "platform", children: ["scheduler", "http", "sessions", "watcher"] }),
+    {
+      create: () => ({ api: {} }),
+      children: [
+        leaf(
+          "scheduler",
+          { requires: { runner: { iface: "Runner", from: "sessions" } } },
+          (ctx) => {
+            order.push(
+              `scheduler:${(ctx.use.runner as { statusOf(id: string): string }).statusOf("x")}`,
+            );
+            return { api: {} };
+          },
+        ),
+        leaf("http", { provides: { http: "Http" } }, (ctx) => {
+          order.push(
+            `http:${ctx.contributions.routes!.map((c) => `${c.id}=${String(c.code)}`).join(",")}`,
+          );
+          return { api: { http: { handle: async () => null } } };
+        }),
+        leaf(
+          "sessions",
+          {
+            provides: { sessions: "Sessions" },
+            contributes: { "http.routes": [{ id: "sessions.routes", prefix: "/api/sessions" }] },
+          },
+          () => {
+            order.push("sessions");
+            return { api: { sessions: sessionsApi }, bind: { "sessions.routes": "HANDLER" } };
+          },
+        ),
+        leaf("watcher", { requires: { sessions: { iface: "sessions#Sessions" } } }, (ctx) => {
+          order.push(`watcher:${ctx.use.sessions === sessionsApi}`);
+          return { api: {} };
+        }),
+      ],
+    },
+  );
 }
 
 describe("bootVerified (arktype unloadable)", () => {
   it("boots literal modules in dependency order, with contributions and code halves", async () => {
     const order: string[] = [];
     const tree = await bootVerified(fixture(order), { ifaces: table, resources });
-    expect(order).toEqual(["sessions", "scheduler:idle", "http:sessions.routes=HANDLER", "watcher:true"]);
+    expect(order).toEqual([
+      "sessions",
+      "scheduler:idle",
+      "http:sessions.routes=HANDLER",
+      "watcher:true",
+    ]);
     expect(tree.api("sessions", "sessions")).toBe(sessionsApi);
     tree.dispose();
   });
@@ -136,10 +150,16 @@ describe("bootVerified (arktype unloadable)", () => {
         name: "SchedulerModule",
         requires: { runner: { iface: "Runner", from: "SessionsModule" } },
       }),
-      PlatformModule: manifest({ name: "PlatformModule", children: ["SessionsModule", "SchedulerModule"] }),
+      PlatformModule: manifest({
+        name: "PlatformModule",
+        children: ["SessionsModule", "SchedulerModule"],
+      }),
     };
     const ifaces = { "SessionsModule#Sessions": Sessions, "SchedulerModule#Runner": Runner };
-    const tree = await bootVerified(moduleDefOf(PlatformModule, { manifests }), { ifaces, resources });
+    const tree = await bootVerified(moduleDefOf(PlatformModule, { manifests }), {
+      ifaces,
+      resources,
+    });
     expect(seen).toEqual(["idle"]);
     expect(tree.has("SchedulerModule")).toBe(true);
     tree.dispose();
@@ -164,14 +184,18 @@ describe("bootVerified (arktype unloadable)", () => {
       );
       return err instanceof ModuleBootError ? err.problems.map((p) => p.kind) : [];
     };
-    expect(await kinds({ watcher: { contributes: { "http.routes": [{ id: "sessions.routes", prefix: "/x" }] } } })).toEqual([
-      "duplicate-id",
+    expect(
+      await kinds({
+        watcher: { contributes: { "http.routes": [{ id: "sessions.routes", prefix: "/x" }] } },
+      }),
+    ).toEqual(["duplicate-id"]);
+    expect(await kinds({ watcher: { contributes: { "http.nothing": [{ id: "w" }] } } })).toEqual([
+      "no-such-slot",
     ]);
-    expect(await kinds({ watcher: { contributes: { "http.nothing": [{ id: "w" }] } } })).toEqual(["no-such-slot"]);
     expect(await kinds({ watcher: { provides: { w: "Missing" } } })).toEqual(["unknown-iface"]);
-    expect(await kinds({ watcher: { requires: { s: { iface: "sessions#Sessions", from: "nobody" } } } })).toEqual([
-      "unresolved",
-    ]);
+    expect(
+      await kinds({ watcher: { requires: { s: { iface: "sessions#Sessions", from: "nobody" } } } }),
+    ).toEqual(["unresolved"]);
   });
 
   it("refuses a parked context it cannot validate, and boots one it need not", async () => {
@@ -182,9 +206,9 @@ describe("bootVerified (arktype unloadable)", () => {
         }),
         { ifaces: {}, resources, parked: parked as never },
       );
-    await expect(boot({ version: 1, schema: { n: "number" } }, { solo: { v: 1, self: { n: 1 } } })).rejects.toThrow(
-      /cannot validate/,
-    );
+    await expect(
+      boot({ version: 1, schema: { n: "number" } }, { solo: { v: 1, self: { n: 1 } } }),
+    ).rejects.toThrow(/cannot validate/);
     await expect(boot({ version: 1, schema: { n: "number" } })).resolves.toBeDefined();
     await expect(boot({ version: 1 }, { solo: { v: 1, self: { n: 1 } } })).resolves.toBeDefined();
   });

@@ -59,7 +59,10 @@ const plugin = (name: string, title: unknown = "T", dependsOn?: string[]): Plugi
     ifaces: {},
     types: {},
     modules: {
-      [name]: manifest({ name, contributes: { "core.tabs": [{ id: `${name}.tab`, title } as never] } }),
+      [name]: manifest({
+        name,
+        contributes: { "core.tabs": [{ id: `${name}.tab`, title } as never] },
+      }),
     },
   }),
 });
@@ -68,7 +71,7 @@ const plugin = (name: string, title: unknown = "T", dependsOn?: string[]): Plugi
 function fakeCheck(failing: ReadonlySet<string> = new Set()) {
   const checked: string[][] = [];
   const check: FullCheck = {
-    checkTables: (_host, extras) => {
+    checkTables: (_host, extras = []) => {
       const names = extras.map((t) => Object.keys(t.modules)[0]!);
       checked.push(names);
       const problems: Problem[] = [
@@ -146,7 +149,10 @@ describe("verifyPlugins", () => {
 
   it("checks a table whose hash does not match its content on every load", async () => {
     const h = host();
-    const forged = { ...plugin("a"), table: { ...plugin("a").table, hash: plugin("b").table.hash } };
+    const forged = {
+      ...plugin("a"),
+      table: { ...plugin("a").table, hash: plugin("b").table.hash },
+    };
     for (let i = 0; i < 2; i++) {
       const run = fakeCheck();
       await verifyPlugins(h, [forged], { loadCheck: run.loadCheck });
@@ -164,9 +170,13 @@ describe("the verified cache", () => {
 
   it("keeps the current host and the most recently used, so going back hits", async () => {
     const hosts = Array.from({ length: KEPT_HOSTS + 1 }, (_, i) => host(String(i)));
-    for (const h of hosts) await verifyPlugins(h, [plugin("a")], { loadCheck: fakeCheck().loadCheck });
+    for (const h of hosts)
+      await verifyPlugins(h, [plugin("a")], { loadCheck: fakeCheck().loadCheck });
     expect(stored().hosts.map((e) => e.host)).toEqual(
-      hosts.slice(1).reverse().map((h) => hostIdentity(h)),
+      hosts
+        .slice(1)
+        .reverse()
+        .map((h) => hostIdentity(h)),
     );
     const back = fakeCheck();
     await verifyPlugins(hosts[1]!, [plugin("a")], { loadCheck: back.loadCheck });
@@ -185,7 +195,10 @@ describe("the verified cache", () => {
   });
 
   it("treats junk or another version as empty, and replaces it", async () => {
-    for (const junk of ["{not json", JSON.stringify({ v: VERIFIED_CACHE_VERSION + 1, hosts: [] })]) {
+    for (const junk of [
+      "{not json",
+      JSON.stringify({ v: VERIFIED_CACHE_VERSION + 1, hosts: [] }),
+    ]) {
       storage.map.set(VERIFIED_CACHE_KEY, junk);
       const run = fakeCheck();
       await verifyPlugins(host(), [plugin("a")], { loadCheck: run.loadCheck });
