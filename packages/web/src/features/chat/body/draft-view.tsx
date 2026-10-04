@@ -78,7 +78,8 @@ import { cachedMachineAgents, rememberMachineAgents } from "../../../lib/machine
 import { useAuth } from "../../../state/auth";
 import { useLocale } from "../../../state/locale";
 import type { Locale } from "../../../state/locale";
-import { surfaceLabel, useContributions } from "../../../state/contributions";
+import { useContributions } from "../../../shell";
+import { surfaceLabel } from "../session-surface-view";
 import { SurfaceComposer } from "../surface-composer";
 import { agentDisplayName, useProject } from "../../../state/project";
 import { useSessions } from "../../../state/sessions";
