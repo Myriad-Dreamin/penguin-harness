@@ -22,6 +22,13 @@
  * queue run itself: an employee that forgets to release its run does not hold a slot for ever.
  * Letting go of a live program closes it; the Session and Claude Code's own transcript stay.
  *
+ * ## Resume runs
+ *
+ * A run may instead CONTINUE an existing Claude Code session (`claude --resume <id>`, see
+ * resume.ts): it has no prompt, works in the session's own directory, and is `keepIdle` — a
+ * long-lived conversation idles between the events it waits for, so the idle reclaim passes it
+ * by while it keeps its slot. One Claude Code session is held by at most one run.
+ *
  * ## Where it lives
  *
  * One JSON file per organization, `claude-code-runs.json` in the organization's directory,
@@ -35,98 +42,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { OrgActor, OrgView } from "@prismshadow/penguin-server/plugin";
-
-/** The file each organization's runs are kept in, under its directory. */
-export const RUNS_FILE = "claude-code-runs.json";
+import { KEEP_ENDED, PROMPT_MAX, QueueError, SCREEN_MAX, parseRunsFile, runsPath } from "./runs.js";
+import type { EndReason, QueueConfig, RowLike, Run, RunView, RunsFile } from "./runs.js";
 
 /** How often the pump looks at the running programs and starts what fits. */
 export const PUMP_MS = 3000;
-
-/** How many ended runs an organization's file keeps (newest first); older ones are dropped. */
-export const KEEP_ENDED = 100;
-
-/** Longest prompt a run takes, in characters — it becomes a command-line argument. */
-export const PROMPT_MAX = 20_000;
-
-/** The most screen lines `GET …/runs/<id>?screen=N` hands back. */
-export const SCREEN_MAX = 200;
-
-/** Where a run is. */
-export type RunStatus = "queued" | "running" | "ended";
-
-/**
- * Why a run ended:
- *
- *   exited     the program exited on its own (`/exit`, a crash)
- *   released   someone let go of it while it ran — the program was closed
- *   cancelled  someone let go of it before it started
- *   idle       the program sat idle for `idleMinutes` and was closed
- *   failed     it could not be started (the error says why)
- *   lost       its Session is gone, or has no live program after a restart
- */
-export type EndReason = "exited" | "released" | "cancelled" | "idle" | "failed" | "lost";
-
-export interface Run {
-  /** Per organization, from 1. */
-  id: number;
-  /** The employee the run is for: the Claude Code Session is this Agent's. */
-  agentId: string;
-  /** Who queued it (`agent:<id>` or `user:<id>`). */
-  by: string;
-  /** The person whose request it was (the token's user for an employee): the terminal's owner. */
-  ownerUserId: string;
-  prompt: string;
-  title: string | null;
-  workspace: string;
-  status: RunStatus;
-  queuedAt: string;
-  startedAt?: string;
-  endedAt?: string;
-  /** The Claude Code Session, once started. */
-  sessionId?: string;
-  /** Since when the program has been idle, while it runs; absent while it works. */
-  idleSince?: string;
-  end?: EndReason;
-  /** Who released or cancelled it. */
-  endedBy?: string;
-  /** Why it could not be started. */
-  error?: string;
-}
-
-/** A run as the routes answer it: the record, plus its place in line or what its program is doing. */
-export interface RunView extends Run {
-  /** 1-based place in the server-wide line, while queued. */
-  position?: number;
-  /** While running: whether the program is working on a turn or waiting for input. */
-  activity?: "working" | "idle";
-  /** The last lines of its screen, when asked for (`?screen=N`) and the program lives. */
-  screen?: string[];
-}
-
-export interface QueueConfig {
-  /** How many runs may hold a slot at once, across every organization. */
-  capacity: number;
-  /** Minutes of continuous idleness after which a running program is closed; 0 never closes one. */
-  idleMinutes: number;
-}
-
-/** A refusal the routes turn into an HTTP answer. */
-export class QueueError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-/** The Session row fields the queue reads. */
-export interface RowLike {
-  sessionId: string;
-  workspace: string;
-  surface?: string | null;
-}
 
 /** What the service needs of the harness — narrow, so a test can stand each one in. */
 export interface QueueDeps {
@@ -164,6 +84,11 @@ export interface QueueDeps {
    * idle would close a working program after a hot swap.
    */
   activity(sessionId: string): "running" | "idle";
+  /**
+   * Tells the surface that the Session about to be opened continues Claude Code session
+   * `claudeSessionId` (`claude --resume`), not a new conversation.
+   */
+  resume(sessionId: string, claudeSessionId: string): void;
   /** The screen of a terminal, for `?screen=N`; null when there is no such terminal. */
   screen(terminalId: string): string[] | null;
   /** The data root: organizations live at `<root>/<projectId>/organizations/<orgId>`. */
@@ -175,11 +100,6 @@ export interface QueueDeps {
   log?: (line: string) => void;
 }
 
-interface RunsFile {
-  next: number;
-  runs: Run[];
-}
-
 /** One organization's file, as it is held while a change is made. */
 interface OrgRuns {
   projectId: string;
@@ -189,36 +109,42 @@ interface OrgRuns {
 
 const orgKey = (projectId: string, orgId: string) => `${projectId}/${orgId}`;
 
-export function runsPath(root: string, projectId: string, orgId: string): string {
-  return path.join(root, projectId, "organizations", orgId, RUNS_FILE);
-}
-
-/** A file's content as runs; anything unreadable is an empty file, never a crash. */
-export function parseRunsFile(text: string): RunsFile {
-  try {
-    const parsed = JSON.parse(text) as Partial<RunsFile>;
-    const runs = Array.isArray(parsed.runs)
-      ? parsed.runs.filter(
-          (r): r is Run =>
-            typeof r === "object" &&
-            r !== null &&
-            typeof (r as Run).id === "number" &&
-            typeof (r as Run).agentId === "string",
-        )
-      : [];
-    const highest = runs.reduce((m, r) => Math.max(m, r.id), 0);
-    const next =
-      typeof parsed.next === "number" && parsed.next > highest ? parsed.next : highest + 1;
-    return { next, runs };
-  } catch {
-    return { next: 1, runs: [] };
-  }
-}
-
 /** Whether `inner` is `outer` or a directory under it. */
 function within(outer: string, inner: string): boolean {
   const rel = path.relative(outer, inner);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/** A refusal for an organization that runs on another machine: its runs are that machine's. */
+function refuseRemote(org: OrgView): void {
+  if (org.machineId !== null) {
+    throw new QueueError(
+      409,
+      "remote_org",
+      `Organization ${org.orgId} runs on machine ${org.machineId}; queue there.`,
+    );
+  }
+}
+
+/** The employee a run is for: an employee queues for itself, a person names one (`agent`). */
+function employeeFor(org: OrgView, principal: string, agent: unknown): string {
+  let agentId: string;
+  if (principal.startsWith("agent:")) {
+    agentId = principal.slice("agent:".length);
+  } else {
+    agentId = typeof agent === "string" ? agent.trim() : "";
+    if (agentId === "") {
+      throw new QueueError(
+        400,
+        "agent_required",
+        "Name the employee the run is for (`agent`): a run is a Session of an employee's Agent.",
+      );
+    }
+  }
+  if (!org.employees.some((e) => e.agentId === agentId)) {
+    throw new QueueError(400, "not_an_employee", `${agentId} is not an employee of ${org.orgId}.`);
+  }
+  return agentId;
 }
 
 /** The line in which queued runs start: oldest first, across organizations. */
@@ -320,8 +246,8 @@ export class ClaudeCodeQueue {
     });
   }
 
-  /** The organization for a caller, and who the caller is; refused while company mode is off, for a missing organization, and for one that runs elsewhere. */
-  private async open(
+  /** The organization for a caller, and who the caller is; refused while company mode is off and for a missing organization. */
+  async organization(
     projectId: string,
     orgId: string,
     actor: OrgActor,
@@ -346,35 +272,14 @@ export class ClaudeCodeQueue {
     actor: OrgActor,
     body: { prompt?: unknown; workspace?: unknown; title?: unknown; agent?: unknown },
   ): Promise<RunView> {
-    const { org, principal } = await this.open(projectId, orgId, actor);
-    if (org.machineId !== null) {
-      throw new QueueError(
-        409,
-        "remote_org",
-        `Organization ${orgId} runs on machine ${org.machineId}; queue there.`,
-      );
-    }
+    const { org, principal } = await this.organization(projectId, orgId, actor);
+    refuseRemote(org);
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
     if (prompt === "") throw new QueueError(400, "prompt_required", "A run needs a prompt.");
     if (prompt.length > PROMPT_MAX) {
       throw new QueueError(400, "prompt_too_long", `A prompt is at most ${PROMPT_MAX} characters.`);
     }
-    let agentId: string;
-    if (principal.startsWith("agent:")) {
-      agentId = principal.slice("agent:".length);
-    } else {
-      agentId = typeof body.agent === "string" ? body.agent.trim() : "";
-      if (agentId === "") {
-        throw new QueueError(
-          400,
-          "agent_required",
-          "Name the employee the run is for (`agent`): a run is a Session of an employee's Agent.",
-        );
-      }
-    }
-    if (!org.employees.some((e) => e.agentId === agentId)) {
-      throw new QueueError(400, "not_an_employee", `${agentId} is not an employee of ${orgId}.`);
-    }
+    const agentId = employeeFor(org, principal, body.agent);
     const caller =
       actor.sessionId !== undefined ? this.deps.sessions.findById(actor.sessionId) : null;
     let workspace: string;
@@ -422,6 +327,76 @@ export class ClaudeCodeQueue {
     return view;
   }
 
+  /**
+   * The run that continues Claude Code session `claudeSessionId` for an employee: the run that
+   * already holds that session — queued or running, in any organization, since one session is
+   * one program — or else a new resume run put in line (`claude --resume`, no first prompt, in
+   * the session's own working directory, kept while idle). Only the Project's people and its
+   * employees may. `guard` runs only when no run holds the session, inside the same serial
+   * step as the insert, so two clicks never queue two runs; it throws to refuse (the session
+   * is live outside this queue). The pump has had its turn before the answer, so a free slot
+   * means the run comes back running.
+   */
+  async resume(
+    projectId: string,
+    orgId: string,
+    actor: OrgActor,
+    args: {
+      claudeSessionId: string;
+      agent?: unknown;
+      /** The session's working directory; asked only once the caller may resume at all. */
+      workspace: () => Promise<string>;
+      guard: () => Promise<void>;
+    },
+  ): Promise<{ projectId: string; orgId: string; run: RunView; existing: boolean }> {
+    const { org, principal } = await this.organization(projectId, orgId, actor);
+    refuseRemote(org);
+    if (principal.startsWith("user:") && !org.userIds.includes(actor.userId)) {
+      throw new QueueError(403, "not_a_member", `You are not a member of Project ${projectId}.`);
+    }
+    const agentId = employeeFor(org, principal, args.agent);
+    const workspace = await args.workspace();
+    const found = await this.serial(async () => {
+      const holder = (await this.everyRun()).find(
+        (x) => x.run.status !== "ended" && x.run.claudeSessionId === args.claudeSessionId,
+      );
+      if (holder !== undefined) {
+        return {
+          projectId: holder.org.projectId,
+          orgId: holder.org.orgId,
+          id: holder.run.id,
+          existing: true,
+        };
+      }
+      await args.guard();
+      const held = await this.read(projectId, orgId);
+      const run: Run = {
+        id: held.file.next,
+        agentId,
+        by: principal,
+        ownerUserId: actor.userId,
+        prompt: "",
+        title: null,
+        workspace,
+        status: "queued",
+        queuedAt: this.iso(),
+        claudeSessionId: args.claudeSessionId,
+        keepIdle: true,
+      };
+      held.file.next += 1;
+      held.file.runs.push(run);
+      await this.write(held);
+      this.deps.log?.(
+        `[claude-code] queued resume run ${orgId}#${run.id} of ${args.claudeSessionId} for ${agentId}`,
+      );
+      return { projectId, orgId, id: run.id, existing: false };
+    });
+    await this.pump();
+    const run = (await this.views(found.projectId, found.orgId, [found.id]))[0];
+    if (run === undefined) throw new QueueError(404, "run_not_found", `No run #${found.id}.`);
+    return { projectId: found.projectId, orgId: found.orgId, run, existing: found.existing };
+  }
+
   /** Every run of the organization (newest first), with the server's slots. */
   async list(
     projectId: string,
@@ -434,7 +409,7 @@ export class ClaudeCodeQueue {
     running: number;
     queued: number;
   }> {
-    await this.open(projectId, orgId, actor);
+    await this.organization(projectId, orgId, actor);
     const runs = await this.views(projectId, orgId, null);
     const all = await this.everyRun();
     const { capacity, idleMinutes } = this.deps.config();
@@ -455,7 +430,7 @@ export class ClaudeCodeQueue {
     actor: OrgActor,
     screen: number,
   ): Promise<RunView> {
-    await this.open(projectId, orgId, actor);
+    await this.organization(projectId, orgId, actor);
     const view = (await this.views(projectId, orgId, [id]))[0];
     if (view === undefined) throw new QueueError(404, "run_not_found", `No run #${id}.`);
     if (screen > 0 && view.status === "running" && view.sessionId !== undefined) {
@@ -476,7 +451,7 @@ export class ClaudeCodeQueue {
    * the run is for, whoever queued it, and any person may; another employee may not.
    */
   async release(projectId: string, orgId: string, id: number, actor: OrgActor): Promise<RunView> {
-    const { principal } = await this.open(projectId, orgId, actor);
+    const { principal } = await this.organization(projectId, orgId, actor);
     await this.serial(async () => {
       const held = await this.read(projectId, orgId);
       const run = held.file.runs.find((r) => r.id === id);
@@ -586,7 +561,11 @@ export class ClaudeCodeQueue {
             if (run.idleSince === undefined) {
               run.idleSince = new Date(now).toISOString();
               dirty.add(org);
-            } else if (idleMinutes > 0 && now - Date.parse(run.idleSince) >= idleMinutes * 60_000) {
+            } else if (
+              run.keepIdle !== true &&
+              idleMinutes > 0 &&
+              now - Date.parse(run.idleSince) >= idleMinutes * 60_000
+            ) {
               this.deps.surfaces.close(run.sessionId!);
               this.finish(run, "idle");
               dirty.add(org);
@@ -633,9 +612,15 @@ export class ClaudeCodeQueue {
       const row = this.deps.sessions.findById(info.sessionId);
       if (row === null) throw new Error(`Session ${info.sessionId} vanished before it was opened.`);
       if (run.title !== null) this.deps.sessions.updateTitleIfNull(info.sessionId, run.title);
-      const opened = await this.deps.surfaces.open(row as never, run.ownerUserId, {
-        prompt: run.prompt,
-      });
+      // A resume run's program continues its Claude Code session instead of taking a prompt.
+      if (run.claudeSessionId !== undefined) {
+        this.deps.resume(info.sessionId, run.claudeSessionId);
+      }
+      const opened = await this.deps.surfaces.open(
+        row as never,
+        run.ownerUserId,
+        run.claudeSessionId === undefined ? { prompt: run.prompt } : {},
+      );
       if (opened === null) throw new Error(`The ${this.deps.surfaceKind} surface is not loaded.`);
       run.status = "running";
       run.startedAt = this.iso();

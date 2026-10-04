@@ -3,6 +3,9 @@
  * ones working now, the ones waiting for a slot, and the ones that ended — with the server's
  * slots above them. A running (or ended) run's Open goes to its Session, where the person is
  * inside the very program the employee started and can type into it; Release lets go of a run.
+ * A resume run shows the Claude Code session it continues and its employee, and its Open is
+ * the open-by-session-id link (resume.ts), so an ended one is continued again. `?run=<id>` on
+ * the app's URL picks one run out (the link lands there while its run waits for a slot).
  *
  * Served whole from the plugin, one HTML document with its style and script inline, in the
  * shape of the company-roadmaps page: the web app mounts it in an iframe at
@@ -16,6 +19,8 @@ import { Hono } from "hono";
 /** The page's route group: a prefix without parameters, since the iframe's src cannot name them. */
 export const PAGE_ROUTES_ID = "claude-code.page-routes";
 export const PAGE_PREFIX = "/api/claude-code";
+/** Where a Claude Code session is opened by its id (resume.ts). */
+export const OPEN_PREFIX = `${PAGE_PREFIX}/open`;
 /** Where the iframe points. */
 export const PAGE_SRC = `${PAGE_PREFIX}/page`;
 /** How often the list is read again. */
@@ -66,6 +71,8 @@ export const PAGE_STRINGS = {
     confirmRelease: "Close this Claude Code and hand its slot on?",
     confirmCancel: "Take this run out of the line?",
     by: "queued by",
+    claudeSession: "Claude Code session",
+    keepIdle: "kept while idle",
     failedRead: "Could not read the runs",
     noOrg: "This page belongs to an organization: open it from company mode.",
   },
@@ -94,6 +101,8 @@ export const PAGE_STRINGS = {
     confirmRelease: "关闭这个 Claude Code，把名额交给下一个？",
     confirmCancel: "把这个运行移出队列？",
     by: "排队人",
+    claudeSession: "Claude Code 会话",
+    keepIdle: "空闲不回收",
     failedRead: "读取运行失败",
     noOrg: "这个页面属于某个组织：请从公司模式打开。",
   },
@@ -133,6 +142,7 @@ h1 { margin: 0 0 0.25rem; font-size: 1.25rem; font-weight: 600; line-height: 1.3
 .row { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--cc-line); }
 .row:first-child { border-top: 0; }
 .row:hover { background: var(--cc-hover); }
+.row.picked { box-shadow: inset 3px 0 0 var(--cc-accent); }
 .id { font-variant-numeric: tabular-nums; color: var(--cc-muted); min-width: 2.25rem; }
 .body { flex: 1; min-width: 0; }
 .name { font-weight: 500; overflow-wrap: anywhere; }
@@ -158,6 +168,7 @@ const STRINGS = ${JSON.stringify(PAGE_STRINGS)};
 const fill = (text, values) => Object.keys(values).reduce((s, k) => s.split("{" + k + "}").join(String(values[k])), String(text));
 const THEME_VARS = ${JSON.stringify(THEME_VARS)};
 const REFRESH_MS = ${PAGE_REFRESH_MS};
+const OPEN_PREFIX = ${JSON.stringify(OPEN_PREFIX)};
 const main = document.getElementById("main");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const read = (f, fallback) => { try { return f(); } catch { return fallback; } };
@@ -217,6 +228,12 @@ async function resolveOrg() {
 // ?machine= the chat page asks this server, hears 404 and falls back to the newest personal
 // conversation.
 const sessionPath = (sessionId) => "/chat/" + encodeURIComponent(sessionId) + (machine === null ? "" : "?machine=" + encodeURIComponent(machine));
+// A resume run is opened the way its link opens it — by its Claude Code session id — so an
+// ended one is queued again and a running one is entered. A full navigation: the answer is a
+// redirect from the server, which the app's history cannot follow.
+const resumePath = (r) => OPEN_PREFIX + "/" + encodeURIComponent(r.claudeSessionId) + "?org=" + encodeURIComponent(decodeURIComponent(m[2])) + "&project=" + encodeURIComponent(decodeURIComponent(m[1])) + "&agent=" + encodeURIComponent(r.agentId);
+const picked = read(() => new URLSearchParams(window.parent.location.search).get("run"), null);
+let scrolled = false;
 const go = (path) => {
   const entered = read(() => {
     const parent = window.parent;
@@ -236,13 +253,15 @@ function pill(r) {
 }
 const firstLine = (s) => String(s || "").split(/\\r?\\n/, 1)[0];
 function row(r) {
-  const name = r.title || firstLine(r.prompt);
+  const name = r.title || (r.claudeSessionId ? "claude --resume " + r.claudeSessionId : firstLine(r.prompt));
   const when = r.startedAt || r.queuedAt;
   const actions = [];
-  if (r.sessionId) actions.push('<a class="button' + (r.status === "running" ? " primary" : "") + '" href="' + esc(sessionPath(r.sessionId)) + '" target="_top" data-open="' + esc(r.sessionId) + '">' + esc(T.open) + "</a>");
+  if (r.claudeSessionId) actions.push('<a class="button' + (r.status === "running" ? " primary" : "") + '" href="' + esc(resumePath(r)) + '" target="_top" data-resume="' + esc(resumePath(r)) + '">' + esc(T.open) + "</a>");
+  else if (r.sessionId) actions.push('<a class="button' + (r.status === "running" ? " primary" : "") + '" href="' + esc(sessionPath(r.sessionId)) + '" target="_top" data-open="' + esc(r.sessionId) + '">' + esc(T.open) + "</a>");
   if (r.status !== "ended") actions.push('<button type="button" data-release="' + r.id + '" data-queued="' + (r.status === "queued" ? "1" : "") + '">' + esc(r.status === "queued" ? T.cancel : T.release) + "</button>");
-  return '<div class="row"><span class="id">#' + r.id + '</span><div class="body"><div class="name">' + esc(name) + " " + pill(r) + "</div>" +
+  return '<div class="row' + (String(r.id) === picked ? " picked" : "") + '" data-run="' + r.id + '"><span class="id">#' + r.id + '</span><div class="body"><div class="name">' + esc(name) + " " + pill(r) + "</div>" +
     '<div class="meta">' + esc(r.agentId) + " · " + esc(T.by) + " " + esc(String(r.by).replace(/^(user|agent):/, "")) + " · " + esc(when) + '</div>' +
+    (r.claudeSessionId ? '<div class="meta">' + esc(T.claudeSession) + " <code>" + esc(r.claudeSessionId) + "</code>" + (r.keepIdle ? " · " + esc(T.keepIdle) : "") + "</div>" : "") +
     '<div class="meta"><code>' + esc(r.workspace) + "</code></div>" +
     (r.error ? '<div class="meta error">' + esc(r.error) + "</div>" : "") +
     '</div><div class="actions">' + actions.join("") + "</div></div>";
@@ -251,6 +270,10 @@ function draw(data) {
   const summary = '<div class="summary"><span>' + esc(fill(T.slots, data)) + '</span><span class="muted">' + esc(data.idleMinutes > 0 ? fill(T.idleRule, { minutes: data.idleMinutes }) : T.idleNever) + "</span></div>";
   const list = data.runs.length === 0 ? '<div class="list"><div class="empty">' + esc(T.empty) + "</div></div>" : '<div class="list">' + data.runs.map(row).join("") + "</div>";
   main.innerHTML = head + summary + list;
+  if (!scrolled && picked !== null) {
+    const target = main.querySelector('[data-run="' + CSS.escape(picked) + '"]');
+    if (target) { target.scrollIntoView({ block: "center" }); scrolled = true; }
+  }
 }
 let busy = false;
 async function refresh() {
@@ -263,6 +286,8 @@ async function refresh() {
 main.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  const resume = target.closest("[data-resume]");
+  if (resume) { event.preventDefault(); read(() => { window.top.location.href = resume.getAttribute("data-resume"); }, null); return; }
   const open = target.closest("[data-open]");
   if (open) { event.preventDefault(); go(sessionPath(open.getAttribute("data-open"))); return; }
   const release = target.closest("[data-release]");
@@ -295,9 +320,13 @@ export function pageHtml(): string {
 `;
 }
 
-/** The page's route group: `GET /page` answers the document (behind the cookie gate). */
-export function pageRoutes(): Hono {
+/**
+ * The page's route group (behind the cookie gate): `GET /page` answers the document, and
+ * `/open/*` is the open-by-session-id link (resume.ts) mounted beside it.
+ */
+export function pageRoutes(open: Hono): Hono {
   const app = new Hono();
   app.get("/page", (c) => c.html(pageHtml()));
+  app.route("/open", open);
   return app;
 }

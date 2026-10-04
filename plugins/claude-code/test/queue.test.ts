@@ -98,6 +98,7 @@ function queue(): ClaudeCodeQueue {
         if (program !== undefined) program.alive = false;
       },
     },
+    resume: () => {},
     activity: (sessionId) => programs.get(sessionId)?.activity ?? "idle",
     screen: (terminalId) => programs.get(terminalId.slice(2))?.screen ?? null,
     root,
@@ -259,6 +260,34 @@ describe("the slots", () => {
     expect(closed).toEqual(["cc-1"]);
     expect(await q.show("p", "acme", 1, person, 0)).toMatchObject({ status: "ended", end: "idle" });
     expect(opened.map((o) => o.prompt)).toEqual(["first", "second"]);
+    await q.stop();
+  });
+
+  it("pass over a keepIdle run, which still holds its slot", async () => {
+    config = { capacity: 1, idleMinutes: 30 };
+    const q = queue();
+    await fs.mkdir(path.join(root, "work"), { recursive: true });
+    const resumed = await q.resume("p", "acme", person, {
+      claudeSessionId: "abc",
+      agent: "dev",
+      workspace: async () => path.join(root, "work"),
+      guard: async () => {},
+    });
+    expect(resumed.run).toMatchObject({ status: "running", keepIdle: true, prompt: "" });
+    expect(opened).toEqual([{ sessionId: "cc-1", owner: "admin", prompt: undefined }]);
+    await q.enqueue("p", "acme", qa, { prompt: "next" });
+    programs.get("cc-1")!.activity = "idle";
+    await q.pump();
+    clock += 24 * 60 * 60_000;
+    await q.pump();
+    expect(closed).toEqual([]);
+    const [next, kept] = (await q.list("p", "acme", person)).runs;
+    expect(kept).toMatchObject({ status: "running", activity: "idle" });
+    expect(next).toMatchObject({ status: "queued", position: 1 });
+    // Released by hand, its slot goes on like any other's.
+    await q.release("p", "acme", 1, person);
+    await q.pump();
+    expect(opened.map((o) => o.prompt)).toEqual([undefined, "next"]);
     await q.stop();
   });
 

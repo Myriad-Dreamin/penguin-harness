@@ -14,7 +14,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { OrgActor } from "@prismshadow/penguin-server/plugin";
-import { QueueError } from "./queue.js";
+import { QueueError } from "./runs.js";
 import type { ClaudeCodeQueue } from "./queue.js";
 
 /** The route group's contribution id, as the manifest names it. */
@@ -23,7 +23,8 @@ export const QUEUE_ROUTES_ID = "claude-code.queue-routes";
 /** The prefix the group is mounted at (the manifest repeats it; a test holds the two together). */
 export const QUEUE_PREFIX = "/api/projects/:projectId/organizations/:orgId/claude-code";
 
-function actorOf(c: Context, claims: Record<string, unknown>): OrgActor {
+/** Who calls: the signed-in person, plus the Session and Agent claims honoured behind the local API token only. */
+export function actorOf(c: Context, claims: Record<string, unknown>): OrgActor {
   const user = c.get("user" as never) as { userId: string };
   const token = (c.get("sessionVia" as never) as string | undefined) === "token";
   const sessionId = claims.sessionId;

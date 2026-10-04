@@ -85,27 +85,32 @@ import type {
 import { ClaudeCodeQueue } from "./queue.js";
 import { QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
 import { PAGE_ROUTES_ID, pageRoutes } from "./console-page.js";
+import { claudeRoot, openRoutes } from "./resume.js";
 
+export { ClaudeCodeQueue, PUMP_MS } from "./queue.js";
+export type { QueueDeps } from "./queue.js";
 export {
-  ClaudeCodeQueue,
   KEEP_ENDED,
   PROMPT_MAX,
-  PUMP_MS,
   QueueError,
   RUNS_FILE,
   SCREEN_MAX,
   parseRunsFile,
   runsPath,
-} from "./queue.js";
-export type {
-  EndReason,
-  QueueConfig,
-  QueueDeps,
-  RowLike,
-  Run,
-  RunStatus,
-  RunView,
-} from "./queue.js";
+} from "./runs.js";
+export type { EndReason, QueueConfig, RowLike, Run, RunStatus, RunView } from "./runs.js";
+export {
+  CLAUDE_SESSION_ID,
+  RECORD_SCAN_LINES,
+  RunningElsewhere,
+  claudeRoot,
+  findSessionRecord,
+  liveSession,
+  openRoutes,
+  procProbe,
+  refusalPage,
+} from "./resume.js";
+export type { LiveSession, OpenRoutesDeps, ProcProbe, SessionRecord } from "./resume.js";
 export { QUEUE_PREFIX, QUEUE_ROUTES_ID, queueRoutes } from "./queue-routes.js";
 export {
   PAGE_PREFIX,
@@ -297,12 +302,17 @@ export function claudeSearchedIn(env: NodeJS.ProcessEnv = process.env): string[]
   ];
 }
 
-/** The argv for one Session: the program, then the first prompt when there is one. */
+/**
+ * The argv for one Session: the program, then the first prompt when there is one — or, for a
+ * Session that continues Claude Code session `resume`, `--resume <id>` and no prompt.
+ */
 export function claudeArgv(
   prompt: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  resume?: string,
 ): string[] {
   const argv = [claudeBinary(env)];
+  if (resume !== undefined) return [...argv, "--resume", resume];
   const first = prompt?.trim() ?? "";
   if (first !== "") argv.push(first);
   return argv;
@@ -319,9 +329,7 @@ export const TITLE_POLL_MS = 4000;
  * becomes `-home-k--penguin-x`. `CLAUDE_CONFIG_DIR` moves the root, as it does for the tool.
  */
 export function transcriptDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
-  const root =
-    env.CLAUDE_CONFIG_DIR?.trim() || path.join(env.HOME ?? env.USERPROFILE ?? "", ".claude");
-  return path.join(root, "projects", cwd.replace(/[^A-Za-z0-9-]/g, "-"));
+  return path.join(claudeRoot(env), "projects", cwd.replace(/[^A-Za-z0-9-]/g, "-"));
 }
 
 /**
@@ -456,6 +464,8 @@ interface Parked {
  */
 export class ClaudeCodeSurface implements SessionSurface {
   private readonly tracked = new Map<string, Tracked>();
+  /** Sessions about to be opened as a continuation of a Claude Code session, consumed by `open`. */
+  private readonly resumes = new Map<string, string>();
 
   constructor(
     private readonly terminals: Terminals,
@@ -480,6 +490,14 @@ export class ClaudeCodeSurface implements SessionSurface {
     return { sessions };
   }
 
+  /**
+   * The next `open` of `sessionId` that starts a program starts `claude --resume
+   * <claudeSessionId>` instead of a new conversation (the queue's resume runs).
+   */
+  planResume(sessionId: string, claudeSessionId: string): void {
+    this.resumes.set(sessionId, claudeSessionId);
+  }
+
   async open(
     session: SurfaceSessionRef,
     options: SurfaceOpenOptions,
@@ -495,6 +513,8 @@ export class ClaudeCodeSurface implements SessionSurface {
       return this.viewOf(existing);
     }
     if (existing !== undefined) this.untrack(session.sessionId);
+    const resume = this.resumes.get(session.sessionId);
+    this.resumes.delete(session.sessionId);
     // Refused here rather than at the pty, which can only say `execvp(3) failed.: No such
     // file or directory` — true, and useless about which program or where it was sought.
     if (claudeMissing(this.env)) {
@@ -508,14 +528,14 @@ export class ClaudeCodeSurface implements SessionSurface {
       cwd: session.workspace,
       ownerUserId: session.ownerUserId,
       name: "claude",
-      command: claudeArgv(options.prompt, this.env),
+      command: claudeArgv(options.prompt, this.env, resume),
       unsetEnv: INHERITED_SESSION_MARKERS,
       ...(options.cols !== undefined ? { cols: options.cols } : {}),
       ...(options.rows !== undefined ? { rows: options.rows } : {}),
     });
     const tracked = this.track(session.sessionId, terminal);
     tracked.report = report;
-    await this.followTitle(session.sessionId, tracked, session.workspace);
+    await this.followTitle(session.sessionId, tracked, session.workspace, resume);
     return this.viewOf(tracked);
   }
 
@@ -547,7 +567,12 @@ export class ClaudeCodeSurface implements SessionSurface {
    * a readdir plus the bytes appended since the last look. The file is re-chosen every poll
    * because `/resume` moves the program to another session — and therefore another file.
    */
-  private async followTitle(sessionId: string, tracked: Tracked, cwd: string): Promise<void> {
+  private async followTitle(
+    sessionId: string,
+    tracked: Tracked,
+    cwd: string,
+    resume?: string,
+  ): Promise<void> {
     const dir = transcriptDir(cwd, this.env);
     // The baseline is taken BEFORE the first look, and awaited: everything already in the
     // directory belongs to earlier runs in this Workspace, and this program's own transcript
@@ -555,7 +580,9 @@ export class ClaudeCodeSurface implements SessionSurface {
     // one of those leftovers and never followed.
     tracked.titles = {
       dir,
-      file: null,
+      // A resumed session's transcript is known: it is the one `--resume` continues, whose
+      // title is the conversation's already.
+      file: resume === undefined ? null : path.join(dir, `${resume}.jsonl`),
       baseline: new Map((await transcripts(dir)).map((t) => [t.file, t.size])),
       offset: 0,
       last: null,
@@ -833,6 +860,8 @@ export class ClaudeCodeQueueModule {
       sessions: this.sessions,
       surfaces: this.surfaces,
       activity: (sessionId) => liveSurface.current?.status(sessionId) ?? "idle",
+      resume: (sessionId, claudeSessionId) =>
+        liveSurface.current?.planResume(sessionId, claudeSessionId),
       screen: (terminalId) => {
         const terminal = this.terminals.get(terminalId);
         if (terminal === undefined || !terminal.alive) return null;
@@ -852,7 +881,7 @@ export class ClaudeCodeQueueModule {
       void queue.stop();
     });
     this.routes = queueRoutes(queue);
-    this.page = pageRoutes();
+    this.page = pageRoutes(openRoutes({ queue, root: this.paths.root }));
   }
 }
 
