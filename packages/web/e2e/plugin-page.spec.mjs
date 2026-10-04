@@ -144,7 +144,9 @@ test("plugin page: follows a language switch in Settings without a reload", asyn
   if (SHOTS) await shootPage(page, "switch-before-zh");
   await page.getByRole("button", { name: U }).last().click();
   await page.getByRole("menuitem", { name: "设置" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "English", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "设置" });
+  await settings.getByRole("button", { name: "通用" }).click();
+  await settings.getByRole("button", { name: "English", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(main.getByText("Current language: English")).toBeVisible();
   await expect(main.getByRole("heading", { level: 1, name: "Plugin page" })).toBeVisible();
