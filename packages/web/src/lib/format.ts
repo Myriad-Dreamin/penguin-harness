@@ -250,12 +250,29 @@ export function formatYearMonthDay(iso: string, locale: "zh" | "en"): string {
 export function formatMessageTime(ms: number, locale: "zh" | "en"): string {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(locale === "en" ? "en-US" : "zh-CN", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return messageTimeFormat(locale).format(d);
+}
+
+/**
+ * One formatter per UI language, built on first use: `toLocaleString` with options builds a
+ * fresh Intl.DateTimeFormat on every call, and a transcript formats a time per message on
+ * every render. Same locale and options, so the same text. Built lazily rather than at import
+ * so the time zone is read when the first time is shown, as toLocaleString read it per call.
+ */
+const messageTimeFormats = new Map<"zh" | "en", Intl.DateTimeFormat>();
+
+function messageTimeFormat(locale: "zh" | "en"): Intl.DateTimeFormat {
+  let format = messageTimeFormats.get(locale);
+  if (format === undefined) {
+    format = new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    messageTimeFormats.set(locale, format);
+  }
+  return format;
 }
 
 /** Milliseconds at local calendar-day midnight (shared by relative-day calculations). */
