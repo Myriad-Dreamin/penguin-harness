@@ -33,8 +33,8 @@ import { requestSettings } from "../settings/settings-request";
 import { AddressBar } from "./address-bar";
 import {
   activateBrowserTab,
-  closeChromeTab,
-  navigateChromeTab,
+  closeRemoteTab,
+  navigateRemoteTab,
   openBrowserTab,
   switchBrowserBackend,
 } from "./browser-actions";
@@ -66,7 +66,7 @@ export function ChromeSurface({ state, active }: { state: BrowserState; active: 
   const connect = () => setPairing(true);
   const navigate = (url: string) => {
     if (tab === null) void openBrowserTab(url);
-    else navigateChromeTab(tab.id, url);
+    else navigateRemoteTab(tab.id, url);
   };
   const ringShown = connected && tab !== null && state.activity[tab.id] !== undefined;
 
@@ -144,7 +144,7 @@ export function ChromeSurface({ state, active }: { state: BrowserState; active: 
           busy={(id) => tabBusy(state, id)}
           heavyMemory={() => null}
           onSelect={(id) => activateBrowserTab(id, "chrome")}
-          onClose={closeChromeTab}
+          onClose={(id) => closeRemoteTab(id)}
           onNew={() => void openBrowserTab()}
         />
       )}

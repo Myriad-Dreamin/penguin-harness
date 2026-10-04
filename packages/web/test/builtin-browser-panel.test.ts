@@ -18,7 +18,7 @@
  *   A switch that goes through moves the window, says so, and reads the new backend's status.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createElement, isValidElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type {
@@ -191,8 +191,7 @@ function rows(props: Parameters<typeof BackendMenuRows>[0]): Row[] {
   const out = BackendMenuRows(props);
   if (out === null) return [];
   const walk = (node: ReactNode): Row[] =>
-    ([] as ReactNode[])
-      .concat(node)
+    Children.toArray(node)
       .filter(isValidElement)
       .flatMap((el) => {
         const props = (el as ReactElement<{ children?: ReactNode; label?: ReactNode }>).props;
