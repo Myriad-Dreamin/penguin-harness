@@ -2122,6 +2122,7 @@ router
   .get("/api/desktop/tray", (): DesktopTrayStatusResponse => ({ status: null }))
   .put("/api/desktop/tray", () => empty())
   .post("/api/desktop/privacy-settings", () => notFound("Desktop mode"))
+  .post("/api/desktop/window", () => notFound("Desktop mode"))
   // Host commands: a plain server's host offers none, so there is nothing to run.
   .get("/api/command", (): HostCommandsResponse => ({ commands: [], offers: [] }))
   .post("/api/command/:command", () => notFound("Host command"));

@@ -28,6 +28,7 @@ import { CommandPalette, toastError, toastInfo } from "@prismshadow/penguin-ui";
 import type { PaletteAction } from "@prismshadow/penguin-ui";
 import * as api from "../api/endpoints";
 import { apiErrorText } from "../lib/api-error";
+import { offersNewWindow } from "../lib/desktop-window";
 import { useAddedPaletteActions } from "../lib/palette-actions";
 import { onCommand } from "../lib/shortcuts/dispatcher";
 import { useShortcutLabel } from "../lib/shortcuts/use-keymap";
@@ -113,8 +114,9 @@ export function RescuePalette() {
   );
   const toggleShortcut = useShortcutLabel("palette.toggle");
 
-  const { user } = useAuth();
+  const { user, desktopMode, sessionVia } = useAuth();
   const isAdmin = user?.isAdmin === true;
+  const newWindow = offersNewWindow({ desktopMode, sessionVia });
   const { locale } = useLocale();
   const [offers, setOffers] = useState<HostCommandOffer[]>([]);
   useEffect(() => {
@@ -153,6 +155,19 @@ export function RescuePalette() {
         keywords: ["safe mode", "contributions", "plugins"],
         run: () => setSafeMode(!safe),
       },
+      // The shell opens the window; the page only asks (see lib/desktop-window.ts).
+      ...(newWindow
+        ? [
+            {
+              id: "new-window",
+              label: S.commandPalette.newWindow,
+              keywords: ["new window", "open window", "second window"],
+              run: () => {
+                void api.openDesktopWindow().catch((err: unknown) => toastError(apiErrorText(err)));
+              },
+            },
+          ]
+        : []),
       ...hostCommandActions(offers, locale).map(({ command, action }): PaletteAction => {
         return {
           id: `host-${command}`,
@@ -177,7 +192,7 @@ export function RescuePalette() {
         },
       },
     ],
-    [added, safe, offers, locale],
+    [added, safe, offers, locale, newWindow],
   );
   return (
     <>
