@@ -55,21 +55,21 @@ export function AudioSeek({
   };
 
   return (
-    <div className="relative h-3 w-full rounded-full has-[:focus-visible]:[outline:var(--ui-focus-ring)] has-[:focus-visible]:[outline-offset:var(--ui-focus-ring-offset)]">
-      <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-line-muted">
+    <div className="mp:relative mp:h-3 mp:w-full mp:rounded-full mp:has-[:focus-visible]:[outline:var(--ui-focus-ring)] mp:has-[:focus-visible]:[outline-offset:var(--ui-focus-ring-offset)]">
+      <div className="mp:absolute mp:inset-x-0 mp:top-1/2 mp:h-1 mp:-translate-y-1/2 mp:overflow-hidden mp:rounded-full mp:bg-line-muted">
         <div
-          className="absolute inset-y-0 left-0 bg-line-emphasis"
+          className="mp:absolute mp:inset-y-0 mp:left-0 mp:bg-line-emphasis"
           style={{ width: percent(loaded, total) }}
         />
         <div
-          className="absolute inset-y-0 left-0 bg-accent"
+          className="mp:absolute mp:inset-y-0 mp:left-0 mp:bg-accent"
           style={{ width: percent(time, total) }}
         />
       </div>
       {ready && (
         <div
           aria-hidden
-          className="pointer-events-none absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent"
+          className="mp:pointer-events-none mp:absolute mp:top-1/2 mp:size-2.5 mp:-translate-x-1/2 mp:-translate-y-1/2 mp:rounded-full mp:bg-accent"
           style={{ left: percent(time, total) }}
         />
       )}
@@ -84,7 +84,7 @@ export function AudioSeek({
         aria-valuetext={valueText}
         onChange={(e) => onSeek(Number(e.target.value))}
         onKeyDown={onKeyDown}
-        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none opacity-0 outline-none disabled:cursor-default"
+        className="mp:absolute mp:inset-0 mp:m-0 mp:h-full mp:w-full mp:cursor-pointer mp:appearance-none mp:opacity-0 mp:outline-none mp:disabled:cursor-default"
       />
     </div>
   );
