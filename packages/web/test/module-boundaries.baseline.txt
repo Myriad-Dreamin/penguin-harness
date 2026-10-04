@@ -116,7 +116,6 @@ features/chat/stream-selection-menu.tsx -> features/builtin-browser/browser-acti
 features/chat/stream-selection-menu.tsx -> features/builtin-browser/browser-store.ts
 features/company/calendar-geom.ts -> features/traces/lane-packing.ts
 features/company/channel-dialogs.tsx -> features/semantic-id/semantic-id-field.tsx
-features/company/channel-draft.ts -> features/chat/draft-cache.ts
 features/company/channel-markdown.tsx -> features/proposals/proposal-links.tsx
 features/company/employee-dialogs.tsx -> features/skills/skill-pick-list.tsx
 features/company/employee-dialogs.tsx -> features/skills/skill-selection.ts
@@ -128,7 +127,6 @@ features/company/org-session-groups.tsx -> features/messaging/messaging-binding-
 features/company/roadmap-detail.tsx -> features/proposals/activity-view.tsx
 features/company/roadmap-detail.tsx -> features/proposals/proposals-model.ts
 features/company/use-org-pages.ts -> shell/page-table.ts
-features/dashboard/dashboard-page.tsx -> features/chat/agent-topology.ts
 features/dock/dock-panel.tsx -> features/builtin-browser/slot-registry.ts
 features/model-picker/model-picker-logic.ts -> features/models/model-grouping.ts
 features/model-picker/model-picker-logic.ts -> features/models/model-tags.ts

@@ -14,8 +14,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "../../state/auth";
-import { clearDraft } from "../chat/draft-cache";
-import type { DraftStorage } from "../chat/draft-cache";
+import { clearDraft } from "../chat";
+import type { DraftStorage } from "../chat";
 import { EMPTY_DRAFT, mentionEnd, serializeClip } from "./mention-draft";
 import type { DraftMention, MentionDraft } from "./mention-draft";
 
