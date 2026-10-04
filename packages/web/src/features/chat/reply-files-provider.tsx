@@ -5,10 +5,10 @@
  * package's ProseBlockTrailerProvider). The Markdown is not changed: a link stays a link and
  * keeps its click.
  *
- * A renderer may be a plugin's lazy component (the music example's player): each is drawn in a
- * Suspense boundary, whose fallback draws nothing until its code has loaded, and an error
- * boundary, so a renderer that fails to load or to render takes only itself away — the link above
- * it still opens the file.
+ * A renderer may be a plugin's lazy component (the music example's player): each is drawn under
+ * its own `<Deferred>`, which draws nothing until its code has loaded, and turns a renderer that
+ * fails to load or to render into the part-failed notice in its place — the link above it still
+ * opens the file.
  *
  * Two parts, because the trailer is built where the chat page's state is and applied where a
  * reply is drawn: `ReplyFilesProvider` sits in the chat page's ChatSessionProvider and builds it
@@ -19,13 +19,13 @@
  * Every nested reply (a subagent's) shares the conversation's Workspace, so its files are fetched
  * through the conversation's own Session.
  */
-import { createContext, Suspense, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import { ProseBlockTrailerProvider } from "@prismshadow/penguin-ui";
 import type { ProseBlockTrailer } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { ChatSessionContext } from "../../lib/chat-session";
-import { ErrorBoundary } from "../../rescue/error-boundary";
+import { Deferred } from "../../components/ui/deferred";
 import { useLocale } from "../../state/locale";
 import { chatDeps } from "./deps";
 import { replyFilesOf } from "./reply-files";
@@ -53,11 +53,11 @@ export function ReplyFilesProvider({ children }: { children: ReactNode }) {
       return (
         <div data-reply-files className="my-2 flex flex-col gap-2">
           {files.map(({ path, name, url, Renderer }) => (
-            <ErrorBoundary key={path} fallback={() => null}>
-              <Suspense fallback={null}>
-                <Renderer url={url} path={path} name={name} locale={locale} />
-              </Suspense>
-            </ErrorBoundary>
+            // A renderer is often a plugin's: one that throws, or whose chunk is gone after a
+            // rebuild, shows the part-failed notice in its own place, never more.
+            <Deferred key={path} fallback={null}>
+              <Renderer url={url} path={path} name={name} locale={locale} />
+            </Deferred>
           ))}
         </div>
       );

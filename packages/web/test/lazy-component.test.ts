@@ -6,8 +6,9 @@
  *   it has arrived; preload() loads it once, however often it is asked.
  * - A failed load is a ChunkLoadError, and is not asked again within the document.
  * - preloadComponent() leaves a component that was never deferred alone.
- * - The boundary shows a Retry for a failed load and nothing else: any other error goes on up to
- *   the app's rescue path; a changed reset key forgets the failure.
+ * - The boundary stops every error below it: a failed load (its own or a plugin's dynamic import)
+ *   shows the load notice, any other error the part-failed notice, each with a Retry — a reload
+ *   for a load, a remount otherwise; a changed reset key forgets the failure.
  * - A nav row prefetches the page its address lands on: the first rooted route that matches, never
  *   the catch-all home.
  */
@@ -114,12 +115,28 @@ describe("the boundary deferred code renders under", () => {
     expect(html).toContain(S.common.retry);
   });
 
-  it("passes any other error on to the boundary above", () => {
+  it("treats a dynamic import the browser could not fetch as a failed load", () => {
+    const chromium = new TypeError("Failed to fetch dynamically imported module: /api/plugins/x.js");
+    expect(isChunkLoadError(chromium)).toBe(true);
+    expect(isChunkLoadError(new TypeError("Importing a module script failed."))).toBe(true);
+    expect(isChunkLoadError(new TypeError("undefined is not a function"))).toBe(false);
+  });
+
+  it("stops a render error too, with a Retry that remounts the part", () => {
     const { Boundary, instance } = boundaryFor();
     const error = new TypeError("a bug, not a lost chunk");
-    expect(isChunkLoadError(error)).toBe(false);
-    instance.state = Boundary.getDerivedStateFromError(error);
-    expect(() => instance.render()).toThrow(error);
+    instance.state = { attempt: 0, ...(Boundary.getDerivedStateFromError(error) as object) };
+    const html = renderToStaticMarkup(instance.render());
+    expect(html).toContain('role="alert"');
+    expect(html).toContain(S.common.partFailed);
+    expect(html).not.toContain(S.common.loadPartFailed);
+    let next: unknown = null;
+    instance.setState = (update: unknown) => {
+      next = typeof update === "function" ? (update as (s: unknown) => unknown)(instance.state) : update;
+    };
+    (instance as unknown as { retry(): void }).retry();
+    expect(next).toMatchObject({ attempt: 1 });
+    expect(typeof (next as { error: unknown }).error).toBe("symbol");
   });
 
   it("forgets a failure when its reset key changes (the router passes the path)", () => {
@@ -134,7 +151,7 @@ describe("the boundary deferred code renders under", () => {
     expect(next).toBe("unset");
     instance.props = { ...instance.props, resetKey: "/models" };
     instance.componentDidUpdate({ ...instance.props, resetKey: "/agents" });
-    expect(next).toEqual({ error: null });
+    expect(typeof (next as { error: unknown }).error).toBe("symbol");
   });
 });
 

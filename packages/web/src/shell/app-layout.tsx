@@ -233,7 +233,9 @@ export function AppLayout() {
           mounted once here, outside every page, so navigating never remounts or re-parents
           one — a terminal would reconnect, a built-in browser's webview would reload. */}
       {layers.map(({ id, Component }) => (
-        <Component key={id} />
+        <Deferred key={id} fallback={null}>
+          <Component />
+        </Deferred>
       ))}
     </AppShell>
   );

@@ -1,6 +1,7 @@
 /**
- * The boundary a slot's owner renders deferred code under (lib/lazy-component.ts): the pages, the
- * dock's panel bodies, the chat page's session tabs, the sidebar's sections and the shell's layers.
+ * The boundary a slot's owner renders deferred or contributed code under (lib/lazy-component.ts):
+ * the pages, the dock's panel bodies, the chat page's session tabs and file renderers, the
+ * sidebar's sections and the shell's layers.
  *
  * While a chunk is in flight it shows `fallback` — by default the boot status (boot-pending.tsx),
  * which fades in only after a short delay, so a load that is over in a few hundred milliseconds
@@ -9,16 +10,18 @@
  * transitions, so a boundary already on screen keeps the page it shows until the next page's chunk
  * has arrived; the fallback is only seen on a first mount.
  *
- * A chunk that does not arrive (a dropped connection, a build replaced under the tab) stops here as
- * a short notice with a Retry rather than as a blank box. The Retry reloads the page: a browser
- * keeps a failed module import for the life of the document (Chromium answers the same `import()`
- * with the same failure), so only a new document can fetch the chunk again. Only that failure
- * stops here: any other error rethrows to the boundary above, the app's rescue path, exactly as it
- * did before the code was deferred. `resetKey` clears a failure when it changes (the router passes
- * the path, so navigating away from a page whose chunk failed leaves the notice behind).
+ * ONE RULE: every error thrown below stops here — a chunk that did not arrive (a dropped
+ * connection, a build or a plugin rebuilt under the tab) and a component that threw while
+ * rendering alike — as a short notice with a Retry, so a failing part, a plugin's above all,
+ * degrades only its own block and never the whole app. The Retry differs by cause: a failed
+ * chunk reloads the page, since a browser keeps a failed module import for the life of the
+ * document (Chromium answers the same `import()` with the same failure), so only a new document
+ * can fetch it again; any other failure remounts the part. `resetKey` clears a failure when it
+ * changes (the router passes the path, so navigating away from a failed page leaves the notice
+ * behind).
  */
-import { Component, Suspense } from "react";
-import type { ReactNode } from "react";
+import { Component, Fragment, Suspense } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { Button } from "@prismshadow/penguin-ui";
 import { isChunkLoadError } from "../../lib/lazy-component";
 import { S } from "../../lib/strings";
@@ -28,37 +31,53 @@ interface Props {
   children: ReactNode;
   /** What stands in while the code loads; the delayed boot status when omitted. */
   fallback?: ReactNode;
-  /** A value whose change forgets a failed load. */
+  /** A value whose change forgets a failure. */
   resetKey?: unknown;
 }
 
-type State = { error: unknown } | { error: null };
+interface State {
+  error: unknown;
+  /** Bumped by a Retry that remounts: the children are drawn afresh under a new key. */
+  attempt: number;
+}
 
-class ChunkBoundary extends Component<Props, State> {
-  override state: State = { error: null };
+/** No error held. `null` is not used: `throw null` is a value React reports as an error too. */
+const NONE: unique symbol = Symbol("no error");
 
-  static getDerivedStateFromError(error: unknown): State {
+class PartBoundary extends Component<Props, State> {
+  override state: State = { error: NONE, attempt: 0 };
+
+  static getDerivedStateFromError(error: unknown): Partial<State> {
     return { error };
   }
 
+  override componentDidCatch(error: unknown, info: ErrorInfo): void {
+    // The part is replaced by the notice; the cause stays diagnosable in the console.
+    console.error("[deferred] a part of the page failed", error, info.componentStack);
+  }
+
   override componentDidUpdate(prev: Props): void {
-    if (this.state.error !== null && prev.resetKey !== this.props.resetKey) {
-      this.setState({ error: null });
+    if (this.state.error !== NONE && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: NONE });
     }
   }
 
+  private readonly retry = () => {
+    if (isChunkLoadError(this.state.error)) window.location.reload();
+    else this.setState((s) => ({ error: NONE, attempt: s.attempt + 1 }));
+  };
+
   override render(): ReactNode {
-    const { error } = this.state;
-    if (error === null) return this.props.children;
-    // Not a load failure: the boundary above (the rescue panel) is where it belongs.
-    if (!isChunkLoadError(error)) throw error;
+    const { error, attempt } = this.state;
+    if (error === NONE) return <Fragment key={attempt}>{this.props.children}</Fragment>;
     return (
       <div
         role="alert"
+        data-part-failed
         className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center text-sm text-fg-muted"
       >
-        <p>{S.common.loadPartFailed}</p>
-        <Button size="sm" onClick={() => window.location.reload()}>
+        <p>{isChunkLoadError(error) ? S.common.loadPartFailed : S.common.partFailed}</p>
+        <Button size="sm" onClick={this.retry}>
           {S.common.retry}
         </Button>
       </div>
@@ -68,8 +87,8 @@ class ChunkBoundary extends Component<Props, State> {
 
 export function Deferred({ children, fallback, resetKey }: Props) {
   return (
-    <ChunkBoundary resetKey={resetKey}>
+    <PartBoundary resetKey={resetKey}>
       <Suspense fallback={fallback === undefined ? <BootPending /> : fallback}>{children}</Suspense>
-    </ChunkBoundary>
+    </PartBoundary>
   );
 }

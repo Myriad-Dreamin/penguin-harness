@@ -1099,6 +1099,8 @@ export const zh = {
     retry: "重试",
     /** A part of the app whose code did not arrive (components/ui/deferred.tsx); the button below it is `retry`. */
     loadPartFailed: "这部分界面没能加载：连接可能已中断，或应用刚刚更新。",
+    /** A part of the app (a plugin's above all) that failed while drawing (components/ui/deferred.tsx); the button below it is `retry`. */
+    partFailed: "这部分界面出错了，其余部分不受影响。",
     unknownError: "请求失败，请稍后重试",
     requiredField: "此项必填",
     /** A menu row that copies what it acts on (the conversation's selection menu); the confirmation is `copied`. */

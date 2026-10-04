@@ -22,6 +22,7 @@ import { useDockMount } from "../dock/use-dock-mount";
 import { closedDockView, dockViews } from "../dock/dock-state";
 import { terminalApiSupported } from "../terminal/terminal-list";
 import { machineForSession } from "../../lib/session-machines";
+import { Deferred } from "../../components/ui/deferred";
 import { chatDeps } from "./deps";
 import { useChatController } from "./session/use-chat-controller";
 import { SessionDialogs } from "./session/session-dialogs";
@@ -99,12 +100,13 @@ export function ChatPage() {
           They are its OWN Agent's, asked of the server that Agent runs on: a Session on a
           machine runs a copy of the Agent there, and what it built is in that copy. */}
         {sessionTabs.map(({ id, Tab }) => (
-          <Tab
-            key={id}
-            projectId={projectId}
-            agentId={pageAgentId}
-            machineId={selected === null ? null : machineForSession(selected.sessionId)}
-          />
+          <Deferred key={id} fallback={null}>
+            <Tab
+              projectId={projectId}
+              agentId={pageAgentId}
+              machineId={selected === null ? null : machineForSession(selected.sessionId)}
+            />
+          </Deferred>
         ))}
         {/* Thin top toolbar */}
         {selected && (

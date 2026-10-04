@@ -12,7 +12,7 @@
  *
  * Not `React.lazy`: this one exposes `preload()`, which the nav calls on hover and focus
  * (shell/sidebar/router-link.tsx), so the click finds the chunk already there, and it marks a
- * failed load as a `ChunkLoadError`, which is what the boundary tells apart from a bug. Once
+ * failed load as a `ChunkLoadError`, which the boundary answers with a reload rather than a remount. Once
  * loaded, the component renders the target directly, with no suspension, on every later mount. A
  * failed load stays failed: the browser would answer the same `import()` with the same failure
  * for the rest of the document's life, so the boundary's retry is a reload.
@@ -27,8 +27,8 @@ import type { ComponentType, FunctionComponent } from "react";
 export type LazyComponent<P> = FunctionComponent<P> & { preload(): Promise<ComponentType<P>> };
 
 /**
- * The failure a deferred component throws when its chunk does not arrive. `<Deferred>` catches
- * only this one and offers a retry; any other render error goes on to the app's own boundary.
+ * The failure a deferred component throws when its chunk does not arrive. `<Deferred>` offers a
+ * reload for it (a remount would meet the same cached failure); for any other error, a remount.
  */
 export class ChunkLoadError extends Error {
   constructor(what: string, cause: unknown) {
@@ -37,9 +37,18 @@ export class ChunkLoadError extends Error {
   }
 }
 
-/** Whether an error is a deferred component's failed load. */
-export function isChunkLoadError(error: unknown): error is ChunkLoadError {
-  return error instanceof ChunkLoadError;
+/**
+ * What browsers throw for a dynamic `import()` that did not load (Chromium, Firefox, Safari): a
+ * plugin's own `React.lazy` rejects with this rather than with a `ChunkLoadError`.
+ */
+const IMPORT_FAILED =
+  /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/;
+
+/** Whether an error is a failed code load: a deferred component's, or any dynamic import's. */
+export function isChunkLoadError(error: unknown): boolean {
+  return (
+    error instanceof ChunkLoadError || (error instanceof TypeError && IMPORT_FAILED.test(error.message))
+  );
 }
 
 /**
