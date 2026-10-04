@@ -3,7 +3,8 @@
  * the user is injected into c.var.
  *
  * The Bearer path takes a Session's credential (auth/session-token.ts: the admin, narrowed
- * by the HTTP layer to the route table in auth/session-scope.ts) or a person's sign-in token
+ * by the HTTP layer to the route table in auth/session-scope.ts), the boot's local API token
+ * (`<root>/api-token`, the admin; auth/api-token.ts) or a person's sign-in token
  * (`penguin auth login` / `penguin auth token`). It applies to every route behind this
  * middleware, SSE endpoints included (the CLI consumes SSE via fetch with headers). A
  * Bearer header that does not match fails the

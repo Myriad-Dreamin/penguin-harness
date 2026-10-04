@@ -110,7 +110,7 @@ Password logins, wherever they come from, are throttled per username with expone
 
 Scripts and the CLI never need a password, because local ownership already outranks one.
 
-When a CLI command runs against a server on this machine, it authenticates with the sign-in stored on the data root (`penguin auth login`, or `penguin auth token` below). See [CLI Reference](/cli#server-connection). An agent's commands carry their session's own credential instead, which reaches the agent's own sessions and never an admin route; the server keeps no admin token on disk for them to read.
+When a CLI command runs against a server on this machine, it authenticates with the sign-in stored on the data root (`penguin auth login`, or `penguin auth token` below), else with the local API token, which the server writes to `<root>/api-token` at every start. See [CLI Reference](/cli#server-connection). An agent's commands carry their session's own credential instead, which reaches the agent's own sessions and never an admin route.
 
 A script that needs a session of its own mints one. A session is a row in the data root's `web.db`, so the CLI writes one:
 
@@ -172,6 +172,7 @@ Cookies are HttpOnly and SameSite=Lax. They are also Secure when the request rea
 | `web.db` | Password **hashes**, session **hashes**, application data | Permanently |
 | `<project>/.project_config.toml` | Model API keys, inline, mode 0600 | Until edited |
 | `cli-session.json` | One live session token, mode 0600 | Until sign-out or expiry |
+| `api-token` | The local API token, mode 0600: admin authority for any request that sends it as a Bearer header | Until the next server start |
 
 Never on disk in usable form: session tokens (only their sha256) and passwords. A chosen password exists only as an scrypt hash, and a seeded one is discarded as soon as it is created.
 

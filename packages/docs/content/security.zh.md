@@ -110,7 +110,7 @@ PenguinHarness 用真实凭据在真实机器上运行 Agent，所以值得弄�
 
 脚本和 CLI 从来不需要密码，因为本地所有权本来就高于密码。
 
-CLI 命令访问本机上的服务器时，用存在数据根目录里的登录认证（`penguin auth login`，或下文的 `penguin auth token`）。参见 [CLI 参考](/cli#服务器连接)。Agent 的命令带的是它所在会话自己的凭据，只够得到本 Agent 自己的会话，够不到管理员路由；服务器也不在磁盘上留管理员 token 给它读。
+CLI 命令访问本机上的服务器时，用存在数据根目录里的登录认证（`penguin auth login`，或下文的 `penguin auth token`），没有登录再用本地 API token；服务器每次启动都会把它写入 `<root>/api-token`。参见 [CLI 参考](/cli#服务器连接)。Agent 的命令带的是它所在会话自己的凭据，只够得到本 Agent 自己的会话，够不到管理员路由。
 
 脚本需要自己的会话时，就自己铸造一个。会话是数据根目录下 `web.db` 里的一行记录，所以 CLI 直接写入一行：
 
@@ -172,6 +172,7 @@ Cookie 设置为 HttpOnly 和 SameSite=Lax。请求确实是 https，或者**受
 | `web.db` | 密码**哈希**、会话**哈希**、应用数据 | 永久 |
 | `<project>/.project_config.toml` | 模型 API key，直接内联存放，权限 0600 | 直到下次编辑 |
 | `cli-session.json` | 一个有效的会话令牌，权限 0600 | 直到登出或过期 |
+| `api-token` | 本地 API token，权限 0600：任何请求只要在 Bearer 头里带上它，就拥有管理员权限 | 直到下次服务器启动 |
 
 磁盘上从不以可用形式保存会话令牌（只存 sha256）和密码。你选定的密码只以 scrypt 哈希存在；预置的密码生成后立即丢弃。
 
