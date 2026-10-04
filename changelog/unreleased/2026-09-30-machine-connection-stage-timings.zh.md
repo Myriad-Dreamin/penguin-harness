@@ -3,7 +3,7 @@
 - **Date:** 2026-09-30
 - **Type:** feature
 - **Scope:** `server`
-- **PR:** [Myriad-Dreamin/penguin-harness#115](https://github.com/Myriad-Dreamin/penguin-harness/pull/115)
+- **PR:** [#981](https://github.com/Prism-Shadow/penguin-harness/pull/981)
 
 [English](2026-09-30-machine-connection-stage-timings.md)
 
