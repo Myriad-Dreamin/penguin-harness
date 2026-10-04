@@ -25,8 +25,8 @@
  *
  * The answer may also remove pages by key, the app's own or contributed ones alike: such a page
  * leaves the table with the routes under its path and the pages under it (removedPagesOf), so it
- * has no nav row and its paths fall to the catch-all. The page the catch-all leads to cannot be
- * removed. Removal waits for the answer like everything else here: until it arrives the compiled
+ * has no nav row and its paths fall to the catch-all, company mode's `home` page. Neither that
+ * page nor the pages it leads to can be removed (page-table.ts HOME_PATHS). Removal waits for the answer like everything else here: until it arrives the compiled
  * table is drawn, so a removed page shows in the nav for that moment and its URL still opens it,
  * then falls to the catch-all — first paint does not wait on the network.
  *
