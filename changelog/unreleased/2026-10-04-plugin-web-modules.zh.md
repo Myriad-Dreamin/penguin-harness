@@ -18,13 +18,13 @@
 - 每个 `<Deferred>` 边界都捕获其下抛出的任何错误：未能到达的代码块（应用自身的或插件的，例如在已打开的标签页下被重新构建）显示加载提示，其“重试”会重载页面；渲染时抛错的组件显示“这部分界面出错了”，其“重试”会重新挂载该部分。插件页面、会话标签、Shell 图层和每个回复文件渲染器都在这样的边界内渲染，失败的插件组件只影响它自己所在的区块。
 - 回复中的文件渲染器只来自 `ChatModule.fileRenderers` 的贡献：每条以数据携带扩展名、以代码携带组件，在各自的 `<Deferred>` 内绘制。渲染器会收到界面语言（`locale`）。
 - shell 新增 `ShellModule.pageRemovals` 槽位（`{ key }`，只有数据）。它点名的页面从首次渲染起即被去掉，连同其路径下的路由和挂在它下面的页面；首页指向的页面保留。服务端的 `WebModule.pageRemovals` 槽位与贡献答复的 `pageRemovals` 字段已删除。
-- `packages/web/src/plugin-types.ts` 收录插件的 Web 模块在编译期可以引用的 Web App 类型，只作类型导入：`FileRendererProps`，以及界面语言接口 `Language`——由设置模块提供，供插件模块 `@Use`。Web 包以仅含类型的子路径 `@prismshadow/penguin-web/plugin-types` 导出它；示例插件把 Web 包列为 devDependency。
+- `packages/web/src/plugin-types.ts` 收录插件的 Web 模块在编译期可以引用的 Web App 类型，只作类型导入：`FileRendererProps`，以及界面语言接口 `Language`——由设置模块提供，供插件模块 `@Use`。`Language` 是一个 store：`get()` 返回已提交的值，`subscribe` 在每次变化时回调一次；凡向插件提供的应用状态都采用这一形态。Web App 的界面语言也改由一个这样的 store（`state/locale-store.ts`）保存，只在设置函数与浏览器的 `languagechange` 中改变，不在渲染期间写入。Web 包以仅含类型的子路径 `@prismshadow/penguin-web/plugin-types` 导出它；示例插件把 Web 包列为 devDependency。
 - `scripts/verify-builtin-tree.mjs` 在完整检查之后对内置模块树再运行页面启动时的检查（`checkExact`），页面会拒绝的模块树因此在 Web 构建时即失败。
 - 插件页面的组件可以延迟加载：页面首次打开时，其代码在 shell 的页面边界内加载。
-- `plugins/example-hello-page` 改为向 `ShellModule.pages` 贡献页面的 Web 模块，页面位于评估中心之下，由插件自带的延迟组件在应用的页面框架内绘制，界面语言经 `Language` 读取，样式来自它自己带 `hp:` 前缀的样式表。原先的 iframe 文档（`ui/`）已删除。
+- `plugins/example-hello-page` 改为向 `ShellModule.pages` 贡献页面的 Web 模块，页面位于评估中心之下，由插件自带的延迟组件在应用的页面框架内绘制，界面语言经 `Language` 订阅（切换语言后无需刷新即重绘），样式来自它自己带 `hp:` 前缀的样式表。原先的 iframe 文档（`ui/`）已删除。
 - `plugins/example-no-evaluation-center` 改为类体为空的 Web 模块，向 `ShellModule.pageRemovals` 贡献 `{ key: "benchmark" }`。两者同时启用时，hello 页面随评估中心一起被去掉。
 - Web e2e 的第二个插件集合改为 `all-examples`，启用全部三个示例。
-- `plugins/example-music` 改为贡献音频播放器（卡片、进度条、时钟、各状态及中英文案）的 Web 模块，样式来自它自己的样式表，其中的工具类都带 `mp:` 前缀，不与宿主的任何选择器重名。Web App 的 `features/audio/` 与 `AudioModule` 已删除，服务端的 `WebModule.fileRenderers` 槽位、贡献答复的 `fileRenderers` 字段以及 Web App 按名字查找渲染器的逻辑也一并删除。
+- `plugins/example-music` 改为贡献音频播放器（卡片、进度条、时钟、各状态及中英文案；文件时长未知时时钟显示 `-:--`、播放头停在起点，不足一秒的时长显示 `0:01`）的 Web 模块，样式来自它自己的样式表，其中的工具类都带 `mp:` 前缀，不与宿主的任何选择器重名。Web App 的 `features/audio/` 与 `AudioModule` 已删除，服务端的 `WebModule.fileRenderers` 槽位、贡献答复的 `fileRenderers` 字段以及 Web App 按名字查找渲染器的逻辑也一并删除。
 
 ## 兼容性
 
