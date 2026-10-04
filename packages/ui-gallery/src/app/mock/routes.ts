@@ -2013,7 +2013,7 @@ router
   .delete("/api/port-forwards/:id", () => readOnly("remove a port forward"));
 
 // What the server's modules and plugins contribute: the demo has no plugin, so nothing.
-router.get("/api/contributions", () => ({ pages: [], agentTabs: [], sessionTabs: [] }));
+router.get("/api/contributions", () => ({ pages: [], sessionTabs: [] }));
 
 // ---------------------------------------------------------------------------------------------
 // Agent packages: publishing to a gist and installing from a source both reach GitHub or a
@@ -2135,7 +2135,6 @@ router
   .get("/api/contributions", (): ContributionsResponse => ({
     pages: [],
     webModules: [],
-    agentTabs: [],
     sessionTabs: [],
     sessionSurfaces: [],
     quickStarts: [],
