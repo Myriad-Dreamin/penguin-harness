@@ -2775,7 +2775,7 @@ export const clearBuiltinBrowserData = (storages: BuiltinBrowserStorage[]) =>
 
 // —— Contributions and session surfaces ——
 
-/** What the server's modules and plugins contribute to the App (pages, session surfaces); this server's, never a machine's. */
+/** What the server's modules and plugins contribute to the App (pages, session surfaces, quick starts); this server's, never a machine's. Read by shell/contributions.tsx alone. */
 export const getContributions = () =>
   apiFetch<ContributionsResponse>("/api/contributions", { server: null });
 

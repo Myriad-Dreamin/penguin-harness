@@ -9,6 +9,9 @@
  *   path clash; a builtin page is drawn by the renderer a module contributed under its name
  *   (`ShellModule.pageRenderers`) and skipped when there is none; an entry without a key, a
  *   path or a renderer is skipped.
+ * - A company-mode page (`nav: "org"`) keeps a path relative to the organization and clashes
+ *   as the rooted one; `released` and the renderer it named are kept; `orgPagesOf` selects
+ *   these pages from the table.
  * - A merged iframe page is routed at its path and draws a sandboxed frame of its src.
  * - Session surfaces: the label a "New chat" entry shows follows the interface language, and
  *   the renderer names a server-contributed surface may point at are the ones the chat page's
@@ -24,6 +27,7 @@ import { contributedPagesOf, createContributionsStore } from "../src/shell/contr
 import type { ShellPage } from "../src/shell";
 import { ThemeProvider } from "../src/state/theme";
 import { SURFACE_RENDERER_NAMES, surfaceLabel } from "../src/features/chat/session-surface-view";
+import { orgPagesOf } from "../src/features/company/use-org-pages";
 
 const Blank: ComponentType = () => null;
 
@@ -236,6 +240,32 @@ describe("contributedPagesOf", () => {
     expect(merged.map((p) => p.id)).toEqual(["agents.page", "terminal.page"]);
   });
 
+  it("keeps a company-mode page's path relative to the organization, clashing as the rooted one", () => {
+    const merged = contributedPagesOf(
+      COMPILED,
+      answer([
+        { id: "a", from: "x", key: "a", path: "/roadmaps", nav: "org", renderer: frame("/r") },
+        { id: "b", from: "x", key: "b", path: "agents", nav: "org", renderer: frame("/b") },
+        { id: "c", from: "x", key: "c", path: "roadmaps", nav: "org", renderer: frame("/c") },
+        { id: "d", from: "x", key: "d", path: "/", nav: "org", renderer: frame("/d") },
+        {
+          id: "e",
+          from: "x",
+          key: "e",
+          path: "later",
+          nav: "org",
+          released: false,
+          renderer: frame("/e"),
+        },
+      ]),
+      NONE,
+    );
+    expect(merged.slice(2)).toMatchObject([
+      { id: "a", path: "roadmaps", nav: "org", released: true, renderer: frame("/r") },
+      { id: "e", path: "later", nav: "org", released: false },
+    ]);
+  });
+
   it("routes an iframe page at its path and draws a sandboxed frame of its src", () => {
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => undefined });
     vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
@@ -274,6 +304,22 @@ describe("contributedPagesOf", () => {
     expect(html).toContain('src="/plugins/hello/index.html"');
     expect(html).toContain('title="hello"');
     expect(html).toContain('sandbox="allow-scripts allow-same-origin');
+  });
+});
+
+describe("orgPagesOf", () => {
+  it("selects the server's company-mode pages from the table, in table order", () => {
+    const merged = contributedPagesOf(
+      COMPILED,
+      answer([
+        { id: "a", from: "x", key: "a", path: "/a", nav: "main", renderer: frame("/a") },
+        { id: "b", from: "x", key: "b", path: "b", nav: "org", renderer: frame("/b") },
+        { id: "c", from: "x", key: "c", path: "c", nav: "org", renderer: { builtin: "P" } },
+      ]),
+      new Map([["P", Blank]]),
+    );
+    expect(orgPagesOf(merged).map((p) => p.id)).toEqual(["b", "c"]);
+    expect(orgPagesOf(COMPILED)).toEqual([]);
   });
 });
 

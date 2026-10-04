@@ -19,9 +19,7 @@ import { SessionsProvider } from "../state/sessions";
 import { AppLayout } from "./app-layout";
 import { BootPending } from "../components/ui/boot-pending";
 import { LoginPage } from "../pages/login";
-import { ContributionsProvider, useContributions } from "../state/contributions";
 import { shellDeps } from "./deps";
-import { ContributedPage } from "./contributed-page";
 import { ShellPagesProvider, useShellPages, useShellPagesPending } from "./contributions";
 
 /** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
@@ -73,9 +71,7 @@ export interface AppRouterProps {
 export function AppRouter({ initialPath }: AppRouterProps = {}) {
   const tree = (
     <ShellPagesProvider>
-      <ContributionsProvider>
-        <RouteTree />
-      </ContributionsProvider>
+      <RouteTree />
     </ShellPagesProvider>
   );
   return initialPath === undefined ? (
@@ -86,15 +82,14 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
 }
 
 /**
- * The routes: every page in the shell's table (the modules' and the server's, shell/contributions.tsx),
- * under the guard of its frame, plus what state/contributions.tsx contributes beside it. A
- * company-mode page (`nav: "org"`) mounts under the organization layout, which is company
- * mode's own (features/company/org-routes.tsx).
+ * The routes: every page in the shell's table (the modules' and the server's,
+ * shell/contributions.tsx), under the guard of its frame. A company-mode page (`nav: "org"`)
+ * also mounts under the organization layout, which is company mode's own
+ * (features/company/org-routes.tsx).
  */
 function RouteTree() {
   const pages = useShellPages();
   const pending = useShellPagesPending();
-  const { pages: contributed } = useContributions();
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
@@ -128,9 +123,6 @@ function RouteTree() {
               element={path === "*" && pending ? null : <Component />}
             />
           ))}
-        {contributed.map((page) => (
-          <Route key={page.id} path={page.path} element={<ContributedPage page={page} />} />
-        ))}
       </Route>
     </Routes>
   );
