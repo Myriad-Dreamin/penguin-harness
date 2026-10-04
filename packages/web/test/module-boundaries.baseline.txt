@@ -28,7 +28,6 @@ cycle: features/proposals -> features/company
 cycle: features/schedules -> features/ai-create
 cycle: features/schedules -> features/model-picker
 cycle: features/schedules -> features/models
-cycle: features/settings -> features/builtin-browser
 cycle: features/settings -> features/chat
 cycle: features/settings -> features/company
 cycle: features/skills -> features/chat
@@ -54,18 +53,12 @@ features/benchmark/benchmark-prompts.ts -> features/ai-create/ai-create-prompt.t
 features/benchmark/create-benchmark-modal.tsx -> features/semantic-id/semantic-id-field.tsx
 features/builtin-browser/browser-actions.ts -> features/dock/dock-state.ts
 features/builtin-browser/browser-layer.tsx -> features/dock/dock-state.ts
+features/builtin-browser/module.ts -> features/dock/iface.ts
 features/chat/body/chat-body.tsx -> features/dock/dock-launcher.tsx
 features/chat/body/draft-view.tsx -> features/dock/dock-state.ts
 features/chat/body/draft-view.tsx -> features/dock/dock-terminal.ts
 features/chat/body/draft-view.tsx -> features/models/model-grouping.ts
 features/chat/body/session-composer.tsx -> features/models/model-grouping.ts
-features/chat/builtin-dock-panels.tsx -> features/builtin-browser/browser-panel.tsx
-features/chat/builtin-dock-panels.tsx -> features/builtin-browser/browser-store.ts
-features/chat/builtin-dock-panels.tsx -> features/dock/panel-registry.ts
-features/chat/builtin-dock-panels.tsx -> features/messaging/messaging-panel.tsx
-features/chat/builtin-dock-panels.tsx -> features/ports/ports-panel.tsx
-features/chat/builtin-dock-panels.tsx -> features/schedules/schedule-panel.tsx
-features/chat/builtin-dock-panels.tsx -> features/traces/trace-panel.tsx
 features/chat/chat-input.tsx -> features/models/model-grouping.ts
 features/chat/chat-input.tsx -> features/skills/skill-icon-view.tsx
 features/chat/chat-input.tsx -> features/skills/skill-pick-list.tsx
@@ -82,7 +75,6 @@ features/chat/session/use-chat-controller.ts -> features/company/company-nav.ts
 features/chat/session/use-chat-controller.ts -> features/dock/dock-state.ts
 features/chat/session/use-chat-controller.ts -> features/dock/dock-terminal.ts
 features/chat/session/use-chat-controller.ts -> features/models/model-grouping.ts
-features/chat/session/use-chat-controller.ts -> features/terminal/terminal-list.ts
 features/chat/session/use-model-switches.ts -> features/models/model-grouping.ts
 features/chat/session/use-panel-requests.ts -> features/dock/dock-state.ts
 features/chat/session/use-project-models.ts -> features/models/model-grouping.ts
