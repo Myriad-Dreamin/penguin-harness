@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end verification (Playwright + mock LLM): build plugins/core/server/web -> start mock Anthropic SSE ->
+# End-to-end verification (Playwright + mock LLM): build plugins/core/server/cli/web -> start mock Anthropic SSE ->
 # start server (temp data root) -> run chat.spec.mjs. SKIP_BUILD=1 skips the build.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,10 +20,11 @@ cleanup() {
 trap cleanup EXIT
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
-  echo "== build core/server/web =="
+  echo "== build core/server/cli/web =="
   (cd "$ROOT" \
     && pnpm --filter @prismshadow/penguin-core build \
     && pnpm --filter @prismshadow/penguin-server build \
+    && pnpm --filter @prismshadow/penguin-cli build \
     && pnpm --filter @prismshadow/penguin-web build) || { echo "BUILD FAILED"; exit 1; }
 fi
 
