@@ -15,7 +15,7 @@ import type { StreamRenderContext } from "../message-stream";
 import { ChatDropRegion } from "../drop-zone";
 import { ConversationOutline } from "../conversation-outline";
 import type { OutlineRailFit } from "../conversation-outline";
-import type { OutlineTurn } from "../outline-model";
+import type { OutlineEntry } from "../outline-model";
 import { GoalStatusBanner } from "../goal-banner";
 import { DraftView } from "./draft-view";
 import { SessionComposer } from "./session-composer";
@@ -32,7 +32,7 @@ export interface ChatBodySession extends SessionComposerSession {
   ctx: StreamRenderContext;
   streamScrollRef: RefObject<HTMLDivElement | null>;
   addComposerReference: (reference: ComposerReference) => void;
-  outline: OutlineTurn[];
+  outline: OutlineEntry[];
   railFit: OutlineRailFit;
   anySubagentPending: boolean;
   routeSessionOffline: boolean;
