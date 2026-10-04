@@ -2,17 +2,22 @@
  * GET /api/contributions — the web slots' contributions, as data. What a pushed platform
  * or an installed plugin adds to the web app arrives here; the app merges it with its
  * own pages and renders what it has a renderer for.
+ *
+ * It also forwards the enabled plugins' WEB MODULES (`webModules`, plugin/web-modules.ts):
+ * modules that join the web app's own module tree, with code. The server neither reads nor
+ * checks them; the slots below are the older, data-only path, kept for what still uses it.
  */
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import { Interface, Bind, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
 import type { SessionSurfaces } from "../../runtime/session-surfaces.js";
+import type { Hmr } from "../../hmr/capabilities.js";
+import { pluginHostFrom } from "../../plugin/host.js";
+import { webModulesOf } from "../../plugin/web-modules.js";
 import type {
   ContributionsResponse,
   RendererRef,
   WebContribution,
-  WebFileRendererContribution,
-  WebFileRendererData,
   WebPageContribution,
   WebPageData,
   WebPageRemovalContribution,
@@ -32,7 +37,7 @@ export function contributionsRoutes(deps: ContributionsRouteDeps): Hono<AppEnv> 
 
 /**
  * The frontend's slots, declared on the SERVER so a server module (or a plugin) can
- * contribute a page, a page removal, a file renderer, an Agent settings tab or a Session tab
+ * contribute a page, a page removal, an Agent settings tab or a Session tab
  * as manifest data. The web app reads them back through GET /api/contributions and renders
  * the ones whose renderer it knows: a `builtin` name from its own registry, or an `iframe`.
  * No code crosses this boundary — only data.
@@ -47,8 +52,6 @@ export abstract class WebShell {
 export interface WebShellSlots {
   /** A page (WebPageData says what each field means). */
   pages: WebPageData;
-  /** How a kind of Workspace file is drawn where a reply links it (WebFileRendererData). */
-  fileRenderers: WebFileRendererData;
   /** A page the web app drops, its own or a contributed one (WebPageRemovalData). */
   pageRemovals: WebPageRemovalData;
   /** A tab on the Agent settings page. */
@@ -91,6 +94,7 @@ export interface WebShellSlots {
 export class WebModule {
   /** The surfaces plugins contribute: listed beside the slots, from the one place they are registered. */
   @Use() private readonly surfaces!: SessionSurfaces;
+  @Use() private readonly hmr!: Hmr;
   @Provide() web!: WebShell;
   @Bind("web.contributions") contributionsRoutes!: Hono<AppEnv>;
   setup({ contributions }: ClassCtx) {
@@ -101,16 +105,25 @@ export class WebModule {
         // and a data field of the same name must not replace them.
         (c) => ({ ...c.data, id: c.id, from: c.from }) as T,
       );
-    const response: ContributionsResponse = {
+    const response: Omit<ContributionsResponse, "webModules"> = {
       pages: collect<WebPageContribution>("pages"),
-      fileRenderers: collect<WebFileRendererContribution>("fileRenderers"),
       pageRemovals: collect<WebPageRemovalContribution>("pageRemovals"),
       agentTabs: collect("agentTabs"),
       sessionTabs: collect("sessionTabs"),
       quickStarts: collect("quickStarts") as unknown as ContributionsResponse["quickStarts"],
       sessionSurfaces: this.surfaces.list(),
     };
-    const web: WebShell = { contributions: () => response };
+    const hmr = this.hmr;
+    const web: WebShell = {
+      // Read per request: the plugin host is claimed rather than captured (it belongs to the
+      // process), and a package rebuilt in place gets a new build id.
+      contributions: () => ({
+        ...response,
+        webModules: webModulesOf(
+          [...pluginHostFrom(hmr.resources).entries().values()].map((e) => e.file),
+        ),
+      }),
+    };
     this.web = web;
     this.contributionsRoutes = contributionsRoutes({ web });
   }
