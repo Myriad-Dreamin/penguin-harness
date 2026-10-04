@@ -33,7 +33,7 @@ import type { Tone } from "../../lib/tone";
 import { noteSessionSeen, seedSessionSeen, useSessionSeen } from "../../lib/session-seen";
 import { rememberSessionMachine } from "../../lib/session-machines";
 import { sessionActivityLabel } from "../../lib/session-activity";
-import { shortSessionId } from "../chat/agent-topology";
+import { shortSessionId } from "../chat";
 import { dashboardRows, dashboardServers, dashboardTotals } from "./dashboard-view";
 import type {
   DashboardRow,
