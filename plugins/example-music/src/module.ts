@@ -10,7 +10,7 @@
 import { lazy } from "react";
 import type { ComponentType } from "react";
 import { Bind, Module } from "@prismshadow/penguin-core/plugin";
-import type { FileRendererProps } from "./file-renderer";
+import type { FileRendererProps } from "@prismshadow/penguin-web/plugin-types";
 
 @Module({
   contributes: {

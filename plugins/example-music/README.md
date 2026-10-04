@@ -15,8 +15,12 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
 - **Its own stylesheet.** `src/styles.css` compiles the player's Tailwind utilities against the web
   app's theme as a reference (no preflight, no variables of its own), so the card reads the host's
   tokens and follows its theme and mode. Its classes carry the plugin's own prefix (`mp:flex`): a
-  second copy of the host's `.flex` in a sheet attached later would reorder the host's cascade. The
-  web app attaches it when it loads the module.
+  second copy of the host's `.flex` in a sheet attached later would reorder the host's cascade.
+  The build fails on a compiled class outside the prefix, and on two plugins built together with
+  one prefix. The web app attaches the sheet before it mounts, so the card never shows unstyled.
+- **The host's types.** The renderer's props (`FileRendererProps`) come from the web app's
+  plugin-facing types (`packages/web/src/plugin-types.ts`, mapped in `tsconfig.json`), imported
+  as a type only.
 - **The Markdown is not touched.** When a paragraph of a reply links such a file in the
   Workspace — `[Evening Theme](music/tune.wav)` — the link stays a link (clicking it opens the file
   in the Files panel) and a player appears directly below that paragraph, once per file. A link
@@ -28,6 +32,11 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
 
 The package is private, so it is not published, and it is not shipped with the builtin plugins
 (`scripts/build-plugins.mjs` skips the `plugins/example-*` directories), so no install enables it.
+
+## Build it
+
+`pnpm --filter @penguinharness/example-music build` runs gen-ifaces and then
+`scripts/build-plugin.mjs`; `pnpm --filter @penguinharness/example-music test` runs its tests.
 
 ## Enable the player
 
@@ -45,8 +54,8 @@ PENGUIN_PLUGIN_EXAMPLES=1 node scripts/build-plugins.mjs --out packages/server/p
 ```
 
 What a Project lists is loaded for the whole server. Reload the web app after enabling it: the app
-assembles plugin web modules once per page load. In safe mode it assembles none. The web e2e suite enables it this way
-(`packages/web/e2e/run.sh`).
+assembles plugin web modules once per page load. In safe mode it assembles none. The web e2e suite
+enables it this way (`packages/web/e2e/run.sh`).
 
 ## Install the Skill (a separate, manual step)
 

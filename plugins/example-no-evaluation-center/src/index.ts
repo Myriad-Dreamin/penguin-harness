@@ -1,21 +1,26 @@
 /**
  * @penguinharness/example-no-evaluation-center — the smallest plugin that takes a page away from
- * the web app.
+ * the web app, with no code at all.
  *
- * It ships no browser code to the app: the removal is DATA on the server's
- * `WebModule.pageRemovals` slot (the server's http/routes/contributions.ts), which the app reads
- * from GET /api/contributions. The app then drops the page keyed `benchmark` — the Evaluation
- * Center — with the routes under its path (one Benchmark's page, /benchmark/:benchmarkId) and the
- * pages under it (such as example-hello-page's Hello World), so it has no row in the nav and its
- * URLs lead home. Safe mode asks the server nothing, so it brings the page back.
+ * Its one module contributes `{ key: "benchmark" }` to the web app's `ShellModule.pageRemovals`
+ * slot, so the build places it on the web side; and because the class is empty and the slot has
+ * no code half, it is DATA ONLY: gen-ifaces gives it no built file, the build emits nothing for
+ * it, the server forwards its manifest alone (GET /api/contributions, `webModules`), and the web
+ * app adds it to its module tree without importing anything. The shell then drops the page keyed
+ * `benchmark` — the Evaluation Center — with the routes under its path (one Benchmark's page,
+ * /benchmark/:benchmarkId) and the pages under it (such as example-hello-page's), so it has no
+ * row in the nav and its URLs lead home. Safe mode assembles no plugin, so it brings the page
+ * back.
  */
-import { Component } from "@prismshadow/penguin-core/plugin";
+import { Module } from "@prismshadow/penguin-core/plugin";
 import type { Plugin } from "@prismshadow/penguin-core/plugin";
 
-/** The plugin's one module: nothing to bind, only the removal it contributes. */
-@Component({
+/** The plugin's one module: no body, only the removal it contributes. */
+@Module({
   contributes: {
-    "WebModule.pageRemovals": [{ id: "example-no-evaluation-center.benchmark", key: "benchmark" }],
+    "ShellModule.pageRemovals": [
+      { id: "example-no-evaluation-center.benchmark", key: "benchmark" },
+    ],
   },
 })
 export class NoEvaluationCenter {}

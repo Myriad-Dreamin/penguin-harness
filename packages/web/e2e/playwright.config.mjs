@@ -6,7 +6,7 @@ import { defineConfig } from "@playwright/test";
  * one a run without E2E_PLUGIN_SET gets too.
  */
 const OWN_SETS = {
-  "no-evaluation-center": ["**/page-removal.spec.mjs"],
+  "all-examples": ["**/page-removal.spec.mjs"],
 };
 const own = OWN_SETS[process.env.E2E_PLUGIN_SET ?? "default"];
 

@@ -8,7 +8,8 @@
  * Every utility carries the plugin's own prefix (`mp:flex`). The host's sheet has its own
  * `.flex`, `.hidden`, `.invisible` …, ordered so that one wins over another on the same element;
  * a second copy of any of them in a sheet attached later would reorder the host's cascade. With
- * the prefix, nothing here shares a selector with the host.
+ * the prefix, nothing here shares a selector with the host; the build refuses a compiled class
+ * outside it, and two plugins built together with one prefix (scripts/build-plugin.mjs).
  *
  * Limit: a theme variable the host's own sheet never emits resolves to Tailwind's default
  * (written as the fallback of each `var()`), not to a host value.

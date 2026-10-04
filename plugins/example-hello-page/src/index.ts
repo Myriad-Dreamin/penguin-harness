@@ -1,42 +1,15 @@
 /**
- * @penguinharness/example-hello-page — the smallest plugin that adds a page to the web app.
+ * @penguinharness/example-hello-page — the smallest plugin that adds a page to the web app, drawn
+ * by its own React component.
  *
- * It ships no browser code to the app: the page is DATA on the server's `WebModule.pages` slot
- * (the server's http/routes/contributions.ts), which the app reads from GET /api/contributions.
- * The page sits under the Evaluation Center (`parent: "benchmark"`) and is drawn by an `iframe`
- * renderer whose document is this package's own `ui/index.html`, served by the server's
- * GET /api/plugins/<package>/ui/* once the plugin is loaded.
+ * Its one module (module.ts) is a WEB module: it contributes to the web app's `ShellModule.pages`
+ * slot, so the build places it on the web side and emits it as a browser module
+ * (`dist/web/ExampleHelloPage.js`, scripts/build-plugin.mjs). The server only forwards it: GET
+ * /api/contributions lists it with the URL of its file, and the web app adds it to its own module
+ * tree before it mounts. The page sits under the Evaluation Center (`parent: "benchmark"`).
  */
-import { Component } from "@prismshadow/penguin-core/plugin";
 import type { Plugin } from "@prismshadow/penguin-core/plugin";
+import { ExampleHelloPage } from "./module";
 
-/** The plugin's one module: nothing to bind, only the page it contributes. */
-@Component({
-  contributes: {
-    "WebModule.pages": [
-      {
-        id: "example-hello-page.page",
-        key: "example-hello",
-        path: "/example-hello",
-        nav: "main",
-        admin: false,
-        parent: "benchmark",
-        title: "Hello World",
-        titleZh: "你好世界",
-        icon: "sparkle",
-        // Where the server serves this package's `ui/`: the package name, as package.json
-        // spells it. Written out in full — a manifest is data, read without running this file.
-        renderer: {
-          iframe: {
-            src: "/api/plugins/@penguinharness/example-hello-page/ui/index.html",
-            namespace: "example-hello",
-          },
-        },
-      },
-    ],
-  },
-})
-export class HelloPage {}
-
-const plugin: Plugin = { modules: [HelloPage] };
+const plugin: Plugin = { modules: [ExampleHelloPage] };
 export default plugin;

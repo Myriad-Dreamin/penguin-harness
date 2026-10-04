@@ -93,15 +93,16 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   expect(up.ok(), "upload wav").toBeTruthy();
 
   const forwarded = await (await page.request.get(`${BASE}/api/contributions`)).json();
-  expect(forwarded.webModules.map((p) => p.package)).toEqual(["@penguinharness/example-music"]);
-  expect(forwarded.webModules[0].modules.map((m) => m.manifest.name)).toEqual(["ExampleMusic"]);
+  // The default set also enables example-hello-page (plugin-page.spec.mjs).
+  const music = forwarded.webModules.find((p) => p.package === "@penguinharness/example-music");
+  expect(music.modules.map((m) => m.manifest.name)).toEqual(["ExampleMusic"]);
 
   await page.goto(`${BASE}/chat/${sessionId}`);
   const ta = page.getByPlaceholder(/输入消息/);
   await ta.waitFor();
   // The module's file and stylesheet came with the app; the player's chunk — the one the module
   // file imports lazily — has not.
-  const moduleUrl = forwarded.webModules[0].modules[0].url;
+  const moduleUrl = music.modules[0].url;
   expect(requested).toContain(moduleUrl);
   expect(requested.some((p) => p.endsWith("/styles.css"))).toBe(true);
   const moduleCode = await (await page.request.get(`${BASE}${moduleUrl}`)).text();
@@ -209,8 +210,12 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
 
 /** The player, light and dark, in Chinese and (in a fresh English context) in English. */
 async function shoot(page, browser, sessionId) {
-  const dark = (on) =>
-    page.evaluate((v) => document.documentElement.classList.toggle("dark", v), on);
+  // No hover tooltip left over from pressing play, and the colour transitions settled.
+  await page.mouse.move(0, 0);
+  const dark = async (on) => {
+    await page.evaluate((v) => document.documentElement.classList.toggle("dark", v), on);
+    await page.waitForTimeout(400);
+  };
   const paragraph = page.locator("p", { hasText: "Here is your tune" });
   const region = async (p, file) => {
     const box = await p.locator("p", { hasText: "Here is your tune" }).boundingBox();
@@ -241,6 +246,7 @@ async function shoot(page, browser, sessionId) {
   await expect(p.getByRole("button", { name: "Play evening.wav" })).toBeVisible();
   await region(p, "player-en-light.png");
   await p.evaluate(() => document.documentElement.classList.add("dark"));
+  await p.waitForTimeout(400);
   await region(p, "player-en-dark.png");
   await en.close();
 }

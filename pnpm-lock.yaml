@@ -852,9 +852,30 @@ importers:
       '@prismshadow/penguin-core':
         specifier: workspace:*
         version: file:packages/core(supports-color@10.2.2)(ws@8.21.0)
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(supports-color@10.2.2)(tsx@4.22.4)(typescript@5.9.3)(yaml@2.9.0)
+      '@prismshadow/penguin-ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@tailwindcss/cli':
+        specifier: 4.3.2
+        version: 4.3.2
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.2.3(@types/react@19.2.17)
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.7(react@19.2.7)
+      tailwindcss:
+        specifier: ^4.1.0
+        version: 4.3.2
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)(happy-dom@20.14.5)(jiti@2.7.0)(lightningcss@1.32.0)(supports-color@10.2.2)(tsx@4.22.4)(yaml@2.9.0)
 
   plugins/example-music:
     devDependencies:
@@ -891,9 +912,6 @@ importers:
       '@prismshadow/penguin-core':
         specifier: workspace:*
         version: file:packages/core(supports-color@10.2.2)(ws@8.21.0)
-      tsup:
-        specifier: ^8.3.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(supports-color@10.2.2)(tsx@4.22.4)(typescript@5.9.3)(yaml@2.9.0)
 
   plugins/goal: {}
 
