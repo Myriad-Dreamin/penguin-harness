@@ -58,16 +58,26 @@ export interface Manifest {
   readonly kind?: "module" | "component";
 }
 
-const ManifestType = type({
-  name: "string > 0",
-  "requires?": { "[string]": { iface: "string > 0", "from?": "string > 0" } },
-  "provides?": { "[string]": "string > 0" },
-  "contributes?": { "[string]": type({ id: "string > 0", "[string]": "unknown" }).array() },
-  "context?": { version: "number.integer >= 1", "schema?": "unknown" },
-  "children?": type("string").or({ keyed: "string" }).array(),
-  "exports?": "string[]",
-  "kind?": "'module' | 'component'",
-});
+/**
+ * The manifest document's type, built on first use rather than at import: the web imports the
+ * kernel on its boot path and never parses a manifest document, and an arktype type is built by
+ * running arktype's parser. Built once — arktype files every parse in a registry that never
+ * shrinks (see slotSchema in ./check.ts).
+ */
+let manifestType: ReturnType<typeof buildManifestType> | undefined;
+
+function buildManifestType() {
+  return type({
+    name: "string > 0",
+    "requires?": { "[string]": { iface: "string > 0", "from?": "string > 0" } },
+    "provides?": { "[string]": "string > 0" },
+    "contributes?": { "[string]": type({ id: "string > 0", "[string]": "unknown" }).array() },
+    "context?": { version: "number.integer >= 1", "schema?": "unknown" },
+    "children?": type("string").or({ keyed: "string" }).array(),
+    "exports?": "string[]",
+    "kind?": "'module' | 'component'",
+  });
+}
 
 /**
  * Strict parse of a manifest document; throws with the arktype summary on failure. An empty
@@ -75,7 +85,7 @@ const ManifestType = type({
  * plugin that only contributes writes its name and its contributions — and reads as empty.
  */
 export function parseManifest(doc: unknown, where = "manifest"): Manifest {
-  const out = ManifestType(doc);
+  const out = (manifestType ??= buildManifestType())(doc);
   if (out instanceof type.errors) throw new Error(`${where}: ${out.summary}`);
   return {
     ...out,
