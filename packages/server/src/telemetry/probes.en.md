@@ -12,7 +12,7 @@ Recorded once per App generation — at process start, after a hot push, and whe
 
 Is starting slow because of the database? The time to bring its schema up to date.
 
-Recorded at [`packages/server/src/hmr/platform.ts:361`](../hmr/platform.ts#L361) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:352`](../hmr/platform.ts#L352) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@ Is starting slow because of one plugin? The time to import and check that plugin
 
 `attrs.plugin` names it; `status` is `error` when it failed and was left out. A plugin reused from the previous generation is not loaded again and not recorded.
 
-Recorded at [`packages/server/src/hmr/platform.ts:461`](../hmr/platform.ts#L461) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:452`](../hmr/platform.ts#L452) <!-- probe-site -->
 
 ### boot.plugins
 
 How long did loading all plugins take? Every installed plugin together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:467`](../hmr/platform.ts#L467) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:458`](../hmr/platform.ts#L458) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@ Is starting slow because of one part of the server? The time to create that modu
 
 `attrs.module` names the module.
 
-Recorded at [`packages/server/src/hmr/platform.ts:520`](../hmr/platform.ts#L520) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:511`](../hmr/platform.ts#L511) <!-- probe-site -->
 
 ### boot.modules
 
 How long did creating the server's parts take? Every module together.
 
-Recorded at [`packages/server/src/hmr/platform.ts:524`](../hmr/platform.ts#L524) <!-- probe-site -->
+Recorded at [`packages/server/src/hmr/platform.ts:515`](../hmr/platform.ts#L515) <!-- probe-site -->
 
 ### boot.create
 
@@ -56,7 +56,7 @@ How long until everything was back after a start? The time until sessions were a
 
 The App already serves while these run; a long one means machines or sessions came back late.
 
-Recorded at [`packages/server/src/platform.ts:245`](../platform.ts#L245) <!-- probe-site -->
+Recorded at [`packages/server/src/platform.ts:246`](../platform.ts#L246) <!-- probe-site -->
 
 ### hmr.park
 
@@ -116,7 +116,7 @@ Is the sidebar's session list slow in the database? The time of its query.
 
 `attrs.rows` is how many sessions it returned.
 
-Recorded at [`packages/server/src/services/session-service.ts:438`](../services/session-service.ts#L438) <!-- probe-site -->
+Recorded at [`packages/server/src/services/session-service.ts:499`](../services/session-service.ts#L499) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
@@ -124,7 +124,7 @@ Is the session list slow because the Trace index is catching up? The time of tha
 
 `attrs.traces` is how many Traces it found. Usually skipped; seeing it often means sessions keep arriving that the index has not seen.
 
-Recorded at [`packages/server/src/services/session-service.ts:463`](../services/session-service.ts#L463) <!-- probe-site -->
+Recorded at [`packages/server/src/services/session-service.ts:521`](../services/session-service.ts#L521) <!-- probe-site -->
 
 ### trace.reconcile
 
@@ -138,7 +138,7 @@ Is opening a session slow on disk? The time to read one Trace file.
 
 `attrs.messages` is how many messages it held. Inside a `session.messages` read it carries that session.
 
-Recorded at [`packages/server/src/services/trace-service.ts:356`](../services/trace-service.ts#L356) <!-- probe-site -->
+Recorded at [`packages/server/src/services/trace-service.ts:347`](../services/trace-service.ts#L347) <!-- probe-site -->
 
 ### session.messages
 
@@ -146,7 +146,7 @@ Is opening a session slow on the server? The time to read the messages the page 
 
 `attrs.kind` is which part was asked for, `attrs.messages` how many came back. The Trace files it read are its `trace.read` samples.
 
-Recorded at [`packages/server/src/services/trace-service.ts:642`](../services/trace-service.ts#L642) <!-- probe-site -->
+Recorded at [`packages/server/src/services/trace-service.ts:588`](../services/trace-service.ts#L588) <!-- probe-site -->
 
 ### task.accept
 
@@ -238,7 +238,7 @@ Is the sidebar's session list slow to fill? One refresh of it.
 
 `attrs.slowestMs` is its slowest request.
 
-Recorded at [`packages/web/src/state/sessions.tsx:628`](../../../web/src/state/sessions.tsx#L628) <!-- probe-site -->
+Recorded at [`packages/web/src/state/sessions.tsx:743`](../../../web/src/state/sessions.tsx#L743) <!-- probe-site -->
 
 ### web.socket.connect
 

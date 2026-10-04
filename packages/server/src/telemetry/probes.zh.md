@@ -12,7 +12,7 @@
 
 启动慢是不是数据库的缘故？把 schema 升到最新所用的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:361`](../hmr/platform.ts#L361) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:352`](../hmr/platform.ts#L352) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@
 
 `attrs.plugin` 是哪个插件；失败、被留在这一代之外时 `status` 为 `error`。沿用上一代的插件不再加载，也不记。
 
-记录于 [`packages/server/src/hmr/platform.ts:461`](../hmr/platform.ts#L461) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:452`](../hmr/platform.ts#L452) <!-- probe-site -->
 
 ### boot.plugins
 
 加载全部插件花了多久？所有已装插件一起的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:467`](../hmr/platform.ts#L467) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:458`](../hmr/platform.ts#L458) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@
 
 `attrs.module` 是模块名。
 
-记录于 [`packages/server/src/hmr/platform.ts:520`](../hmr/platform.ts#L520) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:511`](../hmr/platform.ts#L511) <!-- probe-site -->
 
 ### boot.modules
 
 创建服务端各部分花了多久？所有模块一起的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:524`](../hmr/platform.ts#L524) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:515`](../hmr/platform.ts#L515) <!-- probe-site -->
 
 ### boot.create
 
@@ -56,7 +56,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 这期间 App 已在服务；这一项长，说明 machine 或会话回来得晚。
 
-记录于 [`packages/server/src/platform.ts:245`](../platform.ts#L245) <!-- probe-site -->
+记录于 [`packages/server/src/platform.ts:246`](../platform.ts#L246) <!-- probe-site -->
 
 ### hmr.park
 
@@ -116,7 +116,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.rows` 是返回了多少个会话。
 
-记录于 [`packages/server/src/services/session-service.ts:438`](../services/session-service.ts#L438) <!-- probe-site -->
+记录于 [`packages/server/src/services/session-service.ts:499`](../services/session-service.ts#L499) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
@@ -124,7 +124,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.traces` 是找到了多少个 Trace。平时会跳过；经常出现，说明不断有索引没见过的会话进来。
 
-记录于 [`packages/server/src/services/session-service.ts:463`](../services/session-service.ts#L463) <!-- probe-site -->
+记录于 [`packages/server/src/services/session-service.ts:521`](../services/session-service.ts#L521) <!-- probe-site -->
 
 ### trace.reconcile
 
@@ -138,7 +138,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.messages` 是文件里有多少条消息。在 `session.messages` 的读取里，它带上那个会话。
 
-记录于 [`packages/server/src/services/trace-service.ts:356`](../services/trace-service.ts#L356) <!-- probe-site -->
+记录于 [`packages/server/src/services/trace-service.ts:347`](../services/trace-service.ts#L347) <!-- probe-site -->
 
 ### session.messages
 
@@ -146,7 +146,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.kind` 是要的哪一部分，`attrs.messages` 是返回了多少条。它读过的 Trace 文件就是同一会话下的 `trace.read`。
 
-记录于 [`packages/server/src/services/trace-service.ts:642`](../services/trace-service.ts#L642) <!-- probe-site -->
+记录于 [`packages/server/src/services/trace-service.ts:588`](../services/trace-service.ts#L588) <!-- probe-site -->
 
 ### task.accept
 
@@ -238,7 +238,7 @@ machine 回答命令慢吗？一条命令从发起到答复的时间。
 
 `attrs.slowestMs` 是其中最慢的一个请求。
 
-记录于 [`packages/web/src/state/sessions.tsx:628`](../../../web/src/state/sessions.tsx#L628) <!-- probe-site -->
+记录于 [`packages/web/src/state/sessions.tsx:743`](../../../web/src/state/sessions.tsx#L743) <!-- probe-site -->
 
 ### web.socket.connect
 
