@@ -2,11 +2,13 @@
 export type Side = "server" | "web";
 export interface HostTable {
   modules?: Record<string, { provides?: Record<string, string> }>;
-  ifaces?: Record<string, { slots?: Record<string, unknown> }>;
+  ifaces?: Record<string, { slots?: Record<string, { data?: unknown; code?: unknown }> }>;
 }
 export interface SideManifest {
   name: string;
   requires?: Record<string, { iface: string; from?: string }>;
+  provides?: Record<string, string>;
+  children?: unknown[];
   contributes?: Record<string, unknown>;
   side?: Side;
   source?: string;
@@ -24,7 +26,13 @@ export declare function assignSides(
   sources: ReadonlyMap<string, string>,
   pluginDecl: { modules: string[]; replaces: string[] } | null,
   hosts?: Hosts,
+  bodyless?: ReadonlySet<string>,
 ): string[];
+export declare function codeless(
+  m: SideManifest,
+  web: HostTable,
+  bodyless: ReadonlySet<string>,
+): boolean;
 export declare function decideSides(
   manifests: Record<string, SideManifest>,
   hosts: Hosts,

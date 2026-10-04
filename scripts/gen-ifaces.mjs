@@ -50,7 +50,7 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
-import { assignSides } from "./lib/plugin-sides.mjs";
+import { assignSides, hostTables } from "./lib/plugin-sides.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name) => {
@@ -120,6 +120,8 @@ const manifests = {};
 let pluginDecl = null;
 /** Module (class) name → the source file declaring it, relative to the working directory. */
 const moduleSources = new Map();
+/** Module classes declared with an empty body: a web module among them may be data only. */
+const bodylessClasses = new Set();
 
 for (const project of projects) {
   const configPath = path.resolve(project);
@@ -323,6 +325,7 @@ for (const project of projects) {
           errors.push(`${file}: class '${node.name.text}' is both a @Module and a @Component`);
         if (call && call.arguments.length <= 1) {
           moduleSources.set(node.name.text, file.split(path.sep).join("/"));
+          if (node.members.length === 0) bodylessClasses.add(node.name.text);
           moduleClasses.set(checker.getSymbolAtLocation(node.name), {
             node,
             meta: call.arguments.length === 0 ? {} : refLiteral(call.arguments[0], file),
@@ -1262,7 +1265,10 @@ for (const project of projects) {
 
 // A plugin package's modules each run on one side, decided here from their wiring
 // (lib/plugin-sides.mjs) and written into the table with the file the plugin build emits.
-if (pluginDecl !== null) errors.push(...assignSides(manifests, moduleSources, pluginDecl));
+// A web module whose class body is empty and which only contributes data gets no built file.
+if (pluginDecl !== null) {
+  errors.push(...assignSides(manifests, moduleSources, pluginDecl, hostTables(), bodylessClasses));
+}
 
 for (const w of warnings) console.warn(`gen-ifaces: warning: ${w}`);
 // A node depends on mechanisms, never on implementations: a `@Use` field typed by a

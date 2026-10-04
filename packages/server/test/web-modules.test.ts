@@ -8,6 +8,7 @@
  *   build is not listed.
  * - The URLs name a build id that hashes the built files: a byte changed is a new id.
  * - The stylesheet the build emits is listed beside the modules.
+ * - A data-only web module (no `file`) is forwarded without a URL; its package needs no build.
  * - GET /api/contributions without plugins forwards none.
  * - A Workspace audio file — what a file renderer plays through files/content — is read with its
  *   audio content type.
@@ -77,6 +78,46 @@ describe("web modules", () => {
     expect(webModulesOf(entries)).toEqual([]);
   });
 
+  it("forwards a data-only web module without a URL, with no build to serve", async () => {
+    const dir = await tmp();
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "@acme/removal", version: "1.0.0", type: "module" }),
+    );
+    const manifest = {
+      name: "Removal",
+      kind: "module",
+      requires: {},
+      provides: {},
+      contributes: { "ShellModule.pageRemovals": [{ id: "r.benchmark", key: "benchmark" }] },
+      children: [],
+      side: "web",
+      source: "src/index.ts",
+    };
+    await fs.writeFile(
+      path.join(dir, "ifaces.json"),
+      JSON.stringify({
+        hash: "h",
+        ifaces: {},
+        types: {},
+        modules: { Removal: manifest },
+        plugin: { modules: ["Removal"], replaces: [] },
+      }),
+    );
+    expect(webBuildId(dir)).toBeNull();
+    expect(webModulesOf([path.join(dir, "dist", "index.js")])).toEqual([
+      {
+        package: "@acme/removal",
+        version: "1.0.0",
+        hash: "h",
+        ifaces: { ifaces: {}, types: {} },
+        modules: [{ manifest }],
+        styles: [],
+      },
+    ]);
+  });
+
   it("forwards none without plugins", async () => {
     t = await createTestApp();
     const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
@@ -85,6 +126,7 @@ describe("web modules", () => {
     const body = (await res.json()) as ContributionsResponse;
     expect(body.webModules).toEqual([]);
     expect("fileRenderers" in body).toBe(false);
+    expect("pageRemovals" in body).toBe(false);
   });
 
   it("reads a Workspace audio file with its audio content type", async () => {

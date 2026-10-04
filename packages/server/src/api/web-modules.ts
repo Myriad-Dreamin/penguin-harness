@@ -18,9 +18,10 @@ export interface WebModulePackage {
   /**
    * Each web module: its manifest as the table carries it (`side: "web"`, `file`), and the URL of
    * its built file — an ES module whose default export is the module class. The URL names the
-   * build's content, so a response to it never changes and is cached for good.
+   * build's content, so a response to it never changes and is cached for good. A module with no
+   * code (no `file`: it only contributes data) has no URL; its manifest is all of it.
    */
-  modules: Array<{ manifest: Record<string, unknown>; url: string }>;
+  modules: Array<{ manifest: Record<string, unknown>; url?: string }>;
   /** Stylesheets the modules' components need, attached before the modules load. */
   styles: string[];
 }

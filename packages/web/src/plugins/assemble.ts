@@ -7,7 +7,8 @@
  * 1. each package's stylesheets are attached and its module files imported (an ES module whose
  *    default export is the module class, decorated through the app's own kernel — shared.ts);
  *    each class is paired with the manifest it was forwarded with, as the server pairs a plugin's
- *    classes with its table;
+ *    classes with its table. A module forwarded without a file only contributes data and is
+ *    defined by its manifest alone;
  * 2. the packages are admitted one at a time: the tree of the app's modules, the plugins admitted
  *    so far and this one is checked (the kernel's full check: wiring, slots, every contribution's
  *    data against its slot's type), and a package with a problem is left out with it;
@@ -78,6 +79,14 @@ function attachStyles(pkg: string, urls: readonly string[]): Promise<void> {
   ).then(() => undefined);
 }
 
+/**
+ * The definition of a module that only contributes data (the server forwards it without a file,
+ * scripts/lib/plugin-sides.mjs `codeless`): nothing to import, nothing to create.
+ */
+function dataOnlyDef(manifest: ManifestTable[string]): ModuleDef {
+  return { manifest, create: () => ({ api: {} }) };
+}
+
 /** Imports a package's module files and pairs each class with its forwarded manifest. */
 export async function loadPackage(
   pkg: WebModulePackage,
@@ -92,6 +101,8 @@ export async function loadPackage(
     Promise.all(
       pkg.modules.map(async ({ manifest, url }) => {
         const name = (manifest as { name: string }).name;
+        // A module forwarded without a file is data only: its manifest is all of it.
+        if (url === undefined) return dataOnlyDef(manifests[name]!);
         const cls = ((await load(url)) as { default?: unknown }).default;
         if (typeof cls !== "function") {
           throw new Error(`${name}: ${url} has no module class as its default export`);

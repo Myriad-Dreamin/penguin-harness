@@ -103,12 +103,18 @@ export function webModulesOfPackage(pkg: {
   } catch {
     return null;
   }
+  // A web module without a `file` is data only (scripts/lib/plugin-sides.mjs `codeless`): it is
+  // forwarded with no URL, and the web app assembles it from the manifest.
   const web = Object.values(table.modules ?? {}).filter(
-    (m) => m.side === "web" && typeof m.file === "string",
+    (m) =>
+      m.side === "web" &&
+      (m.file === undefined || (typeof m.file === "string" && m.file.startsWith(`${WEB_DIR}/`))),
   );
   if (web.length === 0) return null;
-  const build = webBuildId(pkg.dir);
-  if (build === null) return null;
+  const withCode = web.some((m) => m.file !== undefined);
+  const build = withCode ? webBuildId(pkg.dir) : null;
+  // A module with code whose files are not built yet: nothing of the package can be offered.
+  if (withCode && build === null) return null;
   const base = `/api/plugins/${pkg.name}/web/${build}/`;
   /** A package-relative file under WEB_DIR as its URL. */
   const urlOf = (file: string) => base + file.slice(WEB_DIR.length + 1);
@@ -117,12 +123,13 @@ export function webModulesOfPackage(pkg: {
     version: pkg.version,
     hash: typeof table.hash === "string" ? table.hash : "",
     ifaces: { ifaces: table.ifaces ?? {}, types: table.types ?? {} },
-    modules: web
-      .filter((m) => (m.file as string).startsWith(`${WEB_DIR}/`))
-      .map((manifest) => ({ manifest, url: urlOf(manifest.file as string) })),
-    styles: filesUnder(path.join(pkg.dir, WEB_DIR)).includes(STYLES_FILE)
-      ? [base + STYLES_FILE]
-      : [],
+    modules: web.map((manifest) =>
+      typeof manifest.file === "string" ? { manifest, url: urlOf(manifest.file) } : { manifest },
+    ),
+    styles:
+      build !== null && filesUnder(path.join(pkg.dir, WEB_DIR)).includes(STYLES_FILE)
+        ? [base + STYLES_FILE]
+        : [],
   };
 }
 
