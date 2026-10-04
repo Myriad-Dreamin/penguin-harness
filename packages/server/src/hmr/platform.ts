@@ -53,6 +53,7 @@ import { isApiSocketRef } from "../socket/ref.js";
 import { serveApiSocket } from "../socket/serve.js";
 import { Hono } from "hono";
 import type { AppEnv } from "../auth/middleware.js";
+import type { SessionVia } from "../auth/service.js";
 import type { SessionManager } from "../runtime/session-manager.js";
 import { terminalRoutes } from "../terminal/routes.js";
 import type { Identity } from "../terminal/identity.js";
@@ -90,6 +91,15 @@ import type { Auth } from "../mechanisms/identity.js";
  */
 export type ServerHmrHost = HmrHost<PlatformApi>;
 
+/**
+ * What the runtime learned authenticating a stream upgrade and hands over with the socket.
+ * The platform sees no cookie, so this is its only account of the session behind one.
+ */
+export interface StreamAuth {
+  /** How the session of the handshake's cookie was established. */
+  via: SessionVia;
+}
+
 export interface PlatformApi extends Park {
   info(): Json;
   /** The platform's log. The layer writes its request lines through it while there is one. */
@@ -106,7 +116,14 @@ export interface PlatformApi extends Park {
    * the socket back for the platform's protocol to drive.
    */
   terminals(): TerminalManager;
-  attachStream(ws: WebSocket, session: TerminalSession, url: URL, log: (l: string) => void): void;
+  attachStream(
+    ws: WebSocket,
+    session: TerminalSession,
+    url: URL,
+    log: (l: string) => void,
+    /** What the runtime learned authenticating the upgrade; absent from a runtime older than the member. */
+    auth?: StreamAuth,
+  ): void;
   /**
    * The module tree this App built (null on a declared bare kernel). In-process member,
    * NOT a registry entry: the runtime holds this instance already (hmr.ensure()), so a
@@ -678,7 +695,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
       info: () => inner.api.info(),
       http: (request) => inner.api.http(request),
       terminals: () => inner.api.terminals(),
-      attachStream: (ws, session, url, log) => {
+      attachStream: (ws, session, url, log, auth) => {
         if (!isApiSocketRef(session)) return inner.api.attachStream(ws, session, url, log);
         // The API socket: served here, as the owner the runtime held it to, with every call
         // entering the inner App of the moment — a re-assembly under an open socket is
@@ -689,12 +706,9 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
         ws.once("close", () => apiSockets.delete(ws));
         serveApiSocket(ws, {
           fetch: (request) => {
-            const http = inner.api
-              .business()
-              ?.api<{ fetchAs(userId: string, request: Request): Promise<Response> }>(
-                "HttpModule",
-                "http",
-              );
+            const http = inner.api.business()?.api<{
+              fetchAs(userId: string, request: Request, via?: SessionVia): Promise<Response>;
+            }>("HttpModule", "http");
             if (http === undefined) {
               return Promise.resolve(
                 Response.json(
@@ -703,7 +717,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
                 ),
               );
             }
-            return http.fetchAs(userId, request);
+            return http.fetchAs(userId, request, auth?.via);
           },
           origin: `${url.protocol}//${url.host}`,
           log,

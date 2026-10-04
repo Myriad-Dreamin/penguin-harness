@@ -11,6 +11,7 @@ import { attributedProjectId } from "./attribution.js";
 import { bodyLimitBytes } from "../services/attachment-limits.js";
 import { declined } from "../hmr/hono-seam.js";
 import type { Auth, Users } from "../mechanisms/identity.js";
+import type { SessionVia } from "../auth/service.js";
 import type { Access } from "../mechanisms/projects.js";
 import type { Errors } from "../mechanisms/observability.js";
 import type { Settings } from "../mechanisms/settings.js";
@@ -22,7 +23,9 @@ import type { Settings } from "../mechanisms/settings.js";
  * API socket (socket/serve.ts), whose handshake the runtime authenticated and whose owner it
  * checked before the platform ever saw the socket. Those requests carry no cookie, so the
  * gate in front of the routes is not the cookie one but "this user": the routes themselves,
- * their authorization and their errors are identical.
+ * their authorization and their errors are identical. `via` is how the handshake's cookie was
+ * minted, as the runtime read it; a runtime that does not say is answered as a password
+ * session, the most demanding kind.
  */
 @Interface()
 export abstract class Http {
@@ -30,6 +33,7 @@ export abstract class Http {
   abstract fetchAs(
     userId: string,
     request: Opaque<"Request", Request>,
+    via?: SessionVia,
   ): Promise<Opaque<"Response", Response>>;
 }
 
@@ -77,8 +81,10 @@ export class HttpModule {
     // each parent it is mounted on, so mounting the groups twice shares handlers, not state.
     const cookieGated = this.assemble(routes, authMiddleware(this.auth, this.config.trustProxy));
     const asUser = new Map<string, Hono<AppEnv>>();
-    const enteredAs = (userId: string): Hono<AppEnv> => {
-      let app = asUser.get(userId);
+    const enteredAs = (userId: string, via: SessionVia): Hono<AppEnv> => {
+      // One surface per user and kind of session: the gate below stamps both on every call.
+      const key = `${via}\0${userId}`;
+      let app = asUser.get(key);
       if (app === undefined) {
         app = this.assemble(routes, async (c, next) => {
           const user = this.users.findById(userId);
@@ -91,19 +97,21 @@ export class HttpModule {
             throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
           }
           c.set("user", user);
-          // The handshake does not say how the cookie behind it was minted, so the most
-          // demanding kind is assumed: what needs the old password keeps needing it.
-          c.set("sessionVia", "password");
+          // The kind of session the handshake's cookie was: the shell's own window keeps
+          // being the shell's own window over the socket, and what needs the old password
+          // of a password session keeps needing it.
+          c.set("sessionVia", via);
           await next();
         });
-        asUser.set(userId, app);
+        asUser.set(key, app);
       }
       return app;
     };
     this.http = {
       fetch: (request: Request) => Promise.resolve(cookieGated.fetch(request)),
-      fetchAs: (userId: string, request: Request) =>
-        Promise.resolve(enteredAs(userId).fetch(request)),
+      // A runtime older than the member hands over no kind: the most demanding one stands in.
+      fetchAs: (userId: string, request: Request, via: SessionVia = "password") =>
+        Promise.resolve(enteredAs(userId, via).fetch(request)),
     };
   }
 
