@@ -8,8 +8,8 @@
  * - Nothing is kept across loads: no list is written to storage, and no later answer reloads.
  * - A signed-out boot (401) reloads once on a sign-in seen in this document, and never in a
  *   document that was never seen signed out.
- * - Safe mode asks nothing; leaving it after a safe-mode boot reloads, entering it reloads only
- *   when plugins were assembled.
+ * - Safe mode asks nothing; after a safe-mode boot, the first answer with plugins once it is left
+ *   reloads; entering safe mode reloads only when plugins were assembled.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContributionsResponse, WebModulePackage } from "@prismshadow/penguin-server/api";
@@ -115,18 +115,32 @@ describe("the boot's web module list", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it("in safe mode, asks nothing; leaving it reloads so the plugins join", async () => {
+  it("in safe mode, asks nothing; once left, the first answer with plugins reloads", async () => {
     setSafeMode(true);
     try {
       const f = await load();
       expect(await f.bootWebModules()).toEqual([]);
       expect(fetch).not.toHaveBeenCalled();
-      f.reloadOnSafeModeChange(false);
+      f.reloadForSkippedPlugins(answerOf([music]));
+      // Still in safe mode: nothing.
+      expect(reload).not.toHaveBeenCalled();
       (await pageSafeMode()).setSafeMode(false);
+      f.reloadForSkippedPlugins(answerOf([]));
+      expect(reload).not.toHaveBeenCalled();
+      f.reloadForSkippedPlugins(answerOf([music]));
       expect(reload).toHaveBeenCalledTimes(1);
     } finally {
       setSafeMode(false);
     }
+  });
+
+  it("after a boot outside safe mode, an answer with plugins reloads nothing", async () => {
+    const f = await load();
+    const booting = f.bootWebModules();
+    answer(200, answerOf([]));
+    await booting;
+    f.reloadForSkippedPlugins(answerOf([music]));
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("entering safe mode reloads only when plugins were assembled", async () => {

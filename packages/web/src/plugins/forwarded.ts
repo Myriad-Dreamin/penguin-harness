@@ -15,7 +15,8 @@
  * (`reloadOnSignIn`).
  *
  * Nothing is asked in safe mode; entering it while plugin modules are assembled reloads without
- * them, and leaving it after a safe-mode boot reloads with them.
+ * them, and after a safe-mode boot the first answer with plugin modules in it (the shell asks
+ * again once safe mode is left) reloads, so the tree takes them (`reloadForSkippedPlugins`).
  */
 import type { ContributionsResponse, WebModulePackage } from "@prismshadow/penguin-server/api";
 import { isSafeMode, onSafeModeChange } from "../rescue/safe-mode";
@@ -84,11 +85,17 @@ export function reloadOnSignIn(userId: string | null | undefined): void {
 }
 
 /**
- * After the boot: entering safe mode while plugin modules are assembled reloads without them;
- * leaving it after a safe-mode boot reloads, so the tree takes the plugins it skipped.
+ * Called with each of the shell's answers: after a safe-mode boot, an answer that forwards plugin
+ * modules (asked once safe mode was left) reloads, so the tree takes what the boot skipped. Not a
+ * comparison with the tree: a safe-mode boot assembled nothing, and the reloaded boot is not one.
  */
+export function reloadForSkippedPlugins(answer: ContributionsResponse | null): void {
+  if (bootedSafe && !isSafeMode() && (answer?.webModules?.length ?? 0) > 0) location.reload();
+}
+
+/** After the boot: entering safe mode while plugin modules are assembled reloads without them. */
 export function reloadOnSafeModeChange(assembledPlugins: boolean): void {
   onSafeModeChange((safe) => {
-    if (safe ? assembledPlugins : bootedSafe) location.reload();
+    if (safe && assembledPlugins) location.reload();
   });
 }

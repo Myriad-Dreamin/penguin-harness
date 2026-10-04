@@ -33,8 +33,9 @@
  * The answer also forwards the enabled plugins' web modules (`webModules`); those are not read
  * here but by the boot, which assembles them into the module tree before the first render
  * (plugins/forwarded.ts, whose request is this store's first one, so it is not repeated). The
- * auth state is handed back there: a sign-in after a boot refused for want of a session reloads
- * once, so the tree takes the user's plugins.
+ * auth state and each answer are handed back there: a sign-in after a boot refused for want of a
+ * session reloads once, and so does the first answer with plugin modules after a safe-mode boot,
+ * so the tree takes them.
  */
 import {
   createContext,
@@ -51,7 +52,11 @@ import type {
   SessionSurfaceSummary,
 } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
-import { reloadOnSignIn, takeBootContributions } from "../plugins/forwarded";
+import {
+  reloadForSkippedPlugins,
+  reloadOnSignIn,
+  takeBootContributions,
+} from "../plugins/forwarded";
 import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -284,6 +289,8 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
   // A boot refused for want of a session assembled no plugin: a sign-in here reloads once.
   const authState = authUser === undefined ? undefined : signedIn;
   useEffect(() => reloadOnSignIn(authState), [authState]);
+  // A safe-mode boot assembled no plugin: the first answer with some, once it is left, reloads.
+  useEffect(() => reloadForSkippedPlugins(answer), [answer]);
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
 }
 
