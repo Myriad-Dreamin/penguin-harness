@@ -2,14 +2,16 @@
  * Company mode: one page, /org/*, whose nested routes are company's own (org-routes.tsx); the
  * home redirect, `/` and every unmatched path, since home depends on the mode; the company
  * state's provider, mounted for the signed-in session; the handler that fans the scheduler's
- * events out to it; and the sidebar's company work mode with its three sections
- * (sidebar-mode.tsx).
+ * events out to it; the sidebar's company work mode with its three sections
+ * (sidebar-mode.tsx); and the unread count on the contributed proposals page's row
+ * (proposals-badge.tsx).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
 import { OrgRoutes } from "./org-routes";
 import { HomeRedirect } from "./home-redirect";
 import { CompanyProvider, companyUserEvents } from "./company-state";
 import { companyChannels, companyDesks, companyMode, companySwitcher } from "./sidebar-mode";
+import { proposalsUnreadBadge } from "./proposals-badge";
 
 @Module({
   contributes: {
@@ -52,6 +54,10 @@ import { companyChannels, companyDesks, companyMode, companySwitcher } from "./s
       { id: "company.channels", mode: "company", place: "body", order: 20 },
       { id: "company.desks", mode: "company", place: "body", order: 30 },
     ],
+    // The anchor is the page key the company-proposals plugin contributes its page under.
+    "SidebarModule.navBadges": [
+      { id: "company.proposalsUnread", anchor: "org-proposals", order: 10 },
+    ],
   },
 })
 export class CompanyModule {
@@ -63,4 +69,5 @@ export class CompanyModule {
   @Bind("company.switcher") switcher = companySwitcher;
   @Bind("company.channels") channels = companyChannels;
   @Bind("company.desks") desks = companyDesks;
+  @Bind("company.proposalsUnread") proposalsUnread = proposalsUnreadBadge;
 }

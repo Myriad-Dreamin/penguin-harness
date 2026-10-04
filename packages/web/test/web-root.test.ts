@@ -18,8 +18,8 @@
  *   session, the six layers in their mount order, and the user event handlers of company, the
  *   built-in browser and schedules in their dispatch order.
  * - The sidebar receives the Project switcher and the session list for development mode,
- *   company's mode with its switcher, channels and desks, and the to-do dots and the balance on
- *   their anchors; the session list receives the messaging binding, the scheduled mark and the
+ *   company's mode with its switcher, channels and desks, the to-do dots and the balance on
+ *   their anchors, and company's unread count on the contributed proposals page's row; the session list receives the messaging binding, the scheduled mark and the
  *   dock's "Browse files".
  */
 import { bootModules, moduleDefOf } from "@prismshadow/penguin-core/kernel";
@@ -80,6 +80,7 @@ import {
   companyMode,
   companySwitcher,
 } from "../src/features/company/sidebar-mode";
+import { proposalsUnreadBadge } from "../src/features/company/proposals-badge";
 import { messagingRowAction } from "../src/features/messaging/session-row-action";
 import { scheduledRowMark } from "../src/features/schedules/session-row-mark";
 import { browseFilesAction } from "../src/features/dock/browse-files";
@@ -306,6 +307,13 @@ describe("the booted sidebar slots", () => {
     expect(on("menu")).toEqual([menuBadge]);
     expect(on("account")[0]).toBe(accountBadge);
     expect(marksFor(badges, "account").map((m) => m.Mark)).toEqual([PinnedBalanceBadge]);
+  });
+
+  it("puts company's unread count on the contributed proposals page's row", () => {
+    const badges = badgesOf(sidebarSlots.navBadges ?? []);
+    expect(badges.filter((b) => b.anchor === "org-proposals").map((b) => b.badge)).toEqual([
+      proposalsUnreadBadge,
+    ]);
   });
 
   it("gives the session list the binding entry, the two marks and Browse files", () => {
