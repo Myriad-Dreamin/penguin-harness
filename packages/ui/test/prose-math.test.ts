@@ -6,21 +6,27 @@
  * What is pinned here is the set of decisions that are invisible once they work and silently wrong
  * when they break: which delimiters count, which look like delimiters but must not, what a
  * malformed formula does to the message around it, and what `Md` holds back while a reply
- * streams. That every renderer in the app shares the one plugin list is the Web App's own guard
+ * streams, and how KaTeX itself arrives: on demand, with the formula's source shown until it has.
+ * That every renderer in the app shares the one plugin list is the Web App's own guard
  * (packages/web/test/markdown-math.test.ts).
  */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
-import { REHYPE_PLUGINS, REMARK_PLUGINS } from "../src/components/content/prose/markdown-plugins";
+import {
+  loadMathStage,
+  mayHoldMath,
+  REMARK_PLUGINS,
+} from "../src/components/content/prose/markdown-plugins";
+import { MATH_REHYPE_PLUGINS } from "../src/components/content/prose/math-stage";
 import { Md } from "../src/components/content/prose/prose";
 
 const render = (markdown: string) =>
   renderToStaticMarkup(
     createElement(
       ReactMarkdown,
-      { remarkPlugins: REMARK_PLUGINS, rehypePlugins: REHYPE_PLUGINS },
+      { remarkPlugins: REMARK_PLUGINS, rehypePlugins: MATH_REHYPE_PLUGINS },
       markdown,
     ),
   );
@@ -266,6 +272,10 @@ describe("input that arrives broken or half-written", () => {
 });
 
 describe("Md, the renderer every Markdown surface shares", () => {
+  // The typesetting stage loads on demand; these cases are about what Md does once it is there.
+  beforeAll(async () => {
+    await loadMathStage();
+  });
   const renderMd = (text: string, streaming = false) =>
     renderToStaticMarkup(createElement(Md, { text, streaming }));
 
@@ -313,5 +323,40 @@ describe("Md, the renderer every Markdown surface shares", () => {
     const html = renderMd("```js\nconst a = 1;\n```");
     expect(html).toContain("code-block");
     expect(isMath(html)).toBe(false);
+  });
+});
+
+describe("KaTeX on demand", () => {
+  it("reads a text as maybe holding math by its delimiters alone", () => {
+    for (const source of ["$$E=mc^2$$", String.raw`\[x\]`, String.raw`see \(x\)`]) {
+      expect(mayHoldMath(source), source).toBe(true);
+    }
+    for (const source of ["plain prose", "Set $PATH and $HOME", "It costs $5 and $10", "a [link](x)"]) {
+      expect(mayHoldMath(source), source).toBe(false);
+    }
+  });
+
+  it("shows a formula's source until the stage has loaded, then typesets it", async () => {
+    // A fresh copy of the pipeline, whose stage has not been loaded by anything yet.
+    vi.resetModules();
+    const plugins = await import("../src/components/content/prose/markdown-plugins");
+    const { Md: FreshMd } = await import("../src/components/content/prose/prose");
+    const renderFresh = (text: string) => renderToStaticMarkup(createElement(FreshMd, { text }));
+    const before = renderFresh(String.raw`Energy: \(E=mc^2\)`);
+    expect(isMath(before)).toBe(false);
+    expect(text(before)).toBe("Energy: E=mc^2");
+    const load = plugins.loadMathStage();
+    // One load for the page, however many texts ask while it is in flight.
+    expect(plugins.loadMathStage()).toBe(load);
+    expect(await load).toBe(await plugins.loadMathStage());
+    expect(isMath(renderFresh(String.raw`Energy: \(E=mc^2\)`))).toBe(true);
+    // Which stage a text gets: the typesetting one only for a settled text that may hold math.
+    const Probe = ({ text: source, streaming }: { text: string; streaming: boolean }) =>
+      plugins.useRehypePlugins(source, streaming) === plugins.NO_REHYPE_PLUGINS ? "none" : "math";
+    const stageFor = (source: string, streaming = false) =>
+      renderToStaticMarkup(createElement(Probe, { text: source, streaming }));
+    expect(stageFor("plain *prose*")).toBe("none");
+    expect(stageFor("$$x$$", true)).toBe("none");
+    expect(stageFor("$$x$$")).toBe("math");
   });
 });

@@ -38,9 +38,9 @@ import type { AppRouterProps } from "./shell/router";
 // The global shortcut dispatcher installs itself at module evaluation (a React effect would
 // leave a post-paint window where a chord is dead); the import is what evaluates it.
 import { setShortcutBlocker } from "./lib/shortcuts/dispatcher";
-// KaTeX's stylesheet comes with the shared UI package's Markdown (content/prose/prose.tsx imports
-// it), resolved out of node_modules so Vite emits it and its woff2 faces as local assets: the
-// desktop app has to render math with no network.
+// KaTeX's stylesheet comes with KaTeX itself, which the shared UI package's Markdown loads on the
+// first formula (content/prose/math-stage.ts); it is resolved out of node_modules so Vite emits it
+// and its woff2 faces as local assets: the desktop app has to render math with no network.
 import "./styles.css";
 
 // No global command runs behind an open dialog or menu: they all join the UI package's Escape

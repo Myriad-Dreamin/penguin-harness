@@ -25,10 +25,10 @@ import {
   KeyValue,
   KeyValueRow,
   PageFrame,
-  REHYPE_PLUGINS,
   REMARK_PLUGINS,
   Skeleton,
   useCopied,
+  useRehypePlugins,
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
@@ -184,9 +184,7 @@ export function PluginDetailPage() {
               </p>
             ) : (
               <div className="md-body mt-3 text-sm text-gray-800 dark:text-gray-100">
-                <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
-                  {readme}
-                </ReactMarkdown>
+                <Readme text={readme} />
               </div>
             )}
           </section>
@@ -205,6 +203,15 @@ function integrityKey(integrity: string): string | null {
   if (b64 === undefined) return null;
   const bytes = atob(b64).slice(0, 8);
   return Array.from(bytes, (ch) => ch.charCodeAt(0).toString(16).padStart(2, "0")).join("");
+}
+
+/** The README as Markdown, through the shared pipeline (math typesets once KaTeX has loaded). */
+function Readme({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypePlugins(text)}>
+      {text}
+    </ReactMarkdown>
+  );
 }
 
 /** Every content listed under the name: version, integrity, and whether this machine stores and runs it. */

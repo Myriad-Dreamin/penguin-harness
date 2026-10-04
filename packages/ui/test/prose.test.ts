@@ -118,8 +118,11 @@ describe("Md code", () => {
 describe("the content stylesheet", () => {
   const css = read("prose.css");
 
-  it("is loaded by the components that need it, KaTeX's sheet with the Markdown", () => {
-    expect(read("prose.tsx")).toMatch(/import "katex\/dist\/katex\.min\.css";/);
+  it("is loaded by the components that need it, KaTeX's sheet with KaTeX itself", () => {
+    // Not with the Markdown: the typesetting stage loads on the first formula, and the sheet
+    // (with the faces it references) comes with it rather than with every page.
+    expect(read("math-stage.ts")).toMatch(/import "katex\/dist\/katex\.min\.css";/);
+    expect(read("prose.tsx")).not.toContain("katex.min.css");
     expect(read("prose.tsx")).toMatch(/import "\.\/prose\.css";/);
     const code = readFileSync(
       join(SRC_DIR, "components/content/code-block/code-block.tsx"),

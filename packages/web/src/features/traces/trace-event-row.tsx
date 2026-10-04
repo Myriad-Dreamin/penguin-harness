@@ -17,10 +17,10 @@ import {
   Fold,
   GlyphIcon,
   ICONS,
-  REHYPE_PLUGINS,
   REMARK_PLUGINS,
   RequiredMark,
   ZoomableImage,
+  useRehypePlugins,
 } from "@prismshadow/penguin-ui";
 import type { BadgeStyle } from "@prismshadow/penguin-ui";
 import ReactMarkdown from "react-markdown";
@@ -28,6 +28,15 @@ import { S } from "../../lib/strings";
 import type { OmniMessage } from "@prismshadow/penguin-core/omnimessage";
 import { formatTime, humanizeTokens } from "../../lib/format";
 import { stopReasonTone } from "../../lib/stop-reason-tone";
+
+/** A Trace text as Markdown, through the shared pipeline (math typesets once KaTeX has loaded). */
+function TraceMarkdown({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={useRehypePlugins(text)}>
+      {text}
+    </ReactMarkdown>
+  );
+}
 
 /** An event type as a badge: the session header stands out as a neutral solid tag. */
 export function typeBadge(type: string): BadgeStyle {
@@ -238,9 +247,7 @@ function SessionMetaBody({ p }: { p: Record<string, unknown> }) {
         <details>
           <summary className={summaryClass}>{S.traces.systemPrompt}</summary>
           <div className="md-body mt-1.5 max-h-96 overflow-auto rounded bg-gray-100 px-2.5 py-2 text-sm leading-relaxed text-gray-700 dark:bg-gray-800/70 dark:text-gray-300">
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
-              {prompt}
-            </ReactMarkdown>
+            <TraceMarkdown text={prompt} />
           </div>
         </details>
       )}
@@ -343,9 +350,7 @@ function EventBody({ msg }: { msg: OmniMessage }) {
       if (!md.trim()) return <p className="text-xs text-gray-400">—</p>;
       return (
         <div className="md-body text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-          <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
-            {md}
-          </ReactMarkdown>
+          <TraceMarkdown text={md} />
         </div>
       );
     }
