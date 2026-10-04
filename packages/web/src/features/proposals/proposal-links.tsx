@@ -30,8 +30,8 @@ import {
   proposalHashFor,
   proposalRefText,
   trimPatternPunctuation,
-} from "./proposals-model";
-import type { ProposalRef } from "./proposals-model";
+} from "./proposal-ref";
+import type { ProposalRef } from "./proposal-ref";
 
 /** The mdast shapes this pass touches, declared structurally rather than taking `@types/mdast` on. */
 interface MdNode {

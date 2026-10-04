@@ -35,17 +35,19 @@ import {
   orphanComments,
   paragraphSpan,
   parseProposalHash,
-  parseProposalRef,
   projectMarkdown,
   proposalActions,
-  proposalHashFor,
-  proposalRefText,
   proposalsRoute,
   rangeOfSelection,
   sectionSource,
   sortProposals,
-  trimPatternPunctuation,
 } from "../src/features/proposals/proposals-model";
+import {
+  parseProposalRef,
+  proposalHashFor,
+  proposalRefText,
+  trimPatternPunctuation,
+} from "../src/features/proposals/proposal-ref";
 import { setActiveStrings, zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 

@@ -55,8 +55,12 @@ import {
 } from "../../lib/use-update-flow";
 import { useVersionInfo } from "../../lib/use-version-info";
 import { useLocale } from "../../state/locale";
-import { CreditsList } from "./credits-list";
+import { Deferred } from "../ui/deferred";
+import { lazyComponent } from "../../lib/lazy-component";
 import { ReleaseNotesList } from "./release-notes-list";
+
+/** The credits and their licence texts, loaded when the section is first expanded. */
+const CreditsList = lazyComponent(() => import("./credits-list"), "CreditsList");
 
 const HOMEPAGE_URL = "https://penguin.ooo/";
 const REPOSITORY_URL = "https://github.com/Prism-Shadow/penguin-harness";
@@ -450,7 +454,11 @@ function Credits({
         {S.appInfo.licenses}
       </button>
       <div id={panelId} hidden={!expanded} className="mt-4">
-        {expanded && <CreditsList />}
+        {expanded && (
+          <Deferred fallback={null}>
+            <CreditsList />
+          </Deferred>
+        )}
       </div>
     </RuledSection>
   );
