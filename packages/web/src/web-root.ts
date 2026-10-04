@@ -14,8 +14,9 @@
  * arktype-free runtime entry: identity wiring and the cheap checks, no shape validation. The
  * enabled plugins' web modules join it as the root's runtime children (`"*"`, the way the
  * platform's root takes plugin modules): the entry hands over what GET /api/contributions
- * forwarded (main.tsx), and plugins/assemble.ts verifies, admits and loads them — through the
- * same runtime entry; the full kernel is loaded only to verify a plugin table not seen before.
+ * forwarded (main.tsx), plugins/assemble.ts verifies and loads them, and the tree boots with
+ * them in one identity check — through the same runtime entry; the full kernel is loaded only to
+ * verify a plugin table not seen before.
  */
 import type { ComponentType } from "react";
 import {
@@ -23,10 +24,8 @@ import {
   mergeTables,
   Module,
   moduleDefOf,
-  moduleMetaOf,
 } from "@prismshadow/penguin-core/kernel/runtime";
 import type {
-  IfaceTable,
   ManifestTable,
   ModuleDef,
   Resources,
@@ -34,8 +33,8 @@ import type {
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import table from "./ifaces.json";
 import type { HashedTable } from "./lib/verify-plugins";
-import { assemblePlugins, leaveOutAll } from "./plugins/assemble";
-import type { AssembleOptions } from "./plugins/assemble";
+import { assemblePlugins, bootFailureReason, leaveOut } from "./plugins/assemble";
+import type { AssembleOptions, PluginModules } from "./plugins/assemble";
 import { ShellModule } from "./shell/module";
 import type { Shell } from "./shell/module";
 import { SidebarModule } from "./shell/sidebar/module";
@@ -110,35 +109,38 @@ const HOST_TABLE = table as unknown as HashedTable;
 
 /**
  * Boots the module tree — the app's modules and the plugins' web modules the server forwarded,
- * verified and admitted (plugins/assemble.ts) — and returns the component the app mounts. A
- * plugin that does not fit is left out; should the tree with the admitted ones still fail to
- * boot, it boots without plugins.
+ * verified and loaded (plugins/assemble.ts) — and returns the component the app mounts. The
+ * tree with every loaded plugin is checked once; only when that boot fails is each plugin tried
+ * in turn (package-name order), and the ones the tree does not take are left out with why, so
+ * one bad plugin never costs the others.
  */
 export async function bootWeb(
   packages: readonly WebModulePackage[] = [],
-  opts: Pick<AssembleOptions, "load" | "verify"> = {},
+  opts: Pick<AssembleOptions, "load" | "verify" | "deadlineMs"> = {},
 ): Promise<ComponentType<AppRouterProps>> {
-  const plugins = await assemblePlugins(packages, {
-    ...opts,
-    host: HOST_TABLE,
-    root: moduleMetaOf(WebRoot).name,
-  });
-  const boot = async (extra: ModuleDef[], ifaces: IfaceTable) =>
-    (await bootVerified(rootWith(extra), { ifaces, resources: NO_RESOURCES })).api<Shell>(
-      "ShellModule",
-      "shell",
-    ).Root;
-  if (plugins.length === 0) return boot([], HOST_TABLE);
+  const plugins = await assemblePlugins(packages, { ...opts, host: HOST_TABLE });
+  const boot = async (members: readonly PluginModules[]) =>
+    (
+      await bootVerified(rootWith(members.flatMap((p) => p.defs)), {
+        ifaces: members.length === 0 ? HOST_TABLE : mergeTables(HOST_TABLE, members.map((p) => p.ifaces)),
+        resources: NO_RESOURCES,
+      })
+    ).api<Shell>("ShellModule", "shell").Root;
+  if (plugins.length === 0) return boot([]);
   try {
-    return await boot(
-      plugins.flatMap((p) => p.defs),
-      mergeTables(
-        HOST_TABLE,
-        plugins.map((p) => p.ifaces),
-      ),
-    );
-  } catch (err) {
-    leaveOutAll(plugins, err);
-    return boot([], HOST_TABLE);
+    return await boot(plugins);
+  } catch {
+    // Someone is to blame: admit them one at a time, keeping the last tree that booted.
+    const admitted: PluginModules[] = [];
+    let Root: ComponentType<AppRouterProps> | null = null;
+    for (const p of plugins) {
+      try {
+        Root = await boot([...admitted, p]);
+        admitted.push(p);
+      } catch (err) {
+        leaveOut(p.package, bootFailureReason(err));
+      }
+    }
+    return Root ?? boot([]);
   }
 }

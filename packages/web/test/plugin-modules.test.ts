@@ -1,13 +1,16 @@
 /**
  * Plugin web modules joining the app's module tree (plugins/assemble.ts, web-root.ts): what
- * GET /api/contributions forwards is verified, admitted, loaded and booted beside the app's own
- * modules, through the kernel's runtime entry.
+ * GET /api/contributions forwards is verified, loaded and booted (one identity check) beside
+ * the app's own modules, through the kernel's runtime entry.
  *
  * - A forwarded module joins: its class is created and its contribution reaches the chat page's
  *   `fileRenderers` slot, rule and component in one; its verdict is remembered.
  * - A package whose module does not fit (data of the wrong shape, a slot no module has, a name
  *   the app already uses) or whose file fails to load is left out with the reason, and the app
- *   boots without it; of two packages with one module name, the later is left out.
+ *   boots without it; of two packages with one module name, the later by package name is left
+ *   out, whatever order they were forwarded in.
+ * - A package whose files do not arrive within the deadline is left out with that reason and the
+ *   others boot; its file arriving or failing later changes nothing.
  * - A module requiring a host interface by the host's key, carrying its own copy, wires to the
  *   host's provider by identity — even one that provides several interfaces; a copy the host no
  *   longer satisfies is refused at verification; a requirement only a structural match meets is
@@ -256,17 +259,59 @@ describe("plugin web modules in the tree", () => {
     expect(created).toEqual(["MusicPlugin"]);
   });
 
-  it("of two packages with one module name, leaves out the later", async () => {
-    await bootWeb(
+  it("of two packages with one module name, leaves out the later by package name", async () => {
+    const music = pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]);
+    const again = pkg("@acme/again", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]);
+    for (const order of [
+      [music, again],
+      [again, music],
+    ]) {
+      created = [];
+      (pluginModuleFailures() as Map<string, string>).clear();
+      await bootWeb(order, opts);
+      expect(pluginModuleFailures().has("@acme/again")).toBe(false);
+      expect(pluginModuleFailures().get("@acme/music")).toMatch(/MusicPlugin/);
+      expect(created).toEqual(["MusicPlugin"]);
+    }
+  });
+
+  it("leaves out a package whose files miss the deadline, and boots the others", async () => {
+    let settle: (value: unknown) => void = () => {};
+    const late = new Promise((resolve) => (settle = resolve));
+    const load = async (url: string) => {
+      if (url === "/held.js") return late;
+      return { default: classes[url] };
+    };
+    const Root = await bootWeb(
       [
+        pkg("@acme/held", [{ manifest: manifest("SlotProbe"), url: "/held.js" }]),
         pkg("@acme/music", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]),
-        pkg("@acme/again", [{ manifest: MUSIC_MANIFEST, url: "/music.js" }]),
       ],
-      opts,
+      { load, deadlineMs: 20 },
     );
-    expect(pluginModuleFailures().has("@acme/music")).toBe(false);
-    expect(pluginModuleFailures().get("@acme/again")).toMatch(/MusicPlugin/);
+    expect(typeof Root).toBe("function");
+    expect(pluginModuleFailures().get("@acme/held")).toMatch(/did not load within 20 ms/);
     expect(created).toEqual(["MusicPlugin"]);
+    // The file arriving after the boot gave up on it is dropped: nothing is created.
+    settle({ default: SlotProbe });
+    await late;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(created).toEqual(["MusicPlugin"]);
+  });
+
+  it("swallows a file that fails after the deadline", async () => {
+    let fail: (err: Error) => void = () => {};
+    const late = new Promise((_, reject) => (fail = reject));
+    const load = async () => late;
+    await bootWeb([pkg("@acme/held", [{ manifest: manifest("SlotProbe"), url: "/held.js" }])], {
+      load,
+      deadlineMs: 20,
+    });
+    expect(pluginModuleFailures().get("@acme/held")).toMatch(/did not load within/);
+    // An unhandled rejection here would fail the run.
+    fail(new Error("404 /held.js"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(pluginModuleFailures().get("@acme/held")).toMatch(/did not load within/);
   });
 
   it("leaves out a module named like one of the app's own", async () => {

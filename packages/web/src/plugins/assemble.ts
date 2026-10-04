@@ -3,7 +3,8 @@
  * plugin, the modules its build placed on the web side (`webModules`: manifests, the plugin's own
  * interface entries, the URLs of the built files and stylesheets); this file turns them into
  * module definitions the composition root boots beside its own (web-root.ts), through the
- * kernel's arktype-free runtime entry:
+ * kernel's arktype-free runtime entry. Packages are taken in package-name order, so which of two
+ * clashing plugins is left out never depends on the server's load order.
  *
  * 1. VERIFIED: each package's table (its interfaces and its web modules' manifests) goes through
  *    lib/verify-plugins.ts — the kernel's full check against the app's table, run once per table
@@ -11,42 +12,43 @@
  *    full kernel (and arktype with it). This is where a manifest's shape, a contribution's data
  *    and a copied host interface are checked; the forwarded manifests are otherwise taken as the
  *    generated data they are.
- * 2. ADMITTED one at a time: the runtime's own identity check (`checkExact`) over the app's tree
- *    with the packages admitted so far and this one mounted under the root — what the boot will
- *    run, so a package that verifies but would not wire by identity, or that clashes with an
- *    earlier one, is left out here with its problem rather than failing the boot.
- * 3. LOADED: the admitted packages' stylesheets are attached and their module files imported (an
- *    ES module whose default export is the module class, decorated through the app's own kernel
- *    — shared.ts); each class is paired with the manifest it was forwarded with. A module
- *    forwarded without a file only contributes data and is defined by its manifest alone.
+ * 2. LOADED, each package within PLUGIN_LOAD_DEADLINE_MS: its stylesheets are attached and its
+ *    module files imported (an ES module whose default export is the module class, decorated
+ *    through the app's own kernel — shared.ts); each class is paired with the manifest it was
+ *    forwarded with. A module forwarded without a file only contributes data and is defined by
+ *    its manifest alone. A package that misses the deadline is left out and the boot goes on.
  *
- * The root boots the admitted ones; should that boot still fail, the app boots without any. A
- * package left out is recorded with why (`pluginModuleFailures`, read by the Plugins page) and
- * logged. Safe mode never gets here — the entry asks for nothing.
+ * The root then boots the loaded ones in ONE identity check (`bootVerified`, web-root.ts). Only
+ * when that boot fails does it find the package to blame, by booting them in order and leaving
+ * out each one the tree does not take. A package left out is recorded with why
+ * (`pluginModuleFailures`, read by the Plugins page) and logged. Safe mode never gets here — the
+ * entry asks for nothing.
  *
  * Code halves may be lazy (a `React.lazy` component bound in `@Bind`): the module file is small
  * and loads at boot, the component's chunk when a slot first draws it, inside the slot owner's
- * boundary.
+ * `<Deferred>` boundary.
  */
-import {
-  checkExact,
-  describeProblem,
-  manifestTrees,
-  mergeTables,
-  moduleDefOf,
-} from "@prismshadow/penguin-core/kernel/runtime";
+import { describeProblem, moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
 import type {
   IfaceTable,
   Manifest,
-  ManifestNode,
   ManifestTable,
   ModuleClass,
   ModuleDef,
   ModuleTable,
+  Problem,
 } from "@prismshadow/penguin-core/kernel/runtime";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import { verifyPlugins } from "../lib/verify-plugins";
 import type { HashedTable, PluginTable } from "../lib/verify-plugins";
+
+/**
+ * How long one package's files and stylesheets may take before the boot leaves it out. A warm
+ * load takes milliseconds (the files are cached for good) and a cold one a few round trips; past
+ * this the request is stalled (a proxy, a server busy rebuilding), and a page that waited on it
+ * would stay blank. The packages load side by side, so this bounds the whole stage.
+ */
+export const PLUGIN_LOAD_DEADLINE_MS = 4000;
 
 /** One package's modules, paired with their code, and the interface entries its table carries. */
 export interface PluginModules {
@@ -63,13 +65,13 @@ const importModule: ImportModule = (url) => import(/* @vite-ignore */ url);
 export interface AssembleOptions {
   /** The app's generated table (its `hash` names the host the verdicts are cached under). */
   host: HashedTable;
-  /** The name of the app's root module, under which plugin modules are mounted. */
-  root: string;
   load?: ImportModule;
   verify?: typeof verifyPlugins;
+  /** Overrides PLUGIN_LOAD_DEADLINE_MS. */
+  deadlineMs?: number;
 }
 
-/** Packages left out of this page's tree, by name → why. */
+/** Packages left out of this page's tree, by package name → why. */
 const failures = new Map<string, string>();
 
 /** Why a plugin's web modules were left out of this page's tree, by package name. */
@@ -77,17 +79,30 @@ export function pluginModuleFailures(): ReadonlyMap<string, string> {
   return failures;
 }
 
-function leaveOut(pkg: string, reason: string): void {
+/** Records a package as left out of this page's tree, with why. */
+export function leaveOut(pkg: string, reason: string): void {
   failures.set(pkg, reason);
   console.warn(`[plugins] web modules of ${pkg} left out: ${reason}`);
 }
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-/** Attaches the stylesheets; resolves once each has loaded or failed (unstyled is not fatal). */
-function attachStyles(pkg: string, urls: readonly string[]): Promise<void> {
-  if (typeof document === "undefined") return Promise.resolve();
-  return Promise.all(
+/** Why a boot with a package failed: the check's problems when it has them, else the error. */
+export function bootFailureReason(err: unknown): string {
+  const problems = (err as { problems?: Problem[] } | null)?.problems;
+  return problems !== undefined && problems.length > 0
+    ? `it does not wire by interface key: ${problems.map(describeProblem).join("; ")}`
+    : `the app's module tree did not boot with it: ${message(err)}`;
+}
+
+/**
+ * Attaches the stylesheets; resolves once each has loaded or failed (unstyled is not fatal).
+ * Returns the elements too, so a package left out takes its sheets with it.
+ */
+function attachStyles(pkg: string, urls: readonly string[]): [Promise<void>, HTMLLinkElement[]] {
+  if (typeof document === "undefined") return [Promise.resolve(), []];
+  const links: HTMLLinkElement[] = [];
+  const settled = Promise.all(
     urls.map(
       (href) =>
         new Promise<void>((resolve) => {
@@ -97,9 +112,25 @@ function attachStyles(pkg: string, urls: readonly string[]): Promise<void> {
           link.dataset.plugin = pkg;
           link.onload = link.onerror = () => resolve();
           document.head.appendChild(link);
+          links.push(link);
         }),
     ),
   ).then(() => undefined);
+  return [settled, links];
+}
+
+/**
+ * Settles with `work`, or rejects once `ms` have passed. `work` itself cannot be aborted (a
+ * dynamic `import()` cannot be), so a late settlement is swallowed here: its value is dropped
+ * and its rejection handled, never surfacing as an unhandled one.
+ */
+function withDeadline<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not load within ${ms} ms`)), ms);
+  });
+  work.catch(() => undefined);
+  return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
 /**
@@ -138,77 +169,69 @@ function candidateOf(pkg: WebModulePackage): Candidate | string {
   return { pkg, table, manifests };
 }
 
-/** The app's tree as its table describes it, from `root` down. */
-function hostTree(host: ModuleTable, root: string): ManifestNode {
-  const manifests = new Map(Object.entries(host.modules as Record<string, Manifest>));
-  const tree = manifestTrees(manifests, "host table").find((t) => t.manifest.name === root);
-  if (tree === undefined) throw new Error(`host table: no root module '${root}'`);
-  return tree;
+/** Imports a package's module files and pairs each class with its forwarded manifest. */
+async function loadModules(c: Candidate, load: ImportModule): Promise<ModuleDef[]> {
+  const manifests = Object.fromEntries(c.manifests) as ManifestTable;
+  return Promise.all(
+    c.pkg.modules.map(async ({ manifest, url }) => {
+      const name = (manifest as { name: string }).name;
+      // A module forwarded without a file is data only: its manifest is all of it.
+      if (url === undefined) return dataOnlyDef(manifests[name]!);
+      const cls = ((await load(url)) as { default?: unknown }).default;
+      if (typeof cls !== "function") {
+        throw new Error(`${name}: ${url} has no module class as its default export`);
+      }
+      const def = moduleDefOf(cls as ModuleClass, { manifests });
+      if (def.manifest.name !== name) {
+        throw new Error(`${url} exports the module '${def.manifest.name}', not '${name}'`);
+      }
+      return def;
+    }),
+  );
 }
 
 /**
- * The verified candidates that pass the runtime's identity check, admitted in order: each is
- * checked in the tree of the app's modules and the ones admitted before it, so a clash between
- * two plugins leaves out the later one.
+ * The package's modules and stylesheets within the deadline; `shared` is the host's shared
+ * instances being installed, which a module file needs before it is evaluated.
  */
-function admit(host: ModuleTable, root: string, candidates: readonly Candidate[]): Candidate[] {
-  const base = hostTree(host, root);
-  const admitted: Candidate[] = [];
-  const mounted: ManifestNode[] = [];
-  for (const c of candidates) {
-    let problems: string[];
-    let trees: ManifestNode[] = [];
-    try {
-      trees = manifestTrees(c.manifests, c.pkg.package);
-      const tree = { manifest: base.manifest, children: [...base.children, ...mounted, ...trees] };
-      const tables = [...admitted, c].map((a) => a.table);
-      problems = checkExact(tree, mergeTables(host, tables)).problems.map(describeProblem);
-    } catch (err) {
-      problems = [message(err)];
-    }
-    if (problems.length === 0) {
-      admitted.push(c);
-      mounted.push(...trees);
-    } else {
-      leaveOut(c.pkg.package, `it does not wire by interface key: ${problems.join("; ")}`);
-    }
+async function loadPackage(
+  c: Candidate,
+  load: ImportModule,
+  shared: Promise<void>,
+  deadlineMs: number,
+): Promise<PluginModules | null> {
+  const [styled, links] = attachStyles(c.pkg.package, c.pkg.styles);
+  const work = Promise.all([shared.then(() => loadModules(c, load)), styled]);
+  try {
+    const [defs] = await withDeadline(work, deadlineMs, "its files");
+    return { package: c.pkg.package, defs, ifaces: c.table };
+  } catch (err) {
+    for (const link of links) link.remove();
+    leaveOut(c.pkg.package, message(err));
+    return null;
   }
-  return admitted;
 }
 
-/** Imports a package's module files and pairs each class with its forwarded manifest. */
-async function loadPackage(c: Candidate, load: ImportModule): Promise<PluginModules> {
-  const manifests = Object.fromEntries(c.manifests) as ManifestTable;
-  const [defs] = await Promise.all([
-    Promise.all(
-      c.pkg.modules.map(async ({ manifest, url }) => {
-        const name = (manifest as { name: string }).name;
-        // A module forwarded without a file is data only: its manifest is all of it.
-        if (url === undefined) return dataOnlyDef(manifests[name]!);
-        const cls = ((await load(url)) as { default?: unknown }).default;
-        if (typeof cls !== "function") {
-          throw new Error(`${name}: ${url} has no module class as its default export`);
-        }
-        const def = moduleDefOf(cls as ModuleClass, { manifests });
-        if (def.manifest.name !== name) {
-          throw new Error(`${url} exports the module '${def.manifest.name}', not '${name}'`);
-        }
-        return def;
-      }),
-    ),
-    attachStyles(c.pkg.package, c.pkg.styles),
-  ]);
-  return { package: c.pkg.package, defs, ifaces: c.table };
+/** Installs the host's shared instances, once, when some module has a file to evaluate. */
+async function shareHostModules(): Promise<void> {
+  const { shareHostModules: share } = await import("./shared");
+  share();
 }
 
-/** The forwarded packages verified, admitted and loaded; what fails any step is left out. */
+/**
+ * The forwarded packages verified and loaded, in package-name order; what fails a step is left
+ * out. The boot (web-root.ts) checks the rest once.
+ */
 export async function assemblePlugins(
   packages: readonly WebModulePackage[],
   opts: AssembleOptions,
 ): Promise<PluginModules[]> {
   if (packages.length === 0) return [];
   const candidates: Candidate[] = [];
-  for (const pkg of packages) {
+  const sorted = [...packages].sort((a, b) =>
+    a.package < b.package ? -1 : a.package > b.package ? 1 : 0,
+  );
+  for (const pkg of sorted) {
     const c = candidateOf(pkg);
     if (typeof c === "string") leaveOut(pkg.package, c);
     else candidates.push(c);
@@ -217,32 +240,15 @@ export async function assemblePlugins(
   const { accepted, rejected } = await (opts.verify ?? verifyPlugins)(opts.host, plugins);
   for (const r of rejected) leaveOut(r.plugin.name, r.problems.join("; "));
   const verified = new Set(accepted.map((p) => p.name));
-  const admitted = admit(
-    opts.host,
-    opts.root,
-    candidates.filter((c) => verified.has(c.pkg.package)),
-  );
+  const admitted = candidates.filter((c) => verified.has(c.pkg.package));
   if (admitted.length === 0) return [];
   // The shared instances are for module files; packages that are data only import none, so a
   // page with only those never fetches the shared chunk (and the UI namespace it holds).
-  if (admitted.some((c) => c.pkg.modules.some((m) => m.url !== undefined))) {
-    const { shareHostModules } = await import("./shared");
-    shareHostModules();
-  }
+  const shared = admitted.some((c) => c.pkg.modules.some((m) => m.url !== undefined))
+    ? shareHostModules()
+    : Promise.resolve();
   const load = opts.load ?? importModule;
-  const loaded = await Promise.all(
-    admitted.map((c) =>
-      loadPackage(c, load).catch((err: unknown) => {
-        leaveOut(c.pkg.package, message(err));
-        return null;
-      }),
-    ),
-  );
+  const deadlineMs = opts.deadlineMs ?? PLUGIN_LOAD_DEADLINE_MS;
+  const loaded = await Promise.all(admitted.map((c) => loadPackage(c, load, shared, deadlineMs)));
   return loaded.filter((p): p is PluginModules => p !== null);
-}
-
-/** Records every admitted package as left out after the tree with them failed to boot. */
-export function leaveOutAll(plugins: readonly PluginModules[], err: unknown): void {
-  const reason = `the app's module tree did not boot with it: ${message(err)}`;
-  for (const p of plugins) leaveOut(p.package, reason);
 }
