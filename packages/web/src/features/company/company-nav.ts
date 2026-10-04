@@ -109,10 +109,12 @@ const ORG_PAGE_RANK: ReadonlyMap<string, number> = new Map(
 
 /**
  * The nav rows of the contributed company-mode pages this build can draw, in ORG_PAGE_RENDERERS
- * order — never in contribution order, which follows the Project's `[plugins]` list — and, for
- * two pages with the same renderer, in contribution order (the sort is stable). A page this build has no row for is skipped here: a builtin renderer it does not know
- * (the router skips that one too: no renderer, no route), or an iframe page whose key it has no
- * label and glyph for (routed, but reachable by URL only).
+ * order — never in contribution order, which follows the Project's `[plugins]` list. A renderer
+ * draws one row, for the first page that names it: the row's label, glyph and badge anchor are
+ * the renderer's (sidebar-mode.tsx keys the row by it), so a second page naming it would be the
+ * same row again. A page this build has no row for is skipped here: a builtin renderer it does
+ * not know (the router skips that one too: no renderer, no route), or an iframe page whose key
+ * it has no label and glyph for (routed, but reachable by URL only).
  */
 export function orgPageRows(
   pages: ReadonlyArray<{
@@ -130,6 +132,7 @@ export function orgPageRows(
     const renderer = "builtin" in page.renderer ? page.renderer.builtin : page.key;
     if (!isOrgPageRenderer(renderer)) continue;
     if (ORG_PAGE_RENDERERS[renderer].kind !== (builtin ? "builtin" : "iframe")) continue;
+    if (rows.some((row) => row.renderer === renderer)) continue;
     rows.push({
       key: page.key,
       renderer,

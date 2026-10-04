@@ -62,9 +62,10 @@ function useCompanyMode(): ModeState {
         icon: COMPANY_NAV_ICONS[key],
       })),
       // The pages plugins contribute (the proposals page), after the organization's own, each
-      // keyed by its page key so a nav badge can name it.
+      // keyed by the renderer it is drawn with, so a nav badge names it the way this build does
+      // (the page key is the plugin's to choose).
       ...orgPageRows(contributedPages, navOrg).map((row) => ({
-        key: row.key,
+        key: row.renderer,
         to: row.to,
         label: S.nav.org[ORG_PAGE_RENDERERS[row.renderer].label],
         icon: ORG_PAGE_ICONS[row.renderer],
