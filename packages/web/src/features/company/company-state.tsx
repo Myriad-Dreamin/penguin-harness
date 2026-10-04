@@ -185,13 +185,14 @@ function publishCompanyResync(): void {
 }
 
 /**
- * Company's handler on the user event stream: the scheduler's notifications fan out to the
- * company store and any mounted organization page, from whichever source; a resync from any
- * source has them re-read their snapshots.
+ * Company's handler on the user event stream: the scheduler's notifications, and what a plugin
+ * publishes about its own organization surfaces, fan out to the company store and any mounted
+ * organization page, from whichever source; a resync from any source has them re-read their
+ * snapshots.
  */
 export const companyUserEvents: UserEventHandler = {
   event: (ev) => {
-    if (isCompanyEvent(ev)) publishCompanyEvent(ev);
+    if (isCompanyEvent(ev) || isPluginEvent(ev)) publishCompanyEvent(ev);
   },
   resync: () => publishCompanyResync(),
 };

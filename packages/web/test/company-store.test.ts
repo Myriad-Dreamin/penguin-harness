@@ -489,7 +489,13 @@ describe("applyUserEvent forwarding", () => {
       applyUserEvent(sessions, [companyUserEvents], run, () => undefined);
       applyUserEvent(sessions, [companyUserEvents], { ...run, projectId: "p2" }, () => undefined);
       applyUserEvent(sessions, [companyUserEvents], posted(), () => undefined);
-      expect(seen.map((e) => e.type)).toEqual(["org_run", "org_run", "org_channel"]);
+      applyUserEvent(
+        sessions,
+        [companyUserEvents],
+        { type: "plugin", plugin: "company-proposals", data: null },
+        () => undefined,
+      );
+      expect(seen.map((e) => e.type)).toEqual(["org_run", "org_run", "org_channel", "plugin"]);
       // A work run opens a desk or ticket Session, which the list never fetches (`excludeOrg`),
       // even in the current Project; a channel message changes no session row either.
       expect(reload).not.toHaveBeenCalled();
