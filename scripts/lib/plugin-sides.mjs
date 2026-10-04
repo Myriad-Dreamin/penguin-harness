@@ -6,7 +6,8 @@
  * A module belongs to the tree its wiring fits. Every module it names — the owner of a slot it
  * contributes to (`<Owner>.<slot>`), the module a requirement is wired `from`, the node it
  * replaces — must be a module of one host's table (the platform's or the web app's generated
- * `ifaces.json`) or another module of the same package, which then lends its side. A slot it
+ * `ifaces.json`), another module of the same package, or a module of a plugin package it depends
+ * on; the latter two lend their side. A slot it
  * contributes to must exist on the owner's provided interfaces. Naming modules of both hosts, or
  * a module neither has, is an error naming the module.
  *
@@ -30,8 +31,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
  * `gen:ifaces` script does; gen-ifaces writes atomically, so two plugin builds racing to it read
  * a whole file either way.
  */
-export function hostTables() {
-  const out = {};
+export function hostTables(pkgDir = process.cwd()) {
+  const out = { plugins: dependencyModules(pkgDir) };
   for (const side of ["server", "web"]) {
     const dir = path.join(ROOT, "packages", side);
     const file = path.join(dir, "src", "ifaces.json");
@@ -49,6 +50,40 @@ export function hostTables() {
       );
     }
     out[side] = JSON.parse(fs.readFileSync(file, "utf8"));
+  }
+  return out;
+}
+
+/**
+ * The modules of the plugin packages `pkgDir` depends on (any dependency field), by name → the
+ * side their generated table records (the platform when it records none). Read from the
+ * dependency's installed copy, which its own build has already written (pnpm builds a workspace
+ * dependency first).
+ */
+function dependencyModules(pkgDir) {
+  const out = {};
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+  } catch {
+    return out;
+  }
+  const names = Object.keys({
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+    ...pkg.peerDependencies,
+  });
+  for (const name of names) {
+    let table;
+    try {
+      table = JSON.parse(
+        fs.readFileSync(path.join(pkgDir, "node_modules", ...name.split("/"), "ifaces.json"), "utf8"),
+      );
+    } catch {
+      continue;
+    }
+    if (table.plugin === undefined) continue;
+    for (const [mod, m] of Object.entries(table.modules ?? {})) out[mod] = m.side ?? "server";
   }
   return out;
 }
@@ -109,6 +144,13 @@ export function decideSides(manifests, hosts, replaces = []) {
         return;
       }
       const found = ["server", "web"].filter((s) => hosts[s].modules?.[name] !== undefined);
+      // A module of a plugin this package depends on (company-roadmaps wires to
+      // company-proposals) lends the side its own table records.
+      const dependency = hosts.plugins?.[name];
+      if (found.length === 0 && dependency !== undefined) {
+        refs.push({ side: dependency, why });
+        return;
+      }
       if (found.length === 0) {
         errors.push(
           `${m.name}: ${why} names module '${name}', which neither the platform nor the web app has`,
