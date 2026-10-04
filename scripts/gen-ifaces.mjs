@@ -40,11 +40,17 @@
  *   Map<K, V> / Set<T> (and the Readonly forms) → { map: [K, V] } / { set: T }
  *   classes, WeakMap/WeakSet, generics, rest parameters, unions mixing data with non-data → error
  * A type that recurses into itself is cut at the cycle and compared by name (a warning).
+ *
+ * For a PLUGIN package (one whose default export names modules) every manifest also says
+ * which side runs it — `side: "server" | "web"`, decided from its wiring against the two host
+ * tables — with its `source` file and, for a web module, the built `file` the plugin build
+ * emits (lib/plugin-sides.mjs).
  */
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
+import { assignSides } from "./lib/plugin-sides.mjs";
 
 const args = process.argv.slice(2);
 const opt = (name) => {
@@ -112,6 +118,8 @@ const manifests = {};
  * it. Absent for a package that has no such default export (the harness itself).
  */
 let pluginDecl = null;
+/** Module (class) name → the source file declaring it, relative to the working directory. */
+const moduleSources = new Map();
 
 for (const project of projects) {
   const configPath = path.resolve(project);
@@ -314,6 +322,7 @@ for (const project of projects) {
         if (asModule && asComponent)
           errors.push(`${file}: class '${node.name.text}' is both a @Module and a @Component`);
         if (call && call.arguments.length <= 1) {
+          moduleSources.set(node.name.text, file.split(path.sep).join("/"));
           moduleClasses.set(checker.getSymbolAtLocation(node.name), {
             node,
             meta: call.arguments.length === 0 ? {} : refLiteral(call.arguments[0], file),
@@ -1251,6 +1260,10 @@ for (const project of projects) {
   }
 }
 
+// A plugin package's modules each run on one side, decided here from their wiring
+// (lib/plugin-sides.mjs) and written into the table with the file the plugin build emits.
+if (pluginDecl !== null) errors.push(...assignSides(manifests, moduleSources, pluginDecl));
+
 for (const w of warnings) console.warn(`gen-ifaces: warning: ${w}`);
 // A node depends on mechanisms, never on implementations: a `@Use` field typed by a
 // @Component class is refused. The component implements an interface class; require that.
@@ -1289,7 +1302,10 @@ if (checkOnly) {
   );
 } else if (existing !== text) {
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, text);
+  // Through a rename: a plugin build may generate a host table while another reads it.
+  const tmp = `${outPath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, outPath);
   console.log(
     `gen-ifaces: wrote ${outPath} (${Object.keys(table).length} interfaces, ${Object.keys(types).length} types)`,
   );
