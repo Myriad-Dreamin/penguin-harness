@@ -1,30 +1,39 @@
 /**
  * Messaging on the session list's rows (`SessionListModule.rowActions`): the row menu's
  * "Messaging binding…" entry, which opens the binding dialog on that conversation, and the paper
- * plane a relayed conversation's row wears, named by its channel.
+ * plane a relayed conversation's row wears, named by its channel. The entry and the mark are read
+ * by every row; the dialog's code loads when it is first opened.
  */
 import type { SessionInfo } from "@prismshadow/penguin-server/api";
 import { S } from "../../lib/strings";
 import type { RowAction } from "../../lib/session-row-contributions";
 import { useSessions } from "../../state/sessions";
-import { MessagingBindingModal } from "./messaging-binding-modal";
+import { Deferred } from "../../components/ui/deferred";
+import { lazyComponent } from "../../lib/lazy-component";
+
+const MessagingBindingModal = lazyComponent(
+  () => import("./messaging-binding-modal"),
+  "MessagingBindingModal",
+);
 
 /** The binding dialog: the row's mark updates in place from the dialog's own save/unbind outcome. */
 function BindingDialog({ session, onClose }: { session: SessionInfo; onClose: () => void }) {
   const { sessions, replace } = useSessions();
   return (
-    <MessagingBindingModal
-      sessionId={session.sessionId}
-      onClose={onClose}
-      onChanged={(sessionId, channel) => {
-        const current = sessions.find((x) => x.sessionId === sessionId);
-        if (!current) return;
-        const updated = { ...current };
-        if (channel !== null) updated.messagingChannel = channel;
-        else delete updated.messagingChannel;
-        replace(updated);
-      }}
-    />
+    <Deferred fallback={null}>
+      <MessagingBindingModal
+        sessionId={session.sessionId}
+        onClose={onClose}
+        onChanged={(sessionId, channel) => {
+          const current = sessions.find((x) => x.sessionId === sessionId);
+          if (!current) return;
+          const updated = { ...current };
+          if (channel !== null) updated.messagingChannel = channel;
+          else delete updated.messagingChannel;
+          replace(updated);
+        }}
+      />
+    </Deferred>
   );
 }
 
