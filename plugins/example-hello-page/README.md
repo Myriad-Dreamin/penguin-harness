@@ -3,8 +3,8 @@
 The smallest plugin that adds a page to the PenguinHarness web app, drawn by its own React
 component. It demonstrates:
 
-- **A web module.** The plugin's one module (`src/module.ts`) contributes to the web app's
-  `ShellModule.pages` slot, so the build places it on the web side: gen-ifaces writes
+- **A web module.** The plugin's one module (`src/module.ts`) declares `side: "web"` in its
+  `@Module` and contributes to the web app's `ShellModule.pages` slot: gen-ifaces writes
   `side: "web"` and its built file into `ifaces.json`, and `scripts/build-plugin.mjs` emits
   `dist/web/ExampleHelloPage.js` for the browser, with React, the kernel and the UI package left to
   the web app's own instances. The server only forwards it (`GET /api/contributions`,
@@ -23,7 +23,8 @@ component. It demonstrates:
   module reads it through `Language`, an interface the web app's settings module provides: a
   `@Use()` field on the module class, wired by the interface's key (no module named), handed to
   the component by closure. Its type comes from the web app's plugin-facing types
-  (`packages/web/src/plugin-types.ts`, mapped in `tsconfig.json`, imported as a type only).
+  (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web package, imported as a
+  type only), so the requirement carries the app's own interface key.
 - **Its own stylesheet.** `src/styles.css` compiles the page's Tailwind utilities against the web
   app's theme as a reference. Its classes carry the plugin's prefix (`hp:flex`): the build fails
   on a compiled class outside the prefix, and on two plugins built together with one prefix, so

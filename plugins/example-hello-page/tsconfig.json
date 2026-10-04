@@ -3,10 +3,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "useDefineForClassFields": true,
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "paths": {
-      "@prismshadow/penguin-web/plugin-types": ["../../packages/web/src/plugin-types.ts"]
-    }
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
   },
   "include": ["src", "test"]
 }

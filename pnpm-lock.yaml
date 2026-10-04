@@ -855,6 +855,9 @@ importers:
       '@prismshadow/penguin-ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@prismshadow/penguin-web':
+        specifier: workspace:*
+        version: link:../../packages/web
       '@tailwindcss/cli':
         specifier: 4.3.2
         version: 4.3.2
@@ -885,6 +888,9 @@ importers:
       '@prismshadow/penguin-ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@prismshadow/penguin-web':
+        specifier: workspace:*
+        version: link:../../packages/web
       '@tailwindcss/cli':
         specifier: 4.3.2
         version: 4.3.2

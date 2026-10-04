@@ -3,8 +3,8 @@
 The smallest plugin that teaches the PenguinHarness web app to draw a kind of Workspace file with
 browser code of its own, plus a Skill that teaches the Agent to produce one. It demonstrates:
 
-- **A web module.** The plugin's one module (`src/module.ts`) contributes to the web app's
-  `ChatModule.fileRenderers` slot, so the build places it on the web side: gen-ifaces writes
+- **A web module.** The plugin's one module (`src/module.ts`) declares `side: "web"` in its
+  `@Module` and contributes to the web app's `ChatModule.fileRenderers` slot: gen-ifaces writes
   `side: "web"` and its built file into `ifaces.json`, and `scripts/build-plugin.mjs` emits
   `dist/web/ExampleMusic.js` for the browser, with React, the kernel and the UI package left to the
   web app's own instances. The server only forwards it (`GET /api/contributions`, `webModules`);
@@ -19,8 +19,8 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
   The build fails on a compiled class outside the prefix, and on two plugins built together with
   one prefix. The web app attaches the sheet before it mounts, so the card never shows unstyled.
 - **The host's types.** The renderer's props (`FileRendererProps`) come from the web app's
-  plugin-facing types (`packages/web/src/plugin-types.ts`, mapped in `tsconfig.json`), imported
-  as a type only.
+  plugin-facing types (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web
+  package), imported as a type only.
 - **The Markdown is not touched.** When a paragraph of a reply links such a file in the
   Workspace — `[Evening Theme](music/tune.wav)` — the link stays a link (clicking it opens the file
   in the Files panel) and a player appears directly below that paragraph, once per file. A link
