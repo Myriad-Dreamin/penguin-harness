@@ -7,7 +7,7 @@ comment batch, request changes, approve bound to one revision, reject as a final
 
 ## Setup
 
-Task 01, the organization paused or its employees without a model. A proposal exists only
+Task 01, the organization paused on a model without a credential (see the README). A proposal exists only
 through a roadmap (task 04) or `proposal.create`; here run `proposal.create` on `organization`
 as the admin (author `qa_a`), giving `#1`, and again for `#2`.
 
@@ -20,7 +20,8 @@ as the admin (author `qa_a`), giving `#1`, and again for `#2`.
 3. A body that links to a file (`[x](packages/a.ts)`): publish it.
 4. `proposal.ready` on `proposal:1`.
 5. As the admin, `proposal.comment` (`{ sectionId, start, end, quote, text }`) on two
-   paragraphs of revision 2; `GET $ORG/proposals/1/comments`.
+   paragraphs of revision 2, where `sectionId` is the section's id (`s1`/`s2`/`s3`, read from
+   `GET $ORG/proposals/1/revisions/2`), not its heading; `GET $ORG/proposals/1/comments`.
 6. `proposal.requestChanges` on `proposal:1`; then `proposal.comment.edit` on
    `comment:1/<id>` of a sent comment.
 7. From `qa_a`'s session: `proposal.resolve` on both comments, publish revision 3,

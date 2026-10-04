@@ -13,9 +13,10 @@ An admin session on `$S`. No organization named `$O` yet.
 
 1. If company mode is off (`GET $S/api/admin/settings` → `companyMode: false`), call
    `GET $ORG/proposals`. If it is on and another user relies on it, skip this step.
-2. Turn company mode on (`PATCH $S/api/admin/settings { companyMode: true }`), create `$O`
-   (`POST $S/api/projects/$P/organizations`), hire two employees `qa_a` and `qa_b` without a model
-   (see the README on employees acting on their own).
+2. Turn company mode on (`PUT $S/api/admin/settings { companyMode: true }`). Create `$O`
+   (`POST $S/api/projects/$P/organizations`) on a model without a credential and pause it at
+   once (see the README on employees acting on their own). Hire `qa_a` and `qa_b` without a
+   model (`POST $ORG/employees`, `agentId` if the Agents exist, else `newAgent`).
 3. Install `@prismshadow/penguin-plugin-company-proposals` and
    `@prismshadow/penguin-plugin-company-roadmaps` on the Project (Plugins page or the Project's
    `plugins` list); reload the plugins.
@@ -26,7 +27,8 @@ An admin session on `$S`. No organization named `$O` yet.
 
 ## Expect
 
-1. 404.
+1. 404 `company_mode_off`.
+2. The organization is created and paused; the CEO's init run opens no desk.
 4. Each answers 200 with an empty list (the graph: no nodes, or a `no delivery repository`
    error — not a 5xx).
 5. `company.db` (plus its `-wal`/`-shm`) exists; no `proposals.jsonl` or `roadmaps.jsonl` is
@@ -37,4 +39,4 @@ An admin session on `$S`. No organization named `$O` yet.
 
 ## Evidence
 
-Status codes of steps 1 and 4; the file listing of step 5; the contribution keys of step 6.
+Status codes of steps 1 and 4; the organization's model and status after step 2; the file listing of step 5; the contribution keys of step 6.

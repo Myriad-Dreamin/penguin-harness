@@ -19,20 +19,26 @@ proposal, to check it is not affected. A company workflow contributing `deploy.q
    without waiting for it.
 2. `DELETE $S/api/projects/$P/organizations/$O` (as the owner).
 3. `GET $ORG/proposals`; `POST $ORG/actions/proposal.create/runs`.
-4. List the Project's organizations; look in `<root>/$P/organizations/.trash/`.
+4. List the Project's organizations; look in `<root>/$P/organizations/.trash/` (no API reads the
+   trash: without a shell on the server, report that part not checkable).
 5. `GET` `$O2`'s proposals and Activity; run one Action there.
 6. Create a new organization with the id `$O` again; install nothing new; `GET $ORG/proposals`,
-   `GET $ORG/actions/runs`, `GET $ORG/roadmaps`.
+   `GET $ORG/actions/runs`, `GET $ORG/roadmaps`. Until the org-recreate fix lands, recreation
+   answers 409 `agent_exists` (the old `$O_ceo` Agent remains): delete that Agent first, then
+   recreate.
 
 ## Expect
 
 2. 204 (never 500). If the move fails anyway: 409 `organization_busy` naming the reason and
-   path, and the organization is still listed and usable.
+   path, and the organization is still listed and usable. The step-1 graph read still in
+   flight answers 404 `org_not_found`, not 500.
 3. 404.
 4. `$O` is gone from the list; its directory, with `company.db`, is in the trash, and the
    aborted deploy run's end row is in it.
 5. `$O2` unaffected.
-6. All empty: nothing of the deleted organization shows through.
+6. All empty: nothing of the deleted organization shows through. After the org-recreate fix:
+   recreation succeeds without deleting anything first, with a new CEO Agent id (`$O_ceo_2`, …);
+   the old `$O_ceo` Agent is untouched.
 
 ## Evidence
 

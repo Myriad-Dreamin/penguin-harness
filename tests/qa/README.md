@@ -29,9 +29,23 @@ Conventions used by the tasks:
   `refused`, `failed`, `abandoned`), and a refusal answers `{ error: { code, message, runId } }`.
 - Never run these tasks against a release or production server: they create organizations,
   proposals and runs that stay in its store.
+- Company mode is set with `PUT $S/api/admin/settings` (not `PATCH`).
 - **Employees act on their own.** An employee with a model answers every notice: it publishes,
-  marks ready, implements, pushes and merges. So the organization under test must never reach a
-  real repository: its workspace remotes point at a throwaway bare repository created for the
-  run (or at a name that does not exist), never at a repository on a forge the server machine
-  is logged into. Pause the organization, or hire employees without a model, between steps
-  whose results must not move under the tester.
+  marks ready, implements, pushes and merges. An employee hired without a model still acts: it
+  inherits the organization's model, else the Project default. To get an organization whose
+  employees cannot act, create it with a model that is configured in the Project but whose
+  provider has no credential (an unknown model is refused at creation), and pause it
+  (`PATCH $ORG { status: "paused" }`) at once, keeping it paused for the whole run. Creation
+  dispatches the CEO's init run immediately, so the model must lack a credential from the
+  start; a pause comes too late to stop that run.
+- Hire with `agentId` when the Agents already exist (deleting an organization keeps its
+  Agents, so an earlier run's `qa_a`/`qa_b` may be there); use `newAgent` only for fresh ids.
+- **No real remote is written.** A QA organization never gets a writable real remote, and the
+  tester never pushes. Heads, diffs and deploy commits are read from GitHub only, and the graph
+  ignores non-GitHub remotes, so a local bare repository is of no use: register impl heads and
+  bases on a read-only public GitHub repository written as `owner/repo` (for example
+  `octocat/Hello-World`), not as a workspace remote.
+- A step "from `qa_X`'s session" cannot run while employees must not act. Where it needs a
+  caller who is neither implementer nor approver, use a second person account or report the
+  step `blocked`. Where the step is about the guard (who may do what), the admin may stand in,
+  with a guard written to refuse the admin as well; the report says so.

@@ -10,7 +10,9 @@ run records who acted and through what.
 Tasks 02 and 04. A desk session of `qa_b` (open it with `GET $ORG/employees/qa_b/desk`), from
 which the CLI runs as `agent:qa_b`. Check first that the session's `penguin` has `org proposal`
 and `org action` (`penguin org action ls`); if it is older, make the same calls with `curl` and
-the session's `$PENGUIN_API_TOKEN`, and report the stale CLI as a finding.
+the session's `$PENGUIN_API_TOKEN`, and report the stale CLI as a finding. Every step acts as an
+employee, so no person account can stand in: while employees must not act (see the README),
+the task is `blocked`.
 
 ## Steps
 
