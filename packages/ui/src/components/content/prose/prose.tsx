@@ -19,9 +19,9 @@
  *
  * KaTeX is held back the same way, for the same reason: `streaming` swaps the rehype stage out, so
  * a formula shows its own TeX source until the message settles and is typeset once (see
- * NO_REHYPE_PLUGINS in markdown-plugins.ts for the measurements). KaTeX's own stylesheet is
- * imported here, so a consumer never loads it on its own; the `.katex` rules in prose.css out-rank
- * it by specificity, whichever of the two a bundle happens to emit first.
+ * NO_REHYPE_PLUGINS in markdown-plugins.ts for the measurements). KaTeX itself, with its
+ * stylesheet, loads only once a text that may hold a formula is shown (`useRehypePlugins`); until
+ * then such a formula shows its source the same way.
  *
  * Links open in a new tab unless a `ProseLinksProvider` above decides otherwise — the Web App's
  * conversation sends a link to a Workspace file to its Files panel that way. A
@@ -41,8 +41,7 @@ import { A2uiBlock } from "../a2ui/a2ui-block";
 import { MermaidBlock } from "../a2ui/mermaid-block";
 import { CodeBlock } from "../code-block/code-block";
 import { MdListItem, MdParagraph } from "./block-trailer";
-import { NO_REHYPE_PLUGINS, REHYPE_PLUGINS, REMARK_PLUGINS } from "./markdown-plugins";
-import "katex/dist/katex.min.css";
+import { REMARK_PLUGINS, useRehypePlugins } from "./markdown-plugins";
 import "./prose.css";
 
 /** Flatten a react-markdown code element's children to plain text (string or string array in practice). */
@@ -196,7 +195,7 @@ export const Md = memo(function Md({ text, streaming = false, extraPlugins, comp
       remarkPlugins={
         extraPlugins === undefined ? REMARK_PLUGINS : [...REMARK_PLUGINS, ...extraPlugins]
       }
-      rehypePlugins={streaming ? NO_REHYPE_PLUGINS : REHYPE_PLUGINS}
+      rehypePlugins={useRehypePlugins(text, streaming)}
       components={components === undefined ? base : { ...base, ...components }}
     >
       {text}

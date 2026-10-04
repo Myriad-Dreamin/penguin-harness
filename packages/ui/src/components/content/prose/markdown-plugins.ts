@@ -32,10 +32,19 @@
  * direction is that someone writing `$x^2$` sees `$x^2$` — the source, legible, and re-typable as
  * `\(x^2\)`. Corrupting prose that was already correct is the worse trade, so the dollar pair is
  * reserved for `$$…$$`, which no shell variable or price produces by accident.
+ *
+ * ## KaTeX loads with the first formula
+ *
+ * KaTeX and its stylesheet are a quarter of a megabyte that most conversations never use, so the
+ * rehype stage that typesets math (math-stage.ts) is not imported here: `useRehypePlugins` loads it
+ * the first time a text that may hold a formula is rendered, once for the whole page, and until it
+ * has arrived the formula shows its own TeX source — the same markup a streaming reply shows (see
+ * NO_REHYPE_PLUGINS), so the upgrade changes the formula and nothing around it. A failed load
+ * leaves the source in place and is asked again by the next text that needs it.
  */
+import { useEffect, useSyncExternalStore } from "react";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import type { Options } from "react-markdown";
 import { remarkAutolinkBoundary } from "./remark-autolink-boundary";
 import { remarkMathBrackets } from "./remark-math-brackets";
@@ -43,38 +52,6 @@ import { remarkMathDollars } from "./remark-math-dollars";
 
 /** react-markdown's own plugin-list type, taken from its props so `unified` need not be a dep. */
 type PluginList = NonNullable<Options["remarkPlugins"]>;
-
-/**
- * KaTeX settings for untrusted input, because that is what this renders: model output, and files
- * out of a Workspace.
- *
- * - `strict: "ignore"` — KaTeX's default warns to the console for every LaTeX-incompatible but
- *   renderable construct, and sloppy `\text` around CJK trips it per character. The warnings are
- *   not actionable by anyone reading a chat transcript, and the render is identical either way.
- * - `errorColor: "currentColor"` — the default `#cc0000` is an inline style, so it cannot adapt to
- *   the dark theme, where it lands under 4:1 against a black background. Failed expressions instead
- *   render as their own source in the body colour; `.katex-error` in prose.css marks them with a
- *   dotted underline and keeps KaTeX's parse error in the `title` tooltip.
- * - `trust: false` (KaTeX's default, restated because it is a boundary) — leaves `\href`, `\url`
- *   and `\includegraphics` inert, so a formula cannot smuggle in a link or an image request.
- * - `maxSize` — caps the em value any sizing command may claim. KaTeX defaults to Infinity, so
- *   `\rule{9999em}{9999em}` is a black square the size of the viewport many times over; 5em is
- *   80px at a 16px root, which a message body absorbs the way it absorbs an emoji. Every sizing
- *   command a real formula uses — a `\rule` for a fraction bar, a `\raisebox`, an array row gap,
- *   `\hspace{1cm}` — is well under it.
- *
- * `throwOnError` is *not* here, and cannot be: `rehype-katex` omits it from its options type
- * because it owns that behaviour. It renders once strictly, and on any error re-renders with
- * `throwOnError: false`, falling back to a `.katex-error` span holding the original source. That is
- * exactly the required degradation — a malformed expression shows its own text instead of taking
- * the message down with it — so there is nothing to override.
- */
-const KATEX_OPTIONS = {
-  strict: "ignore",
-  errorColor: "currentColor",
-  trust: false,
-  maxSize: 5,
-} as const;
 
 /** The remark (Markdown -> mdast) stage. */
 export const REMARK_PLUGINS: PluginList = [
@@ -84,13 +61,6 @@ export const REMARK_PLUGINS: PluginList = [
   remarkMathBrackets,
   remarkMathDollars,
 ];
-
-/**
- * The rehype (mdast -> hast) stage. `rehype-katex` turns every element the remark stage classed
- * `math-inline` / `math-display` into KaTeX's own markup, replacing it outright — which is also why
- * a `$$…$$` block never reaches the chat renderer's `<pre>` override and never becomes a CodeBlock.
- */
-export const REHYPE_PLUGINS: NonNullable<Options["rehypePlugins"]> = [[rehypeKatex, KATEX_OPTIONS]];
 
 /**
  * The rehype stage for a message that is still streaming: nothing, so the remark stage's own
@@ -112,4 +82,68 @@ export const REHYPE_PLUGINS: NonNullable<Options["rehypePlugins"]> = [[rehypeKat
  * 2352ms in place. This is the same trade as `highlight={!streaming}` for code blocks — the settle
  * render re-parses the message anyway, so it is where the expensive stage belongs.
  */
-export const NO_REHYPE_PLUGINS: NonNullable<Options["rehypePlugins"]> = [];
+export const NO_REHYPE_PLUGINS: RehypeList = [];
+
+/** react-markdown's rehype plugin-list type. */
+type RehypeList = NonNullable<Options["rehypePlugins"]>;
+
+/** The typesetting stage once loaded; null until then. */
+let mathStage: RehypeList | null = null;
+let mathLoad: Promise<RehypeList> | null = null;
+const mathListeners = new Set<() => void>();
+
+/** Loads the typesetting stage (KaTeX and its stylesheet) once per page; a failed load is forgotten. */
+export function loadMathStage(): Promise<RehypeList> {
+  mathLoad ??= import("./math-stage").then(
+    (module) => {
+      mathStage = module.MATH_REHYPE_PLUGINS;
+      for (const listener of mathListeners) listener();
+      return mathStage;
+    },
+    (error: unknown) => {
+      mathLoad = null;
+      throw error;
+    },
+  );
+  return mathLoad;
+}
+
+/**
+ * Whether a text may hold a formula: one of the three delimiters is in it. A superset of what the
+ * remark stage reads as math (a `\(` inside a code span counts here), which costs at most loading
+ * the stage for nothing; it never misses one.
+ */
+export function mayHoldMath(text: string): boolean {
+  return /\$\$|\\[[(]/.test(text);
+}
+
+const subscribeMath = (listener: () => void) => {
+  mathListeners.add(listener);
+  return () => mathListeners.delete(listener);
+};
+const currentMath = () => mathStage;
+// A text without a formula does not listen at all: the stage's arrival re-renders only the texts
+// that wait for it, not every message of a long transcript.
+const subscribeNothing = () => () => {};
+const noStage = () => null;
+
+/**
+ * The rehype stage for a Markdown text: the typesetting stage once the text settles, if it may
+ * hold a formula and the stage has loaded; nothing otherwise. A text that may hold one starts the
+ * load as soon as it is seen — while it still streams too, so the settle usually finds it there —
+ * and re-renders when it arrives. The returned lists are module constants, so react-markdown
+ * rebuilds its processor only on that one change.
+ */
+export function useRehypePlugins(text: string, streaming = false): RehypeList {
+  const wanted = mayHoldMath(text);
+  const stage = useSyncExternalStore(
+    wanted ? subscribeMath : subscribeNothing,
+    wanted ? currentMath : noStage,
+    wanted ? currentMath : noStage,
+  );
+  useEffect(() => {
+    // The source stays on screen if this fails; the next text that needs the stage asks again.
+    if (wanted && stage === null) loadMathStage().catch(() => undefined);
+  }, [wanted, stage]);
+  return !streaming && wanted && stage !== null ? stage : NO_REHYPE_PLUGINS;
+}

@@ -7,14 +7,19 @@
  * list of known renderers, so a new renderer is covered the moment it is written.
  *
  * - Every `<ReactMarkdown>` is given both shared plugin lists, taken from the shared module (the
- *   package's own module inside the UI package, the package entry in the Web App).
- * - No source file imports the underlying remark/rehype plugins itself.
+ *   package's own module inside the UI package, the package entry in the Web App): the remark
+ *   list itself, and the rehype stage through `useRehypePlugins`, which loads KaTeX on demand.
+ * - No source file imports the underlying remark/rehype plugins itself, except the shared module
+ *   and the typesetting stage it loads (math-stage.ts).
  */
 import { describe, expect, it } from "vitest";
 import { expectEveryRootScanned, scanSources } from "./helpers/roots";
 
 const SCAN = scanSources([".ts", ".tsx"]);
-const SHARED_MODULE = "packages/ui/src/components/content/prose/markdown-plugins.ts";
+const SHARED_MODULES = [
+  "packages/ui/src/components/content/prose/markdown-plugins.ts",
+  "packages/ui/src/components/content/prose/math-stage.ts",
+];
 
 /** Where a renderer in each root takes the lists from. */
 const HOME: Record<string, string> = {
@@ -34,7 +39,7 @@ describe("the Markdown pipeline every renderer shares", () => {
       // rehype stage by `streaming`. What is guarded is that the name comes from the shared module.
       for (const [prop, constant] of [
         ["remarkPlugins", "REMARK_PLUGINS"],
-        ["rehypePlugins", "REHYPE_PLUGINS"],
+        ["rehypePlugins", "useRehypePlugins("],
       ] as const) {
         const values = [...file.text.matchAll(new RegExp(`${prop}=\\{([^}]*)\\}`, "g"))];
         if (values.length !== uses || values.some(([, value]) => !value!.includes(constant))) {
@@ -49,7 +54,7 @@ describe("the Markdown pipeline every renderer shares", () => {
   it("leaves the underlying plugins to the shared module", () => {
     // The quotes are the point: a file may name a plugin in a comment, not import one.
     const offenders = SCAN.files
-      .filter((file) => file.id !== SHARED_MODULE)
+      .filter((file) => !SHARED_MODULES.includes(file.id))
       .filter((file) =>
         ["remark-gfm", "remark-math", "rehype-katex"].some((plugin) =>
           file.text.includes(`from "${plugin}"`),
