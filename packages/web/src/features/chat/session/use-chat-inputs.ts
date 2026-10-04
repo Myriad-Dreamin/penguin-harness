@@ -20,7 +20,7 @@ export function useChatInputs() {
   const {
     sessions,
     loading,
-    machinesPending,
+    sourcesPending,
     machineLabels,
     machinesUnreachable,
     offlineMachineIds,
@@ -32,11 +32,11 @@ export function useChatInputs() {
     setTitle,
   } = useSessions();
   const routeSessionId = params.sessionId ?? null;
-  // What the chat page reads as "the list is not settled": nothing listed yet, or this server's
-  // rows listed while the machines' are still on their way. A listed Session opens either way —
+  // What the chat page reads as "the list is not settled": nothing listed yet, or the lists
+  // that answered listed while others are still on their way. A listed Session opens either way —
   // its row is in hand; concluding that a routed id is absent, or which conversation is the
   // latest, waits for every source.
-  const sessionsLoading = loading || machinesPending;
+  const sessionsLoading = loading || sourcesPending;
   return {
     navigate,
     location,

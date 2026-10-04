@@ -265,7 +265,7 @@ describe("the list across machines", () => {
     await settle();
     expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["here", "m1-cached"]);
     expect(store.getState().loading).toBe(false);
-    expect(store.getState().machinesPending).toBe(true);
+    expect(store.getState().sourcesPending).toBe(true);
     // A cached row is routed to its machine, as an offline machine's is.
     expect(machineForSession("m1-cached")).toBe("M1");
     // Nothing the early list holds is remembered as the machine's answer.
@@ -274,9 +274,50 @@ describe("the list across machines", () => {
     release();
     await done;
     expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["there", "here"]);
-    expect(store.getState().machinesPending).toBe(false);
+    expect(store.getState().sourcesPending).toBe(false);
     expect(store.getState().countsByAgent.get("a1")?.active).toBe(3);
     expect(cachedMachineSessions("p", "M1").map((s) => s.sessionId)).toEqual(["there"]);
+  });
+
+  it("the first list does not wait for every Agent's list either", async () => {
+    // One list per Agent — every employee of an organization among them: the Session being
+    // opened is in one of them, and the draw waited for the slowest.
+    answers.set(key(null, "a1"), page([row("mine", "2026-01-02T00:00:00Z")], 1));
+    answers.set(key(null, "a2"), page([row("theirs", "2026-01-03T00:00:00Z", "a2")], 1));
+    let open: () => void = () => undefined;
+    gates.set(key(null, "a2"), new Promise<void>((resolve) => (open = resolve)));
+    const store = createSessionsStore();
+    store.setState({
+      projectId: "p",
+      agentIds: ["a1", "a2"],
+      machineIds: [],
+      offlineMachineIds: [],
+    });
+    const done = store.getState().reload();
+    await settle();
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["mine"]);
+    expect(store.getState().loading).toBe(false);
+    expect(store.getState().sourcesPending).toBe(true);
+    open();
+    await done;
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["theirs", "mine"]);
+    expect(store.getState().sourcesPending).toBe(false);
+    expect(store.getState().countsByAgent.get("a2")?.active).toBe(1);
+  });
+
+  it("an early list waits for one of this server's answers — a machine's rows alone are not it", async () => {
+    answers.set(key(null, "a1"), page([row("here", "2026-01-02T00:00:00Z")], 1));
+    answers.set(key("M1", "a1"), page([row("there", "2026-01-03T00:00:00Z")], 1));
+    let open: () => void = () => undefined;
+    gates.set(key(null, "a1"), new Promise<void>((resolve) => (open = resolve)));
+    const store = boot(["M1"]);
+    const done = store.getState().reload();
+    await settle();
+    expect(store.getState().sessions).toEqual([]);
+    expect(store.getState().loading).toBe(true);
+    open();
+    await done;
+    expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["there", "here"]);
   });
 
   it("a machine that fails after the early list keeps its cached rows and settles the list", async () => {
@@ -286,11 +327,11 @@ describe("the list across machines", () => {
     const store = boot(["M1"]);
     const done = store.getState().reload();
     await settle();
-    expect(store.getState().machinesPending).toBe(true);
+    expect(store.getState().sourcesPending).toBe(true);
     release();
     await done;
     expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["here", "m1-cached"]);
-    expect(store.getState().machinesPending).toBe(false);
+    expect(store.getState().sourcesPending).toBe(false);
     expect(machineForSession("m1-cached")).toBe("M1");
   });
 
@@ -306,7 +347,7 @@ describe("the list across machines", () => {
     await done;
     expect(store.getState().sessions.map((s) => s.sessionId)).toEqual(["there"]);
     expect(store.getState().loading).toBe(false);
-    expect(store.getState().machinesPending).toBe(false);
+    expect(store.getState().sourcesPending).toBe(false);
   });
 
   it("a refresh over rows on screen waits for every source, as before", async () => {
@@ -321,7 +362,7 @@ describe("the list across machines", () => {
     const release = holdBack("M1");
     let pending = false;
     const unsubscribe = store.subscribe((state) => {
-      if (state.machinesPending) pending = true;
+      if (state.sourcesPending) pending = true;
     });
     const done = store.getState().reload();
     await settle();

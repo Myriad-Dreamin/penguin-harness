@@ -162,13 +162,14 @@ interface SessionsContextValue {
    */
   loading: boolean;
   /**
-   * The rows on screen are this server's (and each machine's cached ones) while the machines'
-   * own answers are still on their way — the first list does not wait for them (see `round`).
-   * Not "a fetch is in flight": it is raised only for a list built before the machines
-   * answered. A caller deciding that a Session is NOT in the list, or which conversation is
-   * the latest, waits for this to fall; one showing a listed Session does not.
+   * The rows on screen are the answers in so far — some Agents' lists, some machines' (whose
+   * cached rows stand in) — while the rest are still on their way: the first list does not
+   * wait for all of them (see `round`). Not "a fetch is in flight": it is raised only for a
+   * list built before every source answered. A caller deciding that a Session is NOT in the
+   * list, or which conversation is the latest, waits for this to fall; one showing a listed
+   * Session does not.
    */
-  machinesPending: boolean;
+  sourcesPending: boolean;
   /**
    * Whether a machine of this Project could not be asked this round — no connection is held
    * to it, or the server behind the connection did not answer.
@@ -376,8 +377,8 @@ interface SessionsStoreState {
    */
   liveStatuses: ReadonlyMap<string, SessionStatus>;
   loading: boolean;
-  /** See the context's `machinesPending`. */
-  machinesPending: boolean;
+  /** See the context's `sourcesPending`. */
+  sourcesPending: boolean;
 
   reload: () => Promise<void>;
   loadMoreFor: (
@@ -714,8 +715,9 @@ export function createSessionsStore() {
        * Builds the list from `results` and applies it; false when there was nothing to apply.
        * `silent` machines contribute their cached rows, as ones out of reach do. Only the
        * `final` build — every source's answer in — retries an unreadable server, rewrites the
-       * machine cache and retires adoption marks; an early one (this server's answers alone,
-       * every machine silent) only puts rows on screen sooner.
+       * machine cache and retires adoption marks; an early one (the answers in so far, every
+       * machine still answering silent) only puts rows on screen sooner, and waits for at
+       * least one of this server's.
        */
       const apply = (
         results: Awaited<ReturnType<typeof fetchJob>>[],
@@ -730,6 +732,7 @@ export function createSessionsStore() {
         const unanswered = new Set(
           results.flatMap((r) => (r.source === null && !r.answered ? [r.agentId] : [])),
         );
+        if (!final && !results.some((r) => r.source === null && r.answered)) return false;
         // This server did not answer about ANY of them. It holds the Sessions every other
         // source is merged AROUND, so there is no list to build — and building one anyway
         // would replace everything on screen with a handful of remote rows, or with nothing
@@ -927,27 +930,50 @@ export function createSessionsStore() {
           countsByAgent: nextCounts,
           workspaceCountsByAgent: nextWorkspaceCounts,
           workspaceLatestByAgent: nextWorkspaceLatest,
-          machinesPending: !final,
+          sourcesPending: !final,
           // An early list with rows in it is something to show; an empty one is not yet the
           // answer "no Sessions", which only the whole round can give (`loading`'s contract).
           ...(!final && sessions.length > 0 ? { loading: false } : {}),
         });
         return true;
       };
-      const answers = jobs.map(fetchJob);
-      // The first list on screen does not wait for the machines. Opening a Session of this
-      // server needs this server's rows only, and a machine's answer costs round trips over its
-      // connection: this server's rows (and each machine's cached ones) are applied as soon as
-      // they are in, and the whole round replaces them when the machines have answered.
-      // `machinesPending` says so meanwhile, so nothing reads the early list as complete.
-      const machineSources = sources.filter((source): source is string => source !== null);
-      if (get().sessions.length === 0 && machineSources.length > 0) {
-        const own = answers.filter((_, i) => jobs[i]!.source === null);
-        void Promise.all(own).then((ownResults) => {
-          if (g !== gen || applied) return;
-          apply(ownResults, new Set([...machineSources, ...rested]), false);
-        });
-      }
+      // The first list on screen does not wait for every answer. Opening a Session needs the
+      // one list that holds its row, and the round asks one list per Agent — every employee
+      // of an organization among them — and per machine, each a round trip over that
+      // machine's connection: while the list is empty, it is rebuilt from the answers in so
+      // far each time more arrive (at least one of this server's among them), machines still
+      // answering contributing their cached rows. The whole round then replaces it.
+      // `sourcesPending` says so meanwhile, so nothing reads the early list as complete.
+      const firstLoad = get().sessions.length === 0 && jobs.length > 1;
+      const settled: (Awaited<ReturnType<typeof fetchJob>> | undefined)[] = jobs.map(
+        () => undefined,
+      );
+      let early = false;
+      const applyEarly = () => {
+        early = false;
+        if (g !== gen || applied) return;
+        const done = settled.filter((r) => r !== undefined);
+        const answering = new Set(
+          jobs.flatMap((job, i) =>
+            job.source !== null && settled[i] === undefined ? [job.source] : [],
+          ),
+        );
+        apply(done, new Set([...answering, ...rested]), false);
+      };
+      const answers = jobs.map((job, i) => {
+        const answer = fetchJob(job);
+        if (firstLoad) {
+          void answer.then((result) => {
+            settled[i] = result;
+            // Answers landing in one tick are applied once.
+            if (!early) {
+              early = true;
+              queueMicrotask(applyEarly);
+            }
+          });
+        }
+        return answer;
+      });
       try {
         const results = await Promise.all(answers);
         // Whether each machine answered is a fact about the machine, whichever reload is
@@ -1005,7 +1031,7 @@ export function createSessionsStore() {
       workspaceLatestByAgent: new Map(),
       liveStatuses: new Map(),
       loading: true,
-      machinesPending: false,
+      sourcesPending: false,
 
       reload: () => {
         // One round in flight and at most one queued behind it: every trigger that arrives
@@ -1653,7 +1679,7 @@ export function SessionsProvider({
             // an unrelated reloadAgents() — same agent set, fired after every completed turn
             // — from flapping the app-wide flag.
             loading: true,
-            machinesPending: false,
+            sourcesPending: false,
           }
         : {}),
     });
@@ -1820,7 +1846,7 @@ export function SessionsProvider({
       hasMoreFor,
       activityWatermarkFor,
       loading: state.loading,
-      machinesPending: state.machinesPending,
+      sourcesPending: state.sourcesPending,
       machinesUnreachable: state.offlineMachineIds.length > 0,
       offlineMachineIds: state.offlineMachineIds,
       reload: state.reload,
