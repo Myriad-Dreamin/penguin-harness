@@ -8,6 +8,7 @@ import { authMiddleware, jsonOnlyWrites, sameOriginWrites } from "../auth/middle
 import { HttpError, handleError } from "./errors.js";
 import { attributedProjectId } from "./attribution.js";
 import { declined } from "../hmr/hono-seam.js";
+import { markEnteredAs } from "./entered-as.js";
 import type { Auth, Users } from "../mechanisms/identity.js";
 import type { Access } from "../mechanisms/projects.js";
 import type { Errors } from "../mechanisms/observability.js";
@@ -115,8 +116,11 @@ export class HttpModule {
     };
     this.http = {
       fetch: (request: Request) => Promise.resolve(cookieGated.fetch(request)),
-      fetchAs: (userId: string, request: Request) =>
-        Promise.resolve(enteredAs(userId).fetch(request)),
+      fetchAs: (userId: string, request: Request) => {
+        // For a group that authenticates itself rather than behind this gate (entered-as.ts).
+        markEnteredAs(request, userId);
+        return Promise.resolve(enteredAs(userId).fetch(request));
+      },
     };
   }
 

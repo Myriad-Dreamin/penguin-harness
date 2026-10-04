@@ -145,6 +145,21 @@ describe("calls", () => {
     s.ws.close();
   });
 
+  it("answers the terminal list as the socket's user, though no cookie travels with the call", async () => {
+    // The terminal routes authenticate on their own (they serve a bare kernel too), and read
+    // a cookie a socket call never carries: every page load got a 401 here and spent a second
+    // GET /api/me finding out it was still signed in.
+    const viaHttp = await t.app.request("/api/terminals", { headers: { cookie } });
+    expect(viaHttp.status).toBe(200);
+    const s = await open({ cookie });
+    if (!("ws" in s)) throw new Error("handshake refused");
+    send(s.ws, { id: 1, call: { method: "GET", path: "/api/terminals" } });
+    const frame = await s.next();
+    expect(frame.status).toBe(200);
+    expect(frame.body).toEqual(await viaHttp.json());
+    s.ws.close();
+  });
+
   it("carries the endpoint's own error shape", async () => {
     const s = await open({ cookie });
     if (!("ws" in s)) throw new Error("handshake refused");
@@ -232,6 +247,9 @@ describe("revocation", () => {
     t.deps.db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").run("admin");
     send(s.ws, { id: 2, call: { method: "GET", path: "/api/me" } });
     expect(await s.next()).toMatchObject({ id: 2, status: 401 });
+    // The terminal routes hold the socket's user to a live session the same way.
+    send(s.ws, { id: 3, call: { method: "GET", path: "/api/terminals" } });
+    expect(await s.next()).toMatchObject({ id: 3, status: 401 });
     expect((await t.app.request("/api/me", { headers: { cookie } })).status).toBe(401);
     s.ws.close();
   });

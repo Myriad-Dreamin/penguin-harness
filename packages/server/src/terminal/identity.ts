@@ -11,6 +11,7 @@
  * a function derivable from an already-claimed capability is neither.
  */
 import { parseCookieHeader, sessionCookies } from "../auth/middleware.js";
+import { enteredAsOf } from "../http/entered-as.js";
 
 export interface IdentifiedUser {
   userId: string;
@@ -18,9 +19,10 @@ export interface IdentifiedUser {
 
 export type Identity = (request: Request) => Promise<IdentifiedUser | null>;
 
-/** What the resolver needs of the claimed AuthService — the member the handshake verifies. */
+/** What the resolver needs of the claimed AuthService — the members the handshake and the socket verify. */
 export interface AuthenticatesSessions {
   authenticateWithMeta(token: string): { user: { userId: string } } | null;
+  userHasLiveSession(userId: string): boolean;
 }
 
 /**
@@ -31,6 +33,13 @@ export interface AuthenticatesSessions {
 export function identityFrom(auth: AuthenticatesSessions | null): Identity {
   if (auth === null) return async () => null;
   return async (request) => {
+    // A call over the API socket: no cookie travels with it, and its user is the one the
+    // handshake established (http/entered-as.ts). Held to a live session per call, as the
+    // socket's own gate holds every other route (http/app.ts).
+    const socketUser = enteredAsOf(request);
+    if (socketUser !== undefined) {
+      return auth.userHasLiveSession(socketUser) ? { userId: socketUser } : null;
+    }
     const cookies = parseCookieHeader(request.headers.get("cookie"));
     for (const { token } of sessionCookies(cookies, request.headers.get("host") ?? undefined)) {
       const authed = auth.authenticateWithMeta(token);
