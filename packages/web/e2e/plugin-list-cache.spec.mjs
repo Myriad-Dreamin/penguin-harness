@@ -5,9 +5,11 @@
  *
  * - The first load has no kept list: it waits for the answer, assembles the module and keeps the
  *   list.
- * - A second load assembles the module from the kept list while its GET /api/contributions is
- *   still held (the module's file and stylesheet are fetched, the app is up), and once the answer
- *   arrives with the same list it does not reload.
+ * - A second load of a conversation assembles the module from the kept list while its
+ *   GET /api/contributions is still held (the module's file and stylesheet are fetched, the
+ *   conversation is drawn), and once the answer arrives with the same list it does not reload.
+ *   A conversation's address, not `/`: the router's catch-all waits for the contributions answer
+ *   (a contributed page may own the path), so `/` is not drawn before it in any case.
  * - A kept list that no longer matches (a stale build id, whose file 404s) is replaced by the
  *   answer and the page reloads exactly once, after which the module's real file loads.
  */
@@ -15,6 +17,7 @@ import { test, expect } from "@playwright/test";
 import { provisionAndLogin } from "./auth.mjs";
 
 const BASE = process.env.BASE_URL;
+const MOCK = process.env.MOCK_URL;
 const U = `plc_${Date.now().toString(36)}`;
 const P = "password123";
 const KEY = "penguin.listCache.webModules";
@@ -25,6 +28,28 @@ test("plugin web modules boot from the kept list, and a changed list reloads onc
   page,
 }) => {
   await provisionAndLogin(page.request, U, P);
+  const projects = await (await page.request.get(`${BASE}/api/projects`)).json();
+  const projectId = projects.projects[0].projectId;
+  const put = await page.request.put(`${BASE}/api/projects/${projectId}/models`, {
+    data: {
+      defaultModel: { provider: "custom", modelId: "claude-4-8" },
+      models: [
+        {
+          provider: "custom",
+          modelId: "claude-4-8",
+          apiKey: "sk-mock",
+          baseUrl: MOCK,
+          contextWindow: 200000,
+        },
+      ],
+    },
+  });
+  expect(put.ok(), "put models").toBeTruthy();
+  const created = await page.request.post(
+    `${BASE}/api/projects/${projectId}/agents/default_agent/sessions`,
+    { data: {} },
+  );
+  const CHAT = `${BASE}/chat/${(await created.json()).session.sessionId}`;
   const files = [];
   page.on("request", (req) => {
     const p = new URL(req.url()).pathname;
@@ -37,7 +62,7 @@ test("plugin web modules boot from the kept list, and a changed list reloads onc
   const composer = page.getByPlaceholder(/输入消息/);
 
   // First load: nothing kept, so the boot waits for the answer — and keeps it.
-  await page.goto(`${BASE}/`);
+  await page.goto(CHAT);
   await composer.waitFor();
   expect(files.some((p) => MODULE_FILE.test(p))).toBe(true);
   await expect
@@ -55,7 +80,7 @@ test("plugin web modules boot from the kept list, and a changed list reloads onc
   });
   files.length = 0;
   loads = 0;
-  await page.goto(`${BASE}/`);
+  await page.goto(CHAT);
   await composer.waitFor();
   expect(files.some((p) => MODULE_FILE.test(p))).toBe(true);
   await expect(page.locator('link[data-plugin="@penguinharness/example-music"]')).toHaveCount(1);
@@ -77,7 +102,7 @@ test("plugin web modules boot from the kept list, and a changed list reloads onc
   }, KEY);
   files.length = 0;
   loads = 0;
-  await page.goto(`${BASE}/`);
+  await page.goto(CHAT);
   await expect.poll(() => loads).toBe(2);
   await composer.waitFor();
   await expect.poll(() => files.some((p) => MODULE_FILE.test(p))).toBe(true);
