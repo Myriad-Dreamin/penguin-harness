@@ -1,5 +1,5 @@
 /**
- * The plugin page (src/hello-page.tsx, src/module.ts): drawn in the app's page frame, in the
+ * The plugin page (src/hello-page.tsx, src/index.ts): drawn in the app's page frame, in the
  * language the app's `Language` interface answers, and loaded lazily by the module.
  */
 import { createElement, Suspense } from "react";
@@ -7,9 +7,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { prerenderToNodeStream } from "react-dom/static";
 import { describe, expect, it } from "vitest";
 import { HelloPage } from "../src/hello-page";
-import { ExampleHelloPage } from "../src/module";
+import { ExampleHelloPage } from "../src/index";
 
-const language = (locale: "zh" | "en") => ({ current: () => locale });
+/** A `Language` that never changes: what a static render reads. */
+const language = (locale: "zh" | "en") => ({ get: () => locale, subscribe: () => () => {} });
 
 describe("HelloPage", () => {
   it("draws the page's one title, its paragraph and three cards in Chinese", () => {

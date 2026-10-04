@@ -3,13 +3,19 @@
  * `PageHeader`, shared with the app at run time), a paragraph, and three facts as cards. The cards
  * are drawn with the app's theme tokens through the plugin's own prefixed utilities (styles.css),
  * so they follow the theme, the mode and the accent like the app's own cards.
+ *
+ * Its words follow the app's `Language`, read with React's `useSyncExternalStore`: the page
+ * re-renders when the person switches the language, with nothing of its own to keep in step.
  */
+import { useSyncExternalStore } from "react";
 import { GlyphIcon, ICONS, ICON_SIZE, PageFrame, PageHeader } from "@prismshadow/penguin-ui";
 import type { Language } from "@prismshadow/penguin-web/plugin-types";
 import { stringsFor } from "./strings";
 
 export function HelloPage({ language }: { language: Language }) {
-  const S = stringsFor(language.current());
+  // The third argument is the snapshot for server rendering, which the tests use.
+  const locale = useSyncExternalStore(language.subscribe, language.get, language.get);
+  const S = stringsFor(locale);
   return (
     <PageFrame width="sm">
       <PageHeader title={S.title} description={S.description} />
