@@ -1,6 +1,10 @@
-/** One machine's forwarded ports, admin-only like the machines page it is reached from. */
+/**
+ * Port forwarding: one machine's forwarded ports, admin-only like the machines page it is reached
+ * from, and the dock's Ports panel for the conversation's Workspace (ports-dock-panel.tsx).
+ */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel";
 import { MachinePortsPage } from "./machine-ports-page";
+import { PortsDockPanel } from "./ports-dock-panel";
 
 @Module({
   contributes: {
@@ -16,8 +20,19 @@ import { MachinePortsPage } from "./machine-ports-page";
         order: 51,
       },
     ],
+    "DockModule.panels": [
+      {
+        id: "ports.panel",
+        kind: "ports",
+        title: "Ports",
+        titleZh: "端口",
+        icon: "arrowsOpposed",
+        order: 80,
+      },
+    ],
   },
 })
 export class PortsModule {
   @Bind("ports.machine") page = MachinePortsPage;
+  @Bind("ports.panel") panel = PortsDockPanel;
 }

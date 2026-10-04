@@ -22,10 +22,10 @@
  *   balance on their anchors, and company's unread count on the contributed proposals page's row;
  *   the session list receives the messaging binding, the scheduled mark and the dock's "Browse
  *   files".
- * - The dock receives the seven panels in their menu order — agents and memory from chat, the
- *   files from workspace, the trace, messaging, schedules and the built-in browser from theirs —
- *   with the names the dictionary held and a glyph in the icon registry, which the dock module
- *   registers in its panel registry at boot.
+ * - The dock receives the eight panels in their menu order — agents and memory from chat, the
+ *   files from workspace, the trace, messaging, schedules, the built-in browser and the ports from
+ *   theirs — with the names the dictionary held and a glyph in the icon registry, which the dock
+ *   module registers in its panel registry at boot.
  * - The chat page receives the workflow tab strip beside the conversation.
  */
 import type { ReactElement } from "react";
@@ -102,6 +102,7 @@ import { MessagingDockPanel } from "../src/features/messaging/messaging-dock-pan
 import { ScheduleDockPanel } from "../src/features/schedules/schedule-dock-panel";
 import { BuiltinBrowserModule } from "../src/features/builtin-browser/module";
 import type { DockPanelData } from "../src/features/dock/iface";
+import { PortsDockPanel } from "../src/features/ports/ports-dock-panel";
 import { ChatModule } from "../src/features/chat/module";
 import { sessionTabsOf } from "../src/features/chat/deps";
 import { WorkflowSessionTab } from "../src/features/workflows/session-tab";
@@ -364,7 +365,7 @@ describe("the booted sidebar slots", () => {
 });
 
 describe("the booted dock slot", () => {
-  it("the dock receives the seven panels, in their order, each from its module", () => {
+  it("the dock receives the eight panels, in their order, each from its module", () => {
     // In contributed order, as the dock registers them (dock/module.ts).
     const panels = [...dockPanels]
       .map((c) => ({ ...(c.data as unknown as DockPanelData), Body: c.code }))
@@ -416,6 +417,13 @@ describe("the booted dock slot", () => {
         // A wrapper around BuiltinBrowserPanel that carries where the browser is offered.
         Body: new BuiltinBrowserModule().panel,
       },
+      {
+        kind: "ports",
+        title: en.ports.panelTitle,
+        titleZh: zh.ports.panelTitle,
+        icon: "arrowsOpposed",
+        Body: PortsDockPanel,
+      },
     ]);
     for (const panel of panels) expect(glyphOf(panel.icon)).not.toBe("");
     expect(Object.fromEntries(dockPanels.map((c) => [c.data.kind as string, c.from]))).toEqual({
@@ -426,6 +434,7 @@ describe("the booted dock slot", () => {
       messaging: "MessagingModule",
       schedules: "SchedulesModule",
       "builtin-browser": "BuiltinBrowserModule",
+      ports: "PortsModule",
     });
   });
 });
