@@ -32,9 +32,9 @@
  *
  * The answer also forwards the enabled plugins' web modules (`webModules`); those are not read
  * here but by the boot, which assembles them into the module tree before the first render
- * (plugins/forwarded.ts, whose request is this store's first one, so it is not repeated). Each
- * answer is handed back there, to keep the boot's cached list current and to reload once when
- * the tree holds another list.
+ * (plugins/forwarded.ts, whose request is this store's first one, so it is not repeated). The
+ * auth state is handed back there: a sign-in after a boot refused for want of a session reloads
+ * once, so the tree takes the user's plugins.
  */
 import {
   createContext,
@@ -51,7 +51,7 @@ import type {
   SessionSurfaceSummary,
 } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
-import { reconcileWebModules, takeBootContributions } from "../plugins/forwarded";
+import { reloadOnSignIn, takeBootContributions } from "../plugins/forwarded";
 import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
@@ -250,7 +250,8 @@ const PagesContext = createContext<ShellPagesValue | null>(null);
 /** Holds the signed-in user's contributions — the merged page table — for everything under the router. */
 export function ShellPagesProvider({ children }: { children: ReactNode }) {
   const { pages: compiled, pageRenderers, pageRemovals } = shellDeps.useDeps();
-  const signedIn = useAuth().user?.userId ?? null;
+  const authUser = useAuth().user;
+  const signedIn = authUser?.userId ?? null;
   const userId = useSafeMode() ? null : signedIn;
   const [store] = useState(() =>
     // The boot's answer first (plugins/forwarded.ts), once; every later ask goes to the server.
@@ -280,9 +281,9 @@ export function ShellPagesProvider({ children }: { children: ReactNode }) {
     }),
     [compiled, answer, pageRenderers, pageRemovals, pending, store],
   );
-  // Each answer against the list the tree was assembled from: a different one (a sign-in after a
-  // signed-out boot, leaving safe mode, a plugin enabled or removed) is written and reloads once.
-  useEffect(() => reconcileWebModules(answer, userId), [answer, userId]);
+  // A boot refused for want of a session assembled no plugin: a sign-in here reloads once.
+  const authState = authUser === undefined ? undefined : signedIn;
+  useEffect(() => reloadOnSignIn(authState), [authState]);
   return <PagesContext.Provider value={value}>{children}</PagesContext.Provider>;
 }
 

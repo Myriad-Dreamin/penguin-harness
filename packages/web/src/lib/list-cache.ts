@@ -2,17 +2,12 @@
  * The last known state of the lists a page opens on, kept across a reload so the page can draw
  * them on its first frame and reconcile when the server answers.
  *
- * Three lists, each one document in `localStorage` (synchronous, so it is there for the first
+ * Two lists, each one document in `localStorage` (synchronous, so it is there for the first
  * render):
  *   - a Project's Session rows — every source's (this server's and each machine's) active rows,
  *     plus the organization Sessions (desks, tickets) a page has opened, each with the machine
  *     it routes to;
- *   - the user's organizations across their Projects, with the machine each one runs on;
- *   - the plugin web modules GET /api/contributions last forwarded, which the boot assembles
- *     into the module tree before the mount (plugins/forwarded.ts) — the one list read before
- *     anyone is known to be signed in, so it is one document naming its user rather than one per
- *     user in the key; the boot takes it under any user, and the shell's answer for the signed-in
- *     user replaces it.
+ *   - the user's organizations across their Projects, with the machine each one runs on.
  *
  * DRAW FROM IT, DECIDE FROM THE SERVER. What is read here may be shown, and may let a request
  * that only needs an id or a machine start early; nothing consequential — "not found", the
@@ -31,11 +26,7 @@
  * cannot break the boot it exists to rescue; it still writes, so the server's answers in safe
  * mode replace a bad document with a good one.
  */
-import type {
-  OrganizationSummary,
-  SessionInfo,
-  WebModulePackage,
-} from "@prismshadow/penguin-server/api";
+import type { OrganizationSummary, SessionInfo } from "@prismshadow/penguin-server/api";
 import { isSafeMode } from "../rescue/safe-mode";
 import { INSTALL_ID_KEY } from "./install-scope";
 import { isOrgSession, sessionCategory } from "./session-grouping";
@@ -46,7 +37,6 @@ export const LIST_CACHE_VERSION = 1;
 
 const SESSIONS_PREFIX = "penguin.listCache.sessions.";
 const ORGS_PREFIX = "penguin.listCache.organizations.";
-const WEB_MODULES_KEY = "penguin.listCache.webModules";
 
 /**
  * Rows kept per (source, Agent), most recently active first: a few sidebar pages
@@ -257,51 +247,6 @@ export function writeOrganizationCache(
   });
 }
 
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((v) => typeof v === "string");
-
-/**
- * A package as the boot reads it: names, the table's two maps, module URLs (none for a module
- * that is data only) and stylesheets.
- */
-function isWebModulePackage(value: unknown): value is WebModulePackage {
-  if (!isRecord(value) || typeof value.package !== "string") return false;
-  const { ifaces, modules, styles } = value;
-  return (
-    isRecord(ifaces) &&
-    isRecord(ifaces.ifaces) &&
-    isRecord(ifaces.types) &&
-    Array.isArray(modules) &&
-    modules.every(
-      (m: unknown) =>
-        isRecord(m) && isRecord(m.manifest) && (m.url === undefined || typeof m.url === "string"),
-    ) &&
-    isStringArray(styles)
-  );
-}
-
-/** The forwarded web modules last written, and for whom; null when there are none to use. */
-export function readWebModuleCache(): { userId: string; packages: WebModulePackage[] } | null {
-  if (isSafeMode()) return null;
-  const doc = readDoc(WEB_MODULES_KEY, {});
-  if (doc === null) return null;
-  const { userId, packages } = doc;
-  if (
-    typeof userId !== "string" ||
-    !Array.isArray(packages) ||
-    !packages.every(isWebModulePackage)
-  ) {
-    drop(WEB_MODULES_KEY);
-    return null;
-  }
-  return { userId, packages };
-}
-
-/** Replaces the forwarded web modules with the server's answer for `userId`. */
-export function writeWebModuleCache(userId: string, packages: readonly WebModulePackage[]): void {
-  writeDoc(WEB_MODULES_KEY, { userId, packages });
-}
-
 /** Removes every list this browser keeps for `userId` — on logout. */
 export function clearListCache(userId: string): void {
   const sessions = `${SESSIONS_PREFIX}${encodeURIComponent(userId)}/`;
@@ -310,9 +255,7 @@ export function clearListCache(userId: string): void {
     const doomed: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      // The forwarded web modules go too, whoever they were written for: the next boot asks.
-      if (key !== null && (key.startsWith(sessions) || key === orgs || key === WEB_MODULES_KEY))
-        doomed.push(key);
+      if (key !== null && (key.startsWith(sessions) || key === orgs)) doomed.push(key);
     }
     for (const key of doomed) localStorage.removeItem(key);
   } catch {

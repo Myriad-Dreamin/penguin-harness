@@ -4,9 +4,9 @@
  *
  * Two things happen before the mount. The module tree boots (web-root.ts): the router's pages
  * are its contributions, so there is nothing to mount until it has — it takes milliseconds once
- * it knows which plugin web modules join it (the list kept from the last answer; only a browser
- * without one waits for the request, bounded, beside the two below), and runs alongside the
- * reconcile below. And the browser's persisted UI
+ * it knows which plugin web modules join it (GET /api/contributions, asked at the same moment
+ * as the two requests below and bounded like them), and runs alongside the reconcile below. And
+ * the browser's persisted UI
  * state is reconciled against the data root the server is actually serving
  * (lib/install-scope.ts). The reconcile has to be HERE and not in a provider, because the
  * state it may clear is read from `useState` initializers scattered through the tree — the
@@ -79,8 +79,9 @@ prefetchMe();
 // the harness can be rolled back.
 //
 // The enabled plugins' web modules are part of the tree, so the tree boots once the boot knows
-// which there are (plugins/forwarded.ts: the list this browser kept from the last answer, at
-// once; without one, the answer, asked beside the two above and bounded; nothing in safe mode).
+// which there are (plugins/forwarded.ts: the answer, asked here beside the install reconcile
+// and after the /api/me prefetch above, so the three requests are in flight together; bounded,
+// and nothing in safe mode) and has loaded them (plugins/assemble.ts, bounded per plugin).
 void Promise.all([
   bootInstallScope().catch(() => "mount" as const),
   bootWebModules().then((packages) => {

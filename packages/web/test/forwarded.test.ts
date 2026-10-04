@@ -1,34 +1,28 @@
 /**
- * The boot's list of plugin web modules (plugins/forwarded.ts) and the cache it boots from
- * (lib/list-cache.ts).
+ * The boot's list of plugin web modules (plugins/forwarded.ts).
  *
- * - Without a cached list the boot waits for the answer and boots from it; the shell's answer
- *   for the user writes it for the next boot and, being the same, reloads nothing.
- * - With a cached list the boot answers at once, before the request does; an answer with the
- *   same list changes nothing, another rewrites the cache and reloads once — not again within
- *   the guard, so a list that never settles cannot loop.
- * - A cached list whose module is data only (no URL) is a list to boot from.
- * - A boot with no plugins (an empty cached list) waits on nothing.
- * - A signed-out boot (401) that assembled a cached list reloads once signed in.
- * - Safe mode asks and reads nothing; logout drops the cached list; junk is no cache.
+ * - The boot asks for the list at once and boots from the answer; the shell takes the same
+ *   request once instead of asking again.
+ * - An answer that has not come by BOOT_WAIT_MS boots without plugins; a late answer changes
+ *   nothing about the boot.
+ * - Nothing is kept across loads: no list is written to storage, and no later answer reloads.
+ * - A signed-out boot (401) reloads once on a sign-in seen in this document, and never in a
+ *   document that was never seen signed out.
+ * - Safe mode asks nothing; leaving it after a safe-mode boot reloads, entering it reloads only
+ *   when plugins were assembled.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContributionsResponse, WebModulePackage } from "@prismshadow/penguin-server/api";
 import { setSafeMode } from "../src/rescue/safe-mode";
 import { memoryStorage, stubLocalStorage } from "./helpers/storage";
 import type { MemoryStorage } from "./helpers/storage";
 
-const CACHE_KEY = "penguin.listCache.webModules";
 const music: WebModulePackage = {
   package: "@acme/music",
   version: "1.0.0",
   ifaces: { ifaces: {}, types: {} },
   modules: [{ manifest: { name: "Music" }, url: "/api/plugins/@acme/music/web/0123/Music.js" }],
   styles: [],
-};
-const rebuilt: WebModulePackage = {
-  ...music,
-  modules: [{ manifest: { name: "Music" }, url: "/api/plugins/@acme/music/web/4567/Music.js" }],
 };
 const answerOf = (webModules: WebModulePackage[]) =>
   ({ pages: [], pageRemovals: [], webModules }) as unknown as ContributionsResponse;
@@ -56,97 +50,99 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /** A fresh copy of the module: its state is per page. */
 const load = () => import("../src/plugins/forwarded");
-const cache = (userId: string, packages: WebModulePackage[]) =>
-  storage.map.set(CACHE_KEY, JSON.stringify({ v: 1, installId: "root-a", userId, packages }));
-const cached = () => JSON.parse(storage.map.get(CACHE_KEY) ?? "null");
+/** The safe-mode switch the fresh copy listens to (its listeners are per module instance). */
+const pageSafeMode = () => import("../src/rescue/safe-mode");
 
 describe("the boot's web module list", () => {
-  it("without a cached list, waits for the answer, then writes it and reloads nothing", async () => {
+  it("is asked at once and booted from the answer, which the shell then takes once", async () => {
+    const f = await load();
+    const booting = f.bootWebModules();
+    // Asked synchronously, in the same tick as the boot's other requests (main.tsx).
+    expect(fetch).toHaveBeenCalledTimes(1);
+    answer(200, answerOf([music]));
+    expect(await booting).toEqual([music]);
+    expect(await f.takeBootContributions()).toEqual(answerOf([music]));
+    expect(f.takeBootContributions()).toBeNull();
+  });
+
+  it("boots without plugins once BOOT_WAIT_MS has passed, and a late answer changes nothing", async () => {
+    vi.useFakeTimers();
+    const f = await load();
+    const booting = f.bootWebModules();
+    await vi.advanceTimersByTimeAsync(f.BOOT_WAIT_MS);
+    expect(await booting).toEqual([]);
+    answer(200, answerOf([music]));
+    // The shell still gets the late answer as its first one.
+    expect(await f.takeBootContributions()).toEqual(answerOf([music]));
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("keeps nothing across loads", async () => {
     const f = await load();
     const booting = f.bootWebModules();
     answer(200, answerOf([music]));
-    expect(await booting).toEqual([music]);
-    f.reconcileWebModules(await f.takeBootContributions()!, "u");
-    expect(cached()).toMatchObject({ userId: "u", packages: [music] });
-    expect(reload).not.toHaveBeenCalled();
+    await booting;
+    expect([...storage.map.keys()]).toEqual(["penguin.installId"]);
   });
 
-  it("with a cached list, boots from it before the request is answered", async () => {
-    cache("u", [music]);
+  it("after a signed-out boot, reloads once on a sign-in seen in this document", async () => {
     const f = await load();
-    expect(await f.bootWebModules()).toEqual([music]);
-    expect(fetch).toHaveBeenCalledOnce();
-    answer(200, answerOf([music]));
-    f.reconcileWebModules(await f.takeBootContributions()!, "u");
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("an answer with another list rewrites the cache and reloads once, never in a loop", async () => {
-    cache("u", [music]);
-    const f = await load();
-    await f.bootWebModules();
-    f.reconcileWebModules(answerOf([rebuilt]), "u");
-    expect(cached().packages).toEqual([rebuilt]);
-    expect(reload).toHaveBeenCalledOnce();
-    // The reloaded page still disagrees (the list moved again): no second reload in the guard.
-    vi.resetModules();
-    cache("u", [rebuilt]);
-    const again = await load();
-    await again.bootWebModules();
-    again.reconcileWebModules(answerOf([music]), "u");
-    expect(reload).toHaveBeenCalledOnce();
-  });
-
-  it("boots at once from a cached list whose module is data only (no URL)", async () => {
-    const removal: WebModulePackage = { ...music, modules: [{ manifest: { name: "Removal" } }] };
-    cache("u", [removal]);
-    const f = await load();
-    expect(await f.bootWebModules()).toEqual([removal]);
-  });
-
-  it("with no plugins, waits on nothing", async () => {
-    cache("u", []);
-    const f = await load();
-    expect(await f.bootWebModules()).toEqual([]);
-    f.reconcileWebModules(answerOf([]), "u");
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("a signed-out boot that assembled the cached list reloads once signed in", async () => {
-    cache("u", [music]);
-    const f = await load();
-    await f.bootWebModules();
+    const booting = f.bootWebModules();
     answer(401);
-    expect(await f.takeBootContributions()).toBeNull();
-    f.reconcileWebModules(answerOf([music]), "u");
-    expect(reload).toHaveBeenCalledOnce();
+    expect(await booting).toEqual([]);
+    f.reloadOnSignIn(undefined);
+    f.reloadOnSignIn("u");
+    // Not seen signed out yet: an initializing state that resolves to a user is the boot's own.
+    expect(reload).not.toHaveBeenCalled();
+    f.reloadOnSignIn(null);
+    f.reloadOnSignIn("u");
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it("in safe mode, asks and reads nothing", async () => {
-    cache("u", [music]);
+  it("does not reload on sign-in after a signed-in boot", async () => {
+    const f = await load();
+    const booting = f.bootWebModules();
+    answer(200, answerOf([]));
+    await booting;
+    f.reloadOnSignIn(null);
+    f.reloadOnSignIn("u");
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("in safe mode, asks nothing; leaving it reloads so the plugins join", async () => {
     setSafeMode(true);
     try {
       const f = await load();
       expect(await f.bootWebModules()).toEqual([]);
       expect(fetch).not.toHaveBeenCalled();
+      f.reloadOnSafeModeChange(false);
+      (await pageSafeMode()).setSafeMode(false);
+      expect(reload).toHaveBeenCalledTimes(1);
     } finally {
       setSafeMode(false);
     }
   });
 
-  it("is dropped on logout, and junk or another data root is no cache", async () => {
-    const { clearListCache, readWebModuleCache } = await import("../src/lib/list-cache");
-    cache("u", [music]);
-    clearListCache("someone-else");
-    expect(storage.map.has(CACHE_KEY)).toBe(false);
-    storage.map.set(CACHE_KEY, JSON.stringify({ v: 1, installId: "root-a", userId: "u" }));
-    expect(readWebModuleCache()).toBeNull();
-    storage.map.set(
-      CACHE_KEY,
-      JSON.stringify({ v: 1, installId: "root-b", userId: "u", packages: [music] }),
-    );
-    expect(readWebModuleCache()).toBeNull();
+  it("entering safe mode reloads only when plugins were assembled", async () => {
+    const f = await load();
+    const booting = f.bootWebModules();
+    answer(200, answerOf([]));
+    await booting;
+    f.reloadOnSafeModeChange(false);
+    const safe = await pageSafeMode();
+    try {
+      safe.setSafeMode(true);
+      expect(reload).not.toHaveBeenCalled();
+      safe.setSafeMode(false);
+      expect(reload).not.toHaveBeenCalled();
+    } finally {
+      setSafeMode(false);
+    }
   });
 });

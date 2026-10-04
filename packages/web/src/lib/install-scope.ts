@@ -80,12 +80,11 @@ export interface KeyRule {
  * rather than asked for: install-scope.test.ts scans `packages/web/src` for key literals and
  * fails on any this table does not cover.
  *
- * Two `penguin.*` strings in the source are NOT here on purpose:
+ * Three `penguin.*` strings in the source are NOT here on purpose:
  *   - `penguin.chatRouteApplied.<field>` (features/chat/body/draft-view.tsx) is `sessionStorage`,
  *     not `localStorage`: it is scoped to one tab's history and dies with the tab, so it
  *     cannot outlive a data root.
- *   - `penguin.safeMode` and `penguin.pluginReload` (rescue/safe-mode.ts, plugins/forwarded.ts)
- *     are `sessionStorage` too, for the same reason.
+ *   - `penguin.safeMode` (rescue/safe-mode.ts) is `sessionStorage` too, for the same reason.
  *   - `penguin.ooo` (the shared UI package's remark-autolink-boundary.ts) is the product's
  *     domain inside an example URL in a doc comment. It is not a storage key.
  */
@@ -308,12 +307,6 @@ export const KEY_RULES: readonly KeyRule[] = [
     key: "penguin.listCache.organizations.",
     scope: "install",
     why: "The user's last organization list with the machine each runs on (list-cache.ts). Organization and machine ids in the value — a new root knows none of them.",
-  },
-  {
-    kind: "exact",
-    key: "penguin.listCache.webModules",
-    scope: "install",
-    why: "The plugin web modules the server last forwarded, which the boot assembles before the answer (list-cache.ts, plugins/forwarded.ts). Another root has other plugins.",
   },
   {
     kind: "exact",
