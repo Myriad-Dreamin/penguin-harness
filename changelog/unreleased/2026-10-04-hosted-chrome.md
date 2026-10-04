@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-04
 - **Type:** feature
-- **Scope:** `server`, `cli`, `skills`, `docs`
+- **Scope:** `server`, `web`, `cli`, `skills`, `docs`
 
 [中文版](2026-10-04-hosted-chrome.zh.md)
 
@@ -31,6 +31,16 @@ The agent browser gained a third backend, `hosted`: a headless Chrome the server
 - The screencast runs only while somebody watches. Frames are passed on at most 15 times a second; each viewer holds at most one unsent frame, a newer one replacing it; a new viewer gets the latest frame at once. The stream ends when the tab closes or Chrome exits.
 - `POST /api/builtin-browser/tabs/:id/input` takes a batch of mouse, wheel, key and text events and the toolbar's back, forward, reload and stop, and applies them with CDP's `Input` domain. Pointer coordinates are given in the frame's pixels and scaled to the page's CSS pixels.
 - Both routes are for administrators and for `hosted`; on another backend they answer `405` `not_supported`.
+
+## The Browser panel
+
+- The panel belongs to a server: it shows the browser of the server the conversation's Workspace lives on, this one or a machine, found the way the Files panel finds its machine. The Web App keeps one browser state per server, sends the panel's requests to that server, and puts a machine's `builtin_browser_*` events in that machine's state; they were dropped before. A link in a conversation opens in the same browser.
+- A hosted tab's page area is its picture, drawn to fit the panel, with the viewer's mouse, wheel and keyboard sent back to the page. Text from an input method and a paste arrive as inserted text. A drag follows the pointer outside the panel, and whatever is still held is released when the panel loses the keyboard. Mouse moves are folded so that a request carries one position.
+- The page is laid out to the panel's size, and again after a resize settles. The picture is watched only while the panel is on screen and the window is shown. When the stream ends while the tab is still open it is opened again after a growing wait, and after the last wait the page area offers **Retry**.
+- The tab strip, the address bar and the agent mark and ring are the built-in browser's. Back, forward, reload and stop travel as input to the page. With no tab open the page area says where pages will appear, and no tab is opened just because the panel is shown.
+- The menu's **Browser** group acts on the panel's server and lists **Chrome on this machine** where that server offers it. A machine's panel lists neither **System Chrome** nor the Chrome row.
+- When the machine has no Chrome, or Chrome did not start, the page area says so, shows the line Chrome printed, says what to do, and offers **Check again** or **Try again**. The panel reads the browser's status when it comes on screen and keeps asking while the browser cannot run.
+- Import, clearing data, the homepage, **Open in system browser** and **Developer tools** are not offered for a hosted tab.
 
 ## penguin browser and the skill
 
