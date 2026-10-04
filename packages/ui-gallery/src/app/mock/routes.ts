@@ -2112,7 +2112,8 @@ router
   .post("/api/desktop/update/install", () => notFound("Desktop updater"))
   .get("/api/desktop/tray", (): DesktopTrayStatusResponse => ({ status: null }))
   .put("/api/desktop/tray", () => empty())
-  .post("/api/desktop/privacy-settings", () => notFound("Desktop mode"));
+  .post("/api/desktop/privacy-settings", () => notFound("Desktop mode"))
+  .post("/api/desktop/window", () => notFound("Desktop mode"));
 
 // ---------------------------------------------------------------------------------------------
 // Contributions: no plugin is loaded here, so nothing beyond the local pages, and no surface
