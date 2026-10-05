@@ -5255,6 +5255,8 @@ Benchmark：
             : `排队中，第 ${position} 位；轮到后自动接上。`,
         elsewhere: "这条会话正在队列之外的终端里运行，不会再起第二个进程。",
         elsewhereHint: "先在那里退出（/exit），再重新打开。",
+        resizeWidth: "调整窗口宽度（双击恢复默认）",
+        resizeHeight: "调整窗口高度（双击恢复默认）",
         process: "进程",
         terminal: "终端",
         tmuxPane: "tmux 窗格",

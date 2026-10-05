@@ -115,6 +115,12 @@ export const KEY_RULES: readonly KeyRule[] = [
   },
   {
     kind: "exact",
+    key: "penguin.claudeSessionDialog.size",
+    scope: "browser",
+    why: "The size the Claude Code session dialog was dragged to; fits this display, names nothing on the server.",
+  },
+  {
+    kind: "exact",
     key: "penguin.textSize",
     scope: "browser",
     why: "Root text size (five steps) — a readability preference of this display.",

@@ -5209,6 +5209,8 @@ Scenarios:
         elsewhere:
           "This session is running in a terminal outside the queue, so a second program is not started.",
         elsewhereHint: "Exit it there (/exit), then open it again.",
+        resizeWidth: "Resize the window's width (double-click to reset)",
+        resizeHeight: "Resize the window's height (double-click to reset)",
         process: "Process",
         terminal: "Terminal",
         tmuxPane: "tmux pane",
