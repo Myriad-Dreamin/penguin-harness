@@ -5201,7 +5201,13 @@ Scenarios:
       roadmap: (n: number) => `Roadmap #${n}`,
       run: (id: number) => `run #${id}`,
       working: "Working",
-      idle: (minutes: number | null) => (minutes === null ? "Idle" : `Idle ${minutes} min`),
+      // Idle = waiting for input; under a minute reads as just now, not "0 min".
+      idle: (minutes: number | null) =>
+        minutes === null
+          ? "Waiting for input"
+          : minutes < 1
+            ? "Just stopped, waiting for input"
+            : `Waiting for input for ${minutes} min`,
       position: (n: number | null) => (n === null ? "Queued" : `Number ${n} in line`),
       queuedBy: (who: string) => `Queued by ${who}`,
       resumed: "Resumed session, no first prompt",
@@ -5257,8 +5263,10 @@ Scenarios:
           working: "Holds a slot (running · working)",
           idle: (minutes: number | null) =>
             minutes === null
-              ? "Holds a slot (running · idle)"
-              : `Holds a slot (running · idle ${minutes} min)`,
+              ? "Holds a slot (running · waiting for input)"
+              : minutes < 1
+                ? "Holds a slot (running · just stopped, waiting for input)"
+                : `Holds a slot (running · waiting for input for ${minutes} min)`,
           queued: (position: number | null) =>
             position === null ? "Queued" : `Queued, number ${position} in line`,
           none: "Holds no slot",

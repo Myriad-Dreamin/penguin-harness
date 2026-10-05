@@ -5246,7 +5246,13 @@ Benchmark：
       roadmap: (n: number) => `Roadmap #${n}`,
       run: (id: number) => `运行 #${id}`,
       working: "工作中",
-      idle: (minutes: number | null) => (minutes === null ? "空闲" : `空闲 ${minutes} 分钟`),
+      // Idle = waiting for input; under a minute reads as just now, not "0 分钟".
+      idle: (minutes: number | null) =>
+        minutes === null
+          ? "等待输入"
+          : minutes < 1
+            ? "刚停下，等待输入"
+            : `等待输入 ${minutes} 分钟`,
       position: (n: number | null) => (n === null ? "排队中" : `第 ${n} 位`),
       queuedBy: (who: string) => `由 ${who} 排入`,
       resumed: "续开会话，无首个提示",
@@ -5302,8 +5308,10 @@ Benchmark：
           working: "占用一个槽位（运行中 · 工作中）",
           idle: (minutes: number | null) =>
             minutes === null
-              ? "占用一个槽位（运行中 · 空闲）"
-              : `占用一个槽位（运行中 · 空闲 ${minutes} 分钟）`,
+              ? "占用一个槽位（运行中 · 等待输入）"
+              : minutes < 1
+                ? "占用一个槽位（运行中 · 刚停下，等待输入）"
+                : `占用一个槽位（运行中 · 等待输入 ${minutes} 分钟）`,
           queued: (position: number | null) =>
             position === null ? "排队中" : `排队中，第 ${position} 位`,
           none: "未占用槽位",
