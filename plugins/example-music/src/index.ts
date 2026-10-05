@@ -44,7 +44,9 @@ export class ExampleMusic {
     const language = this.language;
     this.audio = lazy(async () => {
       const { AudioFile } = await import("./player");
-      return { default: (props: FileRendererProps) => createElement(AudioFile, { ...props, language }) };
+      return {
+        default: (props: FileRendererProps) => createElement(AudioFile, { ...props, language }),
+      };
     });
   }
 }
