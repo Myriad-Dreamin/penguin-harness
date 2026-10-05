@@ -6,6 +6,10 @@
  * kernel's arktype-free runtime entry. Packages are taken in package-name order, so which of two
  * clashing plugins is left out never depends on the server's load order.
  *
+ * 0. SEPARATE STYLES: a package whose stylesheet's Tailwind prefix (`stylePrefix`) an earlier
+ *    package already has is left out — two sheets with one prefix would reorder each other's
+ *    utilities. A plugin build checks only the plugins built with it; only here is the whole
+ *    enabled set known.
  * 1. VERIFIED: each package's table (its interfaces and its web modules' manifests) goes through
  *    lib/verify-plugins.ts — the kernel's full check against the app's table, run once per table
  *    content and remembered, so a page whose plugins were all verified before never loads the
@@ -210,10 +214,19 @@ export async function assemblePlugins(
   const sorted = [...packages].sort((a, b) =>
     a.package < b.package ? -1 : a.package > b.package ? 1 : 0,
   );
+  const prefixes = new Map<string, string>();
   for (const pkg of sorted) {
+    const owner = pkg.stylePrefix === undefined ? undefined : prefixes.get(pkg.stylePrefix);
+    if (owner !== undefined) {
+      leaveOut(pkg.package, `its style prefix '${pkg.stylePrefix}:' is ${owner}'s too`);
+      continue;
+    }
     const c = candidateOf(pkg);
     if (typeof c === "string") leaveOut(pkg.package, c);
-    else candidates.push(c);
+    else {
+      candidates.push(c);
+      if (pkg.stylePrefix !== undefined) prefixes.set(pkg.stylePrefix, pkg.package);
+    }
   }
   const plugins: PluginTable[] = candidates.map((c) => ({ name: c.pkg.package, table: c.table }));
   const { accepted, rejected } = await (opts.verify ?? verifyPlugins)(opts.host, plugins);

@@ -168,6 +168,9 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
           (c) => `dist/web/styles.css: the class '.${c}' is not under the prefix '${prefix}:'`,
         ),
       );
+      // The prefix travels with the sheet, so the page can refuse two plugins sharing one
+      // (packages/server/src/plugin/web-modules.ts reads it; web plugins/assemble.ts checks it).
+      fs.writeFileSync(path.join(dir, WEB_DIR, "styles.json"), `${JSON.stringify({ prefix })}\n`);
     }
   }
   if (problems.length > 0) throw new Error(problems.join("\n"));

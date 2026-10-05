@@ -7,7 +7,7 @@
  *   table's interfaces and types; a package without a web module, without a table or without a
  *   build is not listed.
  * - The URLs name a build id that hashes the built files: a byte changed is a new id.
- * - The stylesheet the build emits is listed beside the modules.
+ * - The stylesheet the build emits is listed beside the modules, with the class prefix it names.
  * - Every forwarded module has a URL: a web module without a built file is not forwarded.
  * - GET /api/contributions without plugins forwards none.
  * - A Workspace audio file — what a file renderer plays through files/content — is read with its
@@ -52,6 +52,7 @@ describe("web modules", () => {
         { manifest: WEB_MANIFEST, url: `/api/plugins/@acme/player/web/${build}/Player.js` },
       ],
       styles: [`/api/plugins/@acme/player/web/${build}/styles.css`],
+      stylePrefix: "player",
     });
   });
 

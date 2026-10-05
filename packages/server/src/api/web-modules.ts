@@ -23,4 +23,9 @@ export interface WebModulePackage {
   modules: Array<{ manifest: Record<string, unknown>; url: string }>;
   /** Stylesheets the modules' components need, attached before the modules load. */
   styles: string[];
+  /**
+   * The Tailwind prefix every class of `styles` is under, as the plugin's stylesheet names it
+   * (scripts/build-plugin.mjs). The web app leaves out a second package with the same one.
+   */
+  stylePrefix?: string;
 }

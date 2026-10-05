@@ -341,6 +341,24 @@ describe("plugin web modules in the tree", () => {
     expect(head.map((l) => l.dataset.plugin)).toEqual(["@acme/music"]);
   });
 
+  it("leaves out the later of two packages whose style prefix is one", async () => {
+    const prefixed = (name: string, url: string, manifest: object): WebModulePackage => ({
+      ...pkg(name, [{ manifest, url }]),
+      stylePrefix: "shared",
+    });
+    await bootWeb(
+      [
+        prefixed("@acme/zeta", "/hello.js", HELLO_MANIFEST),
+        prefixed("@acme/music", "/music.js", MUSIC_MANIFEST),
+      ],
+      { load },
+    );
+    expect(pluginModuleFailures().get("@acme/zeta")).toBe(
+      "its style prefix 'shared:' is @acme/music's too",
+    );
+    expect(pluginModuleFailures().has("@acme/music")).toBe(false);
+  });
+
   it("swallows a file that fails after the deadline", async () => {
     let fail: (err: Error) => void = () => {};
     const late = new Promise((_, reject) => (fail = reject));
