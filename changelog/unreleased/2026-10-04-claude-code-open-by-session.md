@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-04
 - **Type:** feat
-- **Scope:** `plugins`, `web`
+- **Scope:** `plugins`, `web`, `server`, `core`, `cli`
 
 [中文版](2026-10-04-claude-code-open-by-session.zh.md)
 
@@ -10,8 +10,12 @@
 
 One Claude Code session never gets two programs. When a program outside the queue holds the session (an entry under `~/.claude/sessions` with a live pid), the link answers with a page that names its process, terminal and tmux pane instead of starting another. An unknown session id, an unreadable record, or a working directory that is gone answers 404 with the reason.
 
-Resume runs are kept while idle: the idle limit passes them by, and they still take a slot. The console shows a resume run's Claude Code session id, and its **Open** follows the same link, so an ended resume run is continued again.
+Both routes take an optional `prompt`. Without one, the resume run is a person's and is kept while idle: the idle limit passes it by, and it still takes a slot. With one, the run starts `claude --resume <claudeSessionId> <prompt>`, so the continued conversation begins a turn with the prompt at once, and the idle limit closes it like any other run once it sits idle. This is how an event wakes a session and gets its slot back afterwards. A session a run already holds is entered as it is, and the prompt starts nothing there. All resume runs go through the queue, so its capacity is the only limit on how many run at once. The console shows a resume run's Claude Code session id, and its **Open** follows the same link, so an ended resume run is continued again.
 
 A roadmap's session opens from the roadmap too. `GET /api/claude-code/open?org=<orgId>&roadmap=<n>` looks roadmap `<n>` up in the organization's `claude-sessions.json` (`{ "roadmaps": { "<n>": { "sessionId": "…", "agentId": "…" } } }`, in the organization's directory) and then opens that session as the employee the entry names, the same way the link by id does. A roadmap the file does not name answers 404 with the reason, and a file that is not that shape counts as none. The plugin only reads the file; whoever creates the sessions writes it. In the web app, a roadmap's column beside its room shows **Open session** next to the title when the file names that roadmap, from the new `GET /api/projects/<p>/organizations/<o>/claude-code/sessions`. Without the claude-code plugin the column shows no button.
 
 Inside the web app the session opens in a dialog, and the page stays where it was. **Open session** and a link to either route in a channel message open a dialog on the Settings dialog's shell. The dialog holds the session's terminal, the same view the chat page draws for a Claude Code Session. While the run waits for a slot, the dialog shows its place in line and attaches once the run starts. A session held outside the queue is explained by process, terminal and tmux pane. Closing the dialog leaves the run running. The dialog reads the link's new JSON form: with `Accept: application/json` the route answers `{ "state": "running" | "queued" | "elsewhere", … }` instead of redirecting. A link opened outside the app, or with a modifier key, still lands on the page as before.
+
+A surface's program now runs with its Session's control environment. When a surface opens a Session, the harness hands it the variables the Session's Agent's own commands get: `PENGUIN_API_URL`, `PENGUIN_API_TOKEN`, `PENGUIN_PROJECT_ID`, `PENGUIN_AGENT_ID` and `PENGUIN_SESSION_ID`, plus `PENGUIN_ORG_ID` for a Session that works for an organization (`SurfaceSessionRef.env`, computed by the same `SessionEnv.controlEnv` the commands are spawned with). Claude Code puts them in its pty, so `claude` and the `penguin` commands it runs act as the Session's employee, not as the person whose login the machine has. A control variable the Session has none of is removed from what the pty inherits. A queue run is opened as its organization's (the new `SurfaceOpenOptions.orgId`), so its environment names that organization. When the harness already knows a Session's organization (a desk or ticket session), that one wins.
+
+`penguin org claude-code release --self` ends the run the command runs inside: the run whose Session is `PENGUIN_SESSION_ID`. A session that has finished its work uses it to give its slot back. Without `PENGUIN_SESSION_ID`, or when no queued or running run has that Session, the command says so and exits 1. `release` takes a run id or `--self`, not both.

@@ -11,6 +11,10 @@
  * "New chat → Claude Code" opens, so a person enters it from the Session list or from the
  * console page, types into it, and watches it work. Ended, it is a line of history.
  *
+ * The Session is opened as the organization's (`orgId` in the open options), so its program's
+ * control environment names the organization and the employee: the `penguin` commands it runs
+ * act as that employee, with that Session's own credential.
+ *
  * ## Slots
  *
  * The limit is SERVER-WIDE: every organization's runs share `capacity` slots, since the thing
@@ -25,9 +29,16 @@
  * ## Resume runs
  *
  * A run may instead CONTINUE an existing Claude Code session (`claude --resume <id>`, see
- * resume.ts): it has no prompt, works in the session's own directory, and is `keepIdle` — a
- * long-lived conversation idles between the events it waits for, so the idle reclaim passes it
- * by while it keeps its slot. One Claude Code session is held by at most one run.
+ * resume.ts), in the session's own directory. Two kinds, by who opens it:
+ *
+ *   - opened by a person (no prompt): `keepIdle` — somebody is looking at it, so the idle
+ *     reclaim passes it by while it keeps its slot;
+ *   - woken by an event (a prompt): `claude --resume <id> <prompt>` starts a turn at once, and
+ *     the run is reclaimed like any other once it has sat idle — it does its work and gives
+ *     the slot back.
+ *
+ * How many run at once is the capacity's business alone. One Claude Code session is held by
+ * at most one run.
  *
  * ## Where it lives
  *
@@ -73,7 +84,7 @@ export interface QueueDeps {
     open(
       row: never,
       ownerUserId: string,
-      options: { prompt?: string },
+      options: { prompt?: string; orgId?: string },
     ): Promise<{ alive: boolean } | null>;
     describe(row: never): { alive: boolean; view?: Record<string, unknown> } | null;
     close(sessionId: string): void;
@@ -330,8 +341,10 @@ export class ClaudeCodeQueue {
   /**
    * The run that continues Claude Code session `claudeSessionId` for an employee: the run that
    * already holds that session — queued or running, in any organization, since one session is
-   * one program — or else a new resume run put in line (`claude --resume`, no first prompt, in
-   * the session's own working directory, kept while idle). Only the Project's people and its
+   * one program — or else a new resume run put in line (`claude --resume`, in the session's own
+   * working directory). Without `prompt` the run is a person's and is kept while idle; with
+   * one it starts a turn with it and is reclaimed when idle. A run already holding the session
+   * is answered as it is: `prompt` starts nothing there. Only the Project's people and its
    * employees may. `guard` runs only when no run holds the session, inside the same serial
    * step as the insert, so two clicks never queue two runs; it throws to refuse (the session
    * is live outside this queue). The pump has had its turn before the answer, so a free slot
@@ -344,6 +357,8 @@ export class ClaudeCodeQueue {
     args: {
       claudeSessionId: string;
       agent?: unknown;
+      /** What the continued conversation is told first; absent for a person opening it. */
+      prompt?: string;
       /** The session's working directory; asked only once the caller may resume at all. */
       workspace: () => Promise<string>;
       guard: () => Promise<void>;
@@ -355,6 +370,10 @@ export class ClaudeCodeQueue {
       throw new QueueError(403, "not_a_member", `You are not a member of Project ${projectId}.`);
     }
     const agentId = employeeFor(org, principal, args.agent);
+    const prompt = args.prompt?.trim() ?? "";
+    if (prompt.length > PROMPT_MAX) {
+      throw new QueueError(400, "prompt_too_long", `A prompt is at most ${PROMPT_MAX} characters.`);
+    }
     const workspace = await args.workspace();
     const found = await this.serial(async () => {
       const holder = (await this.everyRun()).find(
@@ -375,13 +394,14 @@ export class ClaudeCodeQueue {
         agentId,
         by: principal,
         ownerUserId: actor.userId,
-        prompt: "",
+        prompt,
         title: null,
         workspace,
         status: "queued",
         queuedAt: this.iso(),
         claudeSessionId: args.claudeSessionId,
-        keepIdle: true,
+        // A person's: kept while idle. An event's (a prompt): reclaimed once it goes idle.
+        ...(prompt === "" ? { keepIdle: true } : {}),
       };
       held.file.next += 1;
       held.file.runs.push(run);
@@ -612,15 +632,15 @@ export class ClaudeCodeQueue {
       const row = this.deps.sessions.findById(info.sessionId);
       if (row === null) throw new Error(`Session ${info.sessionId} vanished before it was opened.`);
       if (run.title !== null) this.deps.sessions.updateTitleIfNull(info.sessionId, run.title);
-      // A resume run's program continues its Claude Code session instead of taking a prompt.
+      // A resume run's program continues its Claude Code session (with its prompt, if any).
       if (run.claudeSessionId !== undefined) {
         this.deps.resume(info.sessionId, run.claudeSessionId);
       }
-      const opened = await this.deps.surfaces.open(
-        row as never,
-        run.ownerUserId,
-        run.claudeSessionId === undefined ? { prompt: run.prompt } : {},
-      );
+      // Opened as the organization's: the program's control environment names it.
+      const opened = await this.deps.surfaces.open(row as never, run.ownerUserId, {
+        ...(run.prompt !== "" ? { prompt: run.prompt } : {}),
+        orgId: org.orgId,
+      });
       if (opened === null) throw new Error(`The ${this.deps.surfaceKind} surface is not loaded.`);
       run.status = "running";
       run.startedAt = this.iso();

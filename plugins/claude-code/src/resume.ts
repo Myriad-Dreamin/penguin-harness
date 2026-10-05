@@ -2,8 +2,8 @@
  * Opening a Claude Code session by its id: one link that lands a person inside a given Claude
  * Code conversation, continued as an employee of an organization.
  *
- *   GET /api/claude-code/open/<claudeSessionId>?org=<orgId>&agent=<agentId>[&project=<projectId>]
- *   GET /api/claude-code/open?org=<orgId>&roadmap=<n>[&project=<projectId>]
+ *   GET /api/claude-code/open/<claudeSessionId>?org=<orgId>&agent=<agentId>[&project=<projectId>][&prompt=<text>]
+ *   GET /api/claude-code/open?org=<orgId>&roadmap=<n>[&project=<projectId>][&prompt=<text>]
  *
  * The second is the first for the session the organization's `claude-sessions.json` maps
  * roadmap <n> to, as the employee it names (roadmap-sessions.ts); no such entry is a 404.
@@ -20,6 +20,11 @@
  *     page saying where — pid, terminal, tmux pane — since a second program on one session
  *     would interleave two writers in one transcript;
  *   - no such session, or a record that cannot be read → 404 and a page with the reason.
+ *
+ * `prompt` is how an event wakes the session rather than a person opening it: a resume run it
+ * queues starts `claude --resume <id> <prompt>` and is reclaimed once idle, where a person's is
+ * kept while idle (queue.ts). A session a run already holds is entered as it is — the prompt
+ * starts nothing there.
  *
  * An organization that runs on another machine is sent there, through this server's machine
  * proxy, with `machine=` riding along so that server's redirect names the machine the chat
@@ -385,9 +390,11 @@ export function openRoutes(deps: OpenRoutesDeps): Hono {
 
   /** Enter the run holding session `id`, else queue its resume as `agent`, and go there. */
   async function enter(c: Context, at: Asked, id: string, agent: string | undefined) {
+    const prompt = at.query.prompt?.trim() ?? "";
     const result = await deps.queue.resume(at.projectId, at.orgId, at.actor, {
       claudeSessionId: id,
       agent,
+      ...(prompt !== "" ? { prompt } : {}),
       workspace: async () => (await findSessionRecord(id, env)).cwd,
       guard: async () => {
         const holder = await liveSession(id, env, deps.probe);

@@ -223,7 +223,8 @@ describe("the link", () => {
     // A Session of the employee's Agent: what the employee's credential is issued for.
     expect(created).toEqual([{ agentId: "dev", workspace }]);
     expect(resumed).toEqual([["cc-1", ID]]);
-    expect(opened).toEqual([{ sessionId: "cc-1", owner: "admin", options: {} }]);
+    // Opened as the organization's: its program's control environment names it.
+    expect(opened).toEqual([{ sessionId: "cc-1", owner: "admin", options: { orgId: "acme" } }]);
     const [run] = (await q.list("p", "acme", { userId: "admin" })).runs;
     expect(run).toMatchObject({
       agentId: "dev",
@@ -246,6 +247,25 @@ describe("the link", () => {
     const again = await a.request(link(ID, "&machine=box"));
     expect(again.headers.get("location")).toBe("/chat/cc-1?machine=box");
     expect(created).toHaveLength(1);
+    await q.stop();
+  });
+
+  it("with a prompt, queues a run that starts a turn with it and is not kept while idle", async () => {
+    const q = queue();
+    const res = await app(q).request(link(ID, `&prompt=${encodeURIComponent("review #4")}`));
+    expect(res.headers.get("location")).toBe("/chat/cc-1");
+    expect(opened).toEqual([
+      { sessionId: "cc-1", owner: "admin", options: { prompt: "review #4", orgId: "acme" } },
+    ]);
+    const [run] = (await q.list("p", "acme", { userId: "admin" })).runs;
+    expect(run).toMatchObject({ prompt: "review #4", claudeSessionId: ID, status: "running" });
+    expect(run!.keepIdle).toBeUndefined();
+    // The session is running: a second prompt starts nothing, in either form.
+    const again = await app(q).request(link(ID, "&prompt=more"), {
+      headers: { accept: "application/json" },
+    });
+    expect(await again.json()).toMatchObject({ state: "running", sessionId: "cc-1" });
+    expect(opened).toHaveLength(1);
     await q.stop();
   });
 
@@ -394,8 +414,8 @@ describe("the link by roadmap", () => {
 });
 
 describe("the surface", () => {
-  it("starts claude --resume with no prompt for a Session planned as a resume", async () => {
-    expect(claudeArgv("ignored", { PENGUIN_CLAUDE_BIN: "c" }, ID)).toEqual(["c", "--resume", ID]);
+  it("starts claude --resume, with the prompt when there is one, for a Session planned as a resume", async () => {
+    expect(claudeArgv(undefined, { PENGUIN_CLAUDE_BIN: "c" }, ID)).toEqual(["c", "--resume", ID]);
     const commands: unknown[] = [];
     const terminal = {
       id: "t1",
@@ -421,6 +441,7 @@ describe("the surface", () => {
       agentId: "dev",
       workspace,
       ownerUserId: "admin",
+      env: { PENGUIN_SESSION_ID: "s1" },
     };
     surface.planResume("s1", ID);
     await surface.open(ref, {}, () => {});
@@ -428,6 +449,10 @@ describe("the surface", () => {
     // The plan is spent: the next program of that Session is a new conversation.
     await surface.open(ref, {}, () => {});
     surface.close("s1");
-    expect(commands).toEqual([["c", "--resume", ID], ["c"]]);
+    // An event's resume: continued, and told at once.
+    surface.planResume("s1", ID);
+    await surface.open(ref, { prompt: "go" }, () => {});
+    surface.close("s1");
+    expect(commands).toEqual([["c", "--resume", ID], ["c"], ["c", "--resume", ID, "go"]]);
   });
 });

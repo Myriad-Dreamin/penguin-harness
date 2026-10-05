@@ -43,11 +43,26 @@ export interface SurfaceSessionRef {
   workspace: string;
   /** The user opening the Session; what a pty is owned by. */
   ownerUserId: string;
+  /**
+   * The Session's control environment, exactly what the Agent's own commands get:
+   * `PENGUIN_API_URL`, `PENGUIN_API_TOKEN` (the Session's credential), `PENGUIN_PROJECT_ID`,
+   * `PENGUIN_AGENT_ID`, `PENGUIN_SESSION_ID` and, for a Session that works for an
+   * organization, `PENGUIN_ORG_ID`. A surface that starts a program puts it in that program's
+   * environment, so the `penguin` commands the program runs act as this Session's Agent.
+   */
+  env: Record<string, string>;
 }
 
 export interface SurfaceOpenOptions {
   /** A first prompt the user typed on the draft page, if any. */
   prompt?: string;
+  /**
+   * The organization the Session works for, when the code opening it knows and the harness's
+   * own records do not (a plugin's run queued by an organization). It becomes `PENGUIN_ORG_ID`
+   * in {@link SurfaceSessionRef.env} and confines the Session's credential to that
+   * organization — it narrows, never widens. Set by the opener in code, never from a request.
+   */
+  orgId?: string;
   cols?: number;
   rows?: number;
 }

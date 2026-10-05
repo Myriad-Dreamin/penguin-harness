@@ -61,14 +61,15 @@ export interface Run {
   /** Why it could not be started. */
   error?: string;
   /**
-   * A RESUME run: the Claude Code session it continues (`claude --resume <id>`, no first
-   * prompt — `prompt` is empty). One Claude Code session is never held by two runs.
+   * A RESUME run: the Claude Code session it continues (`claude --resume <id>`, then `prompt`
+   * when it is not empty — an event waking the session). One Claude Code session is never
+   * held by two runs.
    */
   claudeSessionId?: string;
   /**
    * The idle reclaim passes this run by: it is a long-lived conversation that sits idle between
    * the events it waits for. It still holds its slot; the capacity is what bounds such runs.
-   * Resume runs set it.
+   * Resume runs a person opens (no prompt) set it; one an event wakes with a prompt does not.
    */
   keepIdle?: boolean;
 }

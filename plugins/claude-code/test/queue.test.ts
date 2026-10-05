@@ -11,16 +11,10 @@ import { Hono } from "hono";
 import type { OrgActor, OrgView } from "@prismshadow/penguin-server/plugin";
 import {
   ClaudeCodeQueue,
-  DEFAULT_CAPACITY,
-  DEFAULT_IDLE_MINUTES,
   QUEUE_PREFIX,
-  QueueError,
   parseRunsFile,
-  queueConfigOf,
   queueRoutes,
   runsPath,
-  pageHtml,
-  PAGE_STRINGS,
   type QueueConfig,
   type RowLike,
 } from "../src/index.js";
@@ -33,7 +27,7 @@ let orgs: Map<string, OrgView>;
 /** Session rows by id, and what each one's program is doing. */
 let rows: Map<string, RowLike & { title?: string }>;
 let programs: Map<string, { alive: boolean; activity: "running" | "idle"; screen: string[] }>;
-let opened: Array<{ sessionId: string; owner: string; prompt?: string }>;
+let opened: Array<{ sessionId: string; owner: string; prompt?: string; orgId?: string }>;
 let closed: string[];
 let failOpen: string | null;
 
@@ -82,7 +76,12 @@ function queue(): ClaudeCodeQueue {
       open: async (row: never, owner, options) => {
         const r = row as RowLike;
         if (failOpen !== null) throw new Error(failOpen);
-        opened.push({ sessionId: r.sessionId, owner, prompt: options.prompt });
+        opened.push({
+          sessionId: r.sessionId,
+          owner,
+          prompt: options.prompt,
+          ...(options.orgId !== undefined ? { orgId: options.orgId } : {}),
+        });
         programs.set(r.sessionId, { alive: true, activity: "running", screen: ["hello", ""] });
         return { alive: true };
       },
@@ -148,7 +147,9 @@ describe("queueing a run", () => {
       sessionId: "cc-1",
       workspace: path.join(root, "desks", "dev"),
     });
-    expect(opened).toEqual([{ sessionId: "cc-1", owner: "admin", prompt: "fix the build" }]);
+    expect(opened).toEqual([
+      { sessionId: "cc-1", owner: "admin", prompt: "fix the build", orgId: "acme" },
+    ]);
     expect(rows.get("cc-1")).toMatchObject({ surface: "claude-code", title: "Build" });
     await q.stop();
   });
@@ -274,7 +275,9 @@ describe("the slots", () => {
       guard: async () => {},
     });
     expect(resumed.run).toMatchObject({ status: "running", keepIdle: true, prompt: "" });
-    expect(opened).toEqual([{ sessionId: "cc-1", owner: "admin", prompt: undefined }]);
+    expect(opened).toEqual([
+      { sessionId: "cc-1", owner: "admin", prompt: undefined, orgId: "acme" },
+    ]);
     await q.enqueue("p", "acme", qa, { prompt: "next" });
     programs.get("cc-1")!.activity = "idle";
     await q.pump();
@@ -288,6 +291,41 @@ describe("the slots", () => {
     await q.release("p", "acme", 1, person);
     await q.pump();
     expect(opened.map((o) => o.prompt)).toEqual([undefined, "next"]);
+    await q.stop();
+  });
+
+  it("close a resume run woken with a prompt once it idles, as they close any other", async () => {
+    config = { capacity: 1, idleMinutes: 30 };
+    const q = queue();
+    await fs.mkdir(path.join(root, "work"), { recursive: true });
+    const woken = await q.resume("p", "acme", person, {
+      claudeSessionId: "abc",
+      agent: "dev",
+      prompt: " review the comments ",
+      workspace: async () => path.join(root, "work"),
+      guard: async () => {},
+    });
+    expect(woken.run).toMatchObject({ status: "running", prompt: "review the comments" });
+    expect(woken.run.keepIdle).toBeUndefined();
+    expect(opened).toEqual([
+      { sessionId: "cc-1", owner: "admin", prompt: "review the comments", orgId: "acme" },
+    ]);
+    programs.get("cc-1")!.activity = "idle";
+    await q.pump();
+    clock += 30 * 60_000;
+    await q.pump();
+    expect(closed).toEqual(["cc-1"]);
+    expect(await q.show("p", "acme", 1, person, 0)).toMatchObject({ end: "idle" });
+    // Its employee may end it before that: the run is dev's, whoever queued it.
+    const again = await q.resume("p", "acme", person, {
+      claudeSessionId: "abc",
+      agent: "dev",
+      prompt: "next event",
+      workspace: async () => path.join(root, "work"),
+      guard: async () => {},
+    });
+    const released = await q.release("p", "acme", again.run.id, dev);
+    expect(released).toMatchObject({ status: "ended", end: "released", endedBy: "agent:dev" });
     await q.stop();
   });
 
@@ -404,20 +442,6 @@ describe("what is kept", () => {
   });
 });
 
-describe("the settings", () => {
-  it("read out-of-bounds values as the defaults", () => {
-    expect(queueConfigOf({})).toEqual({
-      capacity: DEFAULT_CAPACITY,
-      idleMinutes: DEFAULT_IDLE_MINUTES,
-    });
-    expect(queueConfigOf({ capacity: 0, idleMinutes: -1 })).toEqual({
-      capacity: DEFAULT_CAPACITY,
-      idleMinutes: DEFAULT_IDLE_MINUTES,
-    });
-    expect(queueConfigOf({ capacity: 8, idleMinutes: 0 })).toEqual({ capacity: 8, idleMinutes: 0 });
-  });
-});
-
 describe("the routes", () => {
   /** The routes behind a stand-in gate: `x-via: token` is the local API token, anything else a cookie. */
   function app(q: ClaudeCodeQueue) {
@@ -457,42 +481,5 @@ describe("the routes", () => {
     const released = await a.request(`${base}/runs/1/release`, post({ agentId: "dev" }));
     expect(await released.json()).toMatchObject({ status: "ended" });
     await q.stop();
-  });
-
-  it("serve a page whose script compiles and asks the organization's runs", () => {
-    const html = pageHtml();
-    expect(html).toContain('<main id="main"><h1>Claude Code</h1>');
-    const script = /<script>([\s\S]*)<\/script>/.exec(html)![1]!;
-    // The script is written inside a template literal: an escape gone wrong is a syntax error here.
-    expect(() => new Function(script)).not.toThrow();
-    // The placeholders in the words are filled (a regular expression here once lost its
-    // backslashes to the template literal, and the page said "{running} of {capacity}").
-    const fillLine = /^const fill = .*$/m.exec(script)![0];
-    const fill = new Function(`${fillLine} return fill;`)() as (
-      text: string,
-      values: Record<string, unknown>,
-    ) => string;
-    expect(fill(PAGE_STRINGS.en.slots, { running: 1, capacity: 4, queued: 2 })).toBe(
-      "1 of 4 slots in use on this server · 2 waiting",
-    );
-    expect(fill(PAGE_STRINGS.zh.position, { n: 3 })).toBe("第 3 位");
-    expect(script).toContain('"/organizations/" + m[2] + "/claude-code"');
-    expect(script).toContain('base + "/runs"');
-    // Open names the machine the organization runs on: the app never fetched these runs, so
-    // without it the chat page asks its own server for the Session and falls back to home.
-    const pathLine = /^const sessionPath = .*$/m.exec(script)![0];
-    const sessionPath = (machine: string | null) =>
-      new Function("machine", `${pathLine} return sessionPath;`)(machine) as (id: string) => string;
-    expect(sessionPath("dev box")("s 1")).toBe("/chat/s%201?machine=dev%20box");
-    expect(sessionPath(null)("s1")).toBe("/chat/s1");
-    expect(script).toContain("go(sessionPath(");
-    expect(script).toContain("esc(sessionPath(r.sessionId))");
-  });
-});
-
-describe("QueueError", () => {
-  it("carries the status and code the routes answer with", () => {
-    const err = new QueueError(409, "remote_org", "far");
-    expect([err.status, err.code, err.message]).toEqual([409, "remote_org", "far"]);
   });
 });

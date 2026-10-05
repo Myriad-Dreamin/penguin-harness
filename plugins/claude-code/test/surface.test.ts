@@ -24,9 +24,6 @@ import plugin, {
   transcriptDir,
   ClaudeCodeSurface,
   INHERITED_SESSION_MARKERS,
-  claudeArgv,
-  claudeBinary,
-  claudeSearchedIn,
   ClaudeCodeQueueModule,
   DEFAULT_CAPACITY,
   DEFAULT_IDLE_MINUTES,
@@ -96,12 +93,23 @@ function fakeTerminals() {
   return { terminals, created };
 }
 
+/** The control environment the harness hands with the ref: every variable, an organization's Session. */
+const CONTROL_ENV = {
+  PENGUIN_API_URL: "http://127.0.0.1:7364",
+  PENGUIN_API_TOKEN: "session-credential",
+  PENGUIN_PROJECT_ID: "p",
+  PENGUIN_AGENT_ID: "a",
+  PENGUIN_SESSION_ID: "s1",
+  PENGUIN_ORG_ID: "acme",
+};
+
 const ref: SurfaceSessionRef = {
   sessionId: "s1",
   projectId: "p",
   agentId: "a",
   workspace: "/work",
   ownerUserId: "admin",
+  env: CONTROL_ENV,
 };
 
 describe("the generated manifest and the plugin agree", () => {
@@ -353,17 +361,6 @@ describe("the title, followed for real", () => {
 });
 
 describe("the program", () => {
-  it("is claude from PATH unless PENGUIN_CLAUDE_BIN names another", () => {
-    expect(claudeBinary({})).toBe("claude");
-    expect(claudeBinary({ PENGUIN_CLAUDE_BIN: " /opt/claude " })).toBe("/opt/claude");
-    expect(claudeArgv(undefined, {})).toEqual(["claude"]);
-    expect(claudeArgv("  ", {})).toEqual(["claude"]);
-    expect(claudeArgv("fix the tests", { PENGUIN_CLAUDE_BIN: "c" })).toEqual([
-      "c",
-      "fix the tests",
-    ]);
-  });
-
   // The failure this resolution exists for: a machine's server is started over a
   // non-interactive ssh, so PATH is /usr/local/bin:/usr/bin:/bin and the installer's
   // ~/.local/bin is not on it. The pty then reports `execvp(3) failed.: No such file or
@@ -380,43 +377,6 @@ describe("the program", () => {
     // …and nothing was spawned to find that out.
     expect(created).toHaveLength(0);
   });
-
-  it.skipIf(process.platform === "win32")(
-    "finds an install the server's PATH cannot see, and says where it looked when there is none",
-    async () => {
-      const home = await fs.mkdtemp(path.join(os.tmpdir(), "claude-home-"));
-      const onPathDir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-path-"));
-      try {
-        const env = { HOME: home, PATH: onPathDir };
-        // Nothing anywhere: the bare name is handed over, and the search is reportable.
-        expect(claudeBinary(env)).toBe("claude");
-        expect(claudeSearchedIn(env)).toEqual([
-          `PATH (${onPathDir})`,
-          path.join(home, ".local/bin/claude"),
-          path.join(home, ".claude/local/claude"),
-          path.join(home, ".bun/bin/claude"),
-          path.join(home, ".npm-global/bin/claude"),
-        ]);
-
-        // Installed where the installer puts it, off PATH: found, as an absolute path.
-        const installed = path.join(home, ".local", "bin", "claude");
-        await fs.mkdir(path.dirname(installed), { recursive: true });
-        await fs.writeFile(installed, "#!/bin/sh\n", { mode: 0o755 });
-        expect(claudeBinary(env)).toBe(installed);
-
-        // PATH still wins when it can answer: that is the one the operator's shell runs.
-        const preferred = path.join(onPathDir, "claude");
-        await fs.writeFile(preferred, "#!/bin/sh\n", { mode: 0o755 });
-        expect(claudeBinary(env)).toBe(preferred);
-
-        // And an explicit override beats both, unexamined.
-        expect(claudeBinary({ ...env, PENGUIN_CLAUDE_BIN: "/opt/claude" })).toBe("/opt/claude");
-      } finally {
-        await fs.rm(home, { recursive: true, force: true });
-        await fs.rm(onPathDir, { recursive: true, force: true });
-      }
-    },
-  );
 });
 
 describe("the surface", () => {
@@ -441,6 +401,8 @@ describe("the surface", () => {
     // A harness started from inside a Claude Code session must not hand its own session
     // markers to the child: it would read them as "I am nested" and stop saving a transcript.
     expect(created[0]!.request.unsetEnv).toEqual(INHERITED_SESSION_MARKERS);
+    // The Session's control environment: its `penguin` commands act as the Session's employee.
+    expect(created[0]!.request.env).toEqual(CONTROL_ENV);
     expect(INHERITED_SESSION_MARKERS).toContain("CLAUDECODE");
     expect(INHERITED_SESSION_MARKERS).toContain("CLAUDE_CODE_SESSION_ID");
     // Configuration a deployment sets on purpose is inherited, not scrubbed.

@@ -2632,11 +2632,23 @@ export abstract class SessionServiceIface extends Interface<
   >
 >() {}
 
+/**
+ * Whose control environment: the Session, and — for a Session whose organization the
+ * harness's own records do not know (a plugin's queued run) — the organization its opener
+ * names. The records win when they know one; the named one only fills the gap.
+ */
+export type SessionControlContext = ControlEnvContext & { orgId?: string };
+
 /** The per-spawn policies every Session's command environment is built with. */
 @Interface()
 export abstract class SessionEnv {
   abstract proxyEnv(): ProxyEnvPolicy | null;
-  abstract controlEnv(ctx: ControlEnvContext): Record<string, string>;
+  /**
+   * PENGUIN_API_URL / _API_TOKEN / _PROJECT_ID / _AGENT_ID / _SESSION_ID / _ORG_ID for one
+   * Session: what its Agent's commands get, and what a surface's program gets
+   * (session-surfaces.ts) — one function, so the two never disagree.
+   */
+  abstract controlEnv(ctx: SessionControlContext): Record<string, string>;
   /** The directories at the FRONT of every command's PATH: the harness's own CLI shim (see CreateAgentOptions.pathPrepend). */
   abstract pathPrepend(): string[];
   abstract confineSpawn(ctx: ControlEnvContext): SpawnConfiner | null;
@@ -2718,13 +2730,13 @@ export class SessionsModule {
         const url = settings.getProxyUrl();
         return url === null ? null : { mode: "inject", url, noProxy: mergedNoProxy() };
       },
-      controlEnv: (ctx: ControlEnvContext): Record<string, string> => {
+      controlEnv: (ctx: SessionControlContext): Record<string, string> => {
         const host =
           config.host === "0.0.0.0" || config.host === "::"
             ? "127.0.0.1"
             : (loopbackHostRoles(config.host)?.app ?? config.host);
         const token = authState.apiToken;
-        const orgId = orgCache.ownerOfSession(ctx.sessionId)?.orgId ?? null;
+        const orgId = orgCache.ownerOfSession(ctx.sessionId)?.orgId ?? ctx.orgId ?? null;
         return {
           PENGUIN_API_URL: `http://${host}:${config.port}`,
           ...(token !== null ? { PENGUIN_API_TOKEN: token } : {}),
@@ -2733,7 +2745,8 @@ export class SessionsModule {
           PENGUIN_SESSION_ID: ctx.sessionId,
           // A desk or ticket session also learns its organization, so `penguin org` needs no
           // --org-id inside it. Looked up per spawn from the cache the ledger and the tickets
-          // project into.
+          // project into; a surface Session opened for an organization (a queued Claude Code
+          // run) is named by its opener instead.
           ...(orgId !== null ? { PENGUIN_ORG_ID: orgId } : {}),
         };
       },

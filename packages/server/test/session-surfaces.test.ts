@@ -21,6 +21,8 @@ import type {
   SessionSurfaceResponse,
 } from "../src/api/types.js";
 import { PluginHost } from "../src/plugin/host.js";
+import type { SessionSurfaces } from "../src/runtime/session-surfaces.js";
+import type { SessionEnv } from "../src/runtime/session-manager.js";
 import { TerminalManager, spawnFailureMessage } from "../src/terminal/manager.js";
 import { apiClient, createTestApp, loginAdmin, type TestApp } from "./helpers.js";
 
@@ -181,6 +183,58 @@ describe("session surfaces", () => {
     const closed = await api.delete(`/api/sessions/${session.sessionId}/surface`);
     expect(closed.status).toBe(204);
     expect(fake.opened.get(session.sessionId)!.alive).toBe(false);
+  });
+
+  it("hands the surface the Session's control environment, the one its Agent's commands get", async () => {
+    const { session } = (await (
+      await api.post(SESSIONS, { surface: "fake" })
+    ).json()) as SessionCreateResponse;
+    await api.post(`/api/sessions/${session.sessionId}/surface`, {});
+    const env = fake.opened.get(session.sessionId)!.ref.env;
+    const sessionEnv = t.deps.tree.api<SessionEnv>("SessionRuntimeModule", "SessionEnv");
+    const coords = {
+      projectId: "default_project",
+      agentId: "default_agent",
+      sessionId: session.sessionId,
+    };
+    // The same function the Agent's commands are spawned with: same URL, same credential.
+    expect(env).toEqual(sessionEnv.controlEnv(coords));
+    expect(env.PENGUIN_API_URL).toMatch(/^http:\/\//);
+    expect(env.PENGUIN_PROJECT_ID).toBe("default_project");
+    expect(env.PENGUIN_AGENT_ID).toBe("default_agent");
+    expect(env.PENGUIN_SESSION_ID).toBe(session.sessionId);
+    // A Session nobody opened for an organization names none.
+    expect(env.PENGUIN_ORG_ID).toBeUndefined();
+  });
+
+  it("names the organization a Session is opened for, unless the records already know its own", async () => {
+    const surfaces = t.deps.tree.api<SessionSurfaces>("SessionRuntimeModule", "SessionSurfaces");
+    const sessionEnv = t.deps.tree.api<SessionEnv>("SessionRuntimeModule", "SessionEnv");
+    const create = async () =>
+      ((await (await api.post(SESSIONS, { surface: "fake" })).json()) as SessionCreateResponse)
+        .session.sessionId;
+
+    // A queued run: its opener names the organization, and the program's environment says it.
+    const queued = await create();
+    await surfaces.open(t.deps.sessionsRepo.findById(queued)!, "admin", { orgId: "acme" });
+    const env = fake.opened.get(queued)!.ref.env;
+    expect(env.PENGUIN_ORG_ID).toBe("acme");
+    expect(env).toEqual(
+      sessionEnv.controlEnv({
+        projectId: "default_project",
+        agentId: "default_agent",
+        sessionId: queued,
+        orgId: "acme",
+      }),
+    );
+
+    // A desk session's organization is the records' to say; an opener's name does not move it.
+    const desk = await create();
+    t.deps.orgCacheRepo.syncDeskSessions("default_project", "beta", [
+      { sessionId: desk, agentId: "default_agent", current: true },
+    ]);
+    await surfaces.open(t.deps.sessionsRepo.findById(desk)!, "admin", { orgId: "acme" });
+    expect(fake.opened.get(desk)!.ref.env.PENGUIN_ORG_ID).toBe("beta");
   });
 
   it("takes the title the program gives it, until a person names the Session", async () => {

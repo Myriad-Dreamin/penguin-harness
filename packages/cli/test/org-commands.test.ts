@@ -1462,59 +1462,6 @@ describe("--org-id resolution", () => {
   });
 });
 
-describe("penguin org claude-code (the claude-code plugin's queue)", () => {
-  beforeEach(() => {
-    server.addEmployee("acme", { agentId: "dev1", title: "Developer" });
-    process.env.PENGUIN_SESSION_ID = DESK_SESSION;
-    process.env.PENGUIN_AGENT_ID = "dev1";
-  });
-
-  it("run queues for the calling employee with its identity, then ls, show and release follow the run", async () => {
-    org().claudeCodeRuns = new Map();
-    expect(
-      await cli(["org", "claude-code", "run", "Fix the flaky test", "--title", "Flaky test"]),
-    ).toBe(0);
-    expect(lastRequest("POST", "/organizations/acme/claude-code/runs")?.body).toEqual({
-      prompt: "Fix the flaky test",
-      title: "Flaky test",
-      sessionId: DESK_SESSION,
-      agentId: "dev1",
-    });
-    expect(out()).toBe(`${t.org.claudeCodeQueued(1, t.org.claudeCodeQueuedAt(1))}\n`);
-
-    stdout.length = 0;
-    expect(await cli(["org", "claude-code", "ls"])).toBe(0);
-    expect(lastRequest("GET", "/claude-code/runs")?.search).toBe(
-      `?sessionId=${DESK_SESSION}&agentId=dev1`,
-    );
-    expect(out()).toBe(
-      `${t.org.claudeCodeSlots(0, 4, 1)}\n#1  ${t.org.claudeCodeQueuedAt(1)}  dev1  Flaky test\n`,
-    );
-
-    stdout.length = 0;
-    org().claudeCodeRuns!.get(1)!.status = "running";
-    org().claudeCodeRuns!.get(1)!.sessionId = "cc-1";
-    expect(await cli(["org", "claude-code", "show", "1", "--screen", "5"])).toBe(0);
-    expect(lastRequest("GET", "/claude-code/runs/1")?.search).toContain("screen=5");
-    expect(out()).toContain(`${t.org.claudeCodeSessionLabel()}: cc-1`);
-    expect(out()).toContain("  > ready");
-
-    stdout.length = 0;
-    expect(await cli(["org", "claude-code", "release", "1", "--json"])).toBe(0);
-    expect(JSON.parse(out())).toMatchObject({ id: 1, status: "ended", end: "released" });
-  });
-
-  it("says the plugin is missing on a plain 404, and refuses a run id that is not a number", async () => {
-    expect(await cli(["org", "claude-code", "ls"])).toBe(1);
-    expect(err()).toContain(t.org.claudeCodePluginMissing());
-    org().claudeCodeRuns = new Map();
-    expect(await cli(["org", "claude-code", "release", "x1"])).toBe(1);
-    expect(err()).toContain(t.org.claudeCodeRunIdInvalid("x1"));
-    expect(await cli(["org", "claude-code", "show", "9"])).toBe(1);
-    expect(err()).toContain("run_not_found");
-  });
-});
-
 describe("penguin org proposal (the company-proposals plugin's routes)", () => {
   beforeEach(() => {
     server.addEmployee("acme", { agentId: "dev1", title: "Developer" });

@@ -670,6 +670,13 @@ export interface Messages {
     claudeCodeLsDesc: string;
     claudeCodeShowDesc: string;
     claudeCodeReleaseDesc: string;
+    claudeCodeReleaseSelf: string;
+    /** `release` with neither an id nor `--self`, or with both. */
+    claudeCodeReleaseWhich(): string;
+    /** `release --self` outside a Session: no PENGUIN_SESSION_ID. */
+    claudeCodeSelfNoSession(): string;
+    /** `release --self` where no run holds the calling Session. */
+    claudeCodeSelfNoRun(sessionId: string): string;
     claudeCodeWorkspace: string;
     claudeCodeTitle: string;
     claudeCodeAgent: string;
@@ -1931,6 +1938,13 @@ const en: Messages = {
     claudeCodeShowDesc: "Show one run (--screen N: the last N lines of its program's screen)",
     claudeCodeReleaseDesc:
       "Let go of a run: a queued one is cancelled, a running one's program is closed",
+    claudeCodeReleaseSelf:
+      "The run this command runs inside (its Session is PENGUIN_SESSION_ID): end it once its work is done",
+    claudeCodeReleaseWhich: () => "Name the run to release: a run id, or --self (not both).",
+    claudeCodeSelfNoSession: () =>
+      "--self needs PENGUIN_SESSION_ID: it releases the run this command runs inside, and none is set here.",
+    claudeCodeSelfNoRun: (sessionId) =>
+      `No queued or running Claude Code run of this organization has Session ${sessionId}.`,
     claudeCodeWorkspace:
       "The run's Workspace: inside the organization's workspace, or the calling Session's own (default)",
     claudeCodeTitle: "The Session's title (default: the prompt's first line)",
@@ -3178,6 +3192,12 @@ const zh: Messages = {
     claudeCodeLsDesc: "列出组织的 Claude Code 运行，以及本服务器的名额",
     claudeCodeShowDesc: "显示一次运行（--screen N：其程序屏幕的最后 N 行）",
     claudeCodeReleaseDesc: "释放一次运行：排队中的取消，运行中的关闭其程序",
+    claudeCodeReleaseSelf: "本命令所在的运行（其会话即 PENGUIN_SESSION_ID）：做完手头的事后结束它",
+    claudeCodeReleaseWhich: () => "指明要释放的运行：运行编号，或 --self（二者不能同时给）。",
+    claudeCodeSelfNoSession: () =>
+      "--self 需要 PENGUIN_SESSION_ID：它释放本命令所在的运行，而这里没有设置。",
+    claudeCodeSelfNoRun: (sessionId) =>
+      `本组织没有会话为 ${sessionId} 的排队中或运行中的 Claude Code 运行。`,
     claudeCodeWorkspace: "运行的工作区：组织工作区之内，或调用方会话自己的工作区（默认）",
     claudeCodeTitle: "会话标题（默认：提示词的第一行）",
     claudeCodeAgent: "由人排队时，运行所属的员工",

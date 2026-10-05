@@ -52,7 +52,7 @@ import { HttpError } from "../http/errors.js";
 import { readJson } from "../http/validate.js";
 import { Access, ProjectEvents } from "../mechanisms/projects.js";
 import { SessionIndex } from "../mechanisms/sessions.js";
-import { Sessions } from "./session-manager.js";
+import { SessionEnv, Sessions, type SessionControlContext } from "./session-manager.js";
 
 /** A first prompt's first line becomes the Session title, cut to what a list row can show. */
 const SURFACE_TITLE_MAX = 80;
@@ -71,6 +71,11 @@ export interface SessionSurfaceServiceDeps {
   notifyProjectUsers: (projectId: string, event: ServerEvent) => void;
   /** Pushes a surface Session's state to the one status authority (the SessionManager). */
   setStatus: (sessionId: string, status: SurfaceState | null) => void;
+  /**
+   * The Session's control environment — the SessionEnv function the Agent's own commands are
+   * spawned with, so a surface's program and an Agent's command carry the same credential.
+   */
+  controlEnv: (ctx: SessionControlContext) => Record<string, string>;
   now: () => Date;
 }
 
@@ -171,6 +176,12 @@ export class SessionSurfaceService {
       agentId: row.agentId,
       workspace: row.workspace,
       ownerUserId,
+      env: this.deps.controlEnv({
+        projectId: row.projectId,
+        agentId: row.agentId,
+        sessionId: row.sessionId,
+        ...(options.orgId !== undefined ? { orgId: options.orgId } : {}),
+      }),
     };
     this.opened.set(row.sessionId, { kind, projectId: row.projectId });
     const view: SurfaceView = await registered.surface.open(ref, options, (state) =>
@@ -305,6 +316,7 @@ export class SessionSurfacesModule {
   @Use() private readonly manager!: Sessions;
   @Use() private readonly projectEvents!: ProjectEvents;
   @Use() private readonly clock!: Clock;
+  @Use() private readonly env!: SessionEnv;
   @Provide() surfaces!: SessionSurfaces;
   setup({ contributions }: ClassCtx) {
     this.surfaces = new SessionSurfaceService(
@@ -317,6 +329,7 @@ export class SessionSurfacesModule {
       {
         sessions: this.sessions,
         setStatus: (sessionId, status) => this.manager.setSurfaceStatus(sessionId, status),
+        controlEnv: (ctx) => this.env.controlEnv(ctx),
         notifyProjectUsers: (projectId, event) =>
           this.projectEvents.notifyProjectUsers(projectId, event),
         now: () => this.clock.now(),
