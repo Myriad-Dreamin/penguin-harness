@@ -57,8 +57,15 @@ function ClaudeSessionDialog({ path, onClose }: { path: string; onClose: () => v
   }, [path, attempt]);
   const title = S.company.roadmaps.sessionDialog.title;
   return (
-    <Modal open title={title} onClose={onClose} headerless bare widthClass="sm:max-w-4xl">
-      <div className="flex h-[min(40rem,85vh)] flex-col">
+    <Modal
+      open
+      title={title}
+      onClose={onClose}
+      headerless
+      bare
+      widthClass="sm:max-w-[min(96vw,88rem)]"
+    >
+      <div className="flex h-[90vh] flex-col">
         <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-4 sm:px-6 sm:pt-5">
           <h2 className="min-w-0 truncate text-lg font-semibold">{title}</h2>
           <CloseButton onClose={onClose} />
@@ -92,7 +99,7 @@ export function ClaudeSessionBody({ view, onRetry }: { view: OpenView; onRetry: 
     case "running":
       return (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-line">
-          <SessionSurfaceView session={view.session} />
+          <SessionSurfaceView session={view.session} fontSize={15} />
         </div>
       );
     case "elsewhere": {

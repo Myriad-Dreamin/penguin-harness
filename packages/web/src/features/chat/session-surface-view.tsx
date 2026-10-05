@@ -26,6 +26,8 @@ import { TerminalView, probeJson, type TerminalInfo, type TerminalStatus } from 
 interface SurfaceRendererProps {
   session: SessionInfo;
   surface: SessionSurfaceSummary;
+  /** A terminal surface's font size, for a host that draws it larger (the session dialog). */
+  fontSize?: number;
 }
 
 /**
@@ -48,7 +50,13 @@ function Unavailable({ text }: { text: string }) {
 }
 
 /** The routed Session's surface, drawn by its renderer. */
-export function SessionSurfaceView({ session }: { session: SessionInfo }) {
+export function SessionSurfaceView({
+  session,
+  fontSize,
+}: {
+  session: SessionInfo;
+  fontSize?: number;
+}) {
   const { surfaces } = useContributions();
   const surface = surfaces.find((s) => s.kind === session.surface);
   if (surface === undefined) return <Unavailable text={S.chat.surface.unavailable} />;
@@ -61,7 +69,7 @@ export function SessionSurfaceView({ session }: { session: SessionInfo }) {
   }
   const Renderer = SURFACE_RENDERERS[surface.renderer.builtin];
   if (Renderer === undefined) return <Unavailable text={S.chat.surface.noRenderer} />;
-  return <Renderer session={session} surface={surface} />;
+  return <Renderer session={session} surface={surface} fontSize={fontSize} />;
 }
 
 /**
@@ -76,7 +84,7 @@ export function SessionSurfaceView({ session }: { session: SessionInfo }) {
  * makes every later call about it, the byte stream included, address that machine rather
  * than this server (lib/terminal-machines.ts).
  */
-function TerminalSurface({ session }: SurfaceRendererProps) {
+function TerminalSurface({ session, fontSize }: SurfaceRendererProps) {
   const [status, setStatus] = useState<TerminalStatus>("connecting");
   const [detail, setDetail] = useState("");
   // Bumped to open the surface again: the terminal view remounts and `ensure` runs anew.
@@ -117,6 +125,7 @@ function TerminalSurface({ session }: SurfaceRendererProps) {
         key={`${sessionId}:${generation}`}
         ensure={ensure}
         onStatus={onStatus}
+        fontSize={fontSize}
         className="min-h-0 flex-1"
       />
       {status === "exited" || status === "error" ? (
