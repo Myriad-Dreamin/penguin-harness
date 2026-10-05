@@ -140,3 +140,13 @@ export function parseRunsFile(text: string): RunsFile {
     return { next: 1, runs: [] };
   }
 }
+
+/**
+ * Whether `principal` may act on `run` as its holder — release it, or type into its program:
+ * the employee the run is for, whoever queued it, and any person; another employee may not.
+ */
+export function mayHandle(principal: string, run: Run): boolean {
+  return (
+    principal.startsWith("user:") || principal === `agent:${run.agentId}` || principal === run.by
+  );
+}

@@ -747,6 +747,12 @@ export class ClaudeCodeQueueModule {
           return null;
         }
       },
+      write: (terminalId, data) => {
+        const terminal = this.terminals.get(terminalId);
+        if (terminal === undefined || !terminal.alive) return false;
+        terminal.write(data);
+        return true;
+      },
       root: this.paths.root,
       config: () => queueConfigOf(this.pluginConfig.get(QUEUE_CONFIG_GROUP)),
       surfaceKind: "claude-code",

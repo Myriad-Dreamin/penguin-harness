@@ -5,6 +5,7 @@
  *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs            queue one
  *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id        one (`?screen=N`: its last screen lines)
  *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id/release  let go of it
+ *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id/input    type a line into its program (`{ text, enter? }`)
  *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/sessions        the roadmaps that have a session, and which
  *
  * Behind the cookie gate like every organization route. The calling Session and Agent ride in
@@ -18,6 +19,7 @@ import type { OrgActor } from "@prismshadow/penguin-server/plugin";
 import { QueueError } from "./runs.js";
 import type { ClaudeCodeQueue } from "./queue.js";
 import { readRoadmapSessions } from "./roadmap-sessions.js";
+import { runInputOf } from "./run-input.js";
 
 /** The route group's contribution id, as the manifest names it. */
 export const QUEUE_ROUTES_ID = "claude-code.queue-routes";
@@ -85,6 +87,12 @@ export function queueRoutes(queue: ClaudeCodeQueue, root: string): Hono {
     const [p, o] = orgOf(c);
     const body = await jsonBody(c);
     return c.json(await queue.release(p, o, idParam(c), actorOf(c, body)));
+  });
+  app.post("/runs/:id/input", async (c) => {
+    const [p, o] = orgOf(c);
+    const body = await jsonBody(c);
+    const id = idParam(c);
+    return c.json(await queue.input(p, o, id, actorOf(c, body), runInputOf(body)));
   });
   // The roadmaps whose Claude Code session the organization's mapping names, the session, and as
   // whom: what the roadmap page needs to offer "Open session", and what lets the web app's slot

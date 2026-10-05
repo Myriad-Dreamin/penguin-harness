@@ -25,3 +25,5 @@ roadmap 的会话也能从 roadmap 打开。`GET /api/claude-code/open?org=<orgI
 surface 起的程序现在带着所属 Session 的控制环境。surface 打开 Session 时，harness 交给它该 Session 的 Agent 自己执行命令时拿到的那组变量：`PENGUIN_API_URL`、`PENGUIN_API_TOKEN`、`PENGUIN_PROJECT_ID`、`PENGUIN_AGENT_ID`、`PENGUIN_SESSION_ID`，Session 属于某个组织时还有 `PENGUIN_ORG_ID`（即 `SurfaceSessionRef.env`，由派生命令所用的同一个 `SessionEnv.controlEnv` 计算）。Claude Code 把它们放进 pty，于是 `claude` 及其执行的 `penguin` 命令以该 Session 的员工身份行事，而不是借机器上人的登录。Session 没有的控制变量，会从 pty 继承的环境里删去。队列运行以所属组织的名义打开（新增的 `SurfaceOpenOptions.orgId`），其环境里写明该组织。harness 自己已知 Session 所属的组织时（工位或工单会话），以已知的为准。
 
 `penguin org claude-code release --self` 结束本命令所在的运行，即 Session 为 `PENGUIN_SESSION_ID` 的那一条。会话做完手头的事后用它让出名额。没有 `PENGUIN_SESSION_ID`，或没有排队中、运行中的运行属于该 Session 时，命令说明原因并以 1 退出。`release` 接受运行编号或 `--self`，二者择一。
+
+`POST …/claude-code/runs/<id>/input`（请求体 `{ "text": "…", "enter"?: true }`）向运行中的运行的程序输入一行文字，随后按下 Enter（`enter` 为 false 时不按）。能释放该运行的人就能向它输入，因此持服务器 API Token 的调用方也能唤醒一个空闲会话，而终端自带的按键路由不接受这类调用方。文字必须可打印：空文字、超长文字，以及包括换行在内的任何控制字符，均答 400。运行未在运行或其程序已不在时，答 409。

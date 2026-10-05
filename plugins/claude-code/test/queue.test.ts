@@ -100,6 +100,7 @@ function queue(): ClaudeCodeQueue {
     resume: () => {},
     activity: (sessionId) => programs.get(sessionId)?.activity ?? "idle",
     screen: (terminalId) => programs.get(terminalId.slice(2))?.screen ?? null,
+    write: () => false,
     root,
     config: () => config,
     surfaceKind: "claude-code",

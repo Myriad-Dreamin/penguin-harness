@@ -53,8 +53,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { OrgActor, OrgView } from "@prismshadow/penguin-server/plugin";
-import { KEEP_ENDED, PROMPT_MAX, QueueError, SCREEN_MAX, parseRunsFile, runsPath } from "./runs.js";
+import {
+  KEEP_ENDED,
+  PROMPT_MAX,
+  QueueError,
+  SCREEN_MAX,
+  mayHandle,
+  parseRunsFile,
+  runsPath,
+} from "./runs.js";
 import type { EndReason, QueueConfig, RowLike, Run, RunView, RunsFile } from "./runs.js";
+import { ENTER_DELAY_MS, type RunInput } from "./run-input.js";
 
 /** How often the pump looks at the running programs and starts what fits. */
 export const PUMP_MS = 3000;
@@ -102,6 +111,10 @@ export interface QueueDeps {
   resume(sessionId: string, claudeSessionId: string): void;
   /** The screen of a terminal, for `?screen=N`; null when there is no such terminal. */
   screen(terminalId: string): string[] | null;
+  /** Writes `data` to a terminal as typed input; false when there is no such live terminal. */
+  write(terminalId: string, data: string): boolean;
+  /** The pause between typed text and its Enter (default {@link ENTER_DELAY_MS}). */
+  enterDelayMs?: number;
   /** The data root: organizations live at `<root>/<projectId>/organizations/<orgId>`. */
   root: string;
   config(): QueueConfig;
@@ -482,11 +495,7 @@ export class ClaudeCodeQueue {
       const held = await this.read(projectId, orgId);
       const run = held.file.runs.find((r) => r.id === id);
       if (run === undefined) throw new QueueError(404, "run_not_found", `No run #${id}.`);
-      const mayRelease =
-        principal.startsWith("user:") ||
-        principal === `agent:${run.agentId}` ||
-        principal === run.by;
-      if (!mayRelease) {
+      if (!mayHandle(principal, run)) {
         throw new QueueError(
           403,
           "not_yours",
@@ -503,6 +512,51 @@ export class ClaudeCodeQueue {
     });
     const view = (await this.views(projectId, orgId, [id]))[0];
     void this.pump();
+    if (view === undefined) throw new QueueError(404, "run_not_found", `No run #${id}.`);
+    return view;
+  }
+
+  /**
+   * Types `input.text` into a running run's program, then Enter when asked: a line handed to an
+   * idle Claude Code starts its next turn. Who may is who may release it. Serial, so two callers'
+   * lines never interleave their text and Enter.
+   */
+  async input(
+    projectId: string,
+    orgId: string,
+    id: number,
+    actor: OrgActor,
+    input: RunInput,
+  ): Promise<RunView> {
+    const { principal } = await this.organization(projectId, orgId, actor);
+    await this.serial(async () => {
+      const run = (await this.read(projectId, orgId)).file.runs.find((r) => r.id === id);
+      if (run === undefined) throw new QueueError(404, "run_not_found", `No run #${id}.`);
+      if (!mayHandle(principal, run)) {
+        throw new QueueError(
+          403,
+          "not_yours",
+          `Run #${id} is ${run.agentId}'s; only it, whoever queued it, or a person may type into it.`,
+        );
+      }
+      const row =
+        run.status === "running" && run.sessionId !== undefined
+          ? this.deps.sessions.findById(run.sessionId)
+          : null;
+      const described = row === null ? null : this.deps.surfaces.describe(row as never);
+      const terminalId = described?.alive === true ? described.view?.terminalId : undefined;
+      if (typeof terminalId !== "string" || !this.deps.write(terminalId, input.text)) {
+        throw new QueueError(409, "not_running", `Run #${id} has no running program to type into.`);
+      }
+      if (input.enter) {
+        await new Promise((r) => setTimeout(r, this.deps.enterDelayMs ?? ENTER_DELAY_MS));
+        this.deps.write(terminalId, "\r");
+      }
+    });
+    this.deps.log?.(
+      `[claude-code] typed ${input.text.length} characters${input.enter ? " and Enter" : ""} into run ${orgId}#${id} (by ${principal})`,
+    );
+    const view = (await this.views(projectId, orgId, [id]))[0];
     if (view === undefined) throw new QueueError(404, "run_not_found", `No run #${id}.`);
     return view;
   }

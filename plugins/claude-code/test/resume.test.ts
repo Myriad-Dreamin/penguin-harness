@@ -98,6 +98,7 @@ function queue(): ClaudeCodeQueue {
     resume: (sessionId, claudeSessionId) => resumed.push([sessionId, claudeSessionId]),
     activity: () => "idle",
     screen: () => null,
+    write: () => false,
     root,
     config: () => config,
     surfaceKind: "claude-code",

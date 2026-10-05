@@ -88,6 +88,7 @@ function queue(): ClaudeCodeQueue {
     resume: () => {},
     activity: () => "idle",
     screen: () => null,
+    write: () => false,
     root,
     config: () => config,
     surfaceKind: "claude-code",
