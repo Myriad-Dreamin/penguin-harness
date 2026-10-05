@@ -3,9 +3,10 @@
 The smallest plugin that teaches the PenguinHarness web app to draw a kind of Workspace file with
 browser code of its own, plus a Skill that teaches the Agent to produce one. It demonstrates:
 
-- **A web module.** The plugin's one module (`src/index.ts`, beside the plugin's declaration) declares `side: "web"` in its
-  `@Module` and contributes to the web app's `ChatModule.fileRenderers` slot: gen-ifaces writes
-  `side: "web"` and its built file into `ifaces.json`, and `scripts/build-plugin.mjs` emits
+- **A web module.** The plugin's one module (`src/index.ts`, beside the plugin's declaration)
+  contributes to the web app's `ChatModule.fileRenderers` slot, a module only the web app has, and that
+  wiring is what makes it a web module — nothing in it says where it runs. gen-ifaces derives
+  `side: "web"` from the wiring and writes it with the built file into `ifaces.json`, and `scripts/build-plugin.mjs` emits
   `dist/web/ExampleMusic.js` for the browser, with React, the kernel and the UI package left to the
   web app's own instances. The server only forwards it (`GET /api/contributions`, `webModules`);
   the web app checks it against its module tree and boots it with its own modules.

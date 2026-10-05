@@ -2,8 +2,8 @@
  * @penguinharness/example-music — the smallest plugin that teaches the web app to draw a kind of
  * Workspace file, with its own browser code.
  *
- * Its one module is a WEB module (`@Module({ side: "web" })`): it contributes to the web app's
- * `ChatModule.fileRenderers` slot, and the build emits it as a browser module
+ * Its one module is a WEB module because of where it is wired: it contributes to the web app's
+ * `ChatModule.fileRenderers` slot (a module only the web app has), and the build emits it as a browser module
  * (`dist/web/ExampleMusic.js`, scripts/build-plugin.mjs). The server only forwards it: GET
  * /api/contributions lists it with the URL of its file, and the web app loads that file and adds
  * the module to its own tree before it mounts. When a reply links a Workspace file with one of
@@ -29,7 +29,6 @@ import type { Plugin } from "@prismshadow/penguin-core/plugin";
 import type { FileRendererProps, Language } from "@prismshadow/penguin-web/plugin-types";
 
 @Module({
-  side: "web",
   contributes: {
     "ChatModule.fileRenderers": [
       { id: "example-music.audio", extensions: ["mp3", "wav", "ogg", "m4a"] },

@@ -2,7 +2,7 @@
  * @penguinharness/example-no-evaluation-center — the smallest plugin that takes a page away from
  * the web app, with no code at all.
  *
- * Its one module, a web module (`side: "web"`), contributes `{ key: "benchmark" }` to the web
+ * Its one module is a web module because of where it is wired: it contributes `{ key: "benchmark" }` to the web
  * app's `ShellModule.pageRemovals` slot. Its class is empty — the removal is all data — and it is
  * built and forwarded like any web module: a file of under 3 KB the page imports at boot, its
  * manifest beside it (GET /api/contributions, `webModules`). The shell then drops the page keyed
@@ -16,7 +16,6 @@ import type { Plugin } from "@prismshadow/penguin-core/plugin";
 
 /** The plugin's one module: no body, only the removal it contributes. */
 @Module({
-  side: "web",
   contributes: {
     "ShellModule.pageRemovals": [
       { id: "example-no-evaluation-center.benchmark", key: "benchmark" },

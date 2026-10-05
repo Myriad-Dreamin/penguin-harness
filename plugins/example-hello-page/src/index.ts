@@ -2,8 +2,8 @@
  * @penguinharness/example-hello-page — the smallest plugin that adds a page to the web app, drawn
  * by its own React component.
  *
- * Its one module is a WEB module (`@Module({ side: "web" })`): it contributes to the web app's
- * `ShellModule.pages` slot, and the build emits it as a browser module
+ * Its one module is a WEB module because of where it is wired: it contributes to the web app's
+ * `ShellModule.pages` slot (a module only the web app has), and the build emits it as a browser module
  * (`dist/web/ExampleHelloPage.js`, scripts/build-plugin.mjs). The server only forwards it: GET
  * /api/contributions lists it with the URL of its file, and the web app loads that file and adds
  * the module to its own tree before it mounts.
@@ -28,7 +28,6 @@ import type { Plugin } from "@prismshadow/penguin-core/plugin";
 import type { Language } from "@prismshadow/penguin-web/plugin-types";
 
 @Module({
-  side: "web",
   contributes: {
     "ShellModule.pages": [
       {

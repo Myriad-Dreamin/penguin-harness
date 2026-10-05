@@ -3,9 +3,9 @@
  * build-plugin: one plugin package's build after gen-ifaces, one file per side — run from the
  * package directory (`node ../../scripts/build-plugin.mjs`).
  *
- * The author writes one entry (`src/index.ts`, `export default { modules: [...] }`) and declares
- * each web module's side on it (`@Module({ side: "web" })`); gen-ifaces has written each module's
- * `side`, `source` and (web) `file` into `ifaces.json` (lib/plugin-sides.mjs). From that:
+ * The author writes one entry (`src/index.ts`, `export default { modules: [...] }`); gen-ifaces
+ * has derived each module's host from its wiring and written its `side`, `source` and (web)
+ * `file` into `ifaces.json` (lib/plugin-sides.mjs). From that:
  *
  * - `dist/index.js`, the package's main entry, for Node: a generated entry whose default export
  *   lists the PLATFORM modules (and the replacements) only, so the server never imports browser

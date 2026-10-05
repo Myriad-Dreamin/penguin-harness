@@ -42,9 +42,9 @@
  * A type that recurses into itself is cut at the cycle and compared by name (a warning).
  *
  * For a PLUGIN package (one whose default export names modules) every manifest also says
- * which side runs it — `side: "server" | "web"`, as the class declares it
- * (`@Module({ side: "web" })`; none = the platform) — with its `source` file and, for a web
- * module, the built `file` the plugin build emits (lib/plugin-sides.mjs).
+ * which host runs it — `side: "server" | "web"`, derived from the module's wiring against the
+ * two host tables, never declared — with its `source` file and, for a web module, the built
+ * `file` the plugin build emits (lib/plugin-sides.mjs).
  */
 import fs from "node:fs";
 import { createHash } from "node:crypto";
@@ -120,8 +120,6 @@ const manifests = {};
 let pluginDecl = null;
 /** Module (class) name → the source file declaring it, relative to the working directory. */
 const moduleSources = new Map();
-/** Module name → the side its decorator declares (`@Module({ side })`), when it declares one. */
-const declaredSides = new Map();
 
 for (const project of projects) {
   const configPath = path.resolve(project);
@@ -1130,7 +1128,6 @@ for (const project of projects) {
       children: [],
     };
     if (meta.context !== undefined) m.context = meta.context;
-    if (meta.side !== undefined) declaredSides.set(m.name, meta.side);
     if (kind === "component") {
       m.provides[className] = componentKeyBySymbol.get(sym);
       // `implements Users`: the component declares the mechanism it implements; the
@@ -1263,8 +1260,8 @@ for (const project of projects) {
   }
 }
 
-// A plugin package's modules each run on the side they declare, written into the table with the
-// file the plugin build emits (lib/plugin-sides.mjs). A web module requires a web-app interface by
+// A plugin package's modules each run on the host their wiring names, written into the table with
+// the file the plugin build emits (lib/plugin-sides.mjs). A web module requires a web-app interface by
 // the app's own key: it imports the declaration (`@prismshadow/penguin-web/plugin-types`), so the
 // key is the app's with nothing re-keyed; a restated copy is an error naming the interface.
 if (pluginDecl !== null) {
@@ -1274,13 +1271,16 @@ if (pluginDecl !== null) {
   } catch {
     // No manifest beside the project: the restated-copy check has no package to compare.
   }
-  errors.push(
-    ...assignSides(manifests, moduleSources, declaredSides, {
-      pkgName,
-      replaces: pluginDecl.replaces,
-      hosts: readHostTables(),
-    }),
-  );
+  let hosts;
+  try {
+    hosts = readHostTables();
+  } catch (e) {
+    errors.push(e.message);
+  }
+  if (hosts !== undefined)
+    errors.push(
+      ...assignSides(manifests, moduleSources, { pkgName, replaces: pluginDecl.replaces, hosts }),
+    );
 }
 
 for (const w of warnings) console.warn(`gen-ifaces: warning: ${w}`);

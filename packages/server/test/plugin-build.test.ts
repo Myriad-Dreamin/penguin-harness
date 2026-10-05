@@ -1,14 +1,14 @@
 /**
- * A plugin's two sides at build time (scripts/lib/plugin-sides.mjs, scripts/build-plugin.mjs).
+ * A plugin's two hosts at build time (scripts/lib/plugin-sides.mjs, scripts/build-plugin.mjs).
  *
- * - A module runs on the side it declares (`@Module({ side: "web" })`), the platform when it
- *   declares none; a side that is neither is an error. Every web module gets its built file.
- *   One source file holding both sides is an error.
+ * - A module's host is derived from its wiring: a requirement keyed by a host package, or a
+ *   module its contribution, `from` or replacement names that exactly one host table carries.
+ *   Web wiring alone makes a web module (with its built file), platform wiring alone a platform
+ *   one; both are an error naming the two wirings; none (no wiring, wiring only to siblings,
+ *   another plugin or a module no tree has) is the platform, as every server plugin always was.
+ *   One source file holding both hosts is an error.
  * - A web module requiring an interface its own package restates (declares, provides nowhere)
- *   is an error naming the interface: it must import the web app's declaration. A module
- *   requiring the other host's interface is on the wrong side.
- * - With the host tables at hand, a module naming a module only the other host has (a slot's
- *   owner, a `from`) is declared on the wrong side; without them, that check is skipped.
+ *   is an error naming the interface: it must import the web app's declaration.
  * - The build emits the main entry with the platform modules only and one browser module per web
  *   module — an empty one included — with a lazy component in its own chunk; the browser module
  *   carries no copy of React, the kernel or the UI package — imported with a page's shared
@@ -29,7 +29,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import * as Kernel from "@prismshadow/penguin-core/kernel/runtime";
 import { moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ManifestTable, ModuleClass } from "@prismshadow/penguin-core/kernel/runtime";
-import { assignSides, mixedFiles } from "../../../scripts/lib/plugin-sides.mjs";
+import { assignSides, mixedFiles, readHostTables } from "../../../scripts/lib/plugin-sides.mjs";
 import type { Hosts } from "../../../scripts/lib/plugin-sides.mjs";
 import { uiSurfaceNames } from "../../../scripts/lib/web-shared.mjs";
 import {
@@ -57,61 +57,122 @@ const m = (name: string, more: object = {}) => ({
 /** assignSides over `manifests`, each module in its own file; returns the errors and the result. */
 const assign = (
   manifests: Record<string, ReturnType<typeof m>>,
-  declared: Record<string, string>,
-  opts: Parameters<typeof assignSides>[3] = {},
+  opts: Partial<Parameters<typeof assignSides>[2]> = {},
 ) => {
   const sources = new Map(Object.keys(manifests).map((n) => [n, `src/${n}.ts`]));
-  const errors = assignSides(manifests, sources, new Map(Object.entries(declared)), opts);
+  const errors = assignSides(manifests, sources, { hosts, ...opts });
   return {
     errors,
     out: manifests as Record<string, { side?: string; file?: string; source?: string }>,
   };
 };
 
-describe("the declared side", () => {
-  it("is the platform unless the module declares the web; every web module gets its file", () => {
-    const { errors, out } = assign(
-      {
-        Box: m("Box", { contributes: { "SandboxModule.providers": [{ id: "b" }] } }),
-        Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
-        Removal: m("Removal", { contributes: { "ShellModule.pageRemovals": [{ id: "r" }] } }),
-      },
-      { Player: "web", Removal: "web" },
-    );
+describe("the derived host", () => {
+  it("is the web app for web wiring alone, and every web module gets its file", () => {
+    const { errors, out } = assign({
+      Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
+      Lang: m("Lang", { requires: { lang: { iface: "@prismshadow/penguin-web#Language" } } }),
+      ChatModule: m("ChatModule"),
+    }, { replaces: ["ChatModule"] });
+    expect(errors).toEqual([]);
+    expect(out.Player).toMatchObject({ side: "web", file: "dist/web/Player.js" });
+    expect(out.Lang).toMatchObject({ side: "web", file: "dist/web/Lang.js" });
+    expect(out.ChatModule).toMatchObject({ side: "web" });
+  });
+
+  it("is the platform for platform wiring alone", () => {
+    const { errors, out } = assign({
+      Box: m("Box", { contributes: { "SandboxModule.providers": [{ id: "b" }] } }),
+      Paths: m("Paths", { requires: { p: { iface: "@prismshadow/penguin-server#Paths" } } }),
+      Via: m("Via", { requires: { s: { iface: "x#S", from: "SandboxModule" } } }),
+    });
     expect(errors).toEqual([]);
     expect(out.Box).toMatchObject({ side: "server", source: "src/Box.ts" });
     expect(out.Box!.file).toBeUndefined();
-    expect(out.Player).toMatchObject({ side: "web", file: "dist/web/Player.js" });
-    expect(out.Removal).toMatchObject({ side: "web", file: "dist/web/Removal.js" });
+    expect(out.Paths!.side).toBe("server");
+    expect(out.Via!.side).toBe("server");
   });
 
-  it("refuses a side that is neither", () => {
-    const { errors } = assign({ Odd: m("Odd") }, { Odd: "browser" });
-    expect(errors).toEqual([`Odd: side 'browser' is neither "server" nor "web"`]);
+  it("is the platform with no host wiring, as every server plugin's module always was", () => {
+    const both = {
+      server: { modules: { ...hosts.server.modules, SessionsModule: {} } },
+      web: { modules: { ...hosts.web.modules, SessionsModule: {} } },
+    };
+    const { errors, out } = assign(
+      {
+        Bare: m("Bare"),
+        Own: m("Own", { requires: { c: { iface: "@acme/p#Config" } } }),
+        Sibling: m("Sibling", { contributes: { "Player.extras": [{ id: "s" }] } }),
+        Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
+        Elsewhere: m("Elsewhere", { contributes: { "OtherPlugin.actions": [{ id: "e" }] } }),
+        Shared: m("Shared", { contributes: { "SessionsModule.extras": [{ id: "x" }] } }),
+      },
+      { hosts: both },
+    );
+    expect(errors).toEqual([]);
+    for (const name of ["Bare", "Own", "Sibling", "Elsewhere", "Shared"])
+      expect(out[name]!.side).toBe("server");
+    // A sibling's host is not followed: wiring only to a web sibling is no host wiring.
+    expect(out.Player!.side).toBe("web");
   });
 
-  it("refuses one file holding modules of both sides", () => {
+  it("refuses a module wired into both hosts, naming the two wirings", () => {
+    const { errors } = assign({
+      Both: m("Both", {
+        requires: { p: { iface: "@prismshadow/penguin-server#Paths" } },
+        contributes: { "ChatModule.fileRenderers": [{ id: "p" }] },
+      }),
+    });
+    expect(errors).toEqual([
+      "Both: its contribution to 'ChatModule.fileRenderers' wires it into the web app and requires.p ('@prismshadow/penguin-server#Paths') into the platform — split it into two modules",
+    ]);
+  });
+
+  it("leaves a slot owner no tree has to the runtime check of the tree that loads it", () => {
+    // No host table carries `Nowhere`: no host wiring, so the platform, whose boot check refuses
+    // a contribution to a module it does not have.
+    const { errors, out } = assign({
+      Typo: m("Typo", { contributes: { "Nowhere.slot": [{ id: "t" }] } }),
+    });
+    expect(errors).toEqual([]);
+    expect(out.Typo!.side).toBe("server");
+  });
+
+  it("refuses one file holding modules of both hosts", () => {
     expect(
       mixedFiles(
         { Box: "src/a.ts", Player: "src/a.ts", Other: "src/b.ts" },
         { Box: "server", Player: "web", Other: "web" },
       ),
     ).toEqual([
-      "src/a.ts: holds web module(s) [Player] and platform module(s) [Box] — one side per file",
+      "src/a.ts: holds module(s) wired into the web app [Player] and module(s) that run on the platform [Box] — one host per file",
+    ]);
+    const manifests = {
+      Box: m("Box", { contributes: { "SandboxModule.providers": [{ id: "b" }] } }),
+      Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
+    };
+    const sources = new Map([
+      ["Box", "src/index.ts"],
+      ["Player", "src/index.ts"],
+    ]);
+    expect(assignSides(manifests, sources, { hosts })).toEqual([
+      "src/index.ts: holds module(s) wired into the web app [Player] and module(s) that run on the platform [Box] — one host per file",
     ]);
   });
 
   it("refuses a web module requiring a restated copy of a host interface, naming it", () => {
+    const renders = { "ChatModule.fileRenderers": [{ id: "r" }] };
     const { errors } = assign(
       {
-        Copy: m("Copy", { requires: { lang: { iface: "@acme/p#Language" } } }),
-        Host: m("Host", { requires: { lang: { iface: "@prismshadow/penguin-web#Language" } } }),
-        Own: m("Own", { requires: { thing: { iface: "@acme/p#Thing" } } }),
-        Maker: m("Maker", { provides: { thing: "@acme/p#Thing" } }),
+        Copy: m("Copy", {
+          requires: { lang: { iface: "@acme/p#Language" } },
+          contributes: renders,
+        }),
+        Own: m("Own", { requires: { thing: { iface: "@acme/p#Thing" } }, contributes: renders }),
+        Maker: m("Maker", { provides: { thing: "@acme/p#Thing" }, contributes: renders }),
         // On the platform a requirement is met structurally: a consumer-declared shape is fine.
         Shaped: m("Shaped", { requires: { lang: { iface: "@acme/p#Shape" } } }),
       },
-      { Copy: "web", Host: "web", Own: "web", Maker: "web" },
       { pkgName: "@acme/p" },
     );
     expect(errors).toEqual([
@@ -120,30 +181,25 @@ describe("the declared side", () => {
       ),
     ]);
   });
+});
 
-  it("refuses a module requiring the other host's interface", () => {
-    const { errors } = assign(
-      { Lost: m("Lost", { requires: { lang: { iface: "@prismshadow/penguin-web#Language" } } }) },
-      {},
-    );
-    expect(errors).toEqual([
-      `Lost: requires.lang is the web app's interface '@prismshadow/penguin-web#Language', but the module is declared for the platform — declare @Module({ side: "web" })`,
-    ]);
+describe("the host tables", () => {
+  const roots: string[] = [];
+  afterEach(async () => {
+    for (const r of roots.splice(0)) await fs.rm(r, { recursive: true, force: true });
   });
 
-  it("refuses, with the host tables, a module naming a module only the other host has", () => {
-    const manifests = () => ({
-      Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
-      Box: m("Box", { requires: { s: { iface: "x#S", from: "SandboxModule" } } }),
-      Elsewhere: m("Elsewhere", { contributes: { "OtherPlugin.actions": [{ id: "e" }] } }),
-    });
-    const { errors } = assign(manifests(), { Box: "web" }, { hosts });
-    expect(errors).toEqual([
-      `Player: its contribution to 'ChatModule.fileRenderers' names the web app's module 'ChatModule', but the module is declared for the platform — declare @Module({ side: "web" })`,
-      `Box: its requirement 's' names the platform's module 'SandboxModule', but the module is declared for the web app — declare @Module({ side: "server" })`,
-    ]);
-    // Without both tables (a plugin built before the hosts) the check is skipped.
-    expect(assign(manifests(), { Box: "web" }, { hosts: { web: hosts.web } }).errors).toEqual([]);
+  it("are read from the checkout; a missing one says how to generate it", async () => {
+    const root = await makeTempRoot();
+    roots.push(root);
+    await fs.mkdir(path.join(root, "packages", "server", "src"), { recursive: true });
+    await fs.writeFile(path.join(root, "packages", "server", "src", "ifaces.json"), "{}");
+    expect(() => readHostTables(root)).toThrow(
+      /^packages\/web\/src\/ifaces\.json is missing: .*`pnpm gen:ifaces` at the repository root$/,
+    );
+    await fs.mkdir(path.join(root, "packages", "web", "src"), { recursive: true });
+    await fs.writeFile(path.join(root, "packages", "web", "src", "ifaces.json"), "{}");
+    expect(readHostTables(root)).toEqual({ server: {}, web: {} });
   });
 });
 

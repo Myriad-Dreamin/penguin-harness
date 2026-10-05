@@ -3,8 +3,9 @@
 The smallest plugin that removes a page from the PenguinHarness web app — with no code at all. It
 demonstrates:
 
-- **A web module that is all data.** The plugin's one module declares `side: "web"` and
-  contributes `{ key: "benchmark" }` to the web app's `ShellModule.pageRemovals` slot. Its class
+- **A web module that is all data.** The plugin's one module contributes
+  `{ key: "benchmark" }` to the web app's `ShellModule.pageRemovals` slot, which makes it a web
+  module: gen-ifaces derives its host from that wiring, and nothing in it says where it runs. Its class
   is empty, yet it is built and forwarded like any web module: `scripts/build-plugin.mjs` emits a
   browser file of under 3 KB (mostly the decorator helpers), the server forwards it with its
   manifest (`GET /api/contributions`, `webModules`), and the web app imports it at boot.

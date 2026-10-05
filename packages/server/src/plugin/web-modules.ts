@@ -1,6 +1,6 @@
 /**
  * The enabled plugins' web modules, forwarded: for every plugin this process loaded, the modules
- * its generated `ifaces.json` places on the web side (`side: "web"`, scripts/gen-ifaces.mjs),
+ * its generated `ifaces.json` places on the web app (`side: "web"`, derived by scripts/gen-ifaces.mjs),
  * with the URLs of their built files. Nothing here reads a slot or checks a manifest — the web
  * app does both against its own tree — so a new web slot needs nothing from the server.
  *
