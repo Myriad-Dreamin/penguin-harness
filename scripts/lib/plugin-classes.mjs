@@ -163,7 +163,9 @@ export function prefixedInput(css, prefix, names) {
     .map((n) => `${prefix}:${n}`)
     .join(" ")
     .replace(/[\\"]/g, "\\$&");
-  return { input: `${withPrefix.replace(/@source\s+[^;]*;/g, "")}\n@source inline("${inline}");\n` };
+  return {
+    input: `${withPrefix.replace(/@source\s+[^;]*;/g, "")}\n@source inline("${inline}");\n`,
+  };
 }
 
 /** The JSX runtime wrapper's source: the host's runtime, with the names prefixed in class props. */

@@ -155,10 +155,7 @@ export function AudioCard({
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-baseline gap-3">
-          <span
-            data-tooltip={name}
-            className="min-w-0 flex-1 truncate font-mono text-sm text-fg"
-          >
+          <span data-tooltip={name} className="min-w-0 flex-1 truncate font-mono text-sm text-fg">
             {name}
           </span>
           {/* Read out by the seek bar's value text; drawn here for the eye only. */}
@@ -188,16 +185,9 @@ export function AudioFailed({ name, strings: S }: { name: string; strings: Audio
   return (
     <div data-audio-file="failed" className={CARD}>
       <span className={`${DISC} bg-surface-muted`}>
-        <GlyphIcon
-          d={ICONS.xCircle}
-          size={ICON_SIZE.iconButton}
-          className="text-tone-danger-fg"
-        />
+        <GlyphIcon d={ICONS.xCircle} size={ICON_SIZE.iconButton} className="text-tone-danger-fg" />
       </span>
-      <span
-        role="status"
-        className="min-w-0 flex-1 text-sm text-fg-muted [overflow-wrap:anywhere]"
-      >
+      <span role="status" className="min-w-0 flex-1 text-sm text-fg-muted [overflow-wrap:anywhere]">
         {S.unavailable(name)}
       </span>
     </div>

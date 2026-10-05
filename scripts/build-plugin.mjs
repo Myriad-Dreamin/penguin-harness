@@ -92,7 +92,8 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
 
   // ── the web side's stylesheet, its classes under the package's prefix (lib/plugin-classes.mjs) ──
   const css = path.join(dir, "src", "styles.css");
-  const classes = web.length > 0 && fs.existsSync(css) ? compileStyles(dir, pkg.name, minify) : null;
+  const classes =
+    web.length > 0 && fs.existsSync(css) ? compileStyles(dir, pkg.name, minify) : null;
   if (typeof classes === "string") problems.push(classes);
 
   // ── the web side: one ES module per web module, the shared dependencies the host's ──
