@@ -13,6 +13,10 @@
  * - **Line breaks.** A composer with Shift+Enter for a new line makes single newlines
  *   meaningful; Markdown folds them into spaces. They become hard breaks here.
  *
+ * Links open in a new tab as everywhere else, except a link to a Claude Code session (the
+ * claude-code plugin's open route, which roadmap channels append to their messages): a plain
+ * click opens that session in the app's dialog instead (claude-session-open.ts).
+ *
  * A mention reaches the renderer as `<data value="agent:ceo">`: mdast has no mention node, no
  * Markdown syntax produces a `<data>` element (so claiming it in the components map collides
  * with nothing the parser or KaTeX emits), and it is the one HTML element that already means "a
@@ -22,7 +26,7 @@
 import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Components, Options } from "react-markdown";
-import { Md } from "@prismshadow/penguin-ui";
+import { Md, ProseLinksProvider } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
 import { toneSurface } from "../../lib/tone";
 import {
@@ -37,6 +41,7 @@ import {
   ProposalCapsule,
   remarkProposalLinks,
 } from "../proposals/proposal-links";
+import { claudeSessionLinkBehavior } from "./claude-session-open";
 
 /** The mdast shapes this pass touches, declared structurally rather than taking `@types/mdast` on. */
 interface MdNode {
@@ -223,5 +228,11 @@ export function ChannelMessageBody({ text }: { text: string }) {
     ],
     [reader.names],
   );
-  return <Md text={text} extraPlugins={plugins} components={CHANNEL_COMPONENTS} />;
+  // A link to the claude-code plugin's open route opens the session dialog in place; every
+  // other link keeps the default, a new tab.
+  return (
+    <ProseLinksProvider resolve={claudeSessionLinkBehavior}>
+      <Md text={text} extraPlugins={plugins} components={CHANNEL_COMPONENTS} />
+    </ProseLinksProvider>
+  );
 }

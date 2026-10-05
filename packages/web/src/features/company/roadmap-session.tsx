@@ -5,6 +5,9 @@
  * `/api/claude-code/open?org=&project=&roadmap=`, which finds the session and opens it as the
  * mapped employee — so the app learns only whether there is one, never the session id.
  *
+ * A plain click opens the session in the app's dialog (claude-session-dialog.tsx) on that same
+ * link's JSON form; a modified click opens the link's page in a new tab or window as before.
+ *
  * Without the claude-code plugin (its console page is not among the contributed pages) nothing
  * is asked; a failed read is no button. Nothing here is load-bearing for the column.
  */
@@ -14,6 +17,7 @@ import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { machineForOrg } from "../../lib/org-machines";
 import { useOrgPages } from "./use-org-pages";
+import { onClaudeSessionClick } from "./claude-session-open";
 
 /** The roadmap's session as the column shows it: where the link goes, and as whom. */
 export interface RoadmapSession {
@@ -79,6 +83,7 @@ export function RoadmapSessionLink({ session, name }: { session: RoadmapSession;
   return (
     <a
       href={session.href}
+      onClick={(e) => onClaudeSessionClick(e, session.href)}
       data-tooltip={S.company.roadmaps.openSessionTitle(name)}
       className={`${buttonClass("secondary", "sm")} ml-auto focus-visible:[outline:var(--ui-focus-ring)] focus-visible:[outline-offset:var(--ui-focus-ring-offset)]`}
       data-roadmap-session=""

@@ -5199,6 +5199,24 @@ Scenarios:
       openSession: "Open session",
       openSessionTitle: (agent: string) =>
         `Continue this roadmap's Claude Code session, as ${agent}`,
+      sessionDialog: {
+        title: "Claude Code session",
+        opening: "Opening the session…",
+        queued: (position: number | null) =>
+          position === null
+            ? "The session is starting; it attaches here once it is ready."
+            : `Waiting for a slot, number ${position} in line; it attaches here once it starts.`,
+        elsewhere:
+          "This session is running in a terminal outside the queue, so a second program is not started.",
+        elsewhereHint: "Exit it there (/exit), then open it again.",
+        process: "Process",
+        terminal: "Terminal",
+        tmuxPane: "tmux pane",
+        directory: "Directory",
+        ended: "The run ended before the session started.",
+        failed: "The session could not be opened",
+        retry: "Try again",
+      },
       status: {
         awaiting_room: "waiting for its room",
         discussing: "discussing",

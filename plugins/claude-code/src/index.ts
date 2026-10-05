@@ -111,6 +111,8 @@ export {
   refusalPage,
 } from "./resume.js";
 export type { LiveSession, OpenRoutesDeps, ProcProbe, SessionRecord } from "./resume.js";
+export { runAnswer, wantsJson } from "./open-answer.js";
+export type { OpenAnswer, OpenWhere } from "./open-answer.js";
 export {
   ROADMAP_SESSIONS_FILE,
   parseRoadmapSessions,

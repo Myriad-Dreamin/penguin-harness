@@ -5245,6 +5245,24 @@ Benchmark：
       /** Beside the title when the claude-code plugin maps the roadmap to a Claude Code session (roadmap-session.tsx). */
       openSession: "进入会话",
       openSessionTitle: (agent: string) => `以 ${agent} 的身份续开这份路线图的 Claude Code 会话`,
+      /** The dialog an Open session button or a channel's session link opens (claude-session-dialog.tsx). */
+      sessionDialog: {
+        title: "Claude Code 会话",
+        opening: "正在打开会话…",
+        queued: (position: number | null) =>
+          position === null
+            ? "会话正在启动，就绪后自动接上。"
+            : `排队中，第 ${position} 位；轮到后自动接上。`,
+        elsewhere: "这条会话正在队列之外的终端里运行，不会再起第二个进程。",
+        elsewhereHint: "先在那里退出（/exit），再重新打开。",
+        process: "进程",
+        terminal: "终端",
+        tmuxPane: "tmux 窗格",
+        directory: "目录",
+        ended: "这次运行在会话开始之前就结束了。",
+        failed: "会话打不开",
+        retry: "重试",
+      },
       status: {
         awaiting_room: "等待讨论室",
         discussing: "讨论中",

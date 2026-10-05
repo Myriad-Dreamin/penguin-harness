@@ -8,7 +8,8 @@
  * The second is the first for the session the organization's `claude-sessions.json` maps
  * roadmap <n> to, as the employee it names (roadmap-sessions.ts); no such entry is a 404.
  *
- * Behind the login gate, for the Project's people. The answer is always a redirect or a page:
+ * Behind the login gate, for the Project's people. The answer is a redirect or a page (the JSON
+ * form, `Accept: application/json`, answers the same outcomes as data: open-answer.ts):
  *
  *   - a queue run already holds the session → 302 to its Session (`/chat/<sessionId>`);
  *   - else a resume run is queued (`claude --resume <id>` in the session's own working
@@ -39,6 +40,7 @@ import type { ClaudeCodeQueue } from "./queue.js";
 import { actorOf } from "./queue-routes.js";
 import { CLAUDE_SESSION_ID, QueueError } from "./runs.js";
 import { ROADMAP_SESSIONS_FILE, readRoadmapSessions } from "./roadmap-sessions.js";
+import { runAnswer, wantsJson } from "./open-answer.js";
 
 /** How many lines of a transcript are read looking for its first user line. */
 export const RECORD_SCAN_LINES = 2000;
@@ -352,7 +354,11 @@ export function openRoutes(deps: OpenRoutesDeps): Hono {
   const app = new Hono();
   app.onError((err, c) => {
     const status = err instanceof QueueError ? err.status : 500;
-    return c.html(refusalPage(status, err.message), status as 404);
+    if (!wantsJson(c)) return c.html(refusalPage(status, err.message), status as 404);
+    // Held elsewhere is an answer the dialog explains, not a failure of the request.
+    if (err instanceof RunningElsewhere) return c.json({ state: "elsewhere", where: err.holder });
+    const code = err instanceof QueueError ? err.code : "internal";
+    return c.json({ error: { code, message: err.message } }, status as 404);
   });
 
   /** Who asks, about which organization, after the gate: the Project resolved, the person admitted. */
@@ -388,9 +394,10 @@ export function openRoutes(deps: OpenRoutesDeps): Hono {
         if (holder !== null) throw new RunningElsewhere(id, holder);
       },
     });
+    const machine = at.query.machine;
+    if (wantsJson(c)) return c.json(runAnswer(result, machine));
     const { run } = result;
     if (run.status === "running" && run.sessionId !== undefined) {
-      const machine = at.query.machine;
       return c.redirect(
         `/chat/${encodeURIComponent(run.sessionId)}` +
           (machine ? `?machine=${encodeURIComponent(machine)}` : ""),

@@ -20,9 +20,11 @@ const ALLOWED_DIR = "lib/shortcuts";
  * therefore excused: the Workspace picker's fixed file-browser keys (Finder's ⌘↑ / ⌘[ / ⌘],
  * Explorer's Alt+←) and its type-to-select, the model picker's Alt+digit group jump and its
  * type-to-focus (both "is this a bare key" tests), the workflow frame's key forwarding, which
- * copies an event to re-raise it on the app's window, and the hosted browser's input, which
- * copies every key pressed in a page's picture to that page (and leaves the paste chord to the
- * browser). None is an app command a user would rebind. A new entry here needs a reason of the
+ * copies an event to re-raise it on the app's window, the hosted browser's input, which copies
+ * every key pressed in a page's picture to that page (and leaves the paste chord to the
+ * browser), and the Claude Code session link, which leaves a Ctrl/⌘/Shift-click to the browser
+ * (a new tab or window) instead of opening its dialog. None is an app command a user would
+ * rebind. A new entry here needs a reason of the
  * same kind.
  */
 const EXCUSED_FILES = new Set([
@@ -31,6 +33,7 @@ const EXCUSED_FILES = new Set([
   "features/chat/model-picker-logic.ts",
   "features/chat/model-picker-modal.tsx",
   "lib/workflow-theme.ts",
+  "features/company/claude-session-open.ts",
 ]);
 
 /** Every `.ctrlKey` / `.metaKey` read outside a comment, as `file:line`. */
