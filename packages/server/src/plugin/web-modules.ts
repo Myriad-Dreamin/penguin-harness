@@ -19,6 +19,20 @@ import { IFACES_FILE } from "./loader.js";
 export const WEB_DIR = "dist/web";
 /** The stylesheet the plugin build emits beside the modules when the package has one. */
 const STYLES_FILE = "styles.css";
+/** Beside it, the class prefix the build put its classes under (scripts/build-plugin.mjs STYLES_META). */
+const STYLES_META = "styles.json";
+
+/** The prefix a built web directory's STYLES_META names, or undefined when it names none. */
+function stylePrefixOf(webDir: string): string | undefined {
+  try {
+    const { prefix } = JSON.parse(readFileSync(path.join(webDir, STYLES_META), "utf8")) as {
+      prefix?: unknown;
+    };
+    return typeof prefix === "string" && prefix !== "" ? prefix : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** The package above an entry file — its directory and its manifest's name and version — or null. */
 export function packageOf(file: string): { dir: string; name: string; version: string } | null {
@@ -115,14 +129,15 @@ export function webModulesOfPackage(pkg: {
   const base = `/api/plugins/${pkg.name}/web/${build}/`;
   /** A package-relative file under WEB_DIR as its URL. */
   const urlOf = (file: string) => base + file.slice(WEB_DIR.length + 1);
+  const hasStyles = filesUnder(path.join(pkg.dir, WEB_DIR)).includes(STYLES_FILE);
+  const stylePrefix = hasStyles ? stylePrefixOf(path.join(pkg.dir, WEB_DIR)) : undefined;
   return {
     package: pkg.name,
     version: pkg.version,
     ifaces: { ifaces: table.ifaces ?? {}, types: table.types ?? {} },
     modules: web.map((manifest) => ({ manifest, url: urlOf(manifest.file) })),
-    styles: filesUnder(path.join(pkg.dir, WEB_DIR)).includes(STYLES_FILE)
-      ? [base + STYLES_FILE]
-      : [],
+    styles: hasStyles ? [base + STYLES_FILE] : [],
+    ...(stylePrefix !== undefined ? { stylePrefix } : {}),
   };
 }
 

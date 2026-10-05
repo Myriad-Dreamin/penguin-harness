@@ -17,11 +17,11 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
   or that the browser cannot decode turns the card into a line saying so.
 - **Its own stylesheet.** `src/styles.css` compiles the player's Tailwind utilities against the web
   app's theme as a reference (no preflight, no variables of its own), so the card reads the host's
-  tokens and follows its theme and mode. Its classes carry the plugin's own prefix (`mp:flex`): a
-  second copy of the host's `.flex` in a sheet attached later would reorder the host's cascade.
-  The build fails on a compiled class outside the prefix, and on two plugins built together with
-  one prefix. The web app attaches the sheet when it loads the plugin, before the lazy player is
-  ever drawn.
+  tokens and follows its theme and mode. The player writes plain classes (`flex`); the build puts
+  them under a prefix it derives from the package name, in the sheet and in the components'
+  `className` props, because a second copy of the host's `.flex` in a sheet attached later would
+  reorder the host's cascade. The web app attaches the sheet when it loads the plugin, before the
+  lazy player is ever drawn.
 - **The host's types.** The renderer's props (`FileRendererProps`) come from the web app's
   plugin-facing types (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web
   package), imported as a type only.

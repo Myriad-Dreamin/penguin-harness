@@ -19,8 +19,8 @@
  *   browser does not decode — turns the card into a line saying so once playback has been tried;
  *   the link above it still opens the file in the Files panel.
  *
- * Styling: the classes are the host's Tailwind utilities under the plugin's `mp:` prefix, compiled
- * into its own stylesheet over the host's tokens (styles.css), so the card has the radius, line and
+ * Styling: the classes are plain Tailwind utilities, compiled into the plugin's own stylesheet over
+ * the host's tokens (styles.css), so the card has the radius, line and
  * surface of the transcript's other cards in every theme and both modes. Every part keeps its box
  * from the first render — the clock is a fixed-width monospace readout — so nothing shifts when
  * the file's length arrives.
@@ -112,10 +112,10 @@ export default function AudioFile({ url, name, locale }: FileRendererProps) {
 
 /** The card around the player and around the line it becomes: one shape, one height. */
 const CARD =
-  "mp:flex mp:w-full mp:max-w-md mp:items-center mp:gap-3 mp:rounded-xl mp:border mp:border-line mp:bg-surface mp:px-2.5 mp:py-2";
+  "flex w-full max-w-md items-center gap-3 rounded-xl border border-line bg-surface px-2.5 py-2";
 
 /** The round slot that leads the card: the play button, or the failed mark in its place. */
-const DISC = "mp:flex mp:size-8 mp:shrink-0 mp:items-center mp:justify-center mp:rounded-full";
+const DISC = "flex size-8 shrink-0 items-center justify-center rounded-full";
 
 export function AudioCard({
   name,
@@ -145,7 +145,7 @@ export function AudioCard({
         data-tooltip={label}
         aria-busy={waiting || undefined}
         onClick={onToggle}
-        className={`${DISC} mp:cursor-pointer mp:bg-accent mp:text-accent-fg mp:transition-opacity mp:duration-150 mp:hover:opacity-90`}
+        className={`${DISC} cursor-pointer bg-accent text-accent-fg transition-opacity duration-150 hover:opacity-90`}
       >
         {waiting ? (
           <Spinner size="md" label={S.loading(name)} />
@@ -153,18 +153,18 @@ export function AudioCard({
           <GlyphIcon d={playing ? ICONS.pause : ICONS.play} size={ICON_SIZE.iconButton} filled />
         )}
       </button>
-      <div className="mp:flex mp:min-w-0 mp:flex-1 mp:flex-col mp:gap-1">
-        <div className="mp:flex mp:items-baseline mp:gap-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-baseline gap-3">
           <span
             data-tooltip={name}
-            className="mp:min-w-0 mp:flex-1 mp:truncate mp:font-mono mp:text-sm mp:text-fg"
+            className="min-w-0 flex-1 truncate font-mono text-sm text-fg"
           >
             {name}
           </span>
           {/* Read out by the seek bar's value text; drawn here for the eye only. */}
           <span
             aria-hidden
-            className="mp:min-w-[11ch] mp:shrink-0 mp:text-right mp:font-mono mp:text-xs mp:tabular-nums mp:text-fg-subtle"
+            className="min-w-[11ch] shrink-0 text-right font-mono text-xs tabular-nums text-fg-subtle"
           >
             {elapsed} / {total}
           </span>
@@ -187,16 +187,16 @@ export function AudioCard({
 export function AudioFailed({ name, strings: S }: { name: string; strings: AudioStrings }) {
   return (
     <div data-audio-file="failed" className={CARD}>
-      <span className={`${DISC} mp:bg-surface-muted`}>
+      <span className={`${DISC} bg-surface-muted`}>
         <GlyphIcon
           d={ICONS.xCircle}
           size={ICON_SIZE.iconButton}
-          className="mp:text-tone-danger-fg"
+          className="text-tone-danger-fg"
         />
       </span>
       <span
         role="status"
-        className="mp:min-w-0 mp:flex-1 mp:text-sm mp:text-fg-muted mp:[overflow-wrap:anywhere]"
+        className="min-w-0 flex-1 text-sm text-fg-muted [overflow-wrap:anywhere]"
       >
         {S.unavailable(name)}
       </span>
@@ -262,20 +262,20 @@ function AudioSeek({
   };
 
   return (
-    <div className="mp:relative mp:h-3 mp:w-full mp:rounded-full mp:has-[:focus-visible]:[outline:var(--ui-focus-ring)] mp:has-[:focus-visible]:[outline-offset:var(--ui-focus-ring-offset)]">
-      <div className="mp:absolute mp:inset-x-0 mp:top-1/2 mp:h-1 mp:-translate-y-1/2 mp:overflow-hidden mp:rounded-full mp:bg-line-muted">
+    <div className="relative h-3 w-full rounded-full has-[:focus-visible]:[outline:var(--ui-focus-ring)] has-[:focus-visible]:[outline-offset:var(--ui-focus-ring-offset)]">
+      <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-line-muted">
         <div
-          className="mp:absolute mp:inset-y-0 mp:left-0 mp:bg-line-emphasis"
+          className="absolute inset-y-0 left-0 bg-line-emphasis"
           style={{ width: percent(loaded, total) }}
         />
         <div
-          className="mp:absolute mp:inset-y-0 mp:left-0 mp:bg-accent"
+          className="absolute inset-y-0 left-0 bg-accent"
           style={{ width: percent(time, total) }}
         />
       </div>
       <div
         aria-hidden
-        className={`mp:pointer-events-none mp:absolute mp:top-1/2 mp:size-2.5 mp:-translate-y-1/2 mp:rounded-full ${ready ? "mp:-translate-x-1/2 mp:bg-accent" : "mp:bg-line-emphasis"}`}
+        className={`pointer-events-none absolute top-1/2 size-2.5 -translate-y-1/2 rounded-full ${ready ? "-translate-x-1/2 bg-accent" : "bg-line-emphasis"}`}
         style={{ left: ready ? percent(time, total) : "0%" }}
       />
       <input
@@ -289,7 +289,7 @@ function AudioSeek({
         aria-valuetext={valueText}
         onChange={(e) => onSeek(Number(e.target.value))}
         onKeyDown={onKeyDown}
-        className="mp:absolute mp:inset-0 mp:m-0 mp:h-full mp:w-full mp:cursor-pointer mp:appearance-none mp:opacity-0 mp:outline-none mp:disabled:cursor-default"
+        className="absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none opacity-0 outline-none disabled:cursor-default"
       />
     </div>
   );

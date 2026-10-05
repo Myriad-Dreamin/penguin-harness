@@ -55,7 +55,6 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { INDEX_FILE, layOutEntry, entryDir, sortIndex, tarballIntegrity } from "./plugin-entry.mjs";
-import { prefixClashes, stylePrefixOf } from "./build-plugin.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGINS_SRC = path.join(ROOT, "plugins");
@@ -229,18 +228,6 @@ async function pluginPackages() {
     }
     out.push({ name: pkg.name, version: pkg.version, dir });
   }
-  // Each package's web stylesheet carries its own prefix (build-plugin.mjs stylePrefixOf): two
-  // sheets with one prefix would reorder each other's utilities, as an unprefixed one would the
-  // host's.
-  const prefixes = [];
-  for (const { name, dir } of out) {
-    const css = path.join(dir, "src", "styles.css");
-    if (!fs.existsSync(css)) continue;
-    const prefix = stylePrefixOf(await fsp.readFile(css, "utf8"));
-    if (prefix !== null) prefixes.push([name, prefix]);
-  }
-  const clashes = prefixClashes(prefixes);
-  if (clashes.length > 0) throw new Error(clashes.join("\n"));
   return out;
 }
 
@@ -255,6 +242,7 @@ async function pluginPackages() {
 const BUILD_INPUTS = [
   "scripts/gen-ifaces.mjs",
   "scripts/build-plugin.mjs",
+  "scripts/lib/plugin-classes.mjs",
   "scripts/lib/plugin-sides.mjs",
   "scripts/lib/web-shared.mjs",
   "packages/web/src/plugin-types.ts",

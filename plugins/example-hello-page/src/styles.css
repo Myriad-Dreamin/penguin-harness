@@ -5,11 +5,11 @@
  * host's theme, mode and accent. The web app attaches it when it loads the plugin, before the
  * module tree mounts (scripts/build-plugin.mjs emits it as dist/web/styles.css).
  *
- * Every utility carries this plugin's prefix (`hp:flex`): the build refuses a sheet with a class
- * outside it, and two plugins built together with one prefix. The app's own components (the
- * page frame and header) bring the app's classes, which the app's sheet already has.
+ * The components write plain classes; the build puts them under a prefix it derives from the
+ * package name (scripts/lib/plugin-classes.mjs). The app's own components (the page frame and
+ * header) bring the app's classes, which the app's sheet already has.
  */
-@import "tailwindcss/theme.css" layer(theme) reference prefix(hp);
+@import "tailwindcss/theme.css" layer(theme) reference;
 @import "@prismshadow/penguin-ui/theme.css" reference;
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "./";

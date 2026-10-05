@@ -162,6 +162,9 @@ export async function writeWebPackage(
   await fs.writeFile(entry, "export default { modules: [] };");
   await fs.writeFile(path.join(dir, "dist", "web", "Player.js"), "export default class {}");
   await fs.writeFile(path.join(dir, "dist", "web", "chunk-AB.js"), "export const x = 1;");
-  if (styles) await fs.writeFile(path.join(dir, "dist", "web", "styles.css"), ".a{color:red}");
+  if (styles) {
+    await fs.writeFile(path.join(dir, "dist", "web", "styles.css"), ".player\\:a{color:red}");
+    await fs.writeFile(path.join(dir, "dist", "web", "styles.json"), '{"prefix":"player"}\n');
+  }
   return entry;
 }

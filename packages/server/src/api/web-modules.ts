@@ -23,4 +23,9 @@ export interface WebModulePackage {
   modules: Array<{ manifest: Record<string, unknown>; url: string }>;
   /** Stylesheets the modules' components need, attached before the modules load. */
   styles: string[];
+  /**
+   * The class prefix the build put every class of `styles` under, derived from the package name
+   * (scripts/lib/plugin-classes.mjs). The web app refuses a second package with the same one.
+   */
+  stylePrefix?: string;
 }

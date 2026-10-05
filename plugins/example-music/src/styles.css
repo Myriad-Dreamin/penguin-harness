@@ -5,16 +5,14 @@
  * `var(--ui-radius-xl)`), so the player follows the host's theme, mode and accent. The web app
  * attaches it when it loads the plugin (scripts/build-plugin.mjs emits it as dist/web/styles.css).
  *
- * Every utility carries the plugin's own prefix (`mp:flex`). The host's sheet has its own
- * `.flex`, `.hidden`, `.invisible` …, ordered so that one wins over another on the same element;
- * a second copy of any of them in a sheet attached later would reorder the host's cascade. With
- * the prefix, nothing here shares a selector with the host; the build refuses a compiled class
- * outside it, and two plugins built together with one prefix (scripts/build-plugin.mjs).
+ * The components write plain classes. The build puts every class of the compiled sheet under a
+ * prefix it derives from the package name, and the components' class props with it
+ * (scripts/lib/plugin-classes.mjs), so nothing here shares a selector with the host's sheet.
  *
  * Limit: a theme variable the host's own sheet never emits resolves to Tailwind's default
  * (written as the fallback of each `var()`), not to a host value.
  */
-@import "tailwindcss/theme.css" layer(theme) reference prefix(mp);
+@import "tailwindcss/theme.css" layer(theme) reference;
 @import "@prismshadow/penguin-ui/theme.css" reference;
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "./";

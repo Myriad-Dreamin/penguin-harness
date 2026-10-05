@@ -29,10 +29,10 @@ component. It demonstrates:
   (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web package, imported as a
   type only), so the requirement carries the app's own interface key.
 - **Its own stylesheet.** `src/styles.css` compiles the page's Tailwind utilities against the web
-  app's theme as a reference. Its classes carry the plugin's prefix (`hp:flex`): the build fails
-  on a compiled class outside the prefix, and on two plugins built together with one prefix, so
-  no plugin sheet repeats one of the host's utilities later in the cascade. The web app attaches
-  the sheet before it mounts.
+  app's theme as a reference. The components write plain classes (`flex`); the build puts every
+  class of the sheet, and the same names in the components' `className` props, under a prefix it
+  derives from the package name, so no plugin sheet repeats one of the host's utilities later in
+  the cascade. The web app attaches the sheet before it mounts.
 
 The package is private, so it is not published, and it is not shipped with the builtin plugins
 (`scripts/build-plugins.mjs` skips the `plugins/example-*` directories), so no install offers it.

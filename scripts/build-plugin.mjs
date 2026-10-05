@@ -18,9 +18,10 @@
  *   the app does not share (packages/web/src/plugins/ui-surface.ts).
  * - `dist/web/styles.css`, when the package has `src/styles.css`: compiled by Tailwind over the
  *   package's sources (utilities only — see the examples' styles.css); the server lists it
- *   beside the modules and the web app attaches it before the modules load. Every utility
- *   carries the package's own prefix (stylePrefixOf): a plugin sheet attached after the host's
- *   must not hold a second copy of a host utility, which would reorder the host's cascade.
+ *   beside the modules and the web app attaches it before the modules load. The author writes
+ *   plain classes; the build puts every one under a prefix it names from the package name, in
+ *   the sheet and in the class props of the package's JSX (lib/plugin-classes.mjs), and writes
+ *   the prefix into `dist/web/styles.json`.
  *
  * Either side importing a module of the other side fails the build.
  */
@@ -32,6 +33,13 @@ import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import { WEB_DIR, webFileOf } from "./lib/plugin-sides.mjs";
 import { sharedPlugin, foreignCopies } from "./lib/web-shared.mjs";
+import {
+  classNamesOf,
+  classPrefixOf,
+  classRuntimePlugin,
+  prefixedInput,
+  unprefixedClasses,
+} from "./lib/plugin-classes.mjs";
 
 /**
  * Builds the package in `dir` (default: the working directory). Throws with every problem found;
@@ -82,6 +90,11 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
       problems.push(`the platform side imports the web module file ${input}`);
   }
 
+  // ── the web side's stylesheet, its classes under the package's prefix (lib/plugin-classes.mjs) ──
+  const css = path.join(dir, "src", "styles.css");
+  const classes = web.length > 0 && fs.existsSync(css) ? compileStyles(dir, pkg.name, minify) : null;
+  if (typeof classes === "string") problems.push(classes);
+
   // ── the web side: one ES module per web module, the shared dependencies the host's ──
   if (web.length > 0) {
     const entry = (name) => `penguin-module:${name}`;
@@ -130,6 +143,9 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
               });
             },
           },
+          ...(classes !== null && typeof classes !== "string"
+            ? [classRuntimePlugin(classes.prefix, classes.names)]
+            : []),
           sharedPlugin(),
         ],
       })
@@ -148,75 +164,49 @@ export default { modules: [${listed(decl.modules).join(", ")}], replaces: [${lis
     problems.push(...foreignCopies(Object.keys(webOut.metafile.inputs)));
   }
 
-  // ── the web side's stylesheet ──
-  const css = path.join(dir, "src", "styles.css");
-  if (web.length > 0 && fs.existsSync(css)) {
-    const prefix = stylePrefixOf(fs.readFileSync(css, "utf8"));
-    if (prefix === null) {
-      problems.push(
-        `src/styles.css: the Tailwind theme import names no prefix — write \`@import "tailwindcss/theme.css" layer(theme) reference prefix(<letters>);\` and use \`<letters>:\` on every class, so no utility of this sheet repeats one of the host's`,
-      );
-    } else {
-      const out = path.join(dir, WEB_DIR, "styles.css");
-      execFileSync(
-        path.join(dir, "node_modules", ".bin", "tailwindcss"),
-        ["-i", css, "-o", out, ...(minify ? ["--minify"] : [])],
-        { cwd: dir, stdio: ["ignore", "ignore", "inherit"] },
-      );
-      problems.push(
-        ...unprefixedClasses(fs.readFileSync(out, "utf8"), prefix).map(
-          (c) => `dist/web/styles.css: the class '.${c}' is not under the prefix '${prefix}:'`,
-        ),
-      );
-    }
-  }
   if (problems.length > 0) throw new Error(problems.join("\n"));
   return { web: web.map((m) => m.name), server: listed(decl.modules) };
 }
 
-/**
- * The Tailwind prefix a package's `src/styles.css` declares on its theme import
- * (`@import "tailwindcss/theme.css" … prefix(mp);`), or null when it declares none. Tailwind only
- * accepts lower-case letters there, so the match is exactly that.
- *
- * The author writes the prefix: Tailwind finds a utility by its literal spelling in the sources,
- * so a prefix the build chose would still have to be typed on every class. What the build owns
- * is the check — the sheet it compiled has no class outside the prefix (unprefixedClasses), and
- * two plugins built together may not share one (scripts/build-plugins.mjs).
- */
-export function stylePrefixOf(css) {
-  const theme =
-    /@import\s+["']tailwindcss\/theme(?:\.css)?["'][^;]*?\bprefix\(\s*([a-z]+)\s*\)/.exec(css);
-  return theme === null ? null : theme[1];
-}
+/** The file beside the sheet naming its class prefix; the server forwards it (`stylePrefix`). */
+export const STYLES_META = "styles.json";
 
 /**
- * The class selectors of a compiled sheet that are not under `prefix` — Tailwind writes a
- * prefixed one as `.mp\:flex`. What sits inside parentheses is dropped first: a variant may name
- * a host class there without defining it (`dark:` → `:where(.dark, .dark *)`), and values such
- * as `var(…)` and `url(…)` live there too. A dot after a word character or a backslash is part
- * of a number or an escaped class name (`1.5rem`, `.mp\:p-1\.5`), not a selector.
+ * Compiles `src/styles.css` into `dist/web/styles.css` with every class under the package's
+ * prefix, and writes STYLES_META beside it. Returns the prefix and the plain names the JSX
+ * wrapper prefixes, or a problem line.
  */
-export function unprefixedClasses(css, prefix) {
-  let flat = css;
-  for (let prev = ""; prev !== flat;) {
-    prev = flat;
-    flat = flat.replace(/\([^()]*\)/g, "");
+function compileStyles(dir, packageName, minify) {
+  const tailwind = (input, output) =>
+    execFileSync(
+      path.join(dir, "node_modules", ".bin", "tailwindcss"),
+      ["-i", input, "-o", output, ...(minify ? ["--minify"] : [])],
+      { cwd: dir, stdio: ["ignore", "ignore", "inherit"] },
+    );
+  const outDir = path.join(dir, WEB_DIR);
+  fs.mkdirSync(outDir, { recursive: true });
+  const scratch = fs.mkdtempSync(path.join(dir, "dist", ".styles-"));
+  try {
+    const plain = path.join(scratch, "plain.css");
+    tailwind(path.join(dir, "src", "styles.css"), plain);
+    const names = classNamesOf(fs.readFileSync(plain, "utf8"));
+    const prefix = classPrefixOf(packageName);
+    const author = fs.readFileSync(path.join(dir, "src", "styles.css"), "utf8");
+    const { input, problem } = prefixedInput(author, prefix, names);
+    if (problem !== undefined) return `src/styles.css: ${problem}`;
+    // Beside the package's own files, so the sheet's bare imports resolve from its node_modules.
+    const prefixedSrc = path.join(scratch, "prefixed.css");
+    fs.writeFileSync(prefixedSrc, input);
+    const out = path.join(outDir, "styles.css");
+    tailwind(prefixedSrc, out);
+    const stray = unprefixedClasses(fs.readFileSync(out, "utf8"), prefix);
+    if (stray.length > 0)
+      return `src/styles.css: hand-written class rules (${stray.map((c) => `.${c}`).join(", ")}) — no prefix reaches them; write them as Tailwind utilities (\`@utility\`)`;
+    fs.writeFileSync(path.join(outDir, STYLES_META), `${JSON.stringify({ prefix })}\n`);
+    return { prefix, names };
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
   }
-  const out = new Set();
-  for (const [, name, rest] of flat.matchAll(/(?<![\w\\])\.(-?[_a-zA-Z][\w-]*)(\\:)?/g)) {
-    if (name !== prefix || rest === undefined) out.add(name);
-  }
-  return [...out];
-}
-
-/** Packages that declare the same style prefix, as error lines; empty when every prefix is unique. */
-export function prefixClashes(prefixes) {
-  const by = new Map();
-  for (const [pkg, prefix] of prefixes) by.set(prefix, [...(by.get(prefix) ?? []), pkg]);
-  return [...by]
-    .filter(([, pkgs]) => pkgs.length > 1)
-    .map(([prefix, pkgs]) => `${pkgs.join(" and ")} both use the style prefix '${prefix}:'`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
