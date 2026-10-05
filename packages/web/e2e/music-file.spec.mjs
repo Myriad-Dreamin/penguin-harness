@@ -10,7 +10,8 @@
  *
  * - The module's file loads with the app; the player's own code (a lazy chunk) is requested only
  *   once a reply links an audio file, and the plugin's stylesheet is attached and applied (a
- *   utility only the player uses resolves).
+ *   utility only the player uses resolves). The player's source writes plain classes; the card
+ *   carries them under the prefix the build named, none bare.
  * - One player sits directly below each linking paragraph, one per file; the code span gets none.
  *   It is the app's own card (a named play button, a seek bar) over an `<audio>` without the
  *   browser's controls, and pressing play loads the file and reads its length into the card.
@@ -144,6 +145,10 @@ test("music: a reply's link to an audio file gets a player below its paragraph",
   expect(style.clockMinWidth).not.toBe("0px");
   expect(style.clockMinWidth).not.toBe("auto");
   expect(style.surface).not.toBe("rgba(0, 0, 0, 0)");
+  const classes = ((await card.getAttribute("class")) ?? "").split(/\s+/).filter(Boolean);
+  const prefix = /^([a-z]+):flex$/.exec(classes.find((c) => c.endsWith(":flex")) ?? "")?.[1];
+  expect(prefix, "the card's classes carry the build's prefix").toMatch(/^examplemusic[a-z]{4}$/);
+  expect(classes.filter((c) => !c.startsWith(`${prefix}:`))).toEqual([]);
   await expect(player).not.toHaveAttribute("controls");
   await expect(player).toHaveAttribute("preload", "none");
   const play = below.getByRole("button", { name: "播放 evening.wav" });
