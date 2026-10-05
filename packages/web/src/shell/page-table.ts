@@ -2,7 +2,8 @@
  * The web app's pages. Each one is a contribution to the shell's `pages` slot (shell/module.ts):
  * the feature that owns it declares its route, its frame, whether it sits in the main nav,
  * whether the server refuses it to non-admins, whether it is offered yet, and its place, and
- * binds the component that draws it. `pageTableOf` turns the contributions into the table the
+ * binds the component that draws it. The last three are optional: a page that states no place
+ * (a plugin's page) is placed after the pages that do, offered and open to every role. `pageTableOf` turns the contributions into the table the
  * router mounts and the sidebar derives its nav group from. Pages the server's modules and
  * plugins contribute are folded in after them by shell/contributions.tsx, which also drops the
  * pages the modules' `pageRemovals` name (removedPagesOf).
@@ -19,11 +20,12 @@ export interface PageData {
   /** "bare" mounts outside the app shell (no sidebar, no Project context): the terminal, a workflow's app page. */
   frame: "shell" | "bare";
   nav: "main" | "none";
-  admin: boolean;
-  /** Built but not yet offered: reachable by URL and tests, hidden from the nav. */
-  released: boolean;
-  /** The page's place in the table, and so in the nav. */
-  order: number;
+  /** Refused to non-admins; absent = open to every role. */
+  admin?: boolean;
+  /** Built but not yet offered: reachable by URL and tests, hidden from the nav. Absent = offered. */
+  released?: boolean;
+  /** The page's place in the table, and so in the nav; absent = after the pages that state one. */
+  order?: number;
   /** A main-nav page's row: its name in English and in Chinese, and its glyph's name in the UI package's icon registry (`ICONS`). */
   title?: string;
   titleZh?: string;
@@ -36,8 +38,11 @@ export interface PageData {
 }
 
 /** A page with the component its feature bound, or the one a server-contributed page's renderer resolved to. */
-export interface ShellPage extends Omit<PageData, "nav"> {
+export interface ShellPage extends Omit<PageData, "nav" | "admin" | "released" | "order"> {
   id: string;
+  admin: boolean;
+  released: boolean;
+  order: number;
   /**
    * `org`: a company-mode page the server contributed, with no row in the main nav; its path is
    * relative to an organization (features/company/org-routes.tsx mounts it there).
@@ -51,15 +56,39 @@ export interface ShellPage extends Omit<PageData, "nav"> {
 /** A page the server contributed: the renderer it named stays beside the component, for the readers that key on it. */
 export type ServerPage = ShellPage & { renderer: RendererRef };
 
-/** The `pages` contributions as the router and the nav read them, by `order`. */
+/**
+ * Hands out the places after every page of `pages`, one after another: where the shell puts the
+ * pages that state none — a module's (pageTableOf) and a server-contributed one
+ * (shell/contributions.tsx) — so they come after the app's own, and under a parent after its
+ * own children.
+ */
+export function placesAfter(pages: readonly Pick<ShellPage, "order">[]): () => number {
+  let order = pages.reduce((last, p) => Math.max(last, p.order), 0);
+  return () => ++order;
+}
+
+/**
+ * The `pages` contributions as the router and the nav read them: the pages that state an `order`
+ * by it, then the rest in slot order (the tree's: plugin modules after the app's, by package
+ * name), each placed after them. `admin` defaults to false, `released` to true.
+ */
 export function pageTableOf(contributions: readonly Contributed[]): readonly ShellPage[] {
-  return contributions
-    .map((c) => ({
-      ...(c.data as unknown as PageData),
+  const pages = contributions.map((c) => {
+    const data = c.data as unknown as PageData;
+    const page: ShellPage = {
+      ...data,
+      admin: data.admin ?? false,
+      released: data.released ?? true,
+      order: data.order ?? 0,
       id: c.id,
       Component: c.code as ComponentType,
-    }))
-    .sort((a, b) => a.order - b.order);
+    };
+    return { page, placed: data.order !== undefined };
+  });
+  const own = pages.filter((p) => p.placed).map((p) => p.page);
+  own.sort((a, b) => a.order - b.order);
+  const next = placesAfter(own);
+  return [...own, ...pages.filter((p) => !p.placed).map((p) => ({ ...p.page, order: next() }))];
 }
 
 /**

@@ -26,7 +26,6 @@ import type { ProseBlockTrailer } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { ChatSessionContext } from "../../lib/chat-session";
 import { Deferred } from "../../components/ui/deferred";
-import { useLocale } from "../../state/locale";
 import { chatDeps } from "./deps";
 import { replyFilesOf } from "./reply-files";
 
@@ -34,7 +33,6 @@ const ReplyTrailerContext = createContext<ProseBlockTrailer | null>(null);
 
 export function ReplyFilesProvider({ children }: { children: ReactNode }) {
   const { fileRenderers: rules } = chatDeps.useDeps();
-  const { locale } = useLocale();
   const selected = useContext(ChatSessionContext)?.selected ?? null;
   const sessionId = selected?.sessionId ?? null;
   const workspace = selected?.workspace ?? null;
@@ -56,13 +54,13 @@ export function ReplyFilesProvider({ children }: { children: ReactNode }) {
             // A renderer is often a plugin's: one that throws, or whose chunk is gone after a
             // rebuild, shows the part-failed notice in its own place, never more.
             <Deferred key={path} fallback={null}>
-              <Renderer url={url} path={path} name={name} locale={locale} />
+              <Renderer url={url} path={path} name={name} />
             </Deferred>
           ))}
         </div>
       );
     };
-  }, [sessionId, workspace, rules, locale]);
+  }, [sessionId, workspace, rules]);
   return <ReplyTrailerContext.Provider value={trailer}>{children}</ReplyTrailerContext.Provider>;
 }
 

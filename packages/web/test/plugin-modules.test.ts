@@ -19,7 +19,8 @@
  * - A module whose effect is all data (an empty class) joins from its file like any other: its
  *   page removal reaches the shell's `pageRemovals` slot.
  * - A plugin page joins the shell's `pages` slot with its `parent`, and its module `@Use`s an
- *   interface the app provides (`Language`, by its own key, no `from`, no copy).
+ *   interface the app provides (`Language`, by its own key, no `from`, no copy); stating no place,
+ *   it is placed after the app's own pages, offered and open to every role.
  * - The app shares its own React, JSX runtime, kernel runtime entry and the UI package's plugin
  *   surface with plugin modules, under the keys the plugin build resolves them to
  *   (scripts/lib/web-shared.mjs); the surface's instances are the UI package's own, and its names
@@ -50,6 +51,7 @@ import { tableKey } from "../src/lib/verify-plugins";
 import { VERIFIED_CACHE_KEY } from "../src/lib/verified-cache";
 import { memoryStorage, stubLocalStorage } from "./helpers/storage";
 import { ShellModule } from "../src/shell/module";
+import { pageTableOf } from "../src/shell/page-table";
 import type { Language } from "../src/plugin-types";
 
 const Player = () => null;
@@ -137,9 +139,6 @@ const HELLO_MANIFEST = {
         path: "/example-hello",
         frame: "shell",
         nav: "main",
-        admin: false,
-        released: true,
-        order: 72,
         parent: "benchmark",
         title: "Plugin page",
         titleZh: "插件页面",
@@ -226,6 +225,9 @@ describe("plugin web modules in the tree", () => {
     expect(page?.data).toMatchObject({ key: "example-hello", parent: "benchmark" });
     expect(page?.code).toBe(HelloView);
     expect(["zh", "en"]).toContain(helloLanguage?.get());
+    // It states no place: the shell puts it after the app's own pages, offered, for every role.
+    const table = pageTableOf(shellSlots.pages ?? []);
+    expect(table.at(-1)).toMatchObject({ id: "hello.page", admin: false, released: true });
   });
 
   it("boots the app's own tree when nothing is forwarded", async () => {

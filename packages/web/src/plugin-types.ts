@@ -27,13 +27,11 @@ export interface FileRendererProps {
   path: string;
   /** Its last path segment. */
   name: string;
-  /** The interface language, for the renderer's own words. */
-  locale: "zh" | "en";
 }
 
 /**
- * The interface language the person picked (Settings → General), for a component's own words.
- * Provided by the settings module.
+ * The interface language the person picked (Settings → General). Provided by the settings
+ * module: the store's read half, so a reader follows the language but cannot set it.
  *
  * It is a store, and this is the shape every piece of the app's state offered to a plugin takes:
  * `get()` returns the current committed value (a snapshot, equal from call to call until a

@@ -7,9 +7,9 @@
  *
  * `Chat` carries the page's slots: `sessionTabs`, tabs beside the conversation that another module
  * draws (the Agent's workflow pages), so the page names none of them; and `fileRenderers`, which
- * draw a kind of Workspace file below the reply paragraph that links it — the rule (which
- * extensions) and the component in one contribution (reply-files.ts joins them with a reply's
- * links). A plugin's web module contributes here too (the music example's player); its component
+ * draw a kind of Workspace file a reply links — the rule (which extensions) and the component in
+ * one contribution (reply-files.ts joins them with a reply's links; the page places each below
+ * the paragraph that holds its link). A plugin's web module contributes here too (the music example's player); its component
  * may be lazy, and is drawn inside a Suspense boundary.
  */
 import type { ComponentType } from "react";
@@ -77,6 +77,6 @@ export interface FileRendererData {
 export interface ChatSlots {
   /** A strip of tabs above the conversation. */
   sessionTabs: Slot<SessionTabData, SessionTab>;
-  /** How a kind of Workspace file is drawn below the reply paragraph that links it. */
+  /** How a kind of Workspace file a reply links is drawn. */
   fileRenderers: Slot<FileRendererData, FileRenderer>;
 }

@@ -12,6 +12,11 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
 - **One contribution, both halves.** The rule — files ending in `mp3`, `wav`, `ogg` or `m4a` — is
   the contribution's data, declared on the module; the player (`src/player.tsx`) is its code, a lazy
   component, so its chunk is fetched the first time a reply links such a file.
+- **The interface language through an interface.** The player's words follow the app's interface
+  language, which the module reads through the app's `Language` interface — a `@Use()` field,
+  wired by the interface's key — and hands to the player as a prop; the player subscribes to it,
+  so a language switch re-draws it. The app hands a renderer only the file (`url`, `path`,
+  `name`).
 - **Every state drawn.** Before play nothing is fetched: the clock reads `-:--` and the playhead
   waits at the start. Pressing play shows a spinner until the file can play; a file that is missing
   or that the browser cannot decode turns the card into a line saying so.
@@ -22,12 +27,12 @@ browser code of its own, plus a Skill that teaches the Agent to produce one. It 
   The build fails on a compiled class outside the prefix, and on two plugins built together with
   one prefix. The web app attaches the sheet when it loads the plugin, before the lazy player is
   ever drawn.
-- **The host's types.** The renderer's props (`FileRendererProps`) come from the web app's
-  plugin-facing types (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web
+- **The host's types.** The renderer's props (`FileRendererProps`) and `Language`
+  come from the web app's plugin-facing types (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web
   package), imported as a type only.
 - **The Markdown is not touched.** When a paragraph of a reply links such a file in the
   Workspace — `[Evening Theme](music/tune.wav)` — the link stays a link (clicking it opens the file
-  in the Files panel) and a player appears directly below that paragraph, once per file. A link
+  in the Files panel) and the app draws a player directly below that paragraph, once per file. A link
   inside a code span or block is not a link and gets nothing; a reply that is still streaming
   gets its players when it settles.
 - **A Skill.** `skills/send-music/SKILL.md` teaches the Agent to synthesize a short tune to WAV with
