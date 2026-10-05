@@ -27,3 +27,5 @@ surface 起的程序现在带着所属 Session 的控制环境。surface 打开 
 `penguin org claude-code release --self` 结束本命令所在的运行，即 Session 为 `PENGUIN_SESSION_ID` 的那一条。会话做完手头的事后用它让出名额。没有 `PENGUIN_SESSION_ID`，或没有排队中、运行中的运行属于该 Session 时，命令说明原因并以 1 退出。`release` 接受运行编号或 `--self`，二者择一。
 
 `POST …/claude-code/runs/<id>/input`（请求体 `{ "text": "…", "enter"?: true }`）向运行中的运行的程序输入一行文字，随后按下 Enter（`enter` 为 false 时不按）。能释放该运行的人就能向它输入，因此持服务器 API Token 的调用方也能唤醒一个空闲会话，而终端自带的按键路由不接受这类调用方。文字必须可打印：空文字、超长文字，以及包括换行在内的任何控制字符，均答 400。运行未在运行或其程序已不在时，答 409。
+
+Web 推送之前打开的页面，第一次有懒加载 chunk 加载失败时，会重新加载一次，换上当前构建。这样的页面会请求推送后的 dist 里已经没有的 chunk 名，服务器对这些请求回的是应用页面，于是页面里的终端（包括会话对话框里的）一直打不开。重新加载之后仍然失败的 chunk 不会再触发重新加载：终端显示错误，而不是一直停在连接中。
