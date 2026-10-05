@@ -1,6 +1,5 @@
 /** The Agents list and one Agent's settings. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -32,9 +31,8 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class AgentsModule {
-  @Bind("agents.list") list = lazyComponent(() => import("./agents-page"), "AgentsPage");
-  @Bind("agents.settings") settings = lazyComponent(
-    () => import("./agent-settings-page"),
-    "AgentSettingsPage",
-  );
+  @Bind("agents.list") list = { load: () => import("./agents-page").then((m) => m.AgentsPage) };
+  @Bind("agents.settings") settings = {
+    load: () => import("./agent-settings-page").then((m) => m.AgentSettingsPage),
+  };
 }

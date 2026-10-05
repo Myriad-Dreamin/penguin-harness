@@ -1,29 +1,31 @@
 /**
  * The web app's pages. Each one is a contribution to the shell's `pages` slot (shell/module.ts):
- * the feature that owns it declares its route, its frame, whether it sits in the main nav,
- * whether the server refuses it to non-admins, whether it is offered yet, and its place, and
- * binds the component that draws it. `pageTableOf` turns the contributions into the table the
- * router mounts and the sidebar derives its nav group from. Pages the server's modules and
- * plugins contribute are folded in after them by shell/contributions.tsx, which also drops the
- * pages the modules' `pageRemovals` name (removedPagesOf).
+ * the module that owns it declares its route, its frame, whether it sits in the main nav and its
+ * nav row, and binds the component that draws it (or a loader of it, which the shell defers).
+ * `pageTableOf` turns the contributions into the table the router mounts and the sidebar derives
+ * its nav group from. Pages the server's modules and plugins contribute are folded in after them
+ * by shell/contributions.tsx, which also drops the pages the modules' `pageRemovals` name
+ * (removedPagesOf).
+ *
+ * Where a page sits, whether the server refuses it to non-admins and whether it is offered yet
+ * are the app's decisions (`PagePlacement`). The app's own pages state them, one author for one
+ * product; a page a plugin's module contributes states none of them — plugins/page-claims.ts
+ * refuses a plugin that does — and the shell places it (placedPagesOf).
  */
 import type { ComponentType } from "react";
 import { matchPath } from "react-router";
 import type { Contributed } from "@prismshadow/penguin-core/kernel";
 import type { RendererRef } from "@prismshadow/penguin-server/api";
+import { componentOf } from "../lib/lazy-component";
+import type { CodeHalf } from "../lib/lazy-component";
 
-/** One page as its feature declares it: the data half of a `pages` contribution. */
-export interface PageData {
+/** A page as its module declares it, whoever the module is. */
+export interface PageFields {
   key: string;
   path: string;
   /** "bare" mounts outside the app shell (no sidebar, no Project context): the terminal, a workflow's app page. */
   frame: "shell" | "bare";
   nav: "main" | "none";
-  admin: boolean;
-  /** Built but not yet offered: reachable by URL and tests, hidden from the nav. */
-  released: boolean;
-  /** The page's place in the table, and so in the nav. */
-  order: number;
   /** A main-nav page's row: its name in English and in Chinese, and its glyph's name in the UI package's icon registry (`ICONS`). */
   title?: string;
   titleZh?: string;
@@ -35,14 +37,39 @@ export interface PageData {
   parent?: string;
 }
 
+/** What the app decides about a page: the app's own pages state it, the shell decides it for the rest. */
+export interface PagePlacement {
+  admin: boolean;
+  /** Built but not yet offered: reachable by URL and tests, hidden from the nav. */
+  released: boolean;
+  /** The page's place in the table, and so in the nav. */
+  order: number;
+}
+
+/** The fields of `PagePlacement`: what a plugin's page may not state (plugins/page-claims.ts). */
+export const PLACEMENT_FIELDS = ["admin", "released", "order"] as const satisfies ReadonlyArray<
+  keyof PagePlacement
+>;
+
+/**
+ * The data half of a `pages` contribution: the page's fields, and its placement when the app
+ * states it — every one of the app's own pages states all three; a page that states no `order`
+ * is placed by the shell.
+ */
+export interface PageData extends PageFields {
+  admin?: boolean;
+  released?: boolean;
+  order?: number;
+}
+
 /** A page with the component its feature bound, or the one a server-contributed page's renderer resolved to. */
-export interface ShellPage extends Omit<PageData, "nav"> {
+export interface ShellPage extends Omit<PageFields, "nav">, PagePlacement {
   id: string;
   /**
    * `org`: a company-mode page the server contributed, with no row in the main nav; its path is
    * relative to an organization (features/company/org-routes.tsx mounts it there).
    */
-  nav: PageData["nav"] | "org";
+  nav: PageFields["nav"] | "org";
   Component: ComponentType;
   /** The renderer a server-contributed page named; absent on the modules' own pages. */
   renderer?: RendererRef;
@@ -51,15 +78,43 @@ export interface ShellPage extends Omit<PageData, "nav"> {
 /** A page the server contributed: the renderer it named stays beside the component, for the readers that key on it. */
 export type ServerPage = ShellPage & { renderer: RendererRef };
 
-/** The `pages` contributions as the router and the nav read them, by `order`. */
+/**
+ * Hands out the places after every page of `pages`, one after another: where the shell puts the
+ * pages it places itself — a plugin module's (pageTableOf) and a server-contributed one
+ * (shell/contributions.tsx) — so they come after the app's own, and, under a parent, after the
+ * app's own children.
+ */
+export function placesAfter(pages: readonly Pick<PagePlacement, "order">[]): () => number {
+  let order = pages.reduce((last, p) => Math.max(last, p.order), 0);
+  return () => ++order;
+}
+
+/**
+ * The `pages` contributions as the router and the nav read them: the pages that state their
+ * placement by `order`, then the rest in slot order, placed after them — offered, and open to
+ * every role. The slot's order is the tree's: the root's plugin children come after the app's
+ * modules in package-name order (web-root.ts, plugins/assemble.ts), each module's contributions
+ * in the order it lists them — so the shell's places are stable from load to load. A page bound
+ * as a loader is deferred (the router draws every page under `<Deferred>`).
+ */
 export function pageTableOf(contributions: readonly Contributed[]): readonly ShellPage[] {
-  return contributions
-    .map((c) => ({
-      ...(c.data as unknown as PageData),
+  const own: ShellPage[] = [];
+  const unplaced: ShellPage[] = [];
+  for (const c of contributions) {
+    const data = c.data as unknown as PageData;
+    const page: ShellPage = {
+      ...data,
+      admin: data.admin ?? false,
+      released: data.released ?? true,
+      order: data.order ?? 0,
       id: c.id,
-      Component: c.code as ComponentType,
-    }))
-    .sort((a, b) => a.order - b.order);
+      Component: componentOf(c.code as CodeHalf<ComponentType>, c.id),
+    };
+    (data.order === undefined ? unplaced : own).push(page);
+  }
+  own.sort((a, b) => a.order - b.order);
+  const next = placesAfter(own);
+  return [...own, ...unplaced.map((p) => ({ ...p, order: next() }))];
 }
 
 /**
@@ -120,7 +175,7 @@ export function removedPagesOf(
 
 /** A page's nav name in the given language; the key stands in for a page that names none. */
 export function pageTitle(
-  page: Pick<PageData, "key" | "title" | "titleZh">,
+  page: Pick<PageFields, "key" | "title" | "titleZh">,
   locale: "zh" | "en",
 ): string {
   return (locale === "zh" ? page.titleZh : page.title) ?? page.title ?? page.key;

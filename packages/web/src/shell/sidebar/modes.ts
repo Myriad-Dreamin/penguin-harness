@@ -1,7 +1,9 @@
 /**
  * The sidebar's contributions as the frame reads them (iface.ts): the sections by mode and place,
  * the contributed modes and which one is current, and the nav badges by anchor. The selections
- * are pure and unit tested; the `compose*` functions turn a slot's hooks into one hook.
+ * are pure and unit tested; the `compose*` functions turn a slot's hooks into one hook. A block
+ * bound as a loader (a section's `Full` or `Rail`, a mode's `RailTop`) is deferred here, once, so
+ * the frame draws components only (under `<Deferred>`).
  *
  * A composed hook calls every contribution's hook in a loop. That is sound because the list is
  * fixed when the tree boots: every render calls the same hooks in the same order, which is all
@@ -9,6 +11,7 @@
  */
 import type { ComponentType } from "react";
 import type { Contributed } from "@prismshadow/penguin-core/kernel";
+import { componentOf } from "../../lib/lazy-component";
 import type {
   ModeState,
   NavBadge,
@@ -18,14 +21,25 @@ import type {
 import { DEFAULT_MODE } from "./iface";
 import type { NavBadgeData, SidebarModeData, SidebarSectionData } from "./iface";
 
+/** A section as the frame draws it: its blocks components, a loader deferred. */
+export interface DrawnSection extends Omit<SidebarSection, "Full" | "Rail"> {
+  Full: ComponentType<{ onNavigate?: () => void }>;
+  Rail?: ComponentType;
+}
+
+/** A mode as the frame draws it: its rail top a component, a loader deferred. */
+export interface DrawnMode extends Omit<SidebarMode, "RailTop"> {
+  RailTop?: ComponentType;
+}
+
 export interface SectionEntry extends SidebarSectionData {
   id: string;
-  section: SidebarSection;
+  section: DrawnSection;
 }
 
 export interface ModeEntry extends SidebarModeData {
   id: string;
-  mode: SidebarMode;
+  mode: DrawnMode;
 }
 
 export interface BadgeEntry extends NavBadgeData {
@@ -45,18 +59,31 @@ function byOrder<D extends { order: number }, C, E>(
 }
 
 export const sectionsOf = (contributions: readonly Contributed[]): readonly SectionEntry[] =>
-  byOrder<SidebarSectionData, SidebarSection, SectionEntry>(contributions, (d, id, section) => ({
-    ...d,
-    id,
-    section,
-  }));
+  byOrder<SidebarSectionData, SidebarSection, SectionEntry>(
+    contributions,
+    (d, id, { Full, Rail, ...section }) => ({
+      ...d,
+      id,
+      section: {
+        ...section,
+        Full: componentOf(Full, `${id}.Full`),
+        ...(Rail !== undefined ? { Rail: componentOf(Rail, `${id}.Rail`) } : {}),
+      },
+    }),
+  );
 
 export const modesOf = (contributions: readonly Contributed[]): readonly ModeEntry[] =>
-  byOrder<SidebarModeData, SidebarMode, ModeEntry>(contributions, (d, id, mode) => ({
-    ...d,
-    id,
-    mode,
-  }));
+  byOrder<SidebarModeData, SidebarMode, ModeEntry>(
+    contributions,
+    (d, id, { RailTop, ...mode }) => ({
+      ...d,
+      id,
+      mode: {
+        ...mode,
+        ...(RailTop !== undefined ? { RailTop: componentOf(RailTop, `${id}.RailTop`) } : {}),
+      },
+    }),
+  );
 
 export const badgesOf = (contributions: readonly Contributed[]): readonly BadgeEntry[] =>
   byOrder<NavBadgeData, NavBadge, BadgeEntry>(contributions, (d, id, badge) => ({

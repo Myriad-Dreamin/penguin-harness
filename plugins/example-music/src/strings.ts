@@ -1,7 +1,7 @@
 /**
- * The player's words, in the two languages the web app ships. The app hands its interface
- * language to every file renderer (`locale` in its props), so the player follows a language
- * switch with the rest of the page.
+ * The player's words, in the two languages the web app ships. The player reads the app's
+ * interface language through the `Language` interface (index.ts), so it follows a language
+ * switch with the rest of the app.
  */
 
 const zh = {

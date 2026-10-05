@@ -1,6 +1,5 @@
 /** Trace observation: the dock's Trace panel (trace-dock-panel.tsx). */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -17,5 +16,7 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class TracesModule {
-  @Bind("traces.panel") panel = lazyComponent(() => import("./trace-dock-panel"), "TraceDockPanel");
+  @Bind("traces.panel") panel = {
+    load: () => import("./trace-dock-panel").then((m) => m.TraceDockPanel),
+  };
 }

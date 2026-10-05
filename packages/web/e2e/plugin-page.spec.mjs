@@ -8,8 +8,10 @@
  * this spec's own user sees the page too.
  *
  * - The row sits indented directly under the Evaluation Center, named in Chinese and in English,
- *   declared by the module's contribution: the page's own code (a lazy chunk) is requested only once the page is
- *   opened, and the plugin's stylesheet is attached with the app.
+ *   declared by the module's contribution, and placed by the shell after the app's own pages: the
+ *   page's own code (a separate chunk the module binds a loader of) is not requested with the app
+ *   but as soon as the pointer rests on the row — the shell's hover prefetch, the same as for the
+ *   app's own pages — and the plugin's stylesheet is attached with the app.
  * - Opening it draws the plugin's page in the app's frame: the page's one title, its paragraph and
  *   three cards styled from the host's tokens, in the language the app is in (read through the
  *   `Language` interface the app provides), and in the dark theme when the app is.
@@ -88,6 +90,11 @@ test("plugin page: a row under the Evaluation Center opens the plugin's own page
   expect(r.x, "indented under the parent").toBeGreaterThan(p.x);
   expect(r.y, "below the parent").toBeGreaterThan(p.y);
   expect(r.y - (p.y + p.height), "nothing between them").toBeLessThan(4);
+
+  // Resting the pointer on the row fetches the page's code before the click (router-link.tsx).
+  await row.hover();
+  await expect.poll(pageRequested, { message: "the hover prefetched the page's chunk" }).toBe(true);
+  expect(page.url()).not.toMatch(new RegExp(`${PATH}$`));
 
   await row.click();
   await expect(page).toHaveURL(new RegExp(`${PATH}$`));

@@ -3,9 +3,11 @@
  * shell receives every page the modules contributed.
  *
  * - bootWeb() boots the tree and hands back the shell's root component.
+ * - Every one of the app's own pages states its placement (order, admin, released): only a
+ *   plugin's page is placed by the shell.
  * - Every page has a unique id, key and path, and the component its module bound — most of them
- *   deferred (lib/lazy-component.ts), which is checked by loading the binding and reading what it
- *   renders.
+ *   bound as loaders and deferred by the shell (lib/lazy-component.ts), which is checked by loading
+ *   the binding and reading what it renders.
  * - Terminal and the workflow app pages mount outside the shell; everything else inside it.
  * - The main nav is Agents, Models, Plugins, Machines, Usage, Benchmark in that order, all
  *   released, Machines alone admin-only, and every page names its nav title in both languages
@@ -58,6 +60,7 @@ import { badgesOf, marksFor, modesOf, sectionsIn, sectionsOf } from "../src/shel
 import { SessionListModule } from "../src/features/session-list/module";
 import { rowExtensionsOf } from "../src/features/session-list/row-actions";
 import type { RowExtensions } from "../src/features/session-list/row-actions";
+import { isSeparable } from "../src/lib/lazy-component";
 import { zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import { glyphOf } from "../src/lib/nav-icons";
@@ -116,6 +119,7 @@ import { fileRenderersOf, sessionTabsOf } from "../src/features/chat/deps";
 import { WorkflowSessionTab } from "../src/features/workflows/session-tab";
 
 let pages: readonly ShellPage[] = [];
+let pageContributions: readonly Contributed[] = [];
 let pageRenderers: readonly Contributed[] = [];
 let sessionProviders: readonly Contributed[] = [];
 let layers: readonly Contributed[] = [];
@@ -128,10 +132,11 @@ let sessionTabs: readonly Contributed[] = [];
 let fileRenderers: readonly Contributed[] = [];
 
 /**
- * The component a deferred binding draws: its code loaded, it renders the target directly, so one
- * call shows which component that is.
+ * The component a binding draws: a loader's, as it resolves; a deferred component's, once its code
+ * has loaded and it renders the target directly, so one call shows which component that is.
  */
 async function targetOf(code: unknown): Promise<unknown> {
+  if (isSeparable(code)) return code.load();
   await (code as { preload(): Promise<void> }).preload();
   return (code as (props: object) => ReactElement)({}).type;
 }
@@ -148,7 +153,8 @@ const codeByOrder = (list: readonly Contributed[]): unknown[] =>
 beforeAll(async () => {
   const shell = Object.assign(new ShellModule(), {
     setup({ contributions }: ClassCtx) {
-      pages = pageTableOf(contributions.pages ?? []);
+      pageContributions = contributions.pages ?? [];
+      pages = pageTableOf(pageContributions);
       pageRenderers = contributions.pageRenderers ?? [];
       sessionProviders = contributions.sessionProviders ?? [];
       layers = contributions.layers ?? [];
@@ -219,6 +225,14 @@ describe("the booted page table", () => {
     expect(await targetOf(pages.find((p) => p.key === "agents")?.Component)).toBe(AgentsPage);
     expect(await targetOf(pages.find((p) => p.key === "terminal")?.Component)).toBe(TerminalPage);
     expect(await targetOf(pages.find((p) => p.path === "/org/*")?.Component)).toBe(OrgRoutes);
+  });
+
+  it("every one of the app's own pages states its place, its admin gate and its release", () => {
+    for (const c of pageContributions) {
+      expect(Object.keys(c.data), c.id).toEqual(
+        expect.arrayContaining(["order", "admin", "released"]),
+      );
+    }
   });
 
   it("mounts the terminal and the workflow app pages outside the shell", () => {
@@ -374,13 +388,16 @@ describe("the booted sidebar slots", () => {
 
   it("company contributes its mode, its switcher, its channels, its roadmaps and its desks", () => {
     const sections = sectionsOf(sidebarSlots.sections ?? []);
-    expect(modesOf(sidebarSlots.modes ?? []).map(({ key, mode }) => ({ key, mode }))).toEqual([
-      { key: "company", mode: companyMode },
-    ]);
-    expect(sectionsIn(sections, "company", "header").map((s) => s.section)).toEqual([
+    // Compared as bound: the sidebar defers the loaders among them (modes.ts).
+    const bound = (slot: string, id: string) =>
+      (sidebarSlots[slot] ?? []).find((c) => c.id === id)?.code;
+    expect(
+      modesOf(sidebarSlots.modes ?? []).map(({ key, id }) => ({ key, mode: bound("modes", id) })),
+    ).toEqual([{ key: "company", mode: companyMode }]);
+    expect(sectionsIn(sections, "company", "header").map((s) => bound("sections", s.id))).toEqual([
       companySwitcher,
     ]);
-    expect(sectionsIn(sections, "company", "body").map((s) => s.section)).toEqual([
+    expect(sectionsIn(sections, "company", "body").map((s) => bound("sections", s.id))).toEqual([
       companyChannels,
       companyRoadmaps,
       companyDesks,

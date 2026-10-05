@@ -3,6 +3,8 @@
  *
  * - Sections come back in `order`, and a mode's sections at one place are only that mode's at
  *   that place.
+ * - A section's `Full` and `Rail` and a mode's `RailTop` bound as loaders come back deferred
+ *   (preloadable components); bound as components, as they are.
  * - The current mode is the first contributed one that is available and current; with none,
  *   the frame stands in the default mode, "dev". An unavailable mode is never current.
  * - An anchor's marks are the contributions to it that carry one, in order.
@@ -51,6 +53,32 @@ describe("sections", () => {
     expect(sectionsIn(sections, "dev", "header").map((s) => s.id)).toEqual(["h"]);
     expect(sectionsIn(sections, "company", "body").map((s) => s.id)).toEqual(["c1"]);
     expect(sectionsIn(sections, "company", "header")).toEqual([]);
+  });
+});
+
+describe("blocks bound as loaders", () => {
+  const Rail = () => null;
+  const [section] = sectionsOf([
+    contributed(
+      "s",
+      { mode: "dev", place: "body", order: 1 },
+      { Full: { load: () => Promise.resolve(Full) }, Rail },
+    ),
+  ]);
+  const [mode] = modesOf([
+    contributed(
+      "m",
+      { key: "m", title: "", titleZh: "", icon: "", order: 1 },
+      { useMode: () => state(true, true), listName: () => "", RailTop: { load: async () => Rail } },
+    ),
+  ]);
+
+  it("come back deferred, the rest as they were bound", async () => {
+    const preload = (c: unknown) => (c as { preload(): Promise<unknown> }).preload();
+    expect(await preload(section!.section.Full)).toBe(Full);
+    expect(section!.section.Rail).toBe(Rail);
+    expect(await preload(mode!.mode.RailTop)).toBe(Rail);
+    expect(mode!.mode.listName()).toBe("");
   });
 });
 

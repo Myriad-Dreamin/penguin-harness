@@ -3,7 +3,6 @@
  * dock's messaging panel (messaging-dock-panel.tsx).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 import { messagingRowAction } from "./session-row-action";
 
 @Module({
@@ -23,8 +22,7 @@ import { messagingRowAction } from "./session-row-action";
 })
 export class MessagingModule {
   @Bind("messaging.binding") binding = messagingRowAction;
-  @Bind("messaging.panel") panel = lazyComponent(
-    () => import("./messaging-dock-panel"),
-    "MessagingDockPanel",
-  );
+  @Bind("messaging.panel") panel = {
+    load: () => import("./messaging-dock-panel").then((m) => m.MessagingDockPanel),
+  };
 }

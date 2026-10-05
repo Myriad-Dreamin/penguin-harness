@@ -60,7 +60,10 @@ import { lazyComponent } from "../../lib/lazy-component";
 import { ReleaseNotesList } from "./release-notes-list";
 
 /** The credits and their licence texts, loaded when the section is first expanded. */
-const CreditsList = lazyComponent(() => import("./credits-list"), "CreditsList");
+const CreditsList = lazyComponent(
+  () => import("./credits-list").then((m) => m.CreditsList),
+  "CreditsList",
+);
 
 const HOMEPAGE_URL = "https://penguin.ooo/";
 const REPOSITORY_URL = "https://github.com/Prism-Shadow/penguin-harness";

@@ -1,10 +1,10 @@
 /**
  * The plugin page (src/hello-page.tsx, src/index.ts): drawn in the app's page frame, in the
- * language the app's `Language` interface answers, and loaded lazily by the module.
+ * language the app's `Language` interface answers; the module binds a loader of it, which hands
+ * the page the store it `@Use`s and leaves when it loads to the app.
  */
-import { createElement, Suspense } from "react";
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { prerenderToNodeStream } from "react-dom/static";
 import { describe, expect, it } from "vitest";
 import { HelloPage } from "../src/hello-page";
 import { ExampleHelloPage } from "../src/index";
@@ -32,17 +32,12 @@ describe("HelloPage", () => {
 });
 
 describe("ExampleHelloPage", () => {
-  it("binds a lazy page that draws with the language it was handed", async () => {
+  it("binds a loader of the page, which draws with the language the module was handed", async () => {
     const mod = new ExampleHelloPage();
+    // Wired after construction, as the kernel does: the loader reads it when it runs.
     mod.language = language("en");
-    mod.setup();
-    // A React.lazy component: nothing loaded until it is first drawn.
-    expect((mod.page as unknown as { $$typeof: symbol }).$$typeof).toBe(Symbol.for("react.lazy"));
-    const { prelude } = await prerenderToNodeStream(
-      createElement(Suspense, { fallback: "loading" }, createElement(mod.page)),
-    );
-    let html = "";
-    for await (const chunk of prelude) html += String(chunk);
+    const Page = await mod.page.load();
+    const html = renderToStaticMarkup(createElement(Page));
     expect(html).toContain("Current language: English");
   });
 });

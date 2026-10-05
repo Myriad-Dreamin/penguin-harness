@@ -36,6 +36,20 @@ describe("fileRenderersOf", () => {
       { id: "b", extensions: ["ogg"], Renderer: Other },
     ]);
   });
+
+  it("defers a renderer bound as a loader (a plugin's chunk), loading it once", async () => {
+    let calls = 0;
+    const load = () => {
+      calls += 1;
+      return Promise.resolve(Audio);
+    };
+    const [rule] = fileRenderersOf([contribution("p", ["mp3"], { load })]);
+    const Renderer = rule!.Renderer as unknown as { preload(): Promise<unknown> };
+    expect(calls).toBe(0);
+    expect(await Renderer.preload()).toBe(Audio);
+    expect(await Renderer.preload()).toBe(Audio);
+    expect(calls).toBe(1);
+  });
 });
 
 function input(rules: readonly FileRendererRule[]): ReplyFilesInput {

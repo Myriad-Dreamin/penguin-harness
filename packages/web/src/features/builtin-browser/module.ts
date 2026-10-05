@@ -5,8 +5,7 @@
  * no conversation and works on the draft page too.
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
-import type { DockPanel, PanelOffering } from "../dock/iface";
+import type { DockPanelCode } from "../dock/iface";
 import { BuiltinBrowserLayer } from "./browser-layer";
 import { builtinBrowserUserEvents } from "./browser-events";
 import { isBrowserOffered, subscribeBrowser } from "./browser-store";
@@ -15,13 +14,11 @@ import { isBrowserOffered, subscribeBrowser } from "./browser-store";
  * The dock's browser panel, offered only where there is an agent browser to show — a live
  * question the store answers a moment after startup, so it brings its own change feed.
  */
-const browserPanel: DockPanel & PanelOffering = Object.assign(
-  lazyComponent(() => import("./browser-panel"), "BuiltinBrowserPanel"),
-  {
-    offered: isBrowserOffered,
-    subscribeOffered: subscribeBrowser,
-  },
-);
+const browserPanel: DockPanelCode = {
+  load: () => import("./browser-panel").then((m) => m.BuiltinBrowserPanel),
+  offered: isBrowserOffered,
+  subscribeOffered: subscribeBrowser,
+};
 
 @Module({
   contributes: {

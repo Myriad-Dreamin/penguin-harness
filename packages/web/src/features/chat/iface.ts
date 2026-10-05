@@ -7,14 +7,16 @@
  *
  * `Chat` carries the page's slots: `sessionTabs`, tabs beside the conversation that another module
  * draws (the Agent's workflow pages), so the page names none of them; and `fileRenderers`, which
- * draw a kind of Workspace file below the reply paragraph that links it — the rule (which
- * extensions) and the component in one contribution (reply-files.ts joins them with a reply's
- * links). A plugin's web module contributes here too (the music example's player); its component
- * may be lazy, and is drawn inside a Suspense boundary.
+ * draw a kind of Workspace file a reply links — the rule (which extensions) and the component in
+ * one contribution (reply-files.ts joins them with a reply's links; the page places each below the
+ * paragraph that holds its link). A plugin's web module contributes here too (the music example's
+ * player). Either slot's component may be bound as a loader: the chat module defers it (deps.ts)
+ * and the page draws it inside a `<Deferred>` boundary.
  */
 import type { ComponentType } from "react";
 import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
+import type { CodeHalf } from "../../lib/lazy-component";
 import type { FileRendererProps } from "../../plugin-types";
 
 /** One parked draft as a list shows it: unsent new-chat text set aside for later. */
@@ -76,7 +78,7 @@ export interface FileRendererData {
 
 export interface ChatSlots {
   /** A strip of tabs above the conversation. */
-  sessionTabs: Slot<SessionTabData, SessionTab>;
-  /** How a kind of Workspace file is drawn below the reply paragraph that links it. */
-  fileRenderers: Slot<FileRendererData, FileRenderer>;
+  sessionTabs: Slot<SessionTabData, CodeHalf<SessionTab>>;
+  /** How a kind of Workspace file a reply links is drawn. */
+  fileRenderers: Slot<FileRendererData, CodeHalf<FileRenderer>>;
 }

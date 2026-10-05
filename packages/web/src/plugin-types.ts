@@ -1,6 +1,7 @@
 /**
- * What a plugin's web module may name of the web app at compile time: the props a slot's code
- * half is handed, and the interfaces the app's modules provide for a plugin module to `@Use`.
+ * What a plugin's web module may name of the web app at compile time: the shape of a code half
+ * whose code loads later, the props a slot's code half is handed, and the interfaces the app's
+ * modules provide for a plugin module to `@Use`.
  * Declared here, and only here — the app's own modules import them from this file too — so a
  * plugin's types are the app's, not a copy kept in step by hand.
  *
@@ -19,6 +20,24 @@
  */
 import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 
+/**
+ * A code half whose code is separable: `load` resolves to what the slot takes — for a component
+ * slot, the component — and is typically an `import()` of the file that holds it, so that file
+ * becomes its own chunk. Binding one says only that the code may load apart from the module; the
+ * slot's owner decides when it does (on first render, or earlier, when a nav row is hovered) and
+ * how the wait and a failure look. A slot that takes one says so in its type; a contributor never
+ * wraps its own code in `React.lazy` or the like.
+ *
+ *     @Bind("x.page") page: Separable<ComponentType> = {
+ *       load: () => import("./page").then((m) => m.Page),
+ *     };
+ *
+ * The owner calls `load` at most once per binding and keeps what it resolved to.
+ */
+export interface Separable<C> {
+  load(): Promise<C>;
+}
+
 /** What a `ChatModule.fileRenderers` component is handed. */
 export interface FileRendererProps {
   /** Where the file is fetched from: the open conversation's Workspace file URL. */
@@ -27,13 +46,11 @@ export interface FileRendererProps {
   path: string;
   /** Its last path segment. */
   name: string;
-  /** The interface language, for the renderer's own words. */
-  locale: "zh" | "en";
 }
 
 /**
- * The interface language the person picked (Settings → General), for a component's own words.
- * Provided by the settings module.
+ * The interface language the person picked (Settings → General). Provided by the settings
+ * module: the store's read half, so a reader follows the language but cannot set it.
  *
  * It is a store, and this is the shape every piece of the app's state offered to a plugin takes:
  * `get()` returns the current committed value (a snapshot, equal from call to call until a

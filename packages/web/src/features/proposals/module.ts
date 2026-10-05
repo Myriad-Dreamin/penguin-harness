@@ -4,7 +4,6 @@
  * build supplies what draws it, by that name (`ShellModule.pageRenderers`).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -12,8 +11,7 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class ProposalsModule {
-  @Bind("proposals.page") page = lazyComponent(
-    () => import("./proposals-page"),
-    "OrgProposalsPage",
-  );
+  @Bind("proposals.page") page = {
+    load: () => import("./proposals-page").then((m) => m.OrgProposalsPage),
+  };
 }

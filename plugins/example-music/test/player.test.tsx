@@ -5,8 +5,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import AudioFile, {
+import {
   AudioCard,
+  AudioFile,
   AudioFailed,
   formatClock,
   knownLength,
@@ -14,6 +15,10 @@ import AudioFile, {
 } from "../src/player";
 import type { AudioPlayback } from "../src/player";
 import { stringsFor } from "../src/strings";
+import { ExampleMusic } from "../src/index";
+
+/** A `Language` that never changes: what a static render reads. */
+const language = (locale: "zh" | "en") => ({ get: () => locale, subscribe: () => () => {} });
 
 const ZH = stringsFor("zh");
 
@@ -21,7 +26,12 @@ describe("AudioFile", () => {
   it("drives an <audio> on the file URL, fetched only on play, without the browser's chrome", () => {
     const url = "/api/sessions/s1/files/content?path=music%2F%E5%A4%9C%E6%9B%B2.wav";
     const html = renderToStaticMarkup(
-      createElement(AudioFile, { url, path: "music/夜曲.wav", name: "夜曲.wav", locale: "zh" }),
+      createElement(AudioFile, {
+        url,
+        path: "music/夜曲.wav",
+        name: "夜曲.wav",
+        language: language("zh"),
+      }),
     );
     expect(html).toMatch(/<audio preload="none" src="[^"]+"><\/audio>/);
     expect(html).toContain(`src="${url.replace(/&/g, "&amp;")}"`);
@@ -101,10 +111,26 @@ describe("AudioFailed", () => {
 describe("the interface language", () => {
   it("names the controls in English on an English interface", () => {
     const html = renderToStaticMarkup(
-      createElement(AudioFile, { url: "/a.wav", path: "a.wav", name: "a.wav", locale: "en" }),
+      createElement(AudioFile, {
+        url: "/a.wav",
+        path: "a.wav",
+        name: "a.wav",
+        language: language("en"),
+      }),
     );
     expect(html).toContain('aria-label="Play a.wav"');
     expect(html).toContain('aria-label="Position in a.wav"');
+  });
+
+  it("is the language the module hands the player it loads", async () => {
+    const mod = new ExampleMusic();
+    // Wired after construction, as the kernel does: the loader reads it when it runs.
+    mod.language = language("zh");
+    const Player = await mod.audio.load();
+    const html = renderToStaticMarkup(
+      createElement(Player, { url: "/a.wav", path: "a.wav", name: "a.wav" }),
+    );
+    expect(html).toContain('aria-label="播放 a.wav"');
   });
 });
 

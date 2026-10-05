@@ -13,6 +13,7 @@
 import type { ComponentType } from "react";
 import { Interface } from "@prismshadow/penguin-core/kernel/runtime";
 import type { Slot } from "@prismshadow/penguin-core/kernel";
+import type { CodeHalf } from "../../lib/lazy-component";
 
 @Interface()
 export abstract class Dock {}
@@ -33,7 +34,7 @@ export interface DockPanelData {
 /**
  * A panel body. It stays mounted while its tab is in a strip; `active` is whether it is on screen
  * (its tab in front and its dock open), which is what a body gates its polling on. A body offered
- * only in some places (the built-in browser) carries the registry's live question on itself as
+ * only in some places (the built-in browser) carries the registry's live question beside it as
  * `PanelOffering`, which the dock registers with it (module.ts).
  */
 export type DockPanel = ComponentType<{ active: boolean }>;
@@ -44,7 +45,14 @@ export interface PanelOffering {
   subscribeOffered?: (listener: () => void) => () => void;
 }
 
+/**
+ * A `panels` contribution's code half as the dock reads it: the body, or a loader of it (the dock
+ * defers it, so its code loads when its tab is first drawn), with where it is offered carried on
+ * it. The slot's declared code half is the body alone; the offering is read off it when present.
+ */
+export type DockPanelCode = CodeHalf<DockPanel> & PanelOffering;
+
 export interface DockSlots {
   /** A panel kind the docks offer, and its body. */
-  panels: Slot<DockPanelData, DockPanel>;
+  panels: Slot<DockPanelData, CodeHalf<DockPanel>>;
 }

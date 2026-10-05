@@ -1,6 +1,5 @@
 /** The models page, and the pinned group's balance on the sidebar's account row. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 import type { NavBadge } from "../../lib/sidebar-contributions";
 import { PinnedBalanceBadge } from "./group-balance";
 
@@ -25,6 +24,6 @@ import { PinnedBalanceBadge } from "./group-balance";
   },
 })
 export class ModelsModule {
-  @Bind("models.page") page = lazyComponent(() => import("./models-page"), "ModelsPage");
+  @Bind("models.page") page = { load: () => import("./models-page").then((m) => m.ModelsPage) };
   @Bind("models.balance") balance: NavBadge = { Mark: PinnedBalanceBadge };
 }

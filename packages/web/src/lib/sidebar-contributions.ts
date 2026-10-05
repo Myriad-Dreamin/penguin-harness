@@ -3,8 +3,15 @@
  * a section, a work mode, a nav badge. They are a library file rather than the shell's own so
  * a contributor writes the slot key and implements the shape without importing the shell — the
  * same split as state/user-events.ts for the sessions module's handlers.
+ *
+ * The blocks drawn only while a mode is current — a section's `Full` and `Rail`, a mode's
+ * `RailTop` — may be bound as loaders (`CodeHalf`): the sidebar defers them (shell/sidebar/
+ * modes.ts) and draws them under `<Deferred>`. What is mounted for as long as the column is (a
+ * section's `Scope` and `Overlays`), what every render calls (the hooks) and the marks are
+ * components, loaded with the app.
  */
 import type { ComponentType, ReactNode, RefObject } from "react";
+import type { CodeHalf } from "./lazy-component";
 
 /** What the frame hands a section's scope. */
 export interface SidebarScopeProps {
@@ -28,9 +35,9 @@ export interface SidebarSection {
   /** Mounted in the column's overlay slot for as long as the column is, inside every scope. */
   Overlays?: ComponentType;
   /** The block itself, mounted only while its mode is current. */
-  Full: ComponentType<{ onNavigate?: () => void }>;
+  Full: CodeHalf<ComponentType<{ onNavigate?: () => void }>>;
   /** The rail's form of the block, below the rail's page entries; absent = not on the rail. */
-  Rail?: ComponentType;
+  Rail?: CodeHalf<ComponentType>;
 }
 
 /** One nav row of a contributed mode, standing in for the page table's rows. */
@@ -61,7 +68,7 @@ export interface SidebarMode {
    * Takes the rail's top slot (the last conversation's entry) while the mode is current; absent
    * = the slot stays the last conversation.
    */
-  RailTop?: ComponentType;
+  RailTop?: CodeHalf<ComponentType>;
   /** What the column lists while the mode is current: the drawer button's name. */
   listName(): string;
   /** A mark on the mode's option in the mode switch, and the words folded into its name. */

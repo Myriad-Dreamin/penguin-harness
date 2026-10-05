@@ -4,18 +4,22 @@
  *
  * - A deferred component draws the quiet fallback while its code is in flight and the target once
  *   it has arrived; preload() loads it once, however often it is asked.
- * - A failed load is a ChunkLoadError, and is not asked again within the document.
+ * - A failed load is a ChunkLoadError — a rejected or throwing loader, or one that resolves to no
+ *   component — and is not asked again within the document.
  * - preloadComponent() leaves a component that was never deferred alone.
- * - The boundary stops every error below it: a failed load (its own or a plugin's dynamic import)
- *   shows the load notice, any other error the part-failed notice, each with a Retry — a reload
- *   for a load, a remount otherwise; a changed reset key forgets the failure.
+ * - A slot owner's componentOf() keeps a component as it is and defers a loader, once per loader,
+ *   so its preload() is what the nav's hover calls; an object component is never taken for one.
+ * - The boundary stops every error below it: a failed load shows the load notice, any other error
+ *   (a dynamic import's own rejection included: only the host's loader path marks a load) the
+ *   part-failed notice, each with a Retry — a reload for a load, a remount otherwise; a changed
+ *   reset key forgets the failure.
  * - A nav row prefetches the page its address lands on: the first rooted route that matches, never
  *   the catch-all home.
  * - Every page renders under a boundary of its own, keyed by the page: a navigation into a page
  *   still loading never holds the page being left on screen, where its effects would act on the
  *   route it was drawn for (shell/router.tsx pageElement).
  */
-import { createElement } from "react";
+import { createElement, memo } from "react";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -23,7 +27,9 @@ import { describe, expect, it } from "vitest";
 import { Deferred } from "../src/components/ui/deferred";
 import {
   ChunkLoadError,
+  componentOf,
   isChunkLoadError,
+  isSeparable,
   lazyComponent,
   preloadComponent,
 } from "../src/lib/lazy-component";
@@ -36,14 +42,14 @@ function Greeting({ name }: { name: string }) {
   return createElement("p", null, `hello ${name}`);
 }
 
-/** A module loader that counts its calls and fails the first `failures` of them. */
+/** A component loader that counts its calls and fails the first `failures` of them. */
 function loader(failures = 0) {
   const state = { calls: 0 };
   const load = () => {
     state.calls += 1;
     return state.calls <= failures
       ? Promise.reject(new Error("network"))
-      : Promise.resolve({ Greeting });
+      : Promise.resolve(Greeting);
   };
   return { state, load };
 }
@@ -84,9 +90,53 @@ describe("a deferred component", () => {
     expect(() => preloadComponent(Lazy)).not.toThrow();
   });
 
+  it("marks a loader that throws, or resolves to nothing, as a failed load", async () => {
+    const throwing = lazyComponent(() => {
+      throw new Error("sync");
+    }, "Throwing");
+    await expect(throwing.preload()).rejects.toBeInstanceOf(ChunkLoadError);
+    const empty = lazyComponent(
+      () => Promise.resolve(undefined as unknown as typeof Greeting),
+      "Empty",
+    );
+    await expect(empty.preload()).rejects.toBeInstanceOf(ChunkLoadError);
+  });
+
   it("leaves a component that was never deferred alone", () => {
     expect(() => preloadComponent(Greeting)).not.toThrow();
     expect(() => preloadComponent(undefined)).not.toThrow();
+  });
+});
+
+describe("a slot owner's code half", () => {
+  it("is the component itself when the contributor bound one", () => {
+    expect(componentOf(Greeting, "x")).toBe(Greeting);
+    const Memo = memo(Greeting);
+    expect(isSeparable(Memo)).toBe(false);
+    expect(componentOf(Memo, "x")).toBe(Memo);
+  });
+
+  it("is one deferred component per loader, preloadable, loading once", async () => {
+    const { state, load } = loader();
+    const half = { load };
+    expect(isSeparable(half)).toBe(true);
+    const Page = componentOf(half, "x.page");
+    expect(componentOf(half, "x.page")).toBe(Page);
+    expect(state.calls).toBe(0);
+    preloadComponent(Page);
+    expect(await (Page as unknown as { preload(): Promise<unknown> }).preload()).toBe(Greeting);
+    expect(inBoundary(createElement(Page, { name: "p" }))).toBe("<p>hello p</p>");
+    expect(state.calls).toBe(1);
+  });
+
+  it("marks a loader's rejection — a plugin chunk the browser could not fetch — as a failed load", async () => {
+    const lost = new TypeError("Failed to fetch dynamically imported module: /api/plugins/x.js");
+    const Page = componentOf({ load: () => Promise.reject(lost) }, "x.page");
+    const error = await (Page as unknown as { preload(): Promise<unknown> })
+      .preload()
+      .catch((e: unknown) => e);
+    expect(isChunkLoadError(error)).toBe(true);
+    expect((error as Error).cause).toBe(lost);
   });
 });
 
@@ -120,12 +170,9 @@ describe("the boundary deferred code renders under", () => {
     expect(html).toContain(S.common.retry);
   });
 
-  it("treats a dynamic import the browser could not fetch as a failed load", () => {
-    const chromium = new TypeError(
-      "Failed to fetch dynamically imported module: /api/plugins/x.js",
-    );
-    expect(isChunkLoadError(chromium)).toBe(true);
-    expect(isChunkLoadError(new TypeError("Importing a module script failed."))).toBe(true);
+  it("takes only the host's own marked failure for a failed load", () => {
+    expect(isChunkLoadError(new ChunkLoadError("x", null))).toBe(true);
+    expect(isChunkLoadError(new TypeError("Importing a module script failed."))).toBe(false);
     expect(isChunkLoadError(new TypeError("undefined is not a function"))).toBe(false);
   });
 

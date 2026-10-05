@@ -9,11 +9,11 @@
  *
  * The mode itself (its hook, its nav rows, its mark) is read on every render of the column, so it
  * is here, on the entry's side, with narrow imports. The blocks it shows are drawn only once the
- * mode is entered: their code (sidebar-sections.tsx, org-switcher.tsx) loads then.
+ * mode is entered, so they are bound as loaders of their code (sidebar-sections.tsx,
+ * org-switcher.tsx), which the sidebar defers.
  */
 import { useLocation } from "react-router";
 import { S } from "../../lib/strings";
-import { lazyComponent } from "../../lib/lazy-component";
 import type { ModeState, SidebarMode, SidebarSection } from "../../lib/sidebar-contributions";
 import { useCompany } from "./company-state";
 import { CompanyBetaBadge } from "./company-beta";
@@ -78,23 +78,25 @@ const sections = () => import("./sidebar-sections");
 
 export const companyMode: SidebarMode = {
   useMode: useCompanyMode,
-  RailTop: lazyComponent(sections, "DefaultChannelRail"),
+  RailTop: { load: () => sections().then((m) => m.DefaultChannelRail) },
   listName: () => S.company.channels.drawerLabel,
   badge: { Node: CompanyBetaBadge, name: () => S.company.beta },
 };
 
 export const companySwitcher: SidebarSection = {
-  Full: lazyComponent(() => import("./org-switcher"), "OrgSwitcher"),
+  Full: { load: () => import("./org-switcher").then((m) => m.OrgSwitcher) },
 };
 
 export const companyChannels: SidebarSection = {
-  Full: lazyComponent(sections, "Channels"),
-  Rail: lazyComponent(sections, "ChannelsRail"),
+  Full: { load: () => sections().then((m) => m.Channels) },
+  Rail: { load: () => sections().then((m) => m.ChannelsRail) },
 };
 
-export const companyRoadmaps: SidebarSection = { Full: lazyComponent(sections, "Roadmaps") };
+export const companyRoadmaps: SidebarSection = {
+  Full: { load: () => sections().then((m) => m.Roadmaps) },
+};
 
 export const companyDesks: SidebarSection = {
-  Full: lazyComponent(sections, "Desks"),
-  Rail: lazyComponent(sections, "DesksRail"),
+  Full: { load: () => sections().then((m) => m.Desks) },
+  Rail: { load: () => sections().then((m) => m.DesksRail) },
 };

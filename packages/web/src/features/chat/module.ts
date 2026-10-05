@@ -8,7 +8,6 @@
 import type { ComponentType } from "react";
 import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
-import { lazyComponent } from "../../lib/lazy-component";
 import { ChatRoute } from "./chat-route";
 import { chatDrafts } from "./chat-drafts";
 import type { Chat, ChatDrafts } from "./iface";
@@ -51,14 +50,12 @@ import { chatDeps, fileRenderersOf, sessionTabsOf } from "./deps";
 export class ChatModule {
   @Provide() chat!: Chat;
   @Bind("chat.page") page!: ComponentType;
-  @Bind("chat.agents-panel") agentsPanel = lazyComponent(
-    () => import("./panels/agents-panel"),
-    "AgentsPanel",
-  );
-  @Bind("chat.memory-panel") memoryPanel = lazyComponent(
-    () => import("./panels/memory-panel"),
-    "MemoryPanel",
-  );
+  @Bind("chat.agents-panel") agentsPanel = {
+    load: () => import("./panels/agents-panel").then((m) => m.AgentsPanel),
+  };
+  @Bind("chat.memory-panel") memoryPanel = {
+    load: () => import("./panels/memory-panel").then((m) => m.MemoryPanel),
+  };
   @Provide() drafts: ChatDrafts = chatDrafts;
   setup({ contributions }: ClassCtx) {
     this.page = chatDeps.provide(

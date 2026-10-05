@@ -61,7 +61,7 @@ import { useSafeMode } from "../rescue/safe-mode";
 import { useAuth } from "../state/auth";
 import { shellDeps } from "./deps";
 import { FramePage } from "./frame-page";
-import { parentedPagesOf, removedPagesOf } from "./page-table";
+import { parentedPagesOf, placesAfter, removedPagesOf } from "./page-table";
 import type { ShellPage } from "./page-table";
 
 /** What the store holds for the current user. */
@@ -182,7 +182,7 @@ export function contributedPagesOf(
   if (answer === null || answer.pages.length === 0) return compiled;
   const keys = new Set(compiled.map((p) => p.key));
   const paths = new Set([...ROUTER_PATHS, ...compiled.map((p) => p.path)]);
-  let order = compiled.reduce((last, p) => Math.max(last, p.order), 0);
+  const next = placesAfter(compiled);
   const out = [...compiled];
   for (const entry of answer.pages) {
     const { key, nav, admin, released, parent, title, titleZh, icon } = entry;
@@ -210,7 +210,7 @@ export function contributedPagesOf(
       nav: org ? "org" : nav === "main" ? "main" : "none",
       admin: admin === true,
       released: released !== false,
-      order: ++order,
+      order: next(),
       ...(typeof title === "string" ? { title } : {}),
       ...(typeof titleZh === "string" ? { titleZh } : {}),
       ...(typeof icon === "string" ? { icon } : {}),

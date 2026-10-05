@@ -12,7 +12,7 @@ import { Deferred } from "../../components/ui/deferred";
 import { lazyComponent } from "../../lib/lazy-component";
 
 const MessagingBindingModal = lazyComponent(
-  () => import("./messaging-binding-modal"),
+  () => import("./messaging-binding-modal").then((m) => m.MessagingBindingModal),
   "MessagingBindingModal",
 );
 

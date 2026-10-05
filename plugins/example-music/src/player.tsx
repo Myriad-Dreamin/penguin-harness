@@ -1,7 +1,7 @@
 /**
- * The player: a linked audio file as a compact card below the reply paragraph that links it — a
- * round play/pause button, the file name, the elapsed / total time and a seek bar. This file is
- * the plugin's lazy chunk (index.ts binds its default export through `lazy`).
+ * The player: a linked audio file as a compact card — a round play/pause button, the file name,
+ * the elapsed / total time and a seek bar — in the interface language the module hands it. This
+ * file is the plugin's separable chunk (index.ts binds a loader of it).
  *
  * Underneath is a plain `<audio>` without controls — the browser's own player chrome differs per
  * browser and ignores the theme — and the card follows the element's media events, so the element
@@ -25,10 +25,10 @@
  * from the first render — the clock is a fixed-width monospace readout — so nothing shifts when
  * the file's length arrives.
  */
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, ReactNode, SyntheticEvent } from "react";
 import { GlyphIcon, ICONS, ICON_SIZE, Spinner } from "@prismshadow/penguin-ui";
-import type { FileRendererProps } from "@prismshadow/penguin-web/plugin-types";
+import type { FileRendererProps, Language } from "@prismshadow/penguin-web/plugin-types";
 import { stringsFor } from "./strings";
 import type { AudioStrings } from "./strings";
 
@@ -46,7 +46,14 @@ export interface AudioPlayback {
 
 const IDLE: AudioPlayback = { playing: false, waiting: false, time: 0, duration: null, loaded: 0 };
 
-export default function AudioFile({ url, name, locale }: FileRendererProps) {
+/** What the app hands a file renderer, and the interface language the module `@Use`s. */
+export interface AudioFileProps extends FileRendererProps {
+  language: Language;
+}
+
+export function AudioFile({ url, name, language }: AudioFileProps) {
+  // The third argument is the snapshot for server rendering, which the tests use.
+  const locale = useSyncExternalStore(language.subscribe, language.get, language.get);
   const strings = stringsFor(locale);
   const ref = useRef<HTMLAudioElement>(null);
   const [failed, setFailed] = useState(false);

@@ -9,21 +9,26 @@
  * the module to its own tree before it mounts.
  *
  * The contribution's data is the page's route and its nav row — its names in both languages, its
- * glyph, and `parent: "benchmark"`, which draws the row indented under the Evaluation Center. The
- * code half is the page component, lazy: its chunk (hello-page.tsx) is fetched the first time
- * someone opens the page, inside the shell's page boundary.
+ * glyph, and `parent: "benchmark"`, which draws the row indented under the Evaluation Center.
+ * Where the row sits among its siblings, who may open the page and whether it is offered are the
+ * app's to decide, not the plugin's: the shell places a plugin's page after the app's own, for
+ * every role, for as long as the plugin is enabled. The code half is a loader of the page
+ * (`Separable`): the module says only that the page's code is separable, and the app decides when
+ * its chunk (hello-page.tsx) is fetched — the first time someone opens the page, or a moment
+ * before, when the pointer rests on its nav row.
  *
  * What the page needs of the app's state comes through an interface, never an import: the
  * interface language the person picked (`Language`, provided by the web app's settings module).
  * The module `@Use`s it — wired by the interface's own key, so neither this class nor its manifest
- * names the module that provides it — and hands it to the component as a prop, which subscribes
- * to it. Its type comes from the web app's plugin-facing types (a type-only export of the web package).
+ * names the module that provides it — and the page it loads is the component with that store
+ * handed to it as a prop, which subscribes to it. Its types come from the web app's plugin-facing
+ * types (a type-only export of the web package).
  */
-import { createElement, lazy } from "react";
+import { createElement } from "react";
 import type { ComponentType } from "react";
 import { Bind, Module, Use } from "@prismshadow/penguin-core/plugin";
 import type { Plugin } from "@prismshadow/penguin-core/plugin";
-import type { Language } from "@prismshadow/penguin-web/plugin-types";
+import type { Language, Separable } from "@prismshadow/penguin-web/plugin-types";
 
 @Module({
   side: "web",
@@ -35,10 +40,6 @@ import type { Language } from "@prismshadow/penguin-web/plugin-types";
         path: "/example-hello",
         frame: "shell",
         nav: "main",
-        admin: false,
-        released: true,
-        // After the Evaluation Center's own pages (70, 71): its child row.
-        order: 72,
         parent: "benchmark",
         title: "Plugin page",
         titleZh: "插件页面",
@@ -49,15 +50,16 @@ import type { Language } from "@prismshadow/penguin-web/plugin-types";
 })
 export class ExampleHelloPage {
   @Use() language!: Language;
-  @Bind("example-hello-page.page") page!: ComponentType;
 
-  setup() {
-    const language = this.language;
-    this.page = lazy(async () => {
+  @Bind("example-hello-page.page") page: Separable<ComponentType> = {
+    load: async () => {
       const { HelloPage } = await import("./hello-page");
-      return { default: () => createElement(HelloPage, { language }) };
-    });
-  }
+      const language = this.language;
+      return function ExampleHello() {
+        return createElement(HelloPage, { language });
+      };
+    },
+  };
 }
 
 const plugin: Plugin = { modules: [ExampleHelloPage] };

@@ -16,15 +16,16 @@
 - `GET /api/contributions` 以 `webModules` 转发已启用插件的 Web 模块：每个包的名称与版本、Web 模块清单、其接口与类型条目，以及产物文件和样式表的 URL。文件经 `/api/plugins/<package>/web/<build>/<file>` 提供，构建标识是产物文件的哈希，缓存一年且不可变；其他构建标识返回 404。
 - Web App 在启动时请求这份清单，与安装标识核对和 `GET /api/me` 并行发出（最长等 3 秒，安全模式下不请求）；清单不跨加载保留。各包按包名顺序处理。每个包的接口表按内容只校验一次（kernel 的完整检查，只在遇到未校验过的表时才加载，结论记在页面对所校验内容自行计算的哈希下）；校验通过的包在 4 秒期限内加载文件与样式表，随后模块树带上全部这些包、经 kernel 运行时入口只做一次身份检查启动，因此插件都已校验过的页面不加载 arktype。只有这次启动失败时才逐个尝试各包，使连线不通的包被单独剔除。校验、限时加载、连线或启动失败的包被剔除并记下原因，写入日志并在插件页显示；应用不带它照常启动。因未登录而被拒的加载之后登录会重载一次；安全模式下加载、随后离开安全模式时，第一份转发了插件模块的答复也会触发重载；插件模块已装配时进入安全模式同样重载；在别处启用或移除的插件在下次加载时生效。
 - 每个 `<Deferred>` 边界都捕获其下抛出的任何错误：未能到达的代码块（应用自身的或插件的，例如在已打开的标签页下被重新构建）显示加载提示，其“重试”会重载页面；渲染时抛错的组件显示“这部分界面出错了”，其“重试”会重新挂载该部分。插件页面、会话标签、Shell 图层和每个回复文件渲染器都在这样的边界内渲染，失败的插件组件只影响它自己所在的区块。
-- 回复中的文件渲染器只来自 `ChatModule.fileRenderers` 的贡献：每条以数据携带扩展名、以代码携带组件，在各自的 `<Deferred>` 内绘制。渲染器会收到界面语言（`locale`）。
+- 回复中的文件渲染器只来自 `ChatModule.fileRenderers` 的贡献：每条以数据携带扩展名、以代码携带组件，在各自的 `<Deferred>` 内绘制。渲染器收到的是文件本身（`url`、`path`、`name`），界面语言经 `Language` 获取。
 - shell 新增 `ShellModule.pageRemovals` 槽位（`{ key }`，只有数据）。它点名的页面从首次渲染起即被去掉，连同其路径下的路由和挂在它下面的页面；首页指向的页面保留。服务端的 `WebModule.pageRemovals` 槽位与贡献答复的 `pageRemovals` 字段已删除。
-- `packages/web/src/plugin-types.ts` 收录插件的 Web 模块在编译期可以引用的 Web App 类型，只作类型导入：`FileRendererProps`，以及界面语言接口 `Language`——由设置模块提供，供插件模块 `@Use`。`Language` 是一个 store：`get()` 返回已提交的值，`subscribe` 在每次变化时回调一次；凡向插件提供的应用状态都采用这一形态。Web App 的界面语言也改由一个这样的 store（`state/locale-store.ts`）保存，只在设置函数与浏览器的 `languagechange` 中改变，不在渲染期间写入。Web 包以仅含类型的子路径 `@prismshadow/penguin-web/plugin-types` 导出它；示例插件把 Web 包列为 devDependency。
+- `packages/web/src/plugin-types.ts` 收录插件的 Web 模块在编译期可以引用的 Web App 类型，只作类型导入：`FileRendererProps`；`Separable`，即以加载器形式给出的代码部分（`{ load(): Promise<C> }`）；以及界面语言接口 `Language`——由设置模块提供，供插件模块 `@Use`。`Language` 是一个 store：`get()` 返回已提交的值，`subscribe` 在每次变化时回调一次；凡向插件提供的应用状态都采用这一形态。Web App 的界面语言也改由一个这样的 store（`state/locale-store.ts`）保存，只在设置函数与浏览器的 `languagechange` 中改变，不在渲染期间写入。Web 包以仅含类型的子路径 `@prismshadow/penguin-web/plugin-types` 导出它；示例插件把 Web 包列为 devDependency。
 - `scripts/verify-builtin-tree.mjs` 在完整检查之后对内置模块树再运行页面启动时的检查（`checkExact`），页面会拒绝的模块树因此在 Web 构建时即失败。
-- 插件页面的组件可以延迟加载：页面首次打开时，其代码在 shell 的页面边界内加载。
-- `plugins/example-hello-page` 改为向 `ShellModule.pages` 贡献页面的 Web 模块，页面位于评估中心之下，由插件自带的延迟组件在应用的页面框架内绘制，界面语言经 `Language` 订阅（切换语言后无需刷新即重绘），样式来自它自己带 `hp:` 前缀的样式表。原先的 iframe 文档（`ui/`）已删除。
+- 插槽的代码部分可以绑定为加载器（`Separable`）而非组件本身，应用自身的模块与插件一视同仁：贡献方只声明这段代码可以分离，由插槽的所有者（页面表、页面渲染器、Shell 图层、Dock 面板、对话页的会话标签与文件渲染器、侧栏区块与模式的侧轨顶部）把它转成应用自己的延迟组件，并在其 `<Deferred>` 内绘制。因此插件页面的代码与应用自身的页面一样，在指针停留或焦点落到其导航行时开始加载，最迟在打开时加载。贡献方不再自行用 `React.lazy` 包装代码；插件加载器中失败的动态导入按应用自身的加载失败处理（加载提示与重载），边界也不再依据浏览器的错误文本识别加载失败。
+- 插件模块贡献的页面由 Shell 安排位置：排在应用自身的页面之后（在父页面之下时，排在应用自身的子页面之后），插件之间按包名、再按贡献顺序排列；插件启用期间即提供，且对所有角色开放。页面声明了 `order`、`admin` 或 `released` 的插件会被排除并注明原因；应用自身的页面仍声明这三项。
+- `plugins/example-hello-page` 改为向 `ShellModule.pages` 贡献页面的 Web 模块，页面位于评估中心之下，由插件自带、以加载器绑定的组件在应用的页面框架内绘制，界面语言经 `Language` 订阅（切换语言后无需刷新即重绘），样式来自它自己带 `hp:` 前缀的样式表。原先的 iframe 文档（`ui/`）已删除。
 - `plugins/example-no-evaluation-center` 改为类体为空的 Web 模块，向 `ShellModule.pageRemovals` 贡献 `{ key: "benchmark" }`。两者同时启用时，hello 页面随评估中心一起被去掉。
 - Web e2e 的第二个插件集合改为 `all-examples`，启用全部三个示例。
-- `plugins/example-music` 改为贡献音频播放器（卡片、进度条、时钟、各状态及中英文案；文件时长未知时时钟显示 `-:--`、播放头停在起点，不足一秒的时长显示 `0:01`）的 Web 模块，样式来自它自己的样式表，其中的工具类都带 `mp:` 前缀，不与宿主的任何选择器重名。Web App 的 `features/audio/` 与 `AudioModule` 已删除，服务端的 `WebModule.fileRenderers` 槽位、贡献答复的 `fileRenderers` 字段以及 Web App 按名字查找渲染器的逻辑也一并删除。
+- `plugins/example-music` 改为贡献音频播放器（卡片、进度条、时钟、各状态及中英文案，文案随经 `Language` 获取的界面语言切换；文件时长未知时时钟显示 `-:--`、播放头停在起点，不足一秒的时长显示 `0:01`）的 Web 模块，样式来自它自己的样式表，其中的工具类都带 `mp:` 前缀，不与宿主的任何选择器重名。Web App 的 `features/audio/` 与 `AudioModule` 已删除，服务端的 `WebModule.fileRenderers` 槽位、贡献答复的 `fileRenderers` 字段以及 Web App 按名字查找渲染器的逻辑也一并删除。
 
 ## 兼容性
 

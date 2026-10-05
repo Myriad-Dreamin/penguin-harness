@@ -13,17 +13,26 @@ component. It demonstrates:
   `/example-hello`, the row's names ("插件页面" / "Plugin page"), its glyph and
   `parent: "benchmark"`, which draws it indented under the Evaluation Center — is declared in the
   module, so the plugin writes no navigation code; the row appears once the web app has loaded the
-  plugin's module file, before it mounts. The page component (`src/hello-page.tsx`) is lazy: its
-  chunk is fetched the first time someone opens the page, and the content area shows the app's
-  loading line meanwhile. A page whose parent is absent is shown
-  nowhere; pages nest one level only.
+  plugin's module file, before it mounts. A page whose parent is absent is shown nowhere; pages
+  nest one level only.
+- **The app places the page.** The contribution states no place, no admin gate and no release:
+  those are the app's decisions. The shell puts a plugin's page after the app's own pages (under
+  a parent, after the app's own children; among plugins, by package name), offers it for as long
+  as the plugin is enabled, and to every role. A plugin whose page states `order`, `admin` or
+  `released` is left out, with that reason on the Plugins page.
+- **The page's code is separable; the app decides when it loads.** The module binds a loader of
+  the page (`{ load: () => … import("./hello-page") … }`, typed `Separable` from the app's
+  plugin-facing types), not a component it wrapped in `React.lazy` itself. The app turns it into
+  its own deferred component: the page's chunk is fetched when the pointer rests on the nav row
+  (the same prefetch as the app's own pages) or, at the latest, when the page is opened, and the
+  content area shows the app's loading line meanwhile.
 - **A first-class page.** It sits in the app's frame with the app's own `PageFrame` and
   `PageHeader` (shared from the UI package), and its cards use the host's theme tokens, so it
   follows the theme, light/dark mode and the accent.
 - **App state through an interface.** The page's words follow the app's interface language. The
   module reads it through `Language`, an interface the web app's settings module provides: a
-  `@Use()` field on the module class, wired by the interface's key (no module named), handed to
-  the component as a prop. `Language` is a store (`get` / `subscribe`): the component reads it
+  `@Use()` field on the module class, wired by the interface's key (no module named); the loader
+  resolves to the page component with that store handed to it as a prop. `Language` is a store (`get` / `subscribe`): the component reads it
   with React's `useSyncExternalStore`, so a language switch in Settings re-draws the page without
   a reload. Its type comes from the web app's plugin-facing types
   (`@prismshadow/penguin-web/plugin-types`, a types-only export of the web package, imported as a

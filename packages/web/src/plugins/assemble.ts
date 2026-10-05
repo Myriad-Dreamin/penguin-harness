@@ -23,9 +23,10 @@
  * (`pluginModuleFailures`, read by the Plugins page) and logged. Safe mode never gets here — the
  * entry asks for nothing.
  *
- * Code halves may be lazy (a `React.lazy` component bound in `@Bind`): the module file is small
- * and loads at boot, the component's chunk when a slot first draws it, inside the slot owner's
- * `<Deferred>` boundary.
+ * A code half may be a loader (`Separable`, plugin-types.ts — an `import()` of the plugin's own
+ * chunk): the module file is small and loads at boot, the chunk when the slot's owner first needs
+ * it — a page's on first visit or when its nav row is hovered — inside the owner's `<Deferred>`
+ * boundary.
  */
 import { describeProblem, moduleDefOf } from "@prismshadow/penguin-core/kernel/runtime";
 import type {
@@ -39,6 +40,7 @@ import type {
 } from "@prismshadow/penguin-core/kernel/runtime";
 import type { WebModulePackage } from "@prismshadow/penguin-server/api";
 import { verifyPlugins } from "../lib/verify-plugins";
+import { pageClaimOf } from "./page-claims";
 import { shareHostModules } from "./shared";
 import type { HashedTable, PluginTable } from "../lib/verify-plugins";
 
@@ -141,7 +143,7 @@ interface Candidate {
 /**
  * The package's table, or why it cannot be one. Each manifest is used as forwarded — generated
  * data, shape-checked by verification — once its name is a string no other module of the
- * package uses.
+ * package uses, and once no page it contributes states what the app decides (page-claims.ts).
  */
 function candidateOf(pkg: WebModulePackage): Candidate | string {
   const manifests = new Map<string, Manifest>();
@@ -151,6 +153,8 @@ function candidateOf(pkg: WebModulePackage): Candidate | string {
     if (manifests.has(name)) return `module '${name}' is forwarded twice`;
     manifests.set(name, manifest as unknown as Manifest);
   }
+  const claim = pageClaimOf([...manifests.values()]);
+  if (claim !== null) return claim;
   const table: ModuleTable = {
     ifaces: (pkg.ifaces.ifaces ?? {}) as IfaceTable["ifaces"],
     types: (pkg.ifaces.types ?? {}) as IfaceTable["types"],

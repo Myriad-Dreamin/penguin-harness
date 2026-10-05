@@ -1,6 +1,5 @@
 /** The plugins page and one registry plugin's detail. */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -32,9 +31,8 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class PluginsModule {
-  @Bind("plugins.list") list = lazyComponent(() => import("./plugins-page"), "PluginsPage");
-  @Bind("plugins.detail") detail = lazyComponent(
-    () => import("./plugin-detail-page"),
-    "PluginDetailPage",
-  );
+  @Bind("plugins.list") list = { load: () => import("./plugins-page").then((m) => m.PluginsPage) };
+  @Bind("plugins.detail") detail = {
+    load: () => import("./plugin-detail-page").then((m) => m.PluginDetailPage),
+  };
 }

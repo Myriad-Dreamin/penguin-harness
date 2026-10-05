@@ -1,8 +1,11 @@
 /**
  * What the chat module binds into its page (lib/module-deps.tsx): the `sessionTabs` and
- * `fileRenderers` contributions (iface.ts), read once at boot.
+ * `fileRenderers` contributions (iface.ts), read once at boot. A component bound as a loader is
+ * deferred here, once (the page draws both kinds under `<Deferred>`).
  */
 import type { Contributed } from "@prismshadow/penguin-core/kernel";
+import { componentOf } from "../../lib/lazy-component";
+import type { CodeHalf } from "../../lib/lazy-component";
 import { createDeps } from "../../lib/module-deps";
 import type { FileRenderer, FileRendererData, SessionTab, SessionTabData } from "./iface";
 
@@ -22,7 +25,7 @@ export function sessionTabsOf(contributions: readonly Contributed[]): ChatDeps["
       (a, b) =>
         (a.data as unknown as SessionTabData).order - (b.data as unknown as SessionTabData).order,
     )
-    .map((c) => ({ id: c.id, Tab: c.code as SessionTab }));
+    .map((c) => ({ id: c.id, Tab: componentOf(c.code as CodeHalf<SessionTab>, c.id) }));
 }
 
 /** One file renderer contribution as the conversation reads it. */
@@ -43,6 +46,12 @@ export function fileRenderersOf(contributions: readonly Contributed[]): ChatDeps
     const exts = extensions.map((e) => e.replace(/^\./, "").toLowerCase()).filter((e) => e !== "");
     return exts.length === 0
       ? []
-      : [{ id: c.id, extensions: exts, Renderer: c.code as FileRenderer }];
+      : [
+          {
+            id: c.id,
+            extensions: exts,
+            Renderer: componentOf(c.code as CodeHalf<FileRenderer>, c.id),
+          },
+        ];
   });
 }

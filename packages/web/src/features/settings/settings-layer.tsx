@@ -13,7 +13,10 @@ import { lazyComponent } from "../../lib/lazy-component";
 import { onSettingsRequest } from "../../lib/settings-request";
 import type { SettingsRequest } from "../../lib/settings-request";
 
-const SettingsDialog = lazyComponent(() => import("./settings-dialog"), "SettingsDialog");
+const SettingsDialog = lazyComponent(
+  () => import("./settings-dialog").then((m) => m.SettingsDialog),
+  "SettingsDialog",
+);
 
 export function SettingsLayer() {
   const [open, setOpen] = useState(false);

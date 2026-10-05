@@ -19,7 +19,9 @@
  * - A module whose effect is all data (an empty class) joins from its file like any other: its
  *   page removal reaches the shell's `pageRemovals` slot.
  * - A plugin page joins the shell's `pages` slot with its `parent`, and its module `@Use`s an
- *   interface the app provides (`Language`, by its own key, no `from`, no copy).
+ *   interface the app provides (`Language`, by its own key, no `from`, no copy). The shell places
+ *   it after the app's own pages, offered and open to every role; a package whose page states its
+ *   own place, admin gate or release is left out with the reason.
  * - The app shares its own React, JSX runtime, kernel runtime entry and the UI package's plugin
  *   surface with plugin modules, under the keys the plugin build resolves them to
  *   (scripts/lib/web-shared.mjs); the surface's instances are the UI package's own, and its names
@@ -50,6 +52,7 @@ import { tableKey } from "../src/lib/verify-plugins";
 import { VERIFIED_CACHE_KEY } from "../src/lib/verified-cache";
 import { memoryStorage, stubLocalStorage } from "./helpers/storage";
 import { ShellModule } from "../src/shell/module";
+import { pageTableOf } from "../src/shell/page-table";
 import type { Language } from "../src/plugin-types";
 
 const Player = () => null;
@@ -137,9 +140,6 @@ const HELLO_MANIFEST = {
         path: "/example-hello",
         frame: "shell",
         nav: "main",
-        admin: false,
-        released: true,
-        order: 72,
         parent: "benchmark",
         title: "Plugin page",
         titleZh: "插件页面",
@@ -226,6 +226,27 @@ describe("plugin web modules in the tree", () => {
     expect(page?.data).toMatchObject({ key: "example-hello", parent: "benchmark" });
     expect(page?.code).toBe(HelloView);
     expect(["zh", "en"]).toContain(helloLanguage?.get());
+    // Placed by the shell: after every page of the app's own, offered, for every role.
+    const table = pageTableOf(shellSlots.pages ?? []);
+    const placed = table.find((p) => p.id === "hello.page");
+    expect(placed).toMatchObject({ admin: false, released: true });
+    expect(table.at(-1)).toBe(placed);
+    expect(Math.max(...table.filter((p) => p !== placed).map((p) => p.order))).toBeLessThan(
+      placed!.order,
+    );
+  });
+
+  it("leaves out a package whose page states what the app decides for it", async () => {
+    const pages = HELLO_MANIFEST.contributes["ShellModule.pages"] as Array<Record<string, unknown>>;
+    const claiming = {
+      ...HELLO_MANIFEST,
+      contributes: { "ShellModule.pages": [{ ...pages[0], order: 72, admin: true }] },
+    };
+    await bootWeb([pkg("@acme/hello", [{ manifest: claiming, url: "/hello.js" }])], opts);
+    expect(created).not.toContain("HelloPlugin");
+    expect(pluginModuleFailures().get("@acme/hello")).toMatch(
+      /page 'hello\.page' states 'admin', 'order'/,
+    );
   });
 
   it("boots the app's own tree when nothing is forwarded", async () => {

@@ -17,6 +17,8 @@
 import type { ComponentType, ReactNode } from "react";
 import { Interface, Module, Provide, Use } from "@prismshadow/penguin-core/kernel/runtime";
 import type { ClassCtx, Contributed, Slot } from "@prismshadow/penguin-core/kernel";
+import { componentOf } from "../lib/lazy-component";
+import type { CodeHalf } from "../lib/lazy-component";
 import type { UserEventHandlers } from "../state/user-events";
 import type { ChatDrafts } from "../features/chat";
 import type { Sidebar } from "./sidebar/iface";
@@ -53,27 +55,38 @@ export interface PageRemovalData {
   key: string;
 }
 
+/**
+ * The component slots' code halves may be loaders (`CodeHalf`, lib/lazy-component.ts): the shell
+ * defers them, so their code loads when first drawn (a page's, or earlier, when its nav row is
+ * hovered), and draws each under a `<Deferred>` boundary. A session provider is the exception: it
+ * wraps every page, so it is a component, loaded with the app.
+ */
 export interface ShellSlots {
   /** A routed page; its component is the code half. */
-  pages: Slot<PageData, ComponentType>;
+  pages: Slot<PageData, CodeHalf<ComponentType>>;
   /** Providers of the signed-in session, mounted inside Project + Sessions, outermost first. */
   sessionProviders: Slot<Ordered, ComponentType<{ children: ReactNode }>>;
   /** Mounted once beside every page: overlays and headless runtimes. */
-  layers: Slot<Ordered, ComponentType>;
+  layers: Slot<Ordered, CodeHalf<ComponentType>>;
   /** A component a page the server contributes (shell/contributions.tsx) may name to be drawn with. */
-  pageRenderers: Slot<PageRendererData, ComponentType>;
+  pageRenderers: Slot<PageRendererData, CodeHalf<ComponentType>>;
   /** A page taken away. */
   pageRemovals: PageRemovalData;
 }
 
 /** A slot's contributions by `order`, each with the component its module bound. */
-function byOrder<P>(
+function byOrder<P extends object>(
   contributions: readonly Contributed[],
+  code: (c: Contributed) => ComponentType<P> = (c) => c.code as ComponentType<P>,
 ): ReadonlyArray<{ id: string; Component: ComponentType<P> }> {
   return [...contributions]
     .sort((a, b) => (a.data as unknown as Ordered).order - (b.data as unknown as Ordered).order)
-    .map((c) => ({ id: c.id, Component: c.code as ComponentType<P> }));
+    .map((c) => ({ id: c.id, Component: code(c) }));
 }
+
+/** A component slot's code half, deferred when it is a loader. */
+const deferredCode = (c: Contributed): ComponentType =>
+  componentOf(c.code as CodeHalf<ComponentType>, c.id);
 
 @Module()
 export class ShellModule {
@@ -86,11 +99,11 @@ export class ShellModule {
     const sessionProviders: readonly ShellSessionProvider[] = byOrder<{ children: ReactNode }>(
       contributions.sessionProviders ?? [],
     );
-    const layers: readonly ShellLayer[] = byOrder(contributions.layers ?? []);
+    const layers: readonly ShellLayer[] = byOrder(contributions.layers ?? [], deferredCode);
     const pageRenderers: ReadonlyMap<string, ComponentType> = new Map(
       (contributions.pageRenderers ?? []).map((c) => [
         (c.data as unknown as PageRendererData).name,
-        c.code as ComponentType,
+        deferredCode(c),
       ]),
     );
     const pageRemovals: readonly string[] = (contributions.pageRemovals ?? []).map(

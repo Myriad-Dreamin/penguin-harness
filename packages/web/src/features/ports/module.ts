@@ -3,7 +3,6 @@
  * from, and the dock's Ports panel for the conversation's Workspace (ports-dock-panel.tsx).
  */
 import { Bind, Module } from "@prismshadow/penguin-core/kernel/runtime";
-import { lazyComponent } from "../../lib/lazy-component";
 
 @Module({
   contributes: {
@@ -32,9 +31,10 @@ import { lazyComponent } from "../../lib/lazy-component";
   },
 })
 export class PortsModule {
-  @Bind("ports.machine") page = lazyComponent(
-    () => import("./machine-ports-page"),
-    "MachinePortsPage",
-  );
-  @Bind("ports.panel") panel = lazyComponent(() => import("./ports-dock-panel"), "PortsDockPanel");
+  @Bind("ports.machine") page = {
+    load: () => import("./machine-ports-page").then((m) => m.MachinePortsPage),
+  };
+  @Bind("ports.panel") panel = {
+    load: () => import("./ports-dock-panel").then((m) => m.PortsDockPanel),
+  };
 }

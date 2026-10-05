@@ -13,23 +13,27 @@ import { S, zh } from "../../lib/strings";
 import { glyphOf } from "../../lib/nav-icons";
 import { DockScope } from "./dock-scope";
 import { browseFilesAction } from "./browse-files";
+import { componentOf } from "../../lib/lazy-component";
 import { registerDockPanel } from "./panel-registry";
-import type { Dock, DockPanel, DockPanelData, PanelOffering } from "./iface";
+import type { Dock, DockPanelCode, DockPanelData } from "./iface";
 
-/** Registers the `panels` contributions in the panel registry, in their contributed order. */
+/**
+ * Registers the `panels` contributions in the panel registry, in their contributed order. A body
+ * bound as a loader is deferred here (dock-panel.tsx draws every body under `<Deferred>`).
+ */
 function registerPanels(contributions: readonly Contributed[]): void {
   for (const c of contributions) {
     const data = c.data as unknown as DockPanelData;
-    const Body = c.code as DockPanel & PanelOffering;
+    const code = c.code as DockPanelCode;
     registerDockPanel({
       id: data.kind,
       // Read at call time, like every registry label: `S` follows the active language.
       label: () => (S === zh ? data.titleZh : data.title),
       glyph: glyphOf(data.icon),
       order: data.order,
-      Body,
-      ...(Body.offered !== undefined ? { offered: Body.offered } : {}),
-      ...(Body.subscribeOffered !== undefined ? { subscribeOffered: Body.subscribeOffered } : {}),
+      Body: componentOf(code, c.id),
+      ...(code.offered !== undefined ? { offered: code.offered } : {}),
+      ...(code.subscribeOffered !== undefined ? { subscribeOffered: code.subscribeOffered } : {}),
     });
   }
 }
