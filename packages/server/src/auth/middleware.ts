@@ -125,6 +125,12 @@ export type AppEnv = {
     user: UserRow;
     /** How the current session was established — see {@link SessionVia}. */
     sessionVia: SessionVia;
+    /**
+     * Set when the cookie is a session `penguin auth token` minted from the data root — the
+     * one a hub presents on every request it forwards to this machine (machines/proxy.ts,
+     * machines/remote-token.ts). Absent on every other path, the API socket included.
+     */
+    cliSession?: boolean;
   };
 };
 
@@ -168,6 +174,7 @@ export function authMiddleware(auth: Auth, trustProxy: boolean): MiddlewareHandl
     }
     c.set("user", authed.user);
     c.set("sessionVia", authed.via);
+    if (authed.cli) c.set("cliSession", true);
     await next();
   };
 }

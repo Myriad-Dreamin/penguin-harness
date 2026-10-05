@@ -80,6 +80,7 @@ import type { DiscordTransport } from "../src/runtime/messaging/discord-api.js";
 import { WeChatScanTransportProvider } from "../src/runtime/messaging/wechat-scan.js";
 import type { WeChatScanTransport } from "../src/runtime/messaging/wechat-scan.js";
 import { MachinesModule, machinesServerProxyRoutes } from "../src/machines/service.js";
+import { machinesOAuthCallbackRoutes } from "../src/machines/oauth-callback-route.js";
 import { OrganizationModule } from "../src/runtime/organization/service.js";
 import { machinesRoutes } from "../src/http/routes/machines.js";
 import { MachineEventHub } from "../src/machines/event-hub.js";
@@ -449,6 +450,7 @@ export function replacementsFor(o: TestAppOptions): Replacements {
         machines,
         routes: machinesRoutes({ machines, access: accessDouble(), events }),
         serverProxyRoutes: machinesServerProxyRoutes(machines, { sockets, events }),
+        oauthCallbackRoutes: machinesOAuthCallbackRoutes(machines, { sockets, events }),
       },
     ]);
   }

@@ -88,6 +88,7 @@ import type { AppEnv } from "../auth/middleware.js";
 import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import { machinesRoutes } from "../http/routes/machines.js";
 import { machinesProxy } from "./proxy.js";
+import { machinesOAuthCallbackRoutes } from "./oauth-callback-route.js";
 import { MachineEventHub } from "./event-hub.js";
 import { MachineSockets } from "./machine-sockets.js";
 import { HttpError } from "../http/errors.js";
@@ -95,7 +96,7 @@ import type { Access } from "../mechanisms/projects.js";
 import { Hono } from "hono";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { DatabaseSync } from "node:sqlite";
-import type { Db, Hmr, Paths, ResourceGroups } from "../hmr/capabilities.js";
+import type { Config, Db, Hmr, Paths, ResourceGroups } from "../hmr/capabilities.js";
 import { currentRemoteLayout } from "./layout.js";
 import type { RemoteLayout } from "./layout.js";
 
@@ -1644,6 +1645,13 @@ export abstract class Machines extends Interface<
         order: 50,
       },
       {
+        // Ahead of the proxy's own group, and with no session: see machinesOAuthCallbackRoutes.
+        id: "MachinesModule.server-proxy-oauth-callback",
+        prefix: "/server/:machineId/api/projects/:projectId/model-oauth/callback",
+        auth: "none",
+        order: 6,
+      },
+      {
         id: "MachinesModule.server-proxy",
         // The manifest is data: the literal, not machines/proxy.ts's SERVER_PROXY_PREFIX,
         // which the generator reads statically and cannot follow.
@@ -1661,9 +1669,11 @@ export class MachinesModule {
   @Use() private readonly access!: Access;
   /** Whether the predecessor's delivered sessions may be claimed (hmr/platform.ts judged their contract). */
   @Use() private readonly resourceGroups!: ResourceGroups;
+  @Use() private readonly config!: Config;
   @Provide() machines!: Machines;
   @Bind("MachinesModule.routes") routes!: Hono<AppEnv>;
   @Bind("MachinesModule.server-proxy") serverProxyRoutes!: Hono<AppEnv>;
+  @Bind("MachinesModule.server-proxy-oauth-callback") oauthCallbackRoutes!: Hono<AppEnv>;
   setup({ effect }: ClassCtx) {
     // This machine's own id is minted on the first boot of this data root and stable ever
     // after — every stored reference to this machine, here and on the machines it reaches,
@@ -1687,7 +1697,13 @@ export class MachinesModule {
     );
     this.machines = machines;
     this.routes = machinesRoutes({ machines, access: this.access, events });
-    this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events });
+    const trustProxy = this.config.trustProxy;
+    this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events, trustProxy });
+    this.oauthCallbackRoutes = machinesOAuthCallbackRoutes(machines, {
+      sockets,
+      events,
+      trustProxy,
+    });
     // This generation's transient sessions close with it; held ones stay up in the registry
     // for the successor to claim, and its start() re-holds whatever the record says was
     // held and is not there.
@@ -1703,7 +1719,7 @@ export class MachinesModule {
  */
 export function machinesServerProxyRoutes(
   machines: MachinesService,
-  shared: { sockets?: MachineSockets; events?: MachineEventHub } = {},
+  shared: { sockets?: MachineSockets; events?: MachineEventHub; trustProxy?: boolean } = {},
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const proxy = machinesProxy(
