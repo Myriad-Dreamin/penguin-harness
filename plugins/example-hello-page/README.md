@@ -13,7 +13,9 @@ component. It demonstrates:
   `/example-hello`, the row's names ("插件页面" / "Plugin page"), its glyph and
   `parent: "benchmark"`, which draws it indented under the Evaluation Center — is declared in the
   module, so the plugin writes no navigation code; the row appears once the web app has loaded the
-  plugin's module file, before it mounts. The page component (`src/hello-page.tsx`) is lazy: its
+  plugin's module file, before it mounts. The contribution states no place, admin gate or
+  release: the shell puts a page that states none after the app's own pages (under its parent,
+  after the app's own children), offered and open to every role. The page component (`src/hello-page.tsx`) is lazy: its
   chunk is fetched the first time someone opens the page, and the content area shows the app's
   loading line meanwhile. A page whose parent is absent is shown
   nowhere; pages nest one level only.

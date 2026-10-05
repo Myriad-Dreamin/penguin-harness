@@ -9,8 +9,10 @@
  * the module to its own tree before it mounts.
  *
  * The contribution's data is the page's route and its nav row — its names in both languages, its
- * glyph, and `parent: "benchmark"`, which draws the row indented under the Evaluation Center. The
- * code half is the page component, lazy: its chunk (hello-page.tsx) is fetched the first time
+ * glyph, and `parent: "benchmark"`, which draws the row indented under the Evaluation Center. It
+ * states no place, admin gate or release: the shell places a page that states none after the
+ * app's own pages (under its parent, after the app's own children), offered and open to every
+ * role. The code half is the page component, lazy: its chunk (hello-page.tsx) is fetched the first time
  * someone opens the page, inside the shell's page boundary.
  *
  * What the page needs of the app's state comes through an interface, never an import: the
@@ -35,10 +37,6 @@ import type { Language } from "@prismshadow/penguin-web/plugin-types";
         path: "/example-hello",
         frame: "shell",
         nav: "main",
-        admin: false,
-        released: true,
-        // After the Evaluation Center's own pages (70, 71): its child row.
-        order: 72,
         parent: "benchmark",
         title: "Plugin page",
         titleZh: "插件页面",

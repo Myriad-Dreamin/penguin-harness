@@ -1,9 +1,8 @@
 /**
  * Settings: the shortcut runtime, which reconciles the shortcut mirror with the account's prefs,
  * and the Settings dialog, opened on request (settings-layer.tsx). It also provides the
- * interface language the person picks there (`Language`, plugin-types.ts) — the one piece of the
- * app's state a plugin page needs for its own words: the store's read half only, so a plugin can
- * follow the language but not set it.
+ * interface language the person picks there (`Language`, plugin-types.ts): the store's read half
+ * only — setting the language is the dialog's.
  */
 import { Bind, Module, Provide } from "@prismshadow/penguin-core/kernel/runtime";
 import { Language } from "../../plugin-types";
