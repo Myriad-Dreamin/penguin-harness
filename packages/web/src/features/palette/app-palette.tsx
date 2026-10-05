@@ -12,6 +12,10 @@
  * is where a person finds them. The host says what it offers AND what to call it, so it can
  * offer something this build has never heard of; a plain server offers none, and a non-admin
  * is told nothing.
+ *
+ * An action whose overlay another surface owns runs that surface's command (lib/shortcuts), the
+ * same path its shortcut takes, and is listed only while some surface answers the command — so
+ * the palette never offers what nothing on this route would open.
  */
 import { useEffect, useMemo, useState } from "react";
 import type { HostCommand, HostCommandOffer } from "@prismshadow/penguin-server/api";
@@ -20,7 +24,7 @@ import type { PaletteAction } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { apiErrorText } from "../../lib/api-error";
 import { offersNewWindow } from "../../lib/desktop-window";
-import { onCommand } from "../../lib/shortcuts/dispatcher";
+import { hasCommandHandler, onCommand, runCommand } from "../../lib/shortcuts/dispatcher";
 import { useShortcutLabel } from "../../lib/shortcuts/use-keymap";
 import { S } from "../../lib/strings";
 import { useAuth } from "../../state/auth";
@@ -88,6 +92,27 @@ export function hostCommandActions(
   });
 }
 
+/** The actions every palette lists, as they stand now (read when the palette opens). */
+export function standingPaletteActions(openHistory: () => void): PaletteAction[] {
+  const actions: PaletteAction[] = [
+    {
+      id: "harness-history",
+      label: S.commandPalette.harnessHistory,
+      keywords: ["harness history", "version", "hmr", "ifaces"],
+      run: openHistory,
+    },
+  ];
+  if (hasCommandHandler("claudeCode.slots")) {
+    actions.push({
+      id: "claude-code-slots",
+      label: S.commandPalette.claudeCodeSlots,
+      keywords: ["claude code slots", "queue", "runs", "release"],
+      run: () => void runCommand("claudeCode.slots"),
+    });
+  }
+  return actions;
+}
+
 /**
  * `extra` is what the mount point adds ahead of the standing actions — the full-page
  * workflow route registers its way out here, which is why it exists at all on that route.
@@ -134,6 +159,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
     };
   }, [isAdmin]);
 
+  // Rebuilt on every opening: whether a surface answers a command depends on the route.
   const actions = useMemo<PaletteAction[]>(
     () => [
       ...extra,
@@ -150,12 +176,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
             },
           ]
         : []),
-      {
-        id: "harness-history",
-        label: S.commandPalette.harnessHistory,
-        keywords: ["harness history", "version", "hmr", "ifaces"],
-        run: () => setHistoryOpen(true),
-      },
+      ...(open ? standingPaletteActions(() => setHistoryOpen(true)) : []),
       ...hostCommandActions(offers, locale).map(({ command, action }): PaletteAction => {
         return {
           id: `host-${command}`,
@@ -180,7 +201,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         },
       },
     ],
-    [extra, offers, locale, newWindow],
+    [extra, offers, locale, newWindow, open],
   );
 
   return (

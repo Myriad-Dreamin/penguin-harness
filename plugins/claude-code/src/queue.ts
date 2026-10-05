@@ -417,11 +417,16 @@ export class ClaudeCodeQueue {
     return { projectId: found.projectId, orgId: found.orgId, run, existing: found.existing };
   }
 
-  /** Every run of the organization (newest first), with the server's slots. */
+  /**
+   * Every run of the organization (newest first), with the server's slots. `active` leaves the
+   * ended runs out — up to {@link KEEP_ENDED} of them, each with its prompt — for a caller that
+   * asks often about who holds a slot; the totals are the same either way.
+   */
   async list(
     projectId: string,
     orgId: string,
     actor: OrgActor,
+    opts: { active?: boolean } = {},
   ): Promise<{
     runs: RunView[];
     capacity: number;
@@ -430,7 +435,8 @@ export class ClaudeCodeQueue {
     queued: number;
   }> {
     await this.organization(projectId, orgId, actor);
-    const runs = await this.views(projectId, orgId, null);
+    const views = await this.views(projectId, orgId, null);
+    const runs = opts.active === true ? views.filter((r) => r.status !== "ended") : views;
     const all = await this.everyRun();
     const { capacity, idleMinutes } = this.deps.config();
     return {

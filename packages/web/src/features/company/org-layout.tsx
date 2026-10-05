@@ -45,7 +45,6 @@ import { orgKey, orgPagePath, resolveOrgLanding } from "./company-nav";
 import { CreateOrganizationDialog, useOrganizationCreated } from "./org-dialogs";
 import { ORG_EXAMPLES } from "./org-examples";
 import { TicketDialogHost } from "./ticket-dialog";
-import { ClaudeSessionDialogHost } from "./claude-session-dialog";
 
 export interface OrgContextValue {
   projectId: string;
@@ -278,7 +277,6 @@ export function OrgLayout() {
     <OrgContext.Provider value={{ projectId, orgId, org }}>
       <Outlet />
       <TicketDialogHost />
-      <ClaudeSessionDialogHost />
     </OrgContext.Provider>
   );
 }

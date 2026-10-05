@@ -9,6 +9,10 @@
  * terminal outside the queue — so a dialog can show it without leaving the page the reader is
  * on. A modified click (new tab, new window) is left to the browser and lands on the page form.
  *
+ * The slot list (claude-code-slots.tsx) opens the same dialog on a run it lists rather than on a
+ * link: a run started with a prompt continues no Claude Code session a link could name, and
+ * following the run itself starts nothing — it only reads.
+ *
  * Closing the dialog only stops following: nothing here releases a run or closes a surface,
  * because the session is the employee's long-lived conversation, not the dialog's.
  */
@@ -16,10 +20,12 @@ import { useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
 import { ApiError } from "../../api/client";
 import * as api from "../../api/endpoints";
-import type { OrgClaudeRun } from "../../api/endpoints";
+import { getOrgClaudeRun } from "../../api/claude-code";
+import type { OrgClaudeRun } from "../../api/claude-code";
 import type { SessionInfo } from "@prismshadow/penguin-server/api";
 import { apiErrorText } from "../../lib/api-error";
 import { rememberLinkedMachine } from "../../lib/session-machines";
+import { warmSurface } from "../chat/surface-warm";
 
 /** Where a session held outside the queue runs, as the plugin reads it from this machine. */
 export interface OpenWhere {
@@ -49,10 +55,18 @@ export type OpenAnswer =
     }
   | { state: "elsewhere"; where: OpenWhere };
 
+/** One queue run, and the machine that holds it (null: the organization's path routes itself). */
+export interface RunRef {
+  projectId: string;
+  orgId: string;
+  runId: number;
+  machine: string | null;
+}
+
 /** What the dialog shows, one step of following a link. */
 export type OpenView =
   | { kind: "loading" }
-  | { kind: "running"; session: SessionInfo }
+  | { kind: "running"; session: SessionInfo; run: RunRef }
   | { kind: "queued"; position: number | null }
   | { kind: "elsewhere"; where: OpenWhere }
   | { kind: "ended"; reason: string | null }
@@ -121,7 +135,7 @@ export interface OpenDeps {
     orgId: string,
     runId: number,
     machine: string | null,
-  ): Promise<OrgClaudeRun>;
+  ): Promise<Pick<OrgClaudeRun, "id" | "status" | "sessionId" | "position" | "error">>;
   /** The Session a run holds, recorded as living on `machine` so its terminal calls go there. */
   session(sessionId: string, machine: string | null): Promise<SessionInfo>;
   /** Resolves after `ms`, or as soon as `signal` aborts. */
@@ -142,9 +156,12 @@ const wait = (ms: number, signal: AbortSignal) =>
 
 export const OPEN_DEPS: OpenDeps = {
   ask: askOpen,
-  run: (projectId, orgId, runId, machine) => api.getOrgClaudeRun(projectId, orgId, runId, machine),
+  run: (projectId, orgId, runId, machine) => getOrgClaudeRun(projectId, orgId, runId, machine),
   session: async (sessionId, machine) => {
     rememberLinkedMachine(sessionId, machine);
+    // The terminal's lookup starts now rather than after the Session arrives and renders: on a
+    // machine every read is a round trip through this server's connection to it.
+    warmSurface(sessionId);
     return (await api.getSession(sessionId)).session;
   },
   wait,
@@ -162,36 +179,81 @@ export async function followOpen(
   signal: AbortSignal,
   deps: OpenDeps = OPEN_DEPS,
 ): Promise<void> {
-  const report = (view: OpenView) => {
-    if (!signal.aborted) onView(view);
-  };
+  const report = reporter(onView, signal);
   try {
     const answer = await deps.ask(path);
     if (answer.state === "elsewhere") return report({ kind: "elsewhere", where: answer.where });
-    const machine = answer.machine ?? machineOfOpenPath(path);
-    const attach = async (sessionId: string) =>
-      report({ kind: "running", session: await deps.session(sessionId, machine) });
-    if (answer.state === "running") return await attach(answer.sessionId);
+    const run: RunRef = {
+      projectId: answer.projectId,
+      orgId: answer.orgId,
+      runId: answer.runId,
+      machine: answer.machine ?? machineOfOpenPath(path),
+    };
+    if (answer.state === "running") return await attach(run, answer.sessionId, report, deps);
     report({ kind: "queued", position: answer.position ?? null });
-    for (;;) {
-      await deps.wait(OPEN_POLL_MS, signal);
-      if (signal.aborted) return;
-      const run = await deps.run(answer.projectId, answer.orgId, answer.runId, machine);
-      if (run.status === "running" && run.sessionId !== undefined) {
-        return await attach(run.sessionId);
-      }
-      if (run.status === "ended") return report({ kind: "ended", reason: run.error ?? null });
-      report({ kind: "queued", position: run.position ?? null });
-    }
+    await untilStarted(run, report, signal, deps, true);
   } catch (err) {
     report({ kind: "failed", message: apiErrorText(err) });
   }
 }
 
-// The open link, as shell state: one dialog for the whole app, opened from wherever a link was
+/** Follows one run the way {@link followOpen} follows a link, from a first read of the run. */
+export async function followRun(
+  run: RunRef,
+  onView: (view: OpenView) => void,
+  signal: AbortSignal,
+  deps: OpenDeps = OPEN_DEPS,
+): Promise<void> {
+  const report = reporter(onView, signal);
+  try {
+    await untilStarted(run, report, signal, deps, false);
+  } catch (err) {
+    report({ kind: "failed", message: apiErrorText(err) });
+  }
+}
+
+const reporter = (onView: (view: OpenView) => void, signal: AbortSignal) => (view: OpenView) => {
+  if (!signal.aborted) onView(view);
+};
+
+async function attach(
+  run: RunRef,
+  sessionId: string,
+  report: (view: OpenView) => void,
+  deps: OpenDeps,
+): Promise<void> {
+  report({ kind: "running", session: await deps.session(sessionId, run.machine), run });
+}
+
+/** Reads the run (after a wait first, when `waitFirst`) until it has started or ended. */
+async function untilStarted(
+  ref: RunRef,
+  report: (view: OpenView) => void,
+  signal: AbortSignal,
+  deps: OpenDeps,
+  waitFirst: boolean,
+): Promise<void> {
+  for (let first = true; ; first = false) {
+    if (!first || waitFirst) {
+      await deps.wait(OPEN_POLL_MS, signal);
+      if (signal.aborted) return;
+    }
+    const run = await deps.run(ref.projectId, ref.orgId, ref.runId, ref.machine);
+    if (run.status === "running" && run.sessionId !== undefined) {
+      return await attach(ref, run.sessionId, report, deps);
+    }
+    if (run.status === "ended") return report({ kind: "ended", reason: run.error ?? null });
+    report({ kind: "queued", position: run.position ?? null });
+  }
+}
+
+/** What the dialog is open on: an open link (its app-relative form), or a run of the slot list. */
+export type OpenTarget = { kind: "link"; path: string } | { kind: "run"; run: RunRef };
+
+// The open target, as shell state: one dialog for the whole app, opened from wherever a link was
 // clicked. A module store rather than context, since the opener (a Markdown link adapter) is a
 // module constant with no component to hold a provider's value.
-let openPath: string | null = null;
+let target: OpenTarget | null = null;
 let hosts = 0;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -202,20 +264,33 @@ const subscribe = (listener: () => void) => {
 
 /** Opens the dialog on an open link (its app-relative form). */
 export function openClaudeSession(path: string): void {
-  openPath = path;
+  target = { kind: "link", path };
+  emit();
+}
+
+/** Opens the dialog on one run of the queue. */
+export function openClaudeRun(run: RunRef): void {
+  target = { kind: "run", run };
   emit();
 }
 
 export function closeClaudeSession(): void {
-  openPath = null;
+  target = null;
   emit();
 }
 
-/** The link the dialog is open on, or null. */
-export function useClaudeSessionPath(): string | null {
+/** What the dialog is open on, or null. */
+export function useClaudeSessionTarget(): OpenTarget | null {
   // The app never renders on a server; the static renders of the test suite read the store too.
-  const read = () => openPath;
+  const read = () => target;
   return useSyncExternalStore(subscribe, read, read);
+}
+
+/** A key that changes exactly when the dialog should start over on another target. */
+export function openTargetKey(open: OpenTarget): string {
+  return open.kind === "link"
+    ? `link:${open.path}`
+    : `run:${open.run.machine ?? ""}/${open.run.projectId}/${open.run.orgId}/${open.run.runId}`;
 }
 
 /** Registers a mounted dialog host; the returned function unregisters it. */

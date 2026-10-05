@@ -2043,7 +2043,7 @@ export const desktopUpdateInstall = () =>
 // ---------------------------------------------------------------------------
 
 /** Base path of one Project's organizations, or of one organization when `orgId` is given. */
-const orgBase = (projectId: string, orgId?: string) =>
+export const orgBase = (projectId: string, orgId?: string) =>
   `/api/projects/${encodeURIComponent(projectId)}/organizations${
     orgId === undefined ? "" : `/${encodeURIComponent(orgId)}`
   }`;
@@ -2178,42 +2178,6 @@ export interface OrgRoadmapDetail extends OrgRoadmapItem {
 
 export const getOrgRoadmap = (projectId: string, orgId: string, number: number) =>
   apiFetch<OrgRoadmapDetail>(`${orgBase(projectId, orgId)}/roadmaps/${number}`);
-
-/**
- * The roadmaps whose Claude Code session the claude-code plugin's mapping names, and the
- * employee each is continued as (that plugin's route; absent without it).
- */
-export const listOrgClaudeSessions = (projectId: string, orgId: string) =>
-  apiFetch<{ roadmaps: Array<{ roadmap: number; agentId: string }> }>(
-    `${orgBase(projectId, orgId)}/claude-code/sessions`,
-  );
-
-/** A claude-code queue run, as far as the open dialog reads one (that plugin's RunView). */
-export interface OrgClaudeRun {
-  id: number;
-  status: "queued" | "running" | "ended";
-  /** Its Session, once its program started. */
-  sessionId?: string;
-  /** While queued: its place in the server's line, from 1. */
-  position?: number;
-  /** Why it ended, when it failed. */
-  error?: string;
-}
-
-/**
- * One run of the claude-code plugin's queue. `machine` names the server that holds it when the
- * caller learned it from a link; omitted, the organization's path routes itself.
- */
-export const getOrgClaudeRun = (
-  projectId: string,
-  orgId: string,
-  runId: number,
-  machine: string | null = null,
-) =>
-  apiFetch<OrgClaudeRun>(
-    `${orgBase(projectId, orgId)}/claude-code/runs/${runId}`,
-    machine === null ? {} : { server: machine },
-  );
 
 /** An approval of one proposal item's brief, in the role the server finds for the caller (the `roadmap.item.approve` Action). */
 export const approveOrgRoadmapItem = (

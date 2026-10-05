@@ -93,6 +93,13 @@ export const SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
     // reaches the browser's own find.
     defaults: { default: "Mod+KeyF" },
   },
+  {
+    id: "claudeCode.slots",
+    scope: "global",
+    group: "general",
+    // The Claude Code slot list: Ctrl+Alt+; (⌥⌘; on macOS), a chord no browser binds.
+    defaults: { default: "Mod+Alt+Semicolon" },
+  },
 ];
 
 /** The settings page draws groups in this order. */

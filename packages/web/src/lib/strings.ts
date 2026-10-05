@@ -199,6 +199,7 @@ export const zh = {
       "terminal.close": "关闭当前终端",
       "editor.save": "保存",
       "graph.search": "在 PR 关系图中搜索",
+      "claudeCode.slots": "Claude Code 槽位",
     },
     groups: {
       general: "通用",
@@ -832,6 +833,7 @@ export const zh = {
     checkingUpdates: "正在检查更新…",
     openDevTools: "打开开发者工具",
     projectOnGitHub: "在 GitHub 上查看项目",
+    claudeCodeSlots: "Claude Code 槽位",
   },
   modelPicker: {
     /** Accessible name of the dialog's provider-group rail. */
@@ -5228,6 +5230,37 @@ Benchmark：
       via: { web: "经 Web", cli: "经 CLI", session: "经会话", api: "经 API", notify: "作为通知" },
       hookErrors: (errors: string) => `after 挂钩或通知失败：${errors}`,
     },
+    claudeSlots: {
+      title: "Claude Code 槽位",
+      loading: "正在读取槽位…",
+      noOrg: "进入一个组织后，这里列出它的 Claude Code 槽位。",
+      noPlugin: "这个服务器没有安装 Claude Code 插件。",
+      failed: "槽位读取失败",
+      retry: "重试",
+      summary: (used: number, capacity: number) => `本服务器 ${capacity} 个槽位，已占用 ${used} 个`,
+      others: (n: number) => `其他组织占用 ${n} 个`,
+      othersQueued: (n: number) => `其他组织排队 ${n} 个`,
+      running: "运行中",
+      queued: "排队中",
+      empty: "这个组织没有运行中或排队中的 Claude Code 运行。",
+      roadmap: (n: number) => `Roadmap #${n}`,
+      run: (id: number) => `运行 #${id}`,
+      working: "工作中",
+      idle: (minutes: number | null) => (minutes === null ? "空闲" : `空闲 ${minutes} 分钟`),
+      position: (n: number | null) => (n === null ? "排队中" : `第 ${n} 位`),
+      queuedBy: (who: string) => `由 ${who} 排入`,
+      resumed: "续开会话，无首个提示",
+      open: "打开",
+      release: "释放",
+      openLabel: (run: string) => `打开${run}的会话`,
+      releaseLabel: (run: string) => `释放${run}`,
+      confirmTitle: "释放槽位",
+      confirmRunning: (run: string, employee: string) =>
+        `结束 ${employee} 的${run}？它的程序会被关闭，槽位让给排队中的下一条。会话记录保留，之后可以再续开。`,
+      confirmQueued: (run: string, employee: string) => `取消 ${employee} 排队中的${run}？`,
+      cancel: "取消",
+      releaseFailed: "释放失败",
+    },
     roadmaps: {
       listTitle: "路线图",
       /** The fold under the five most recent, read as "更多 (n)" like the channel list's "已归档 (n)". */
@@ -5264,6 +5297,17 @@ Benchmark：
         ended: "这次运行在会话开始之前就结束了。",
         failed: "会话打不开",
         retry: "重试",
+        slot: {
+          held: "占用一个槽位（运行中）",
+          working: "占用一个槽位（运行中 · 工作中）",
+          idle: (minutes: number | null) =>
+            minutes === null
+              ? "占用一个槽位（运行中 · 空闲）"
+              : `占用一个槽位（运行中 · 空闲 ${minutes} 分钟）`,
+          queued: (position: number | null) =>
+            position === null ? "排队中" : `排队中，第 ${position} 位`,
+          none: "未占用槽位",
+        },
       },
       status: {
         awaiting_room: "等待讨论室",

@@ -14,6 +14,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProposalItem } from "@prismshadow/penguin-server/api";
 import type { OrgRoadmapDetail } from "../src/api/endpoints";
+import type { RoadmapSession } from "../src/features/company/roadmap-session";
 
 vi.mock("../src/features/company/employee-avatar", () => ({
   EmployeeAvatar: (props: { id: string }) => createElement("i", { "data-face": props.id }),
@@ -241,7 +242,7 @@ describe("finished proposals in the column", () => {
 });
 
 describe("Open session beside the title", () => {
-  const withSession = (session: { href: string; agentId: string } | null) =>
+  const withSession = (session: RoadmapSession | null) =>
     renderToStaticMarkup(
       createElement(RoadmapDetailView, {
         roadmap: roadmap(),
@@ -266,7 +267,13 @@ describe("Open session beside the title", () => {
 
   it("is in the header, naming the employee, when the mapping has the roadmap", () => {
     const href = roadmapSessionHref("p", "acme", 3, null);
-    const html = withSession({ href, agentId: "acme_plugin" });
+    const html = withSession({
+      href,
+      agentId: "acme_plugin",
+      projectId: "p",
+      orgId: "acme",
+      claudeSessionId: "cs-3",
+    });
     const header = html.slice(0, html.indexOf("</header>"));
     expect(header).toContain(`href="${href.replace(/&/g, "&amp;")}"`);
     expect(header).toContain(`>${S.company.roadmaps.openSession}</a>`);

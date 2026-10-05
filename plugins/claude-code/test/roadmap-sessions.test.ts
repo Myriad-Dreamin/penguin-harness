@@ -105,7 +105,7 @@ describe("the list route", () => {
   }
   const url = "/api/projects/p/organizations/acme/claude-code/sessions";
 
-  it("lists the roadmaps the mapping names, in order, with the employee and no session id", async () => {
+  it("lists the roadmaps the mapping names, in order, with the session and the employee", async () => {
     expect(await (await app().request(url)).json()).toEqual({ roadmaps: [] });
     await fs.writeFile(
       roadmapSessionsPath(root, "p", "acme"),
@@ -115,8 +115,8 @@ describe("the list route", () => {
     );
     expect(await (await app().request(url)).json()).toEqual({
       roadmaps: [
-        { roadmap: 3, agentId: "dev" },
-        { roadmap: 9, agentId: "web" },
+        { roadmap: 3, sessionId: A, agentId: "dev" },
+        { roadmap: 9, sessionId: B, agentId: "web" },
       ],
     });
   });

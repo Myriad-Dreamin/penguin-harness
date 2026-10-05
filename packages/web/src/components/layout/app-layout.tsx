@@ -62,6 +62,8 @@ import { ShortcutRuntime } from "../../features/settings/shortcut-runtime";
 import { BuiltinBrowserLayer } from "../../features/builtin-browser/browser-layer";
 import { setDockScope } from "../../features/dock/dock-state";
 import { AppPalette } from "../../features/palette/app-palette";
+import { ClaudeSessionDialogHost } from "../../features/company/claude-session-dialog";
+import { ClaudeCodeSlotsHost } from "../../features/company/claude-code-slots";
 
 /**
  * Whether the pinned sidebar (or its rail) is on screen: the shell's navigation column is
@@ -532,6 +534,10 @@ export function AppLayout() {
           reloads, so navigating the app must never re-parent one. */}
       <BuiltinBrowserLayer />
       <AppPalette />
+      {/* The Claude Code slot list (its shortcut works on every page) and the session dialog
+          it opens, which a session link anywhere in the shell opens in place too. */}
+      <ClaudeCodeSlotsHost />
+      <ClaudeSessionDialogHost />
     </AppShell>
   );
 }

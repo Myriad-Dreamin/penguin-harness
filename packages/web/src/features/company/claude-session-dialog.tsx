@@ -9,6 +9,9 @@
  * employee's program. While the run waits for a slot the dialog says its place in line and
  * attaches by itself once it starts; a session held by a terminal outside the queue is explained
  * — process, terminal, tmux pane — rather than started twice (claude-session-open.ts follows).
+ * Under the title a line says how the session stands with the queue (claude-session-slot.tsx).
+ * The terminal outlives the dialog: the last few sessions shown stay mounted, hidden, so
+ * reopening one shows it at once (claude-session-resident.tsx).
  *
  * The window resizes from its right and bottom edges. It stays centred, so an edge follows the
  * pointer's distance from the middle of the screen and the opposite edge moves with it; the size
@@ -31,24 +34,45 @@ import {
   Spinner,
 } from "@prismshadow/penguin-ui";
 import { S } from "../../lib/strings";
-import { SessionSurfaceView } from "../chat/session-surface-view";
 import {
+  OPEN_DEPS,
   closeClaudeSession,
   followOpen,
+  followRun,
+  openTargetKey,
   registerClaudeSessionHost,
-  useClaudeSessionPath,
+  useClaudeSessionTarget,
 } from "./claude-session-open";
-import type { OpenView } from "./claude-session-open";
+import type { OpenTarget, OpenView } from "./claude-session-open";
+import { SessionSlotLine } from "./claude-session-slot";
+import {
+  ResidentSessionsRuntime,
+  ResidentSurface,
+  dropResident,
+  knownSession,
+} from "./claude-session-resident";
 
 /**
- * The one mount of the dialog, beside the organization's routed page (org-layout.tsx). Its
- * presence is what lets a session link open in place: with no host mounted, a click navigates.
+ * The one mount of the dialog, in the app shell (app-layout.tsx), so the slot list can open it
+ * from any page. Its presence is what lets a session link open in place: with no host mounted
+ * (the full-page workflow route), a click navigates.
  */
 export function ClaudeSessionDialogHost() {
   useEffect(() => registerClaudeSessionHost(), []);
-  const path = useClaudeSessionPath();
-  if (path === null) return null;
-  return <ClaudeSessionDialog key={path} path={path} onClose={closeClaudeSession} />;
+  const target = useClaudeSessionTarget();
+  return (
+    <>
+      {/* The kept terminals live here, open dialog or not (claude-session-resident.tsx). */}
+      <ResidentSessionsRuntime />
+      {target !== null && (
+        <ClaudeSessionDialog
+          key={openTargetKey(target)}
+          target={target}
+          onClose={closeClaudeSession}
+        />
+      )}
+    </>
+  );
 }
 
 /** Where the dragged size is kept: per browser, since it fits this display (install-scope.ts). */
@@ -94,8 +118,15 @@ function writeSize(size: DialogSize | null): void {
   }
 }
 
-function ClaudeSessionDialog({ path, onClose }: { path: string; onClose: () => void }) {
-  const [view, setView] = useState<OpenView>({ kind: "loading" });
+/** The view a target opens on: its Session at once when it is known (kept, or learned ahead). */
+function firstView(key: string): OpenView {
+  const known = knownSession(key);
+  return known === null ? { kind: "loading" } : { kind: "running", ...known };
+}
+
+function ClaudeSessionDialog({ target, onClose }: { target: OpenTarget; onClose: () => void }) {
+  const key = openTargetKey(target);
+  const [view, setView] = useState<OpenView>(() => firstView(key));
   // Bumped by Try again: the link is asked anew.
   const [attempt, setAttempt] = useState(0);
   // null: the default size, which follows the viewport.
@@ -107,10 +138,30 @@ function ClaudeSessionDialog({ path, onClose }: { path: string; onClose: () => v
   }, [size]);
   useEffect(() => {
     const following = new AbortController();
-    setView({ kind: "loading" });
-    void followOpen(path, setView, following.signal);
+    const known = knownSession(key);
+    setView(firstView(key));
+    // The link is still asked (it is what says where the session stands now); a known Session
+    // is not read again when the answer names it, and one the answer moved away from is let go.
+    const deps = {
+      ...OPEN_DEPS,
+      session: (sessionId: string, machine: string | null) =>
+        known !== null && known.session.sessionId === sessionId
+          ? Promise.resolve(known.session)
+          : OPEN_DEPS.session(sessionId, machine),
+    };
+    const onView = (next: OpenView) => {
+      if (known !== null && next.kind !== "failed") {
+        const same = next.kind === "running" && next.session.sessionId === known.session.sessionId;
+        if (!same) dropResident(known.session.sessionId);
+      }
+      setView(next);
+    };
+    if (target.kind === "link") void followOpen(target.path, onView, following.signal, deps);
+    else void followRun(target.run, onView, following.signal, deps);
     return () => following.abort();
-  }, [path, attempt]);
+    // The host keys the dialog by its target, so the target never changes under one dialog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempt]);
   const T = S.company.roadmaps.sessionDialog;
   const title = T.title;
   // The panel is centred, so an edge sits as far from the middle as half the size.
@@ -149,12 +200,15 @@ function ClaudeSessionDialog({ path, onClose }: { path: string; onClose: () => v
         style={style}
         className="relative flex h-[90vh] flex-col sm:h-[var(--csd-h,90vh)] sm:w-[var(--csd-w,min(96vw,88rem))]"
       >
-        <div className="flex shrink-0 items-center justify-between gap-2 px-4 pt-4 sm:px-6 sm:pt-5">
-          <h2 className="min-w-0 truncate text-lg font-semibold">{title}</h2>
+        <div className="flex shrink-0 items-start justify-between gap-2 px-4 pt-4 sm:px-6 sm:pt-5">
+          <div className="flex min-w-0 flex-col gap-1">
+            <h2 className="min-w-0 truncate text-lg font-semibold">{title}</h2>
+            <SessionSlotLine view={view} />
+          </div>
           <CloseButton onClose={onClose} />
         </div>
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3 sm:px-6 sm:pb-6">
-          <ClaudeSessionBody view={view} onRetry={() => setAttempt((n) => n + 1)} />
+          <ClaudeSessionBody view={view} targetKey={key} onRetry={() => setAttempt((n) => n + 1)} />
         </div>
         <ResizeHandle
           axis="x"
@@ -189,7 +243,16 @@ function measureDefault(): DialogSize {
 }
 
 /** The dialog's content for one view of the link (exported for tests). */
-export function ClaudeSessionBody({ view, onRetry }: { view: OpenView; onRetry: () => void }) {
+export function ClaudeSessionBody({
+  view,
+  targetKey,
+  onRetry,
+}: {
+  view: OpenView;
+  /** The dialog's target (`openTargetKey`), which a kept terminal remembers it was reached from. */
+  targetKey: string;
+  onRetry: () => void;
+}) {
   const T = S.company.roadmaps.sessionDialog;
   switch (view.kind) {
     case "loading":
@@ -210,7 +273,7 @@ export function ClaudeSessionBody({ view, onRetry }: { view: OpenView; onRetry: 
       return (
         // Square corners: a rounded clip would cut the glyphs in the terminal's corner cells.
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-line">
-          <SessionSurfaceView session={view.session} fontSize={15} />
+          <ResidentSurface session={view.session} run={view.run} targetKey={targetKey} />
         </div>
       );
     case "elsewhere": {

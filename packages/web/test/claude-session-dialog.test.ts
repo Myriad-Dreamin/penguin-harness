@@ -36,7 +36,7 @@ const {
   machineOfOpenPath,
   onClaudeSessionClick,
   registerClaudeSessionHost,
-  useClaudeSessionPath,
+  useClaudeSessionTarget,
 } = open;
 
 const SESSION_LINK =
@@ -65,12 +65,15 @@ function click(
 function openPath(): string | null {
   let seen: string | null = null;
   const Probe = () => {
-    seen = useClaudeSessionPath();
+    const target = useClaudeSessionTarget();
+    seen = target?.kind === "link" ? target.path : null;
     return null;
   };
   renderToStaticMarkup(createElement(Probe));
   return seen;
 }
+
+const RUN = { projectId: "p", orgId: "acme", runId: 7, machine: null };
 
 const session = (sessionId: string) =>
   ({ sessionId, surface: "claude-code" }) as unknown as SessionInfo;
@@ -106,7 +109,13 @@ describe("clicking Open session", () => {
     unregister = registerClaudeSessionHost();
     const html = renderToStaticMarkup(
       createElement(RoadmapSessionLink, {
-        session: { href: ROADMAP_LINK, agentId: "dev" },
+        session: {
+          href: ROADMAP_LINK,
+          agentId: "dev",
+          projectId: "p",
+          orgId: "acme",
+          claudeSessionId: "1a2b3c4d-0000-4000-8000-00000000abcd",
+        },
         name: "Dev",
       }),
     );
@@ -160,16 +169,24 @@ describe("a session link in a channel message", () => {
 describe("the dialog's content", () => {
   const T = S.company.roadmaps.sessionDialog;
   const body = (view: Parameters<typeof ClaudeSessionBody>[0]["view"]) =>
-    renderToStaticMarkup(createElement(ClaudeSessionBody, { view, onRetry: () => {} }));
+    renderToStaticMarkup(
+      createElement(ClaudeSessionBody, {
+        view,
+        targetKey: `link:${ROADMAP_LINK}`,
+        onRetry: () => {},
+      }),
+    );
 
-  it("attaches the running Session's terminal", () => {
-    expect(body({ kind: "running", session: session("cc-7") })).toContain('data-terminal="cc-7"');
+  it("attaches the running Session's terminal, kept outside the dialog", () => {
+    expect(body({ kind: "running", session: session("cc-7"), run: RUN })).toContain(
+      'data-resident-session="cc-7"',
+    );
   });
 
   it("says the place in line while queued, and that it is starting when there is none", () => {
     expect(body({ kind: "queued", position: 2 })).toContain(T.queued(2));
     expect(body({ kind: "queued", position: null })).toContain(T.queued(null));
-    expect(body({ kind: "queued", position: 2 })).not.toContain("data-terminal");
+    expect(body({ kind: "queued", position: 2 })).not.toContain("data-resident-session");
   });
 
   it("names the process, terminal and tmux pane that hold a session elsewhere", () => {
@@ -187,7 +204,7 @@ describe("the dialog's content", () => {
     expect(html).toContain("/dev/pts/7");
     expect(html).toContain("%3");
     expect(html).toContain("/work/repo");
-    expect(html).not.toContain("data-terminal");
+    expect(html).not.toContain("data-resident-session");
   });
 
   it("offers to try again when the run ended or the link failed", () => {
@@ -251,10 +268,12 @@ describe("following the link", () => {
       { ...open.OPEN_DEPS, wait: async () => {} },
     );
     expect(views).toEqual(["queued", "running"]);
-    expect(fake.requests.map((r) => [r.method, r.machine, r.path])).toEqual([
+    // The terminal's lookup starts beside the Session's read, on the same machine.
+    expect(fake.requests.map((r) => [r.method, r.machine, r.path]).sort()).toEqual([
       ["GET", "box", "/api/claude-code/open"],
       ["GET", "box", "/api/projects/p/organizations/acme/claude-code/runs/4"],
       ["GET", "box", "/api/sessions/cc-4"],
+      ["GET", "box", "/api/sessions/cc-4/surface"],
     ]);
   });
 

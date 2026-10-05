@@ -177,6 +177,7 @@ export const en: Strings = {
       "terminal.close": "Close the focused terminal",
       "editor.save": "Save",
       "graph.search": "Search the PR graph",
+      "claudeCode.slots": "Claude Code slots",
     },
     groups: {
       general: "General",
@@ -761,6 +762,7 @@ export const en: Strings = {
     checkingUpdates: "Checking for updates…",
     openDevTools: "Open DevTools",
     projectOnGitHub: "Project on GitHub",
+    claudeCodeSlots: "Claude Code slots",
   },
   modelPicker: {
     groups: "Model groups",
@@ -5182,6 +5184,38 @@ Scenarios:
       },
       hookErrors: (errors: string) => `After hooks or notices failed: ${errors}`,
     },
+    claudeSlots: {
+      title: "Claude Code slots",
+      loading: "Reading the slots…",
+      noOrg: "Open an organization to see its Claude Code slots here.",
+      noPlugin: "The Claude Code plugin is not installed on this server.",
+      failed: "The slots could not be read",
+      retry: "Try again",
+      summary: (used: number, capacity: number) =>
+        `${used} of this server's ${capacity} slots in use`,
+      others: (n: number) => `${n} held by other organizations`,
+      othersQueued: (n: number) => `${n} queued by other organizations`,
+      running: "Running",
+      queued: "Queued",
+      empty: "No Claude Code run of this organization is running or queued.",
+      roadmap: (n: number) => `Roadmap #${n}`,
+      run: (id: number) => `run #${id}`,
+      working: "Working",
+      idle: (minutes: number | null) => (minutes === null ? "Idle" : `Idle ${minutes} min`),
+      position: (n: number | null) => (n === null ? "Queued" : `Number ${n} in line`),
+      queuedBy: (who: string) => `Queued by ${who}`,
+      resumed: "Resumed session, no first prompt",
+      open: "Open",
+      release: "Release",
+      openLabel: (run: string) => `Open the session of ${run}`,
+      releaseLabel: (run: string) => `Release ${run}`,
+      confirmTitle: "Release the slot",
+      confirmRunning: (run: string, employee: string) =>
+        `End ${employee}'s ${run}? Its program is closed and the slot goes to the next run in line. The session's record stays, so it can be resumed later.`,
+      confirmQueued: (run: string, employee: string) => `Cancel ${employee}'s queued ${run}?`,
+      cancel: "Cancel",
+      releaseFailed: "The run could not be released",
+    },
     roadmaps: {
       listTitle: "Roadmaps",
       /** The fold under the five most recent, read as "More (n)" like the channel list's "Archived (n)". */
@@ -5218,6 +5252,17 @@ Scenarios:
         ended: "The run ended before the session started.",
         failed: "The session could not be opened",
         retry: "Try again",
+        slot: {
+          held: "Holds a slot (running)",
+          working: "Holds a slot (running · working)",
+          idle: (minutes: number | null) =>
+            minutes === null
+              ? "Holds a slot (running · idle)"
+              : `Holds a slot (running · idle ${minutes} min)`,
+          queued: (position: number | null) =>
+            position === null ? "Queued" : `Queued, number ${position} in line`,
+          none: "Holds no slot",
+        },
       },
       status: {
         awaiting_room: "waiting for its room",

@@ -1,11 +1,11 @@
 /**
  * The queue's HTTP routes, under an organization:
  *
- *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/runs            every run, and the slots
+ *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/runs            every run (`?active=1`: queued and running only), and the slots
  *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs            queue one
  *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id        one (`?screen=N`: its last screen lines)
  *   POST /api/projects/:projectId/organizations/:orgId/claude-code/runs/:id/release  let go of it
- *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/sessions        the roadmaps that have a session
+ *   GET  /api/projects/:projectId/organizations/:orgId/claude-code/sessions        the roadmaps that have a session, and which
  *
  * Behind the cookie gate like every organization route. The calling Session and Agent ride in
  * the body (`sessionId`, `agentId`), or in the query on a read, and count only behind the local
@@ -67,7 +67,8 @@ export function queueRoutes(queue: ClaudeCodeQueue, root: string): Hono {
   );
   app.get("/runs", async (c) => {
     const [p, o] = orgOf(c);
-    return c.json(await queue.list(p, o, actorOf(c, c.req.query())));
+    const active = c.req.query("active") === "1";
+    return c.json(await queue.list(p, o, actorOf(c, c.req.query()), { active }));
   });
   app.post("/runs", async (c) => {
     const [p, o] = orgOf(c);
@@ -85,15 +86,17 @@ export function queueRoutes(queue: ClaudeCodeQueue, root: string): Hono {
     const body = await jsonBody(c);
     return c.json(await queue.release(p, o, idParam(c), actorOf(c, body)));
   });
-  // The roadmaps whose Claude Code session the organization's mapping names, and as whom: what
-  // the roadmap page needs to offer "Open session" (the link resolves the session itself).
+  // The roadmaps whose Claude Code session the organization's mapping names, the session, and as
+  // whom: what the roadmap page needs to offer "Open session", and what lets the web app's slot
+  // list name the roadmap a resume run continues. The session id is no secret from the
+  // organization's people: their run list already carries it.
   app.get("/sessions", async (c) => {
     const [p, o] = orgOf(c);
     await queue.organization(p, o, actorOf(c, c.req.query()));
     const mapping = await readRoadmapSessions(root, p, o);
     const roadmaps = [...mapping]
       .sort(([a], [b]) => a - b)
-      .map(([roadmap, { agentId }]) => ({ roadmap, agentId }));
+      .map(([roadmap, { sessionId, agentId }]) => ({ roadmap, sessionId, agentId }));
     return c.json({ roadmaps });
   });
   return app;

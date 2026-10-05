@@ -38,7 +38,8 @@ export type CommandId =
   | "terminal.new"
   | "terminal.close"
   | "editor.save"
-  | "graph.search";
+  | "graph.search"
+  | "claudeCode.slots";
 
 /**
  * One key combination. `code` is the `KeyboardEvent.code` of the non-modifier key ("KeyW",

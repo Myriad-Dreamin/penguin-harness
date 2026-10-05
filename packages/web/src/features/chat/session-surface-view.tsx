@@ -17,11 +17,10 @@ import { apiErrorText } from "../../lib/api-error";
 import { sessionActivity, sessionActivityLabel } from "../../lib/session-activity";
 import { S } from "../../lib/strings";
 import { surfaceLabel, useContributions } from "../../state/contributions";
-import { machineForSession } from "../../lib/session-machines";
-import { rememberTerminalMachine } from "../../lib/terminal-machines";
 import { useLocale } from "../../state/locale";
 import { useSessions } from "../../state/sessions";
-import { TerminalView, probeJson, type TerminalInfo, type TerminalStatus } from "../terminal";
+import { TerminalView, type TerminalInfo, type TerminalStatus } from "../terminal";
+import { attachedTerminal, probeSurfaceTerminal, takeWarmSurface } from "./surface-warm";
 
 interface SurfaceRendererProps {
   session: SessionInfo;
@@ -93,22 +92,15 @@ function TerminalSurface({ session, fontSize }: SurfaceRendererProps) {
 
   const ensure = useCallback(
     async (cols: number, rows: number): Promise<TerminalInfo> => {
-      const attach = async (terminalId: unknown): Promise<TerminalInfo | null> => {
-        if (typeof terminalId !== "string") throw new Error(S.chat.surface.noTerminal);
-        // Before the first call about it: the id alone is what every terminal path routes by.
-        rememberTerminalMachine(terminalId, machineForSession(sessionId));
-        return probeJson<TerminalInfo>(`/api/terminals/${encodeURIComponent(terminalId)}`);
-      };
       const open = async () => {
         const opened = await api.openSessionSurface(sessionId, { cols, rows });
-        const info = await attach(opened.view?.terminalId);
+        const info = await probeSurfaceTerminal(sessionId, opened.view?.terminalId);
         if (info === null) throw new Error(S.chat.surface.noTerminal);
         return info;
       };
       if (generation > 0) return open();
-      const state = await api.getSessionSurface(sessionId);
-      if (!state.opened) return open();
-      const info = await attach(state.view?.terminalId);
+      // A host that knew this Session was coming may have started the lookup already.
+      const info = await (takeWarmSurface(sessionId) ?? attachedTerminal(sessionId));
       return info ?? open();
     },
     [sessionId, generation],

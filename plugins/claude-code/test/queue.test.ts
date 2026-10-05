@@ -236,6 +236,10 @@ describe("the slots", () => {
     const [a2, a1] = (await q.list("p", "acme", person)).runs;
     expect(a1).toMatchObject({ status: "ended", end: "exited" });
     expect(a2).toMatchObject({ status: "running" });
+    // `active` leaves the ended run out and keeps the server's totals.
+    const active = await q.list("p", "acme", person, { active: true });
+    expect(active.runs.map((r) => r.prompt)).toEqual(["a2"]);
+    expect(active).toMatchObject({ running: 2, queued: 1 });
     await q.stop();
   });
 
