@@ -72,12 +72,14 @@ describe("the derived host", () => {
     const { errors, out } = assign({
       Player: m("Player", { contributes: { "ChatModule.fileRenderers": [{ id: "p" }] } }),
       Lang: m("Lang", { requires: { lang: { iface: "@prismshadow/penguin-web#Language" } } }),
-      ChatModule: m("ChatModule"),
-    }, { replaces: ["ChatModule"] });
+    });
     expect(errors).toEqual([]);
     expect(out.Player).toMatchObject({ side: "web", file: "dist/web/Player.js" });
     expect(out.Lang).toMatchObject({ side: "web", file: "dist/web/Lang.js" });
-    expect(out.ChatModule).toMatchObject({ side: "web" });
+    // A replacement names the host module it stands in for.
+    const swap = assign({ ChatModule: m("ChatModule") }, { replaces: ["ChatModule"] });
+    expect(swap.errors).toEqual([]);
+    expect(swap.out.ChatModule).toMatchObject({ side: "web" });
   });
 
   it("is the platform for platform wiring alone", () => {
