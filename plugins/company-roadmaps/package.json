@@ -43,6 +43,7 @@
     "@prismshadow/penguin-plugin-company-proposals": "workspace:*",
     "@prismshadow/penguin-plugin-test": "workspace:*",
     "@prismshadow/penguin-server": "workspace:*",
+    "@prismshadow/penguin-web": "workspace:*",
     "happy-dom": "^20.14.5",
     "hono": "^4.12.34",
     "smol-toml": "^1.3.0",

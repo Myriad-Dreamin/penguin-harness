@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@prismshadow/penguin-core": "workspace:*",
+    "@prismshadow/penguin-web": "workspace:*",
     "@shikijs/langs": "^4.3.1",
     "tsup": "^8.3.0",
     "vitest": "^3.2.6"

@@ -24,6 +24,7 @@
     "build": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out ifaces.json && node ../../scripts/build-plugin.mjs"
   },
   "devDependencies": {
-    "@prismshadow/penguin-core": "workspace:*"
+    "@prismshadow/penguin-core": "workspace:*",
+    "@prismshadow/penguin-web": "workspace:*"
   }
 }
