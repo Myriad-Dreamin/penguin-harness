@@ -2442,6 +2442,11 @@ export const zh = {
     quickStartInstallTitle: (plugin: string, agent: string) =>
       `先把 ${plugin} 安装到 ${agent} 再快速开始？`,
     quickStartAfterInstall: "随后打开一份带演示的草稿；点发送之前什么都不会运行。",
+    quickStartNotRunning: "插件运行后才能快速开始——它正在等待重启，或加载失败",
+    quickStartNeedsAdmin: "模块插件由管理员安装；运行后才能快速开始",
+    /** The demo of a module plugin that declares none. */
+    quickStartGenericText: (specifier: string) =>
+      `演示一下 ${specifier} 插件能做什么：在当前工作区里拿个小东西用一用，并告诉我它带来了什么变化。`,
     /** Top toast shown on successful install / uninstall. */
     installedToast: (plugin: string, agent: string): string => `已将 ${plugin} 安装到 ${agent}`,
     uninstalledToast: (plugin: string, agent: string): string => `已从 ${agent} 卸载 ${plugin}`,

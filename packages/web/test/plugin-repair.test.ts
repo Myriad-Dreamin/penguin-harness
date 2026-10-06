@@ -92,6 +92,7 @@ describe("the row of a plugin the build cannot fully run", () => {
       onInstall: null,
       onRemove: () => undefined,
       onRepair: () => undefined,
+      quickStart: { reason: "not here" },
       ...over,
     });
   const repairButton = `aria-label="${en.plugins.repair} @acme/unmet"`;
@@ -123,6 +124,7 @@ describe("the row of a plugin the build cannot fully run", () => {
       onInstall: null,
       onRemove: () => undefined,
       onRepair: () => undefined,
+      quickStart: { reason: "not here" },
     });
     expect(healthy).not.toContain(repairButton);
   });
