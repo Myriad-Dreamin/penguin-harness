@@ -1,15 +1,19 @@
 /**
  * RoadmapStore's SQLite adapter. A roadmap is its header row (with the current draft's record
  * and body), its items in order, its delegations with the approvals given on each one's current
- * brief, its room sessions and its events — each a query by number, no history folded. A write
- * is one `BEGIN IMMEDIATE` transaction: the check (guards.ts) on the roadmap as it stands, the
- * rows it changes, one event.
+ * brief, and its events — each a query by number, no history folded. A write is one
+ * `BEGIN IMMEDIATE` transaction: the check (guards.ts) on the roadmap as it stands, the rows it
+ * changes, one event.
+ *
+ * An event's kind is read back as the string stored: a `company.db` written by an earlier build
+ * may hold `clone` / `clone_closed` events (the room sessions it opened then) and a
+ * `roadmap_clones` table. Nothing here writes or reads that table any more, and those events
+ * are listed in a roadmap's timeline as they were recorded.
  */
 import { createHash } from "node:crypto";
 import type { DatabaseSync, StatementSync } from "node:sqlite";
 import {
   RoadmapError,
-  type Clone,
   type Delegation,
   type DraftItem,
   type Roadmap,
@@ -52,9 +56,6 @@ function noteOf(w: RoadmapWrite): string | undefined {
       return w.name;
     case "members":
       return `${membersNote(w.before.employees, w.before.moderator)} → ${membersNote(w.employees, w.moderator)}`;
-    case "clone":
-    case "clone_closed":
-      return `${w.agentId} ${w.sessionId}`;
     case "notify_failed":
       return `${w.agentId}: ${w.error}`;
     default:
@@ -151,13 +152,6 @@ export class SqliteRoadmapStore implements RoadmapStore {
     return Number(r.n ?? 0) + 1;
   }
 
-  discussingIn(channelId: string): number | null {
-    const r = this.q(
-      `SELECT number FROM roadmaps WHERE channel_id = ? AND status = 'discussing' ORDER BY number LIMIT 1`,
-    ).get(channelId) as Row | undefined;
-    return r === undefined ? null : Number(r.number);
-  }
-
   /** The roadmaps of these header rows; `one` narrows every dependent query to that number. */
   private assemble(heads: Row[], one: number | null): Roadmap[] {
     const where = one === null ? "" : "WHERE number = ?";
@@ -177,17 +171,6 @@ export class SqliteRoadmapStore implements RoadmapStore {
         ...args,
       ) as Row[],
       itemOf,
-    );
-    const clones = group(
-      this.q(`SELECT * FROM roadmap_clones ${where} ORDER BY number, opened_at, rowid`).all(
-        ...args,
-      ) as Row[],
-      (r): Clone => ({
-        agentId: String(r.agent_id),
-        sessionId: String(r.session_id),
-        openedAt: String(r.opened_at),
-        ...(r.closed_at !== null ? { closedAt: String(r.closed_at) } : {}),
-      }),
     );
     const events = group(
       this.q(`SELECT * FROM roadmap_events ${where} ORDER BY number, seq`).all(...args) as Row[],
@@ -240,7 +223,6 @@ export class SqliteRoadmapStore implements RoadmapStore {
         record: String(h.record),
         body: String(h.body),
         items: items.get(n) ?? [],
-        clones: clones.get(n) ?? [],
         delegations: Object.fromEntries((delegations.get(n) ?? []).map((d) => [d.key, d])),
         createdBy: String(h.created_by),
         createdAt: String(h.created_at),
@@ -421,16 +403,6 @@ export class SqliteRoadmapStore implements RoadmapStore {
         this.insertItem(w.number, w.item, Number(max.p ?? -1) + 1);
         return;
       }
-      case "clone":
-        this.q(
-          `INSERT INTO roadmap_clones (session_id, number, agent_id, opened_at) VALUES (?, ?, ?, ?)`,
-        ).run(w.sessionId, w.number, w.agentId, at);
-        return;
-      case "clone_closed":
-        this.q(
-          `UPDATE roadmap_clones SET closed_at = ? WHERE session_id = ? AND number = ? AND closed_at IS NULL`,
-        ).run(at, w.sessionId, w.number);
-        return;
       case "notify_failed":
         return;
     }

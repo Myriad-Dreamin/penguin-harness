@@ -5,7 +5,7 @@
  * (`POST …/actions/:key/runs`, builtin-actions.ts).
  *
  *   GET    /[?channel=&status=]      the roadmaps (a room's, for the channel page's side panel)
- *   GET    /:number                  one roadmap: record, body, items, delegations, room sessions, events
+ *   GET    /:number                  one roadmap: record, body, items, delegations, events
  *
  * Every route answers 404 while company mode is off. A read from inside a Session carries
  * `sessionId` / `agentId`, honoured only behind the local API token — the rule the

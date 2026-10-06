@@ -1,8 +1,7 @@
 /**
- * The service over the gateway, session-runtime and session-index fakes and a real directory:
- * a person opens a roadmap over a room; every employee in it gets a room session (its desk
- * cloned for the room) and the room's messages reach those sessions — never a desk; the
- * moderator drafts; establishing ends the discussion (proposal items stay briefs until they have
+ * The service over the gateway fake and a real directory: a person opens a roadmap over a room;
+ * the room is an ordinary channel with the roadmap's members in it, each desk is told it is
+ * there, and no session of the plugin's own is opened; the moderator drafts; establishing ends the discussion (proposal items stay briefs until they have
  * their approvals — the moderator's and another member's by default —, a roadmap item derives its
  * roadmap); an owner links its proposal
  * and the one stacked on it learns the number; an owner reopens it. Nothing here starts a
@@ -13,12 +12,13 @@ import {
   RoadmapError,
   SqliteRoadmapStore,
   companyDbPath,
+  readRoom,
   roadmapGuards,
   withApprovalRoles,
   type RoadmapService,
   type WriteAct,
 } from "../src/index.js";
-import { BOSS, ORG, PROJECT, asAgent, post, world, writeChannel, type World } from "./fakes.js";
+import { BOSS, ORG, PROJECT, asAgent, orgDir, world, writeChannel, type World } from "./fakes.js";
 
 const P = PROJECT;
 const O = ORG;
@@ -111,92 +111,37 @@ async function openA(): Promise<number> {
 }
 
 describe("opening a roadmap", () => {
-  it("clones the desk of every employee in the room — a session each, the first moderating — and tells each desk where it is", async () => {
+  it("puts the employees in its room and tells each desk where it is — no session of its own is opened", async () => {
     const n = (await service.create(P, O, OPEN_A, BOSS)).roadmap.number;
-    expect(w.gateway.opened.map((s) => s.agentId)).toEqual(["acme_dev", "acme_web"]);
-    // One line on each desk, after the room sessions opened: the room, who moderates, the
-    // session that takes part — and that the desk itself says nothing there.
-    expect(w.gateway.desks).toEqual([
-      {
-        agentId: "acme_dev",
-        text: `[roadmap #${n} «Queue migration»] user:boss opened this roadmap and put you in its room \`room_a\` (you moderate). Your room session \`room-1\` takes part; nothing is needed from this desk, and do not speak in the room from here.`,
-      },
-      {
-        agentId: "acme_web",
-        text: `[roadmap #${n} «Queue migration»] user:boss opened this roadmap and put you in its room \`room_a\` (acme_dev moderates). Your room session \`room-2\` takes part; nothing is needed from this desk, and do not speak in the room from here.`,
-      },
-    ]);
-    const [dev, web] = w.gateway.opened;
-    expect(dev?.title).toBe(`Queue migration · roadmap #${n}`);
-    expect(dev?.body).toContain("Moderator: acme_dev (you)");
-    expect(dev?.body).toContain("penguin org channel send --org-id acme --channel room_a");
-    expect(dev?.body).toContain("/actions/roadmap.draft/runs");
-    expect(web?.body).toContain("Moderator: acme_dev.");
-    expect(web?.body).not.toContain("roadmap.establish");
-    // Every room session is told the room comes to it — so it does not wait for the room.
-    for (const s of [dev, web]) {
-      expect(s?.body).toContain(
-        "do not poll the channel's files, sleep in a loop or wait in a command for an answer",
-      );
-    }
-    // Establishing ends the discussion; the moderator is not told the roadmap is archived.
-    expect(dev?.body).toContain("When the room agrees, establish it — every roadmap item derives");
-    expect(dev?.body).not.toMatch(/archiv/i);
+    expect(w.gateway.sessionsOpened).toEqual([]);
+    expect(w.gateway.desks.map((d) => d.agentId)).toEqual(["acme_dev", "acme_web"]);
+    const [dev, web] = w.gateway.desks.map((d) => d.text);
+    expect(dev).toMatch(
+      new RegExp(
+        `^\\[roadmap #${n} «Queue migration»\\] user:boss opened this roadmap and put you in its room \`room_a\` of organization \`acme\` \\(you moderate\\)\\.`,
+      ),
+    );
+    expect(dev).toContain("penguin org channel send --org-id acme --channel room_a");
+    expect(dev).toContain("/actions/roadmap.draft/runs");
+    expect(dev).toContain("When the room agrees, establish it — every roadmap item derives");
+    expect(dev).not.toMatch(/archiv/i);
+    expect(web).toContain("(acme_dev moderates)");
+    expect(web).not.toContain("roadmap.establish");
+    for (const text of [dev, web]) expect(text).not.toContain("room session");
     const r = await service.get(P, O, n, BOSS);
     expect(r).toMatchObject({ status: "discussing", moderator: "acme_dev" });
-    expect(r.openClones).toEqual([
-      { agentId: "acme_dev", sessionId: "room-1" },
-      { agentId: "acme_web", sessionId: "room-2" },
-    ]);
+    expect(r).not.toHaveProperty("openClones");
   });
 
   it("opens with the person who opened it: the moderator speaks to them first, the others hold back", async () => {
-    await openA();
-    const [dev, web] = w.gateway.opened;
-    expect(dev?.body).toContain(
+    await service.create(P, O, OPEN_A, BOSS);
+    const [dev, web] = w.gateway.desks.map((d) => d.text);
+    expect(dev).toContain(
       "Open the room: user:boss (a person) opened this roadmap. Before anything else, send one message in the room to @user:boss",
     );
-    expect(web?.body).toContain(
+    expect(web).toContain(
       "The room opens with acme_dev and user:boss (the person who opened it) settling the question. Until one of them speaks to you, take the room in and do not answer.",
     );
-    // A room session opened after the moderator has spoken joins a room already under way.
-    await post(w.root, "room_a", "agent:acme_dev", "@user:boss what do you want from this?");
-    w.sessions.deleted.add("room-2");
-    await service.relayOnce();
-    const again = w.gateway.opened.at(-1)!;
-    expect(again.agentId).toBe("acme_web");
-    expect(again.body).not.toContain("do not answer");
-    expect(again.body).toContain("what do you want from this?");
-  });
-
-  it("starts a room session on the room so far", async () => {
-    await post(w.root, "room_a", "user:boss", "Let us plan the queue");
-    await openA();
-    expect(w.gateway.opened[0]?.body).toContain("user:boss: Let us plan the queue");
-    // …and does not relay it a second time.
-    await service.relayOnce();
-    expect(w.runner.inputs).toEqual([]);
-  });
-
-  it("answers the opening even when the pass after it fails, says so, and the next pass catches up", async () => {
-    let calls = 0;
-    const real = w.gateway.organization.bind(w.gateway);
-    w.gateway.organization = async () => {
-      calls++;
-      if (calls === 2) throw new Error("disk hiccup");
-      return real();
-    };
-    const { roadmap, hints } = await service.create(
-      P,
-      O,
-      { name: "Queue migration", channelId: "room_a", employees: ["acme_dev"] },
-      BOSS,
-    );
-    expect(roadmap.status).toBe("discussing");
-    expect(hints).toEqual(["The room was not relayed this time: disk hiccup"]);
-    expect(w.gateway.opened).toEqual([]);
-    await service.relayOnce();
-    expect(w.gateway.opened.map((s) => s.agentId)).toEqual(["acme_dev", "acme_web"]);
   });
 
   it("is opened by an employee a person asked to: its own room, the employees named in it, the opener recorded", async () => {
@@ -225,13 +170,13 @@ describe("opening a roadmap", () => {
         agentIds: ["acme_dev", "acme_web"],
       },
     ]);
-    expect(w.gateway.opened.map((s) => s.agentId)).toEqual(["acme_dev", "acme_web"]);
+    expect(w.gateway.sessionsOpened).toEqual([]);
     expect(w.gateway.desks.map((d) => d.text)).toEqual([
       expect.stringContaining("agent:acme_dev opened this roadmap and put you in its room"),
       expect.stringContaining("agent:acme_dev opened this roadmap and put you in its room"),
     ]);
-    // No person opened it, so no room session is told to wait for one.
-    for (const s of w.gateway.opened) expect(s.body).not.toContain("(a person) opened");
+    // No person opened it, so no desk is told to wait for one.
+    for (const d of w.gateway.desks) expect(d.text).not.toContain("(a person) opened");
     // Over an existing channel, an employee is held to the same room check a person is.
     expect(
       await refusal(
@@ -266,159 +211,6 @@ describe("opening a roadmap", () => {
   it("answers 404 while company mode is off", async () => {
     w.gateway.enabled = false;
     expect(await refusal(service.list(P, O, BOSS))).toEqual({ status: 404, code: "not_found" });
-  });
-});
-
-describe("the room", () => {
-  it("puts every room message into the other members' room sessions — never onto a desk", async () => {
-    await openA();
-    await post(w.root, "room_a", "user:boss", "What goes first?");
-    await service.relayOnce();
-    expect(w.runner.to("room-1")).toHaveLength(1);
-    expect(w.runner.to("room-1")[0]).toContain("user:boss");
-    expect(w.runner.to("room-1")[0]).toContain("What goes first?");
-    expect(w.runner.to("room-2")).toHaveLength(1);
-    await post(w.root, "room_a", "agent:acme_dev", "The ledger.");
-    await service.relayOnce();
-    expect(w.runner.to("room-1")).toHaveLength(1);
-    expect(w.runner.to("room-2")).toHaveLength(2);
-    expect(w.gateway.desks).toEqual([]);
-  });
-
-  it("reaches a room session busy with a long Task at once — steered into it, not queued behind it", async () => {
-    await openA();
-    // The moderator's session never ended the Task it opened with (it waits on the room in a
-    // loop of its own): a message queued behind that Task would not reach it.
-    w.runner.running.add("room-1");
-    await post(w.root, "room_a", "user:boss", "@acme_dev here is the scope");
-    await service.relayOnce();
-    expect(w.runner.inputs.filter((i) => i.sessionId === "room-1")).toEqual([
-      expect.objectContaining({ how: "steered" }),
-    ]);
-    expect(w.runner.to("room-1")[0]).toContain("here is the scope");
-    // The idle one starts a Task on it, as before.
-    expect(w.runner.inputs.filter((i) => i.sessionId === "room-2")).toEqual([
-      expect.objectContaining({ how: "started" }),
-    ]);
-  });
-
-  it("starts the line as the next Task when the running one ends before it lands", async () => {
-    const n = await openA();
-    w.runner.running.add("room-1");
-    w.runner.finishing.add("room-1");
-    await post(w.root, "room_a", "user:boss", "still there?");
-    await service.relayOnce();
-    expect(w.runner.inputs.filter((i) => i.sessionId === "room-1")).toEqual([
-      expect.objectContaining({ how: "started" }),
-    ]);
-    // Taken, so the session stays open.
-    expect((await service.get(P, O, n, BOSS)).openClones.map((c) => c.sessionId)).toEqual([
-      "room-1",
-      "room-2",
-    ]);
-  });
-
-  it("is relayed where the organization runs: from a mirror of it nothing is closed, opened or sent", async () => {
-    const n = await openA();
-    // This server now holds only a mirror (the organization runs on another machine): the room
-    // sessions are that machine's, so none of them is found here.
-    w.gateway.org = { ...w.gateway.org, machineId: "machine-b" };
-    w.sessions.deleted.add("room-1");
-    w.sessions.deleted.add("room-2");
-    await post(w.root, "room_a", "user:boss", "said over there");
-    await service.relayOnce();
-    // …nor after a restart here (a push), which loads the copied ledger afresh.
-    await w.service().relayOnce();
-    const r = await w.service().get(P, O, n, BOSS);
-    expect(r.clones.every((c) => c.closedAt === undefined)).toBe(true);
-    expect(r.openClones.map((c) => c.sessionId)).toEqual(["room-1", "room-2"]);
-    expect(w.gateway.opened).toHaveLength(2);
-    expect(w.runner.inputs).toEqual([]);
-  });
-
-  it("relays as before on a server older than OrgView.machineId, which does not say where the organization runs", async () => {
-    await openA();
-    // That server's view has no such field: absent, not null.
-    const older: Record<string, unknown> = { ...w.gateway.org };
-    delete older.machineId;
-    w.gateway.org = older as unknown as typeof w.gateway.org;
-    await post(w.root, "room_a", "user:boss", "still relayed?");
-    await service.relayOnce();
-    expect(w.runner.to("room-1")).toHaveLength(1);
-    expect(w.runner.to("room-2")).toHaveLength(1);
-  });
-
-  it("starts the line on a server older than MessagingTaskRunner.steer, even for a running room session", async () => {
-    await openA();
-    w.runner.running.add("room-1");
-    // That server's runner has no steer to offer.
-    Object.defineProperty(w.runner, "steer", { value: undefined });
-    await post(w.root, "room_a", "user:boss", "on an older server");
-    await service.relayOnce();
-    expect(w.runner.inputs.filter((i) => i.sessionId === "room-1")).toEqual([
-      expect.objectContaining({ how: "started" }),
-    ]);
-  });
-
-  it("stops two room sessions answering each other at the configured depth", async () => {
-    await openA();
-    w.config = { relayDepth: 2 };
-    await post(w.root, "room_a", "user:boss", "go");
-    await post(w.root, "room_a", "agent:acme_dev", "dev at 1");
-    await post(w.root, "room_a", "agent:acme_web", "web at 2");
-    await service.relayOnce();
-    expect(w.runner.to("room-1")).toHaveLength(1); // the person's message
-    expect(w.runner.to("room-2")).toHaveLength(2); // the person's and dev's
-  });
-
-  it("opens a room session for an employee invited in, and closes the one of an employee removed", async () => {
-    const n = await openA();
-    await writeChannel(w.root, "room_a", ["user:boss", "agent:acme_web", "agent:acme_qa"]);
-    await service.relayOnce();
-    expect(w.gateway.opened.map((s) => s.agentId)).toEqual(["acme_dev", "acme_web", "acme_qa"]);
-    const r = await service.get(P, O, n, BOSS);
-    expect(r.openClones.map((c) => c.agentId)).toEqual(["acme_web", "acme_qa"]);
-    expect(r.clones.find((c) => c.agentId === "acme_dev")?.closedAt).toBeDefined();
-    // The first opener left: the moderator is the next one still in the room.
-    expect(r.moderator).toBe("acme_web");
-    await post(w.root, "room_a", "user:boss", "hello");
-    await service.relayOnce();
-    expect(w.runner.to("room-1")).toEqual([]);
-    expect(w.runner.to("room-3")).toHaveLength(1);
-  });
-
-  it("opens a new room session when one was deleted, or refused an input", async () => {
-    const n = await openA();
-    w.sessions.deleted.add("room-1");
-    await service.relayOnce();
-    expect(w.gateway.opened.map((s) => s.sessionId)).toEqual(["room-1", "room-2", "room-3"]);
-    w.runner.refuse.add("room-2");
-    await post(w.root, "room_a", "user:boss", "anyone?");
-    await service.relayOnce();
-    await service.relayOnce();
-    const r = await service.get(P, O, n, BOSS);
-    expect(r.openClones.map((c) => c.sessionId)).toEqual(["room-3", "room-4"]);
-  });
-
-  it("relays nothing while the organization is paused, and nothing it said meanwhile afterwards", async () => {
-    await openA();
-    w.gateway.org = { ...w.gateway.org, status: "paused" };
-    await post(w.root, "room_a", "user:boss", "while paused");
-    await service.relayOnce();
-    w.gateway.org = { ...w.gateway.org, status: "active" };
-    await service.relayOnce();
-    expect(w.runner.inputs).toEqual([]);
-  });
-
-  it("picks up where it left off after a restart, relaying nothing twice", async () => {
-    await openA();
-    await post(w.root, "room_a", "user:boss", "one");
-    await service.relayOnce();
-    const again = w.service();
-    await post(w.root, "room_a", "user:boss", "two");
-    await again.relayOnce();
-    expect(w.runner.to("room-1").map((t) => t.split("\n").at(-1))).toEqual(["one", "two"]);
-    expect(w.gateway.opened).toHaveLength(2);
   });
 });
 
@@ -504,12 +296,17 @@ describe("establishing", () => {
     expect(hints).toEqual([]);
     expect(roadmap.status).toBe("established");
     expect(roadmap).not.toHaveProperty("archived");
-    // No proposal owner hears of its item yet — only the derived roadmap's moderator is told.
-    expect(w.gateway.desks.map((d) => d.agentId)).toEqual(["acme_qa"]);
-    for (const d of w.gateway.desks) {
-      expect(d.text).not.toContain("penguin org proposal create");
-      expect(d.text).not.toContain("curl");
-    }
+    // No proposal owner hears of its item yet: the derived roadmap's moderator is told it
+    // derives, this roadmap's moderator is asked for its approvals, and the derived room's
+    // members are told they are in it.
+    expect(w.gateway.desks.map((d) => d.agentId)).toEqual([
+      "acme_qa",
+      "acme_dev",
+      "acme_qa",
+      "acme_dev",
+    ]);
+    for (const d of w.gateway.desks) expect(d.text).not.toContain("penguin org proposal create");
+    expect(w.gateway.desks[0]!.text).not.toContain("curl");
     expect(roadmap.delegations.ledger).toMatchObject({
       owner: "acme_dev",
       stage: "brief",
@@ -521,14 +318,13 @@ describe("establishing", () => {
       base: "ledger",
       stage: "brief",
     });
-    // The moderator's room session is asked, with the approve command; no create anywhere.
-    const asked = w.runner.to("room-1");
-    expect(asked).toHaveLength(1);
-    expect(asked[0]).toContain('[ledger] "Roadmap ledger"');
-    expect(asked[0]).toContain("/actions/roadmap.item.approve/runs");
-    expect(asked[0]).toContain(`item:${n}/<key>`);
-    expect(asked[0]).not.toContain("proposal create");
-    expect(w.runner.to("room-2")).toEqual([]);
+    // The moderator's desk is asked, with the approve command; no create anywhere.
+    const asked = w.gateway.desks[1]!.text;
+    expect(asked).toContain('[ledger] "Roadmap ledger"');
+    expect(asked).toContain("/actions/roadmap.item.approve/runs");
+    expect(asked).toContain(`item:${n}/<key>`);
+    expect(asked).not.toContain("proposal create");
+    expect(w.gateway.sessionsOpened).toEqual([]);
   });
 
   it("derives a roadmap item with its own room, discussing at once, and tells its moderator the room is open", async () => {
@@ -548,7 +344,7 @@ describe("establishing", () => {
       channelId: `roadmap_${child}`,
       moderator: "acme_qa",
     });
-    expect(derived.openClones.map((c) => c.agentId)).toEqual(["acme_qa", "acme_dev"]);
+    expect(derived.employees).toEqual(["acme_qa", "acme_dev"]);
     const told = w.gateway.desks.find((d) => d.agentId === "acme_qa")!.text;
     expect(told).toContain("Its room is open");
     expect(told).not.toContain("penguin org channel create");
@@ -574,24 +370,19 @@ describe("establishing", () => {
     // A desk line carries no write command.
     expect(ask).not.toContain("penguin org channel");
     expect(ask).not.toContain("curl");
-    // Its room bound, it discusses — and its employees' room sessions open.
+    // Its room bound, it discusses — and each member's desk is told it is in it.
     await writeChannel(w.root, "room_t", ["user:boss", "agent:acme_qa", "agent:acme_dev"]);
+    const mark = w.gateway.desks.length;
     const bound = await service.bindRoom(P, O, child!, "room_t", asAgent("acme_qa"));
     expect(bound.roadmap).toMatchObject({
       status: "discussing",
       channelId: "room_t",
       moderator: "acme_qa",
     });
-  });
-
-  it("stops relaying the room once established", async () => {
-    const n = await drafted();
-    await service.establish(P, O, n, BOSS);
-    const before = w.runner.inputs.length;
-    await post(w.root, "room_a", "user:boss", "after the fact");
-    await service.relayOnce();
-    expect(w.runner.inputs).toHaveLength(before);
-    expect(w.runner.inputs.some((i) => i.text.includes("after the fact"))).toBe(false);
+    expect(bound.hints).toEqual([]);
+    expect(w.gateway.desks.slice(mark).map((d) => d.agentId)).toEqual(["acme_qa", "acme_dev"]);
+    expect(w.gateway.desks[mark]!.text).toContain("in its room `room_t`");
+    expect(w.gateway.sessionsOpened).toEqual([]);
   });
 
   it("records a desk that cannot be told, and says so, without failing the establishment", async () => {
@@ -599,7 +390,11 @@ describe("establishing", () => {
     w.gateway.refuse.set("acme_qa", "acme_qa is paused by its budget");
     const { roadmap, hints } = await service.establish(P, O, n, BOSS);
     expect(roadmap.status).toBe("established");
-    expect(hints).toEqual(["acme_qa was not told: acme_qa is paused by its budget"]);
+    // Told twice, refused twice: that its roadmap derives, and that it is in the derived room.
+    expect(hints).toEqual([
+      "acme_qa was not told: acme_qa is paused by its budget",
+      "acme_qa was not told: acme_qa is paused by its budget",
+    ]);
     expect(roadmap.delegations.tests).toMatchObject({ delivered: false });
     // The failed line is recorded on the roadmap it was about: the derived one.
     const derived = await service.get(P, O, roadmap.delegations.tests!.child!, BOSS);
@@ -631,7 +426,6 @@ describe("an existing proposal taken in", () => {
       note: "proposal-107 ← proposal #107",
     });
     expect(w.gateway.desks).toEqual([]);
-    expect(w.runner.inputs).toEqual([]);
     // The moderator keeps it in the items it writes, and it needs no cite.
     const kept = await service.draft(
       P,
@@ -657,10 +451,10 @@ describe("an existing proposal taken in", () => {
       approvals: {},
     });
     expect(roadmap.delegations.ledger).toMatchObject({ stage: "brief" });
-    // The owner already has its proposal: no desk line for it (nor for the brief).
-    expect(w.gateway.desks).toEqual([]);
-    // The moderator is asked to approve the written item only.
-    const asked = w.runner.to("room-1").join("\n");
+    // The owner already has its proposal: no desk line for it (nor for the brief); only the
+    // moderator is asked, to approve the written item only.
+    expect(w.gateway.desks.map((d) => d.agentId)).toEqual(["acme_dev"]);
+    const asked = w.gateway.desks[0]!.text;
     expect(asked).toContain("ledger");
     expect(asked).not.toContain("proposal-107");
     // Approving it is not a thing: it has no brief to approve.
@@ -720,10 +514,13 @@ describe("an existing proposal taken in", () => {
 });
 
 describe("the approvals", () => {
+  /** What the moderator's desk was asked at the establishment. */
+  let asked = "";
   async function established(): Promise<number> {
     const n = await openA();
     await service.draft(P, O, n, { body: BODY, items: ITEMS }, BOSS);
     await service.establish(P, O, n, BOSS);
+    asked = w.gateway.desks.find((d) => d.text.includes("established."))?.text ?? "";
     w.gateway.desks = [];
     return n;
   }
@@ -876,7 +673,7 @@ describe("the approvals", () => {
   it("takes a brief that is a proposal which exists already by its link — from anyone but its owner — with no approvals and no start", async () => {
     const n = await established();
     // The moderator is told how: an existing proposal is linked, not approved.
-    expect(w.runner.to("room-1").join("\n")).toContain("/actions/roadmap.item.link/runs");
+    expect(asked).toContain("/actions/roadmap.item.link/runs");
     // From its owner's desk a brief still waits for both approvals.
     expect(await refusal(service.link(P, O, n, "page", 61, asAgent("acme_web")))).toEqual({
       status: 409,
@@ -927,31 +724,56 @@ describe("the approvals", () => {
     expect((await refusal(service.link(P, O, n, "tests", 61, BOSS))).status).toBe(404);
   });
 
-  it("is reopened by anyone who finds it lacking: the room discusses again and its sessions are told why", async () => {
+  it("is reopened by anyone who finds it lacking: the room discusses again and every member's desk is told why", async () => {
     const n = await established();
-    await post(w.root, "room_a", "user:boss", "said while established");
-    const { roadmap } = await service.reopen(
+    const { roadmap, hints } = await service.reopen(
       P,
       O,
       n,
       "The ledger needs a migration first.",
       asAgent("acme_web"),
     );
+    expect(hints).toEqual([]);
     expect(roadmap.status).toBe("discussing");
-    for (const s of ["room-1", "room-2"]) {
-      expect(w.runner.to(s).at(-1)).toContain(
-        "reopened by agent:acme_web: The ledger needs a migration first.",
-      );
+    expect(w.gateway.desks.map((d) => d.agentId)).toEqual(["acme_dev", "acme_web"]);
+    for (const d of w.gateway.desks) {
+      expect(d.text).toContain("reopened by agent:acme_web: The ledger needs a migration first.");
     }
-    await post(w.root, "room_a", "user:boss", "after the reopening");
-    await service.relayOnce();
-    expect(w.runner.to("room-1").at(-1)).toContain("after the reopening");
-    expect(w.runner.inputs.some((i) => i.text.includes("said while established"))).toBe(false);
+    expect(w.gateway.sessionsOpened).toEqual([]);
     // Only the status gates a reopening: anyone reopens, but not a roadmap already discussing.
     expect(await refusal(service.reopen(P, O, n, "x", asAgent("acme_ceo")))).toEqual({
       status: 409,
       code: "not_established",
     });
+  });
+
+  it("brings a member who left the room back into its channel when it is reopened; other employees there stay", async () => {
+    const n = await established();
+    await writeChannel(w.root, "room_a", ["user:boss", "agent:acme_dev", "agent:acme_qa"]);
+    const { hints } = await service.reopen(P, O, n, "Again.", BOSS);
+    expect(hints).toEqual([]);
+    expect(w.gateway.memberChanges).toEqual([
+      { channelId: "room_a", by: "user:boss", add: ["acme_web"], remove: [] },
+    ]);
+    expect((await readRoom(orgDir(w.root), "room_a"))?.members).toEqual([
+      "user:boss",
+      "agent:acme_dev",
+      "agent:acme_qa",
+      "agent:acme_web",
+    ]);
+    // In step already, the channel is left alone.
+    await service.establish(P, O, n, BOSS);
+    await service.reopen(P, O, n, "Once more.", BOSS);
+    expect(w.gateway.memberChanges).toHaveLength(1);
+  });
+
+  it("reopens all the same when the channel cannot follow, and says why", async () => {
+    const n = await established();
+    await writeChannel(w.root, "room_a", ["user:boss", "agent:acme_dev"]);
+    w.gateway.refuseMemberChanges = "This organization runs on machine m2.";
+    const { roadmap, hints } = await service.reopen(P, O, n, "Again.", BOSS);
+    expect(roadmap.status).toBe("discussing");
+    expect(hints[0]).toContain("could not be changed: This organization runs on machine m2.");
   });
 
   it("starts a changed brief again at the next establishment — its approvals gone — and leaves the rest as they stood", async () => {
@@ -968,7 +790,10 @@ describe("the approvals", () => {
     await service.draft(P, O, n, { items }, BOSS);
     w.gateway.desks = [];
     const { roadmap } = await service.establish(P, O, n, BOSS);
-    expect(w.gateway.desks).toEqual([]);
+    // No owner is told; the moderator is asked again, for the changed brief only.
+    expect(w.gateway.desks.map((d) => d.agentId)).toEqual(["acme_dev"]);
+    expect(w.gateway.desks[0]!.text).toContain('[page] "Side panel"');
+    expect(w.gateway.desks[0]!.text).not.toContain("[ledger]");
     expect(roadmap.delegations.ledger).toMatchObject({ stage: "delegated" });
     expect(roadmap.delegations.page).toMatchObject({
       stage: "brief",
@@ -998,14 +823,8 @@ describe("the room a roadmap opens itself", () => {
       },
     ]);
     expect(roadmap).toMatchObject({ channelId: `roadmap_${roadmap.number}`, status: "discussing" });
-    expect(roadmap.openClones.map((c) => c.agentId)).toEqual(["acme_dev", "acme_web"]);
     expect(w.gateway.desks.map((d) => d.agentId)).toEqual(["acme_dev", "acme_web"]);
-    // The room is borrowed like any channel: a message there reaches the room sessions, and
-    // no desk hears of it.
-    await post(w.root, `roadmap_${roadmap.number}`, "user:boss", "What goes first?");
-    await service.relayOnce();
-    expect(w.runner.to("room-1")).toHaveLength(1);
-    expect(w.gateway.desks).toHaveLength(2);
+    expect(w.gateway.sessionsOpened).toEqual([]);
   });
 
   it("takes the next id when roadmap_<n> is taken", async () => {
@@ -1024,16 +843,13 @@ describe("the room a roadmap opens itself", () => {
 });
 
 describe("names, and no shelf", () => {
-  it("renames; a roadmap has no archive of its own — archiving its room's channel is what stops the relay", async () => {
+  it("renames; a roadmap has no archive of its own — its room's channel is archived as any channel is", async () => {
     const n = await openA();
     expect((await service.rename(P, O, n, "Queue, again", BOSS)).roadmap.name).toBe("Queue, again");
     expect("setArchived" in service).toBe(false);
     await writeChannel(w.root, "room_a", ["user:boss", "agent:acme_dev", "agent:acme_web"], {
       archived: true,
     });
-    await post(w.root, "room_a", "user:boss", "said in an archived channel");
-    await service.relayOnce();
-    expect(w.runner.inputs).toEqual([]);
     const r = await service.get(P, O, n, BOSS);
     expect(r.status).toBe("discussing");
     expect(r).not.toHaveProperty("archived");

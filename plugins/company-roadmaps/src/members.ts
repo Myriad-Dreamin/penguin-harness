@@ -10,13 +10,13 @@
  *
  * The room follows: when the roadmap has a room, the employees added join its channel and the
  * ones removed leave it, through the organization gateway, before the write is recorded (a
- * room that cannot follow refuses the write). While the roadmap is discussing, the relay pass
- * that follows opens a room session for each new member, as at the opening, and closes a
- * removed member's as it closes the session of anyone who left the room; each new member is
- * then told through the notice `notify.roadmap.room_joined`. In any other status only the
- * channel changes, and the sessions follow when the room discusses again.
+ * room that cannot follow refuses the write). The channel is an ordinary one, so a member in it
+ * takes part from its desk and one out of it hears no more of it. While the roadmap is
+ * discussing, each new member is then told through the notice `notify.roadmap.room_joined`; in
+ * any other status only the channel changes.
  */
 import type { OrgActor, OrgGateway, OrgView } from "@prismshadow/penguin-server/plugin";
+import type { Roadmap } from "./domain.js";
 import type { Subject } from "./action-shapes.js";
 import { RoadmapError } from "./domain.js";
 import { defaultAct, moderatorOf, type Caller, type WriteAct } from "./guards.js";
@@ -24,6 +24,7 @@ import { roomJoinedLine } from "./lines.js";
 import type { NoticeDelivery } from "./notice-delivery.js";
 import { sendNotice } from "./notices.js";
 import type { RoadmapStore } from "./ports.js";
+import { agentMembers, readRoom } from "./room.js";
 import type { RoadmapView, WriteResult } from "./service.js";
 
 /** The parameters of `roadmap.members`, as the caller sent them (checked by {@link parseMembers}). */
@@ -44,7 +45,6 @@ export interface MembersHost {
     act?: WriteAct,
   ): Promise<{ org: OrgView; caller: Caller; store: RoadmapStore }>;
   get(projectId: string, orgId: string, number: number, actor: OrgActor): Promise<RoadmapView>;
-  relayRoadmap(projectId: string, orgId: string, number: number): Promise<string[]>;
 }
 
 const badRequest = (message: string): RoadmapError => new RoadmapError(400, "bad_request", message);
@@ -106,7 +106,15 @@ export async function changeMembers(
     const added = next.employees.filter((e) => !r.employees.includes(e));
     const removed = r.employees.filter((e) => !next.employees.includes(e));
     if (r.channelId !== null && (added.length > 0 || removed.length > 0)) {
-      await roomFollows(host, projectId, orgId, r.channelId, caller.principal, added, removed);
+      await roomFollows(
+        host.gateway,
+        projectId,
+        orgId,
+        r.channelId,
+        caller.principal,
+        added,
+        removed,
+      );
     }
     store.write(
       {
@@ -123,8 +131,6 @@ export async function changeMembers(
   });
   const hints: string[] = [];
   if (changed.discussing) {
-    // The sessions follow the room: opened for whoever joined it, closed for whoever left.
-    hints.push(...(await host.relayRoadmap(projectId, orgId, number)));
     hints.push(
       ...(await tellJoined(host, projectId, orgId, number, changed.added, changed.by, actor, act)),
     );
@@ -132,9 +138,34 @@ export async function changeMembers(
   return { roadmap: await host.get(projectId, orgId, number, actor), hints };
 }
 
+/**
+ * The room's channel brought back in step with roadmap `r`'s members, as `by`: each member not
+ * in the channel joins it (one that left it by hand while the room stood established). Other
+ * employees in the channel stay — a room bound to an existing channel may hold more than the
+ * roadmap's members. Throws as {@link roomFollows} does; a channel that is gone throws too.
+ */
+export async function roomFollowsRoadmap(
+  gateway: Partial<Pick<OrgGateway, "changeRoomMembers">>,
+  orgDir: string,
+  projectId: string,
+  orgId: string,
+  r: Pick<Roadmap, "channelId" | "employees">,
+  by: string,
+): Promise<void> {
+  if (r.channelId === null) return;
+  const room = await readRoom(orgDir, r.channelId);
+  if (room === null) {
+    throw new RoadmapError(404, "room_not_found", `The room \`${r.channelId}\` is not there.`);
+  }
+  const inRoom = new Set(agentMembers(room));
+  const missing = r.employees.filter((e) => !inRoom.has(e));
+  if (missing.length === 0) return;
+  await roomFollows(gateway, projectId, orgId, r.channelId, by, missing, []);
+}
+
 /** The room's channel follows the members: `added` join it and `removed` leave it, as `by`. */
 async function roomFollows(
-  host: MembersHost,
+  gateway: Partial<Pick<OrgGateway, "changeRoomMembers">>,
   projectId: string,
   orgId: string,
   channelId: string,
@@ -142,7 +173,6 @@ async function roomFollows(
   added: string[],
   removed: string[],
 ): Promise<void> {
-  const gateway = host.gateway;
   if (typeof gateway.changeRoomMembers !== "function") {
     throw new RoadmapError(
       409,
@@ -169,7 +199,7 @@ async function roomFollows(
   }
 }
 
-/** Each new member of a discussing roadmap is told its room and room session, by the notice `notify.roadmap.room_joined`. */
+/** Each new member of a discussing roadmap is told its room, by the notice `notify.roadmap.room_joined`. */
 function tellJoined(
   host: MembersHost,
   projectId: string,
@@ -185,12 +215,11 @@ function tellJoined(
     if (added.length === 0) return hints;
     const r = await host.get(projectId, orgId, number, actor);
     for (const agentId of added) {
-      const clone = r.clones.find((c) => c.agentId === agentId && c.closedAt === undefined);
       const line = roomJoinedLine({
+        orgId,
         roadmap: r,
         agentId,
         moderator: r.moderator ?? "",
-        sessionId: clone?.sessionId ?? null,
         addedBy: by,
       });
       await sendNotice(

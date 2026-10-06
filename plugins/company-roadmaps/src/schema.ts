@@ -109,16 +109,6 @@ CREATE TABLE IF NOT EXISTS roadmap_approvals (
 ) WITHOUT ROWID;
 ${noRewrite("roadmap_approvals")}
 
-CREATE TABLE IF NOT EXISTS roadmap_clones (
-  session_id TEXT PRIMARY KEY,
-  number     INTEGER NOT NULL REFERENCES roadmaps(number),
-  agent_id   TEXT NOT NULL,
-  opened_at  TEXT NOT NULL,
-  closed_at  TEXT
-);
-CREATE INDEX IF NOT EXISTS roadmap_clones_open ON roadmap_clones (number) WHERE closed_at IS NULL;
-CREATE INDEX IF NOT EXISTS roadmap_clones_by_number ON roadmap_clones (number, opened_at);
-
 CREATE TABLE IF NOT EXISTS roadmap_events (
   seq    INTEGER PRIMARY KEY,
   number INTEGER NOT NULL REFERENCES roadmaps(number),
@@ -171,13 +161,6 @@ export function addRoadmapModerator(db: DatabaseSync): void {
   immediate(db, () => {
     if (!has()) db.exec(`ALTER TABLE roadmaps ADD COLUMN moderator TEXT`);
   });
-}
-
-/** Opens an existing `company.db` read-only (the channel claim's question); throws when there is none. */
-export function openCompanyDbReadOnly(file: string): DatabaseSync {
-  const db = new sqlite.DatabaseSync(file, { readOnly: true });
-  db.exec("PRAGMA busy_timeout = 5000;");
-  return db;
 }
 
 /** One write transaction (`BEGIN IMMEDIATE`), synchronous inside: committed on return, rolled back on a throw. */

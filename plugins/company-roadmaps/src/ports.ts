@@ -11,8 +11,6 @@ export interface RoadmapStore {
   get(number: number): Roadmap | null;
   /** One past the highest number so far. */
   nextNumber(): number;
-  /** The roadmap under discussion whose room this channel is. */
-  discussingIn(channelId: string): number | null;
   /**
    * One transaction: `check` is called inside it with the roadmap as it stands (the default
    * rules, guards.ts) and may refuse; then each write changes its tables and records its event.

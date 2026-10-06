@@ -1,12 +1,12 @@
 /**
- * The first input of a room session (lines.ts `cloneBrief`): the moderator is told how the body
+ * The line that puts an employee in a roadmap's room (lines.ts `roomJoinedLine`): the moderator is told how the body
  * is shown — a `proposal:<n>` reference becomes a link, a footnote a note — since the body is
  * where those two are written; an employee who does not moderate writes no body and is not told.
  * Its write commands run the roadmap Actions; an approved item's desk line names each approval.
  */
 import { describe, expect, it } from "vitest";
 import type { Roadmap } from "../src/domain.js";
-import { approvalRequestLine, approvedLine, cloneBrief } from "../src/lines.js";
+import { approvalRequestLine, approvedLine, roomJoinedLine } from "../src/lines.js";
 
 const roadmap: Roadmap = {
   number: 3,
@@ -21,7 +21,6 @@ const roadmap: Roadmap = {
   record: "",
   body: "",
   items: [],
-  clones: [],
   delegations: {},
   createdBy: "user:boss",
   createdAt: "2026-09-29T02:59:46.000Z",
@@ -29,16 +28,18 @@ const roadmap: Roadmap = {
 };
 
 const brief = (agentId: string) =>
-  cloneBrief({
-    orgId: "acme",
-    roadmap,
-    agentId,
-    moderator: "acme_ceo",
-    members: ["user:boss", "agent:acme_ceo", "agent:acme_dev"],
-    recent: [],
+  roomJoinedLine({ orgId: "acme", roadmap, agentId, moderator: "acme_ceo" });
+
+describe("the line that puts an employee in the room", () => {
+  it("says the room is a channel whose messages reach the desk, and how to speak there", () => {
+    const text = brief("acme_dev");
+    expect(text).toContain("`roadmap_3`");
+    expect(text).toContain("acme_ceo moderates");
+    expect(text).toContain("reach this desk as any channel's do");
+    expect(text).toContain("penguin org channel send --org-id acme --channel roadmap_3");
+    expect(text).not.toContain("room session");
   });
 
-describe("the room session's first input", () => {
   it("tells the moderator how to cite a proposal and add a note in the body", () => {
     const text = brief("acme_ceo");
     expect(text).toContain("`proposal:<n>`");
@@ -55,7 +56,7 @@ describe("the room session's first input", () => {
 
 const ACTIONS = "$PENGUIN_API_URL/api/projects/$PENGUIN_PROJECT_ID/organizations/acme/actions";
 
-describe("the session's write commands", () => {
+describe("the desk's write commands", () => {
   it("run the roadmap Actions with a subject and params, as the session", () => {
     const text = brief("acme_ceo");
     expect(text).toContain(`curl -sS -X POST "${ACTIONS}/roadmap.draft/runs"`);

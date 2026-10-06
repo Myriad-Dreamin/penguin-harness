@@ -57,7 +57,7 @@ import { userChannelKey } from "../../http/routes/events.js";
 import type { Channels, Clock, Config, Log } from "../../hmr/capabilities.js";
 import type { ChannelHub } from "../channel.js";
 import { OrgGateway } from "../../mechanisms/organization.js";
-import type { OrgCache, OrgChannelRef, OrgView } from "../../mechanisms/organization.js";
+import type { OrgCache, OrgView } from "../../mechanisms/organization.js";
 import type { AgentConfig, AgentLifecycle } from "../../mechanisms/agents.js";
 import type {
   AgentIndex,
@@ -125,14 +125,7 @@ import { budgetLine, budgetRatio, computeSpend, pausedEmployees } from "./budget
 import type { OrgSpend } from "./budget.js";
 import { machineApi } from "../../machines/machine-api.js";
 import { Machines } from "../../machines/service.js";
-import {
-  DEFAULT_EMPLOYEE_PLUGINS,
-  OrgRuns,
-  OrgSessions,
-  channelClaimsOf,
-  employeePlugins,
-  runsOn,
-} from "./deps.js";
+import { DEFAULT_EMPLOYEE_PLUGINS, OrgRuns, OrgSessions, employeePlugins, runsOn } from "./deps.js";
 import type { OrgDeps, OrgRetirement } from "./deps.js";
 import { isMirrorPath, mirrorManifest, pullMirror, readMirrorFile } from "./mirror.js";
 import { retireAndTrash } from "./retire.js";
@@ -3301,18 +3294,6 @@ export class OrganizationModule {
     const agentsRepo = this.agentsRepo;
     const runner = this.runner;
     const projectConfig = this.projectConfig;
-    // The channels plugins handle themselves (OrgGatewaySlots.channelClaims): none, and every
-    // channel delivers its mentions as before.
-    const channelClaimed = channelClaimsOf(
-      (contributions.channelClaims ?? []).map((c) => c.code as (channel: OrgChannelRef) => boolean),
-      (err, channel) =>
-        this.errors.record({
-          source: "organization",
-          err,
-          code: "org_channel_claim_failed",
-          ctx: { projectId: channel.projectId },
-        }),
-    );
     // What plugins release when an organization is deleted (OrgGatewaySlots.retirements).
     const retirements: OrgRetirement[] = (contributions.retirements ?? []).map((c) => ({
       id: c.id,
@@ -3365,7 +3346,6 @@ export class OrganizationModule {
         }
       },
       companyModeEnabled: () => this.settings.getCompanyMode(),
-      ...(channelClaimed !== undefined ? { channelClaimed } : {}),
       deleting: new Set(),
       retirements,
       // A deleted organization's session: its Task, its background commands (a Claude Code

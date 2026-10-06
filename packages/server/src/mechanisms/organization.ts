@@ -141,23 +141,7 @@ export abstract class OrgGateway extends Interface<{
   notifyProject(projectId: string, event: ServerEvent): void;
 }>() {}
 
-/** One channel of one organization, as a channel claim is asked about it. */
-export interface OrgChannelRef {
-  projectId: string;
-  orgId: string;
-  channelId: string;
-}
-
 export interface OrgGatewaySlots {
-  /**
-   * A plugin that handles a channel's messages itself. Before the scheduler delivers the
-   * mentions of a channel's new messages to desks it asks every claim; a channel any claim
-   * answers `true` for keeps everything else — the message is recorded, published and read as
-   * any other — but no mention in it wakes a desk: the claimant handles the message. Asked
-   * under the organization's lock, so a claim answers at once and does its work afterwards; a
-   * claim that throws is recorded and counts as not claiming.
-   */
-  channelClaims: Slot<{ description: string }, (channel: OrgChannelRef) => boolean>;
   /**
    * A plugin that holds resources of an organization — a database connection opened on first
    * use, work in flight, processes whose working directory is inside the organization — and

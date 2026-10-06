@@ -1,11 +1,11 @@
 /**
  * `roadmap.members` (members.ts): the members replaced and the moderator named, each refusal of
- * the parameters, an append-only `members` event with both sides; the room following — while
- * the roadmap discusses a new member gets its room session and is told, a removed member's
- * session ends, the channel's employees change; in any other status only the channel changes —
- * the `moderator` approval taken only from the named moderator while approvals already given
- * stand; a roadmap never changed derives its moderator as before (an old `company.db` included);
- * and the default guard, which lets a person and the moderator through.
+ * the parameters, an append-only `members` event with both sides; the room following — the
+ * channel's employees change, and while the roadmap discusses a new member's desk is told; no
+ * session is opened for anyone — the `moderator` approval taken only from the named moderator
+ * while approvals already given stand; a roadmap never changed moderated by its first member
+ * (an old `company.db` included); and the default guard, which lets a person and the moderator
+ * through.
  */
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -128,12 +128,8 @@ describe("roadmap.members", () => {
     }
   });
 
-  it("while discussing: a new member gets its room session and is told, a removed member's session ends, the channel follows", async () => {
+  it("while discussing: the channel follows — the new member joins, the removed one leaves — and the new member's desk is told", async () => {
     const r = await opened();
-    expect(r.clones.map((c) => [c.agentId, c.sessionId])).toEqual([
-      ["acme_dev", "room-1"],
-      ["acme_web", "room-2"],
-    ]);
     const desks = w.gateway.desks.length;
     const { roadmap, hints } = await members(r.number, ["acme_web", "acme_qa"], "acme_qa");
     expect(hints).toEqual([]);
@@ -141,35 +137,23 @@ describe("roadmap.members", () => {
       { channelId: "room_a", by: "user:boss", add: ["acme_qa"], remove: ["acme_dev"] },
     ]);
     expect(await roomMembers()).toEqual(["user:boss", "agent:acme_web", "agent:acme_qa"]);
-    const open = roadmap.clones.filter((c) => c.closedAt === undefined);
-    expect(open.map((c) => [c.agentId, c.sessionId])).toEqual([
-      ["acme_web", "room-2"],
-      ["acme_qa", "room-3"],
-    ]);
-    expect(roadmap.clones.find((c) => c.sessionId === "room-1")?.closedAt).toBeDefined();
-    // The new session starts as an opening's does, knowing it moderates.
-    expect(w.gateway.opened.at(-1)).toMatchObject({ agentId: "acme_qa", sessionId: "room-3" });
-    expect(w.gateway.opened.at(-1)!.body).toContain("Moderator: acme_qa (you).");
-    expect(w.gateway.desks.slice(desks)).toEqual([
-      {
-        agentId: "acme_qa",
-        text: "[roadmap #1 «Queue»] user:boss made you a member of this roadmap, in its room `room_a` (you moderate). Your room session `room-3` takes part; nothing is needed from this desk, and do not speak in the room from here.",
-      },
-    ]);
+    expect(roadmap).toMatchObject({ employees: ["acme_web", "acme_qa"], moderator: "acme_qa" });
+    expect(roadmap).not.toHaveProperty("clones");
+    const told = w.gateway.desks.slice(desks);
+    expect(told.map((d) => d.agentId)).toEqual(["acme_qa"]);
+    expect(told[0]!.text).toContain(
+      "[roadmap #1 «Queue»] user:boss made you a member of this roadmap, in its room `room_a` of organization `acme` (you moderate).",
+    );
+    // It moderates now, so its line carries the draft's commands.
+    expect(told[0]!.text).toContain("/actions/roadmap.draft/runs");
   });
 
-  it("in any other status changes only the channel: no session opens or closes, nobody is told", async () => {
+  it("in any other status changes only the channel: nobody is told", async () => {
     const r = await established();
     const desks = w.gateway.desks.length;
-    const sessions = w.gateway.opened.length;
     const { roadmap } = await members(r.number, ["acme_dev", "acme_qa"], "acme_dev");
     expect(await roomMembers()).toEqual(["user:boss", "agent:acme_dev", "agent:acme_qa"]);
-    expect(w.gateway.opened).toHaveLength(sessions);
     expect(w.gateway.desks).toHaveLength(desks);
-    expect(roadmap.clones.filter((c) => c.closedAt === undefined).map((c) => c.agentId)).toEqual([
-      "acme_dev",
-      "acme_web",
-    ]);
     expect(roadmap.employees).toEqual(["acme_dev", "acme_qa"]);
   });
 
@@ -190,7 +174,6 @@ describe("roadmap.members", () => {
     const { roadmap } = await members(1, ["acme_qa"], "acme_qa");
     expect(roadmap).toMatchObject({ status: "awaiting_room", employees: ["acme_qa"] });
     expect(w.gateway.memberChanges).toEqual([]);
-    expect(w.gateway.opened).toEqual([]);
   });
 
   it("refuses the change when the room cannot follow, and records nothing", async () => {
@@ -230,21 +213,11 @@ describe("roadmap.members", () => {
     expect(w.proposals.created.map((p) => p.roadmap.key)).toEqual(["pages", "ledger"]);
   });
 
-  it("leaves the derivation of a roadmap never changed as it was, and an explicit moderator stays put", async () => {
+  it("lets the first member moderate a roadmap never changed, and an explicit moderator stays put", async () => {
     const r = await opened();
     expect(r).toMatchObject({ explicitModerator: null, moderator: "acme_dev" });
-    // acme_dev's room session is gone and, the organization paused, none opens in its place:
-    // the first member with an open one moderates, as before.
-    w.gateway.org = { ...w.gateway.org, status: "paused" };
-    w.sessions.deleted.add("room-1");
-    await service.relayOnce();
-    expect((await service.get(PROJECT, ORG, r.number, BOSS)).moderator).toBe("acme_web");
-    // Named, it moderates whether or not it has a session.
-    const { roadmap } = await members(r.number, ["acme_dev", "acme_web"], "acme_dev");
+    const { roadmap } = await members(r.number, ["acme_web", "acme_dev"], "acme_dev");
     expect(roadmap.moderator).toBe("acme_dev");
-    expect(roadmap.clones.filter((c) => c.closedAt === undefined).map((c) => c.agentId)).toEqual([
-      "acme_web",
-    ]);
   });
 
   it("opens a company.db written before the moderator column: the column is added, old rows read null", async () => {

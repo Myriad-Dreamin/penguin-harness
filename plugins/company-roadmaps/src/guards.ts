@@ -38,15 +38,9 @@ export interface Caller {
   agentId: string | null;
 }
 
-/**
- * The employee who moderates: the one a `members` write named, once one did; until then the
- * first of the members with an open room session, else the first member, else the earliest open
- * session.
- */
+/** The employee who moderates: the one a `members` write named, once one did; until then the first member. */
 export function moderatorOf(r: Roadmap): string | null {
-  if (r.explicitModerator !== null) return r.explicitModerator;
-  const open = r.clones.filter((c) => c.closedAt === undefined).map((c) => c.agentId);
-  return r.employees.find((e) => open.includes(e)) ?? open[0] ?? r.employees[0] ?? null;
+  return r.explicitModerator ?? r.employees[0] ?? null;
 }
 
 export function requireStatus(r: Roadmap, status: RoadmapStatus): void {

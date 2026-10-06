@@ -12,7 +12,7 @@ import type {
   ServerEvent,
   SessionStatus,
 } from "../../api/types.js";
-import type { OrgCache, OrgChannelRef } from "../../mechanisms/organization.js";
+import type { OrgCache } from "../../mechanisms/organization.js";
 import type { Members, ProjectConfigStore, Projects } from "../../mechanisms/projects.js";
 import type { SessionIndex } from "../../mechanisms/sessions.js";
 import type { OrgStore } from "../../organization/store.js";
@@ -166,12 +166,6 @@ export interface OrgDeps {
   /** The admin master switch, read per pass so a change applies without a restart. */
   companyModeEnabled: () => boolean;
   /**
-   * Whether a plugin handles this channel's messages itself (OrgGatewaySlots.channelClaims):
-   * a claimed channel's mentions are not delivered to desks. Optional: without a claimant,
-   * and in every test that binds none, every channel delivers.
-   */
-  channelClaimed?: (channel: OrgChannelRef) => boolean;
-  /**
    * Organizations being deleted, by orgLockKey: loadOrg answers null for them, so every route,
    * pass and gateway read treats the organization as gone while a delete releases what it
    * holds (retire.ts). Optional so a test may leave it out; the service fills one in.
@@ -237,24 +231,3 @@ export function runsOn(
 /** What company mode needs of the session runtime — declared at the consumer (Go style). */
 export abstract class OrgRuns extends Interface<OrgRunsShape>() {}
 export abstract class OrgSessions extends Interface<OrgSessionCreator>() {}
-
-/**
- * The claims plugins contributed, as one question: does any of them handle this channel? A
- * claim that throws is recorded and counts as not claiming — the channel then delivers as it
- * always did, which is the safe side of a broken plugin.
- */
-export function channelClaimsOf(
-  claims: ReadonlyArray<(channel: OrgChannelRef) => boolean>,
-  onError: (err: unknown, channel: OrgChannelRef) => void,
-): ((channel: OrgChannelRef) => boolean) | undefined {
-  if (claims.length === 0) return undefined;
-  return (channel) =>
-    claims.some((claim) => {
-      try {
-        return claim(channel) === true;
-      } catch (err) {
-        onError(err, channel);
-        return false;
-      }
-    });
-}

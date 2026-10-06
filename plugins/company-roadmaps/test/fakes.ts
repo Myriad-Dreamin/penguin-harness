@@ -1,8 +1,7 @@
 /**
- * What the unit suites stand the plugin on: the organization gateway, the session runtime's
- * input, the session index and company-proposals' creation as fakes that record what they were
- * asked, and an organization directory on disk whose channels are written the way the
- * organization writes them.
+ * What the unit suites stand the plugin on: the organization gateway and company-proposals'
+ * creation as fakes that record what they were asked, and an organization directory on disk
+ * whose channels are written the way the organization writes them.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -70,8 +69,11 @@ export class FakeGateway implements Pick<
   };
   /** Every line put on a desk, in order. */
   desks: Array<{ agentId: string; text: string }> = [];
-  /** Every session opened for an employee, in order; the n-th is `room-<n>`. */
-  opened: Array<{ agentId: string; title: string; body: string; sessionId: string }> = [];
+  /**
+   * Every session opened for an employee. The plugin opens none — a room is a channel the
+   * organization delivers — and the suites check it stays empty.
+   */
+  sessionsOpened: Array<{ agentId: string; title: string }> = [];
   /** Desks that refuse a line, with the reason. */
   refuse = new Map<string, string>();
 
@@ -96,10 +98,9 @@ export class FakeGateway implements Pick<
     this.desks.push({ agentId, text });
     return { sessionId: `desk-${agentId}`, queued: false };
   }
-  async openEmployeeSession(args: { agentId: string; title: string; body: string }) {
-    const sessionId = `room-${this.opened.length + 1}`;
-    this.opened.push({ ...args, sessionId });
-    return { sessionId, workspace: "/tmp/acme" };
+  async openEmployeeSession(args: { agentId: string; title: string }) {
+    this.sessionsOpened.push({ agentId: args.agentId, title: args.title });
+    return { sessionId: `session-${this.sessionsOpened.length}`, workspace: "/tmp/acme" };
   }
   /** An unlisted channel with its members, on disk as the server writes one; a taken id is refused as the server refuses it. */
   async openRoom(args: {
@@ -248,62 +249,6 @@ export class FakeProposals implements ProposalCreator {
   }
 }
 
-/**
- * The session runtime's input: every later input a session was sent, and how — steered into
- * the Task it was running, or started (queued behind that Task when it runs one).
- */
-export class FakeRunner {
-  inputs: Array<{ sessionId: string; text: string; how: "steered" | "started" }> = [];
-  /** Sessions that refuse an input. */
-  refuse = new Set<string>();
-  /** Sessions running a Task. */
-  running = new Set<string>();
-  /** Running sessions whose Task ends before a steer lands (the manager's 409 `not_running`). */
-  finishing = new Set<string>();
-  statusOf(sessionId: string): string {
-    return this.running.has(sessionId) ? "running" : "idle";
-  }
-  steer(sessionId: string, input: Array<{ payload: unknown }>, _recall: unknown): void {
-    if (this.refuse.has(sessionId)) throw new Error(`session ${sessionId} is gone`);
-    if (!this.running.has(sessionId) || this.finishing.has(sessionId)) {
-      throw Object.assign(new Error("This Session has no Task in progress"), {
-        status: 409,
-        code: "not_running",
-      });
-    }
-    this.record(sessionId, input, "steered");
-  }
-  async startTask(
-    sessionId: string,
-    input: Array<{ payload: unknown }>,
-    _opts: { queueIfBusy: boolean },
-  ): Promise<{ sessionId: string; queued: boolean }> {
-    if (this.refuse.has(sessionId)) throw new Error(`session ${sessionId} is gone`);
-    this.record(sessionId, input, "started");
-    return { sessionId, queued: this.running.has(sessionId) };
-  }
-  private record(
-    sessionId: string,
-    input: Array<{ payload: unknown }>,
-    how: "steered" | "started",
-  ): void {
-    for (const m of input) {
-      this.inputs.push({ sessionId, text: (m.payload as { text: string }).text, how });
-    }
-  }
-  to(sessionId: string): string[] {
-    return this.inputs.filter((i) => i.sessionId === sessionId).map((i) => i.text);
-  }
-}
-
-/** The session index: every session exists unless deleted here. */
-export class FakeSessions {
-  deleted = new Set<string>();
-  findById(sessionId: string) {
-    return this.deleted.has(sessionId) ? null : ({ sessionId } as never);
-  }
-}
-
 export async function tempRoot(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "company-roadmaps-"));
 }
@@ -335,41 +280,10 @@ export async function writeChannel(
   await fs.writeFile(path.join(dir, "channel.toml"), toml, "utf8");
 }
 
-let seq = 0;
-
-/** One message line appended to a day file, as the organization's send path writes it. */
-export async function post(
-  root: string,
-  channelId: string,
-  sender: string,
-  text: string,
-  opts: { date?: string; hop?: number; mentions?: string[] } = {},
-): Promise<string> {
-  const date = opts.date ?? "2026-09-27";
-  seq++;
-  const id = `msg-${date}-12-00-00-${seq.toString(16).padStart(8, "0")}`;
-  const line = JSON.stringify({
-    id,
-    time: `${date}T12:00:00.000Z`,
-    sender,
-    hop: opts.hop ?? (sender.startsWith("agent:") ? 1 : 0),
-    text,
-    mentions: opts.mentions ?? [],
-  });
-  const dir = path.join(orgDir(root), "channels", channelId);
-  await fs.mkdir(dir, { recursive: true });
-  await fs.appendFile(path.join(dir, `${date}.jsonl`), `${line}\n`, "utf8");
-  return id;
-}
-
 export interface World {
   root: string;
   gateway: FakeGateway;
-  runner: FakeRunner;
-  sessions: FakeSessions;
   proposals: FakeProposals;
-  config: Record<string, unknown>;
-  logs: string[];
   service: () => RoadmapService;
 }
 
@@ -379,20 +293,12 @@ export async function world(): Promise<World> {
   const w: World = {
     root,
     gateway: Object.assign(new FakeGateway(), { root }),
-    runner: new FakeRunner(),
-    sessions: new FakeSessions(),
     proposals: new FakeProposals(),
-    config: {},
-    logs: [],
     service: () =>
       new RoadmapService({
         gateway: w.gateway,
-        runner: w.runner as never,
-        sessions: w.sessions,
         proposals: w.proposals,
         root,
-        log: { line: (l) => w.logs.push(l) },
-        pluginConfig: { get: () => w.config },
       }),
   };
   return w;

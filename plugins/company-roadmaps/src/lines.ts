@@ -1,20 +1,19 @@
 /**
- * Every text this plugin puts in front of an employee: the first input of a room session, a
- * relayed room message, and the lines an establishment, an approval, a link or a reopening puts
- * on a desk.
+ * Every text this plugin puts on an employee's desk: the line that puts it in a roadmap's room,
+ * and the lines an establishment, an approval, a link or a reopening sends.
  *
- * Two kinds of reader, two rules. A **room session** (the moderator's above all) works the
- * roadmap itself, so its texts carry the commands that answer them: `penguin org channel send`,
+ * The room is an ordinary channel and its members take part from their desks, so the lines
+ * about the room's own work carry the commands that answer them: `penguin org channel send`,
  * and the roadmap Actions (`POST …/actions/<key>/runs`) through `curl` with the session's
  * control environment (`PENGUIN_API_URL`, `PENGUIN_API_TOKEN`, `PENGUIN_PROJECT_ID`,
  * `PENGUIN_SESSION_ID`, `PENGUIN_AGENT_ID`), whose `sessionId`/`agentId` claims attribute the
- * run to the employee: the draft, the establishment, the moderator's approval of a proposal item. A **desk** gets
- * only what happened and what it means. No desk line carries a write command, and no text
- * anywhere tells anyone to create a proposal card: the proposal of an item is created by its last
- * approval, not by this plugin's words.
+ * run to the employee: the draft, the establishment, the moderator's approval of a proposal
+ * item. A line about a later step — an item approved, a base linked — says only what happened
+ * and what it means, with no write command; and no text anywhere tells anyone to create a
+ * proposal card: the proposal of an item is created by its last approval, not by this plugin's
+ * words.
  */
 import type { DraftItem, Roadmap } from "./domain.js";
-import type { RoomMessage } from "./room.js";
 
 /** The route of a roadmap, as a session's shell spells it. */
 export function routeOf(orgId: string, number: number | null, suffix = ""): string {
@@ -55,10 +54,6 @@ export function curlFileOf(method: string, url: string, file: string): string {
   return `curl -sS -X ${method} "${url}" -H "authorization: Bearer $PENGUIN_API_TOKEN" -H "content-type: application/json" --data @${file}`;
 }
 
-function quote(msg: RoomMessage): string {
-  return `> ${msg.time} ${msg.sender}: ${msg.text.replace(/\n/g, "\n> ")}`;
-}
-
 function itemLine(item: DraftItem): string {
   return item.kind === "proposal"
     ? `- [${item.key}] proposal ${item.proposal !== undefined ? `#${item.proposal} (existing) ` : ""}"${item.title}" — owner ${item.owner}: ${item.brief}`
@@ -70,33 +65,36 @@ export function tag(r: Pick<Roadmap, "number" | "name">): string {
 }
 
 /**
- * The first input of an employee's room session — the desk cloned for this room: who it is
- * in the room, how to speak there, what the moderator keeps, and the room so far.
+ * The line an employee's desk gets when a roadmap's opener puts it in its room — or, with
+ * `addedBy`, when a change of members does, or when a room is bound to a roadmap waiting for
+ * one: where it is, who moderates, how to speak there, and — for the moderator — how to keep
+ * the draft and establish the roadmap. The room's messages reach this desk as the
+ * organization delivers any channel's.
  */
-export function cloneBrief(args: {
+export function roomJoinedLine(args: {
   orgId: string;
   roadmap: Roadmap;
   agentId: string;
   moderator: string;
-  members: string[];
-  recent: RoomMessage[];
+  addedBy?: string;
 }): string {
   const { orgId, roadmap: r, agentId, moderator } = args;
   const channel = r.channelId ?? "";
   const moderating = agentId === moderator;
+  const role = moderating ? "you moderate" : `${moderator} moderates`;
+  const how =
+    args.addedBy === undefined
+      ? `${r.createdBy} opened this roadmap and put you in its room`
+      : `${args.addedBy} made you a member of this roadmap, in its room`;
   const lines = [
-    `${tag(r)} This session is your desk, cloned for one discussion: the room \`${channel}\` of organization \`${orgId}\`. Everything said in the room reaches you here, and only here; your own desk is not told.`,
-    `Topic: ${r.brief || r.name}`,
-    `In the room: ${args.members.join(", ")}. Moderator: ${moderator}${moderating ? " (you)" : ""}.`,
-    `Speak with \`penguin org channel send --org-id ${orgId} --channel ${channel} -m "<text>"\`. Every member reads every message here, so a mention is not needed; while the room discusses, a mention reaches this room and wakes no one's desk.`,
-    "Do not wait for the room. Every room message comes to this session as input — while you work too — so do not poll the channel's files, sleep in a loop or wait in a command for an answer: say what you have to say, finish what you are doing, and end your turn; the next message starts your next one.",
+    `${tag(r)} ${how} \`${channel}\` of organization \`${orgId}\` (${role}). Topic: ${r.brief || r.name}`,
+    `The room is a channel: its messages reach this desk as any channel's do. Speak with \`penguin org channel send --org-id ${orgId} --channel ${channel} -m "<text>"\`.`,
     `Read the roadmap: \`curl -sS "${routeOf(orgId, r.number)}" -H "authorization: Bearer $PENGUIN_API_TOKEN"\`.`,
   ];
   // A room a person opened starts with that person: the moderator speaks first, to them, and
   // the others hold back until the question is agreed — or until someone speaks to them.
   const opener = r.createdBy.startsWith("user:") ? r.createdBy : null;
-  const started = args.recent.some((m) => m.sender === `agent:${moderator}`);
-  if (opener !== null && !started) {
+  if (opener !== null && args.addedBy === undefined) {
     lines.push(
       moderating
         ? `Open the room: ${opener} (a person) opened this roadmap. Before anything else, send one message in the room to @${opener} — who is here, the topic in a sentence, and what you need to know from them first: what they want from this roadmap, and what is out of it. Settle the question with them, then bring the others in.`
@@ -123,42 +121,11 @@ export function cloneBrief(args: {
       `The draft so far:\n${r.record}${r.items.length > 0 ? `\n${r.items.map(itemLine).join("\n")}` : ""}`,
     );
   }
-  if (args.recent.length > 0) lines.push(`The room so far:\n${args.recent.map(quote).join("\n")}`);
   return lines.join("\n\n");
 }
 
 /**
- * The line an employee's desk gets when a roadmap's opener puts it in its room — or, with
- * `addedBy`, when a change of members does: where it is, who moderates, and that the room
- * session — not this desk — takes part.
- */
-export function roomJoinedLine(args: {
-  roadmap: Roadmap;
-  agentId: string;
-  moderator: string;
-  sessionId: string | null;
-  addedBy?: string;
-}): string {
-  const { roadmap: r, agentId, moderator } = args;
-  const role = agentId === moderator ? "you moderate" : `${moderator} moderates`;
-  const session =
-    args.sessionId === null
-      ? "Your room session opens at the plugin's next pass"
-      : `Your room session \`${args.sessionId}\` takes part`;
-  const how =
-    args.addedBy === undefined
-      ? `${r.createdBy} opened this roadmap and put you in its room`
-      : `${args.addedBy} made you a member of this roadmap, in its room`;
-  return `${tag(r)} ${how} \`${r.channelId ?? ""}\` (${role}). ${session}; nothing is needed from this desk, and do not speak in the room from here.`;
-}
-
-/** One room message, relayed into a room session. */
-export function relayLine(r: Roadmap, msg: RoomMessage): string {
-  return `${tag(r)} room \`${r.channelId ?? ""}\` — ${msg.sender} at ${msg.time}:\n${msg.text}`;
-}
-
-/**
- * The input the moderator's room session gets when the roadmap is established with proposal
+ * The line the moderator's desk gets when the roadmap is established with proposal
  * items: they are briefs now, each waiting for its approvals — the moderator's (this command)
  * and another member's, unless the organization binds other roles. Approving says the brief is
  * ready to become a proposal; the last approval creates it.
@@ -228,7 +195,7 @@ export function roomRequestLine(args: { parent: Roadmap; child: Roadmap }): stri
   const { parent, child } = args;
   return [
     `${tag(parent)} established; it derives ${tag(child)}, which you moderate, with ${child.employees.join(", ")}. Brief: ${child.brief}`,
-    "Its room could not be opened yet, so it waits for one. Nothing is needed from this desk; when a room is bound to it, your room session there starts on its own.",
+    "Its room could not be opened yet, so it waits for one. Nothing is needed from this desk; when a room is bound to it, you are told, and its messages reach this desk.",
   ].join("\n");
 }
 
@@ -237,11 +204,11 @@ export function roomOpenedLine(args: { parent: Roadmap; child: Roadmap }): strin
   const { parent, child } = args;
   return [
     `${tag(parent)} established; it derives ${tag(child)}, which you moderate. Brief: ${child.brief}`,
-    `Its room is open — the channel \`${child.channelId ?? ""}\`, with ${child.employees.join(", ")} — and your room session there starts on its own.`,
+    `Its room is open — the channel \`${child.channelId ?? ""}\`, with ${child.employees.join(", ")} — and its messages reach this desk.`,
   ].join("\n");
 }
 
-/** The input a reopening puts in every open room session. */
+/** The line a reopening puts on every member's desk. */
 export function reopenLine(r: Roadmap, by: string, reason: string, moderator: string): string {
   return `${tag(r)} reopened by ${by}: ${reason}\n\nThe room is discussing again. ${moderator === "" ? "" : `${moderator}, as moderator: put this in the room and revise the draft.`}`.trimEnd();
 }

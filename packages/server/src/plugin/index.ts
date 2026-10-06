@@ -41,7 +41,6 @@ export type { Errors } from "../mechanisms/observability.js";
 export type { AgentLifecycle } from "../mechanisms/agents.js";
 export type {
   OrgActor,
-  OrgChannelRef,
   OrgEmployeeView,
   OrgGateway,
   OrgGatewaySlots,

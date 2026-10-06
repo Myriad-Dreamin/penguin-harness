@@ -3,20 +3,19 @@
  * per event (`notify.roadmap.item_approved`). A write sends its notice once its write committed,
  * through the run's `act.notify` (company-proposals' registry runs the notify Action by key, as
  * the same caller), so an organization's company workflow that contributes an `action` on the
- * key replaces the built-in one. The built-in ones (builtin-actions.ts) deliver what the service
- * delivered before notices existed: a line on a desk, `notify_failed` recorded when it could not
- * be; or, for the approval request and the reopening, a line into room sessions.
+ * key replaces the built-in one. The built-in ones (builtin-actions.ts) put a line on each desk
+ * of `to`, `notify_failed` recorded when one could not take it.
  *
- *   room_joined         each opening employee's desk, and each member a change of members adds
- *                       while the room discusses: the room it is in, its room session
+ *   room_joined         each member's desk when the room opens or is bound, and each member a
+ *                       change of members adds while the room discusses: the room it is in
  *   derived             a derived roadmap's moderator's desk: its room is open, or to open one
- *   approval_requested  the moderator's room session: approve the briefs
+ *   approval_requested  the moderator's desk: approve the briefs
  *   item_approved       an item's owner's desk: its proposal was created (or rewritten)
  *   base_linked         a stacked item's owner's desk: its base's proposal number
- *   reopened            every open room session: the roadmap is discussed again
+ *   reopened            every member's desk: the roadmap is discussed again
  *
- * These are every line the plugin tells an employee; the room relay (relayLine) is not a notice
- * but the discussion itself, and stays with the service.
+ * These are every line the plugin tells an employee; the discussion itself is the room's
+ * channel, which the organization delivers.
  */
 import type { NoticeOutcome, NoticeResult } from "./action-shapes.js";
 import type { WriteAct } from "./guards.js";

@@ -9,16 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import plugin, {
-  CLAIM_ID,
-  CONFIG_GROUP,
   CompanyRoadmapsPlugin,
-  DEFAULT_POLL_SECONDS,
-  DEFAULT_RELAY_DEPTH,
   ROUTES_ID,
-  RoadmapRoomClaim,
   RoadmapsRetirement,
   RETIRE_ID,
-  configOf,
   roadmapRoutes,
 } from "../src/index.js";
 import { asAgent, world, writeChannel, type World } from "./fakes.js";
@@ -151,58 +145,25 @@ describe("the manifest", () => {
       plugin: { modules: string[] };
     };
 
-  it("names the three modules, their contributions, and what each requires of the harness", () => {
-    expect(plugin.modules).toEqual([CompanyRoadmapsPlugin, RoadmapRoomClaim, RoadmapsRetirement]);
+  it("names the two modules, their contributions, and what each requires of the harness", () => {
+    expect(plugin.modules).toEqual([CompanyRoadmapsPlugin, RoadmapsRetirement]);
     const t = table();
-    expect(t.plugin.modules).toEqual([
-      "CompanyRoadmapsPlugin",
-      "RoadmapRoomClaim",
-      "RoadmapsRetirement",
-    ]);
+    expect(t.plugin.modules).toEqual(["CompanyRoadmapsPlugin", "RoadmapsRetirement"]);
     const retirement = t.modules.RoadmapsRetirement;
     expect(
       (retirement?.contributes["OrganizationModule.retirements"]?.[0] as { id: string }).id,
     ).toBe(RETIRE_ID);
+    // The retirement node must not require what the organization module provides: a cycle.
     expect(JSON.stringify(retirement)).not.toContain("CompanyModule");
-    const claim = t.modules.RoadmapRoomClaim;
-    expect((claim?.contributes["OrganizationModule.channelClaims"]?.[0] as { id: string }).id).toBe(
-      CLAIM_ID,
-    );
-    // The claim node must not require what the organization module provides: that is a cycle.
-    expect(JSON.stringify(claim)).not.toContain("CompanyModule");
     const manifest = t.modules.CompanyRoadmapsPlugin;
     expect((manifest?.contributes["HttpModule.routes"]?.[0] as { id: string }).id).toBe(ROUTES_ID);
     const text = JSON.stringify(manifest);
-    for (const from of [
-      "CompanyModule",
-      "SessionRuntimeModule",
-      "RuntimeModule",
-      "PluginConfigModule",
-    ]) {
+    for (const from of ["CompanyModule", "RuntimeModule", "CompanyProposalsPlugin"]) {
       expect(text).toContain(from);
     }
-  });
-
-  it("declares the settings group config.ts reads: the same id and defaults", () => {
-    const [group] = (table().modules.CompanyRoadmapsPlugin?.contributes[
-      "PluginConfigProvider.groups"
-    ] ?? []) as Array<{
-      id: string;
-      properties: Record<string, { type: string; default: number }>;
-    }>;
-    expect(group?.id).toBe(CONFIG_GROUP);
-    expect(group?.properties.relayDepth).toMatchObject({
-      type: "number",
-      default: DEFAULT_RELAY_DEPTH,
-    });
-    expect(group?.properties.pollSeconds).toMatchObject({
-      type: "number",
-      default: DEFAULT_POLL_SECONDS,
-    });
-    expect(configOf({})).toEqual({
-      relayDepth: DEFAULT_RELAY_DEPTH,
-      pollSeconds: DEFAULT_POLL_SECONDS,
-    });
-    expect(configOf({ relayDepth: 99, pollSeconds: 0 })).toEqual(configOf({}));
+    // No session of its own, and no settings: the room is a channel the organization delivers.
+    for (const gone of ["SessionRuntimeModule", "PluginConfigModule", "channelClaims"]) {
+      expect(text).not.toContain(gone);
+    }
   });
 });

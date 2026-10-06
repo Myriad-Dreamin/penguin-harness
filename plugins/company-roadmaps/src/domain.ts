@@ -23,8 +23,8 @@ export function orgDirOf(root: string, projectId: string, orgId: string): string
 }
 
 /**
- * `awaiting_room`: derived at an establishment, no room bound yet; `discussing`: its room is
- * relayed; `established`: the discussion is over and its items delegated. A reopening takes an
+ * `awaiting_room`: derived at an establishment, no room bound yet; `discussing`: its room
+ * discusses it; `established`: the discussion is over and its items delegated. A reopening takes an
  * established roadmap back to discussing; there is no other state.
  */
 export type RoadmapStatus = "awaiting_room" | "discussing" | "established";
@@ -58,14 +58,6 @@ export interface RoadmapItem {
 }
 
 export type DraftItem = ProposalItem | RoadmapItem;
-
-/** One employee's session cloned for the room. */
-export interface Clone {
-  agentId: string;
-  sessionId: string;
-  openedAt: string;
-  closedAt?: string;
-}
 
 /** Who approved a proposal item, and when. */
 export interface Approval {
@@ -125,8 +117,8 @@ export interface Roadmap {
    */
   employees: string[];
   /**
-   * The moderator a `members` write named; null until one did, and the moderator is derived
-   * from the members and their room sessions (guards.ts's moderatorOf).
+   * The moderator a `members` write named; null until one did, and the first member moderates
+   * (guards.ts's moderatorOf).
    */
   explicitModerator: string | null;
   parent: number | null;
@@ -135,7 +127,6 @@ export interface Roadmap {
   record: string;
   body: string;
   items: DraftItem[];
-  clones: Clone[];
   delegations: Record<string, Delegation>;
   createdBy: string;
   createdAt: string;
@@ -210,15 +201,6 @@ export type RoadmapWrite =
       employees: string[];
       moderator: string;
       before: { employees: string[]; moderator: string | null };
-      by: string;
-    }
-  | { kind: "clone"; number: number; agentId: string; sessionId: string; by: string }
-  | {
-      kind: "clone_closed";
-      number: number;
-      agentId: string;
-      sessionId: string;
-      reason: string;
       by: string;
     }
   | { kind: "notify_failed"; number: number; agentId: string; error: string; by: string };

@@ -1,8 +1,8 @@
 /**
  * The roadmap store over a real SQLite file: the history it keeps only appends — drafts,
  * approvals, events — and an approval is kept with the hash of the brief it was given on, so a
- * changed brief leaves the old approvals in the table, no longer counted. The channel claim's
- * question is answered from the index the schema declares.
+ * changed brief leaves the old approvals in the table, no longer counted. A file an earlier
+ * build wrote — with its `roadmap_clones` table and `clone` events — opens and reads as before.
  */
 import { describe, expect, it } from "vitest";
 import { SqliteRoadmapStore, briefSha, type DraftItem } from "../src/index.js";
@@ -132,21 +132,31 @@ describe("SqliteRoadmapStore", () => {
     store.close();
   });
 
-  it("answers the claim's question from roadmaps_by_channel", () => {
+  it("opens a file an earlier build wrote with room sessions: the table is left alone and its events read as recorded", () => {
     const store = opened();
-    store.write({ kind: "reopened", number: 1, reason: "more", by: "user:boss" });
-    expect(store.discussingIn("room_a")).toBe(1);
-    expect(store.discussingIn("room_b")).toBeNull();
-    const plan = (
-      store.db
-        .prepare(
-          `EXPLAIN QUERY PLAN SELECT number FROM roadmaps WHERE channel_id = 'room_a' AND status = 'discussing' ORDER BY number LIMIT 1`,
-        )
-        .all() as Array<{ detail: string }>
-    )
-      .map((r) => r.detail)
-      .join("\n");
-    expect(plan).toMatch(/roadmaps_by_channel/);
+    // What an earlier build left: the room sessions' table, one row, and their events.
+    store.db.exec(`CREATE TABLE roadmap_clones (
+      session_id TEXT PRIMARY KEY, number INTEGER NOT NULL REFERENCES roadmaps(number),
+      agent_id TEXT NOT NULL, opened_at TEXT NOT NULL, closed_at TEXT)`);
+    store.db
+      .prepare(
+        `INSERT INTO roadmap_clones (session_id, number, agent_id, opened_at) VALUES (?, ?, ?, ?)`,
+      )
+      .run("room-1", 1, "dev", "2026-10-01T00:00:00.000Z");
+    store.db
+      .prepare(
+        `INSERT INTO roadmap_events (seq, number, at, by, kind, note) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(900, 1, "2026-10-01T00:00:00.000Z", "plugin:company-roadmaps", "clone", "dev room-1");
+    store.write({ kind: "renamed", number: 1, name: "Queue 2", by: "user:boss" });
+    const r = store.get(1)!;
+    expect(r.name).toBe("Queue 2");
+    expect(r).not.toHaveProperty("clones");
+    expect(r.events.find((e) => e.seq === 900)).toMatchObject({
+      kind: "clone",
+      note: "dev room-1",
+    });
+    expect(store.db.prepare(`SELECT count(*) AS n FROM roadmap_clones`).get()).toEqual({ n: 1 });
     store.close();
   });
 

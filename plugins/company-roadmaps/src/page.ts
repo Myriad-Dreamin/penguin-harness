@@ -35,7 +35,7 @@
  * Once a roadmap is established, each proposal item is a brief until it has its approvals (the
  * moderator's and another member's by default): the detail shows who approved, in which role and
  * when, or that it is waiting, and gives an Approve button (the `roadmap.item.approve` Action);
- * the moderator approves from its room session. The page's writes are Actions
+ * the moderator approves from its desk. The page's writes are Actions
  * (`POST …/actions/<key>/runs`); the last approval is what creates a proposal.
  *
  * An organization that runs on another machine is asked THERE, as the app asks it: the page
@@ -545,8 +545,8 @@ try {
     } catch (e) { if (form !== null) { form.members = []; drawForm(failure(e, T.openFailed)); } }
   }
   // The roadmap is opened, and the page goes straight to it: its room (the app's channel page)
-  // with the roadmap beside it. When the server had something to say (a room session that
-  // could not open), the page stays on the roadmap and says it first.
+  // with the roadmap beside it. When the server had something to say (a desk that
+  // could not be told), the page stays on the roadmap and says it first.
   async function submit() {
     const name = form.name.trim();
     if (!ready()) { formNote('<div class="strip warn"><p>' + esc(T.incomplete) + "</p></div>"); return; }

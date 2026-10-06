@@ -606,7 +606,6 @@ export async function scanChannels(
     if (channel.archived) continue;
     const members = channelAgents(org, channel);
     const channelId = file.channelId;
-    let claimed: boolean | undefined;
     const days = (await deps.store.listMessageDays(org.dir, channelId)).slice(0, 3);
     for (const date of days.reverse()) {
       const offset = deps.cache.channelOffset(org.projectId, org.orgId, channelId, date);
@@ -643,11 +642,6 @@ export async function scanChannels(
         });
         if (!triggers || org.config.status === "paused" || msg.sender === "system") continue;
         if (msg.hop >= org.config.mentionChainLimit) continue;
-        // A channel a plugin handles itself (OrgGatewaySlots.channelClaims) keeps its message
-        // — recorded and published above — but wakes no desk. Asked once per channel per pass.
-        claimed ??=
-          deps.channelClaimed?.({ projectId: org.projectId, orgId: org.orgId, channelId }) === true;
-        if (claimed) continue;
         const senderAgent = principalAgentId(msg.sender);
         const targets = new Set<string>();
         if (msg.mentions.length === 0) {
