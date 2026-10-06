@@ -68,8 +68,8 @@ export function tag(r: Pick<Roadmap, "number" | "name">): string {
  * The line an employee's desk gets when a roadmap's opener puts it in its room — or, with
  * `addedBy`, when a change of members does, or when a room is bound to a roadmap waiting for
  * one: where it is, who moderates, how to speak there, and — for the moderator — how to keep
- * the draft and establish the roadmap. The room's messages reach this desk as the
- * organization delivers any channel's.
+ * the draft and establish the roadmap. The room is an ordinary channel: a message there reaches
+ * this desk when it mentions you.
  */
 export function roomJoinedLine(args: {
   orgId: string;
@@ -88,7 +88,7 @@ export function roomJoinedLine(args: {
       : `${args.addedBy} made you a member of this roadmap, in its room`;
   const lines = [
     `${tag(r)} ${how} \`${channel}\` of organization \`${orgId}\` (${role}). Topic: ${r.brief || r.name}`,
-    `The room is a channel: its messages reach this desk as any channel's do. Speak with \`penguin org channel send --org-id ${orgId} --channel ${channel} -m "<text>"\`.`,
+    `The room is an ordinary channel: a message there reaches this desk when it mentions you. Speak with \`penguin org channel send --org-id ${orgId} --channel ${channel} -m "<text>"\`.`,
     `Read the roadmap: \`curl -sS "${routeOf(orgId, r.number)}" -H "authorization: Bearer $PENGUIN_API_TOKEN"\`.`,
   ];
   // A room a person opened starts with that person: the moderator speaks first, to them, and
@@ -195,7 +195,7 @@ export function roomRequestLine(args: { parent: Roadmap; child: Roadmap }): stri
   const { parent, child } = args;
   return [
     `${tag(parent)} established; it derives ${tag(child)}, which you moderate, with ${child.employees.join(", ")}. Brief: ${child.brief}`,
-    "Its room could not be opened yet, so it waits for one. Nothing is needed from this desk; when a room is bound to it, you are told, and its messages reach this desk.",
+    "Its room could not be opened yet, so it waits for one. Nothing is needed from this desk; when a room is bound to it, you are told.",
   ].join("\n");
 }
 
@@ -204,7 +204,7 @@ export function roomOpenedLine(args: { parent: Roadmap; child: Roadmap }): strin
   const { parent, child } = args;
   return [
     `${tag(parent)} established; it derives ${tag(child)}, which you moderate. Brief: ${child.brief}`,
-    `Its room is open — the channel \`${child.channelId ?? ""}\`, with ${child.employees.join(", ")} — and its messages reach this desk.`,
+    `Its room is open — the channel \`${child.channelId ?? ""}\`, with ${child.employees.join(", ")} — where a message that mentions you reaches this desk.`,
   ].join("\n");
 }
 

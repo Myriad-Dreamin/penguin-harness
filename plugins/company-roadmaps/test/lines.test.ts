@@ -35,7 +35,7 @@ describe("the line that puts an employee in the room", () => {
     const text = brief("acme_dev");
     expect(text).toContain("`roadmap_3`");
     expect(text).toContain("acme_ceo moderates");
-    expect(text).toContain("reach this desk as any channel's do");
+    expect(text).toContain("a message there reaches this desk when it mentions you");
     expect(text).toContain("penguin org channel send --org-id acme --channel roadmap_3");
     expect(text).not.toContain("room session");
   });
