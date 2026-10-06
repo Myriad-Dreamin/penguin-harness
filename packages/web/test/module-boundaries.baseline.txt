@@ -11,7 +11,6 @@ components/layout/app-layout.tsx -> features/company/index.ts
 components/layout/app-layout.tsx -> features/company/org-session-groups.tsx
 components/layout/app-layout.tsx -> features/company/use-org-pages.ts
 components/layout/app-layout.tsx -> features/dock/dock-state.ts
-components/layout/app-layout.tsx -> features/terminal/index.ts
 components/layout/app-layout.tsx -> features/todos/index.ts
 components/layout/project-dialogs.tsx -> features/chat/chat-defaults-event.ts
 components/layout/project-dialogs.tsx -> features/chat/draft-cache.ts
