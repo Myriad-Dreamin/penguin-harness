@@ -4139,6 +4139,8 @@ export interface QuickStartItem {
   skills?: string[];
   /** Open the draft in goal mode. */
   goal?: boolean;
+  /** Open a plugin's session surface instead of a conversation (a module plugin's `surface` kind). */
+  surface?: string;
 }
 
 export interface PluginGroupItem {
@@ -5683,6 +5685,8 @@ export interface ContributionsResponse {
   pages: WebContribution[];
   agentTabs: WebContribution[];
   sessionTabs: WebContribution[];
+  /** Module plugins' quick starts, each named by the module that contributes it (`from`). */
+  quickStarts: Array<QuickStartItem & { id: string; from: string }>;
   /** The surfaces this process's plugins contribute; empty without any. */
   sessionSurfaces: SessionSurfaceSummary[];
 }

@@ -2372,6 +2372,12 @@ export const en: Strings = {
     quickStartInstallTitle: (plugin: string, agent: string) =>
       `Install ${plugin} on ${agent} to quick-start?`,
     quickStartAfterInstall: "Then a draft with its demo opens; nothing runs until you send it.",
+    quickStartNotRunning:
+      "Quick start needs the plugin running — it is waiting for a restart or failed to load",
+    quickStartNeedsAdmin: "An admin installs module plugins; quick start works once it runs",
+    /** The demo of a module plugin that declares none. */
+    quickStartGenericText: (specifier: string) =>
+      `Show me what the ${specifier} plugin does: use it on something small in this Workspace and tell me what it changed.`,
     installedToast: (plugin: string, agent: string): string => `Installed ${plugin} to ${agent}`,
     uninstalledToast: (plugin: string, agent: string): string =>
       `Uninstalled ${plugin} from ${agent}`,

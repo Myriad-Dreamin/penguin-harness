@@ -86,6 +86,7 @@ import { useSessions } from "../../state/sessions";
 import { MachinePicker, type MachineChoice } from "../machines/machine-picker";
 import { NAV_ICONS } from "../../lib/nav-icons";
 import { DRAFT_SESSION_ID } from "../chat/chat-page";
+import { useContributions } from "../../state/contributions";
 import { draftKey, loadDraft, saveDraft } from "../chat/draft-cache";
 import { prepareNewChatDraft } from "../chat/new-chat";
 import { localizedShortText, localizedText } from "../chat/skill-use";
@@ -127,6 +128,8 @@ function installsOf(
     hooks: new Map(hooks.map((h) => [h.name, h.version])),
   };
 }
+
+type ContributionsQuickStarts = ReturnType<typeof useContributions>["quickStarts"];
 
 /**
  * A library plugin's quick start: what its plugin.json declares, else its first skill invoked
@@ -343,9 +346,12 @@ export function PluginsPage() {
    * re-assembles the App, which stops the agent runs in flight in EVERY Project — the same
    * cost a hot push has — so it is said before it is done.
    */
-  const [pendingApply, setPendingApply] = useState<{ specifier: string; install: boolean } | null>(
-    null,
-  );
+  const [pendingApply, setPendingApply] = useState<{
+    specifier: string;
+    install: boolean;
+    /** Opened by a quick start: once the plugin runs, its demo draft opens. */
+    quickStart?: boolean;
+  } | null>(null);
 
   /**
    * Installs the package into the data root (fetched from npm unless this build ships it) and
@@ -355,8 +361,11 @@ export function PluginsPage() {
    * running process has — including a load that failed, which is reported as such rather than
    * toasted as installed; otherwise the row waits for a restart.
    */
-  const runDeploymentInstall = async (specifier: string, install: boolean) => {
-    if (pendingSpecifier !== null || projectId === null) return;
+  const runDeploymentInstall = async (
+    specifier: string,
+    install: boolean,
+  ): Promise<InstalledPluginsResponse | null> => {
+    if (pendingSpecifier !== null || projectId === null) return null;
     setPendingSpecifier(specifier);
     try {
       const next = install
@@ -369,8 +378,10 @@ export function PluginsPage() {
       } else {
         toastSuccess(install ? S.plugins.deploymentInstalledToast(specifier) : S.common.saved);
       }
+      return next;
     } catch (e) {
       toastError(apiErrorText(e));
+      return null;
     } finally {
       setPendingSpecifier(null);
       setPendingApply(null);
@@ -580,15 +591,24 @@ export function PluginsPage() {
 
   /**
    * Quick start: a plugin's demo, opened as a new-chat draft on the currently selected Agent —
-   * written, never sent, so nothing runs (and no token is spent) until the person sends it. The
-   * prompt goes in per UI language, overwriting the draft body (any typed-but-unsent text is
-   * parked as a draft conversation first, draft-sessions.ts), with the demo's skills
-   * pre-selected and goal mode on when the demo is a goal. handoffAgentId must be cleared: a
-   * leftover handoff target would forward the demo to a different Agent.
+   * written, never sent, so nothing runs (and no token is spent) until the person sends it or
+   * opens the surface. The prompt goes in per UI language, overwriting the draft body (any
+   * typed-but-unsent text is parked as a draft conversation first, draft-sessions.ts), with the
+   * demo's skills pre-selected and goal mode on when the demo is a goal. handoffAgentId must be
+   * cleared: a leftover handoff target would forward the demo to a different Agent. A demo that
+   * names a surface opens that surface's draft with the prompt in its first-prompt line.
    */
   const openQuickStart = (quickStart: QuickStartItem) => {
     const agentId = currentAgent?.agentId;
     if (!agentId) return;
+    const text = localizedText(locale, quickStart.prompt, quickStart.promptZh);
+    setCurrentAgentId(agentId);
+    if (quickStart.surface !== undefined) {
+      navigate(`/chat/${DRAFT_SESSION_ID}`, {
+        state: { agentId, surface: quickStart.surface, surfacePrompt: text },
+      });
+      return;
+    }
     if (userId && projectId) {
       // Typed-but-unsent draft text becomes a parked draft conversation instead of being
       // clobbered by the canned invocation body, and the Workspace and approval mode start on
@@ -599,7 +619,7 @@ export function PluginsPage() {
       saveDraft(key, {
         ...rest,
         agentId,
-        text: localizedText(locale, quickStart.prompt, quickStart.promptZh),
+        text,
         ...(quickStart.skills !== undefined && quickStart.skills.length > 0
           ? { skills: quickStart.skills }
           : {}),
@@ -607,7 +627,6 @@ export function PluginsPage() {
         handoffAgentId: undefined,
       });
     }
-    setCurrentAgentId(agentId);
     navigate(`/chat/${DRAFT_SESSION_ID}`, { state: { agentId } });
   };
 
@@ -633,6 +652,33 @@ export function PluginsPage() {
     setPendingQuickStart(null);
     const demo = libraryQuickStart(plugin);
     if (ok && demo !== null) openQuickStart(demo);
+  };
+
+  const { quickStarts, refresh: refreshContributions } = useContributions();
+
+  /** A module plugin's quick start: the demo its modules contribute, or the generic one. */
+  const moduleQuickStart = (
+    specifier: string,
+    modules: readonly string[],
+    list: ContributionsQuickStarts = quickStarts,
+  ): QuickStartItem =>
+    list.find((q) => modules.includes(q.from)) ?? {
+      prompt: S.plugins.quickStartGenericText(specifier),
+    };
+
+  /** An installed module plugin's modules, by specifier (what its quick start is matched by). */
+  const modulesOf = (specifier: string, from: InstalledPluginsResponse | null = deployment) =>
+    from?.plugins.find((p) => p.specifier === specifier)?.modules ?? [];
+
+  /** Installs a module plugin for a quick start (after its confirmation), then opens the demo once it runs. */
+  const installForQuickStart = async (specifier: string) => {
+    const next = await runDeploymentInstall(specifier, true);
+    const row = next?.plugins.find((p) => p.specifier === specifier);
+    if (next === null || row === undefined || !row.active) return;
+    const contributions = await refreshContributions();
+    openQuickStart(
+      moduleQuickStart(specifier, modulesOf(specifier, next), contributions?.quickStarts ?? []),
+    );
   };
 
   const allInstalled = installedPluginRows(groups ?? [], locale, deployment, index ?? [], view);
@@ -802,6 +848,17 @@ export function PluginsPage() {
                         ? () => setPendingApply({ specifier: row.specifier, install: false })
                         : null
                     }
+                    quickStart={
+                      // The demo opens in a chat on this server, so it needs the plugin here.
+                      row.state === "active" && viewIncludesHere
+                        ? {
+                            onStart: () =>
+                              openQuickStart(
+                                moduleQuickStart(row.specifier, modulesOf(row.specifier)),
+                              ),
+                          }
+                        : { reason: S.plugins.quickStartNotRunning }
+                    }
                     onRepair={
                       isAdmin && row.unsatisfied !== undefined
                         ? () =>
@@ -837,6 +894,22 @@ export function PluginsPage() {
                         : null
                     }
                     onRemove={null}
+                    quickStart={
+                      isAdmin && viewIncludesHere
+                        ? {
+                            onStart: () =>
+                              setPendingApply({
+                                specifier: row.specifier,
+                                install: true,
+                                quickStart: true,
+                              }),
+                          }
+                        : {
+                            reason: isAdmin
+                              ? S.plugins.quickStartNotRunning
+                              : S.plugins.quickStartNeedsAdmin,
+                          }
+                    }
                   />
                 ))}
               </PluginList>
@@ -880,9 +953,14 @@ export function PluginsPage() {
           cancelLabel={S.common.cancel}
           busy={pendingSpecifier !== null}
           onClose={() => setPendingApply(null)}
-          onConfirm={() => void runDeploymentInstall(pendingApply.specifier, pendingApply.install)}
+          onConfirm={() =>
+            void (pendingApply.quickStart === true
+              ? installForQuickStart(pendingApply.specifier)
+              : runDeploymentInstall(pendingApply.specifier, pendingApply.install))
+          }
         >
           <p>{S.plugins.applyConfirmBody}</p>
+          {pendingApply.quickStart === true && <p>{S.plugins.quickStartAfterInstall}</p>}
         </ConfirmModal>
       )}
       {repairModal}
@@ -1729,6 +1807,7 @@ export function ModuleRow({
   blocked,
   onInstall,
   onRemove,
+  quickStart,
   onRepair = null,
 }: {
   specifier: string;
@@ -1750,6 +1829,8 @@ export function ModuleRow({
   blocked: boolean;
   onInstall: (() => void) | null;
   onRemove: (() => void) | null;
+  /** The row's quick start, or why it cannot start here (not running, or no one to install it). */
+  quickStart: { onStart: () => void } | { reason: string };
   /** Hands the plugin to an Agent to repair (plugin-repair.tsx); offered only where the build cannot fully run it. */
   onRepair?: (() => void) | null;
 }) {
@@ -1864,6 +1945,16 @@ export function ModuleRow({
           beside it once the row is wide enough (@3xl), aria-label and title naming it either
           way. While it runs, a spinner stands in for the glyph. */}
       <div className="flex shrink-0 items-center justify-center gap-1.5">
+        <Button
+          size="sm"
+          className="h-8 w-8 shrink-0 justify-center p-0"
+          aria-label={`${S.skills.quickInvoke} ${specifier}`}
+          title={"reason" in quickStart ? quickStart.reason : S.plugins.quickStartHint}
+          disabled={"reason" in quickStart || busy || blocked}
+          onClick={"onStart" in quickStart ? quickStart.onStart : undefined}
+        >
+          <GlyphIcon d={ICONS.paperPlane} size={ICON_SIZE.iconButton} />
+        </Button>
         {unsatisfied !== undefined && onRepair !== null && (
           <Button
             size="sm"
