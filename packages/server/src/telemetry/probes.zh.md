@@ -12,7 +12,7 @@
 
 启动慢是不是数据库的缘故？把 schema 升到最新所用的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:370`](../hmr/platform.ts#L370) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:376`](../hmr/platform.ts#L376) <!-- probe-site -->
 
 ### plugin.load
 
@@ -20,13 +20,13 @@
 
 `attrs.plugin` 是哪个插件；失败、被留在这一代之外时 `status` 为 `error`。沿用上一代的插件不再加载，也不记。
 
-记录于 [`packages/server/src/hmr/platform.ts:470`](../hmr/platform.ts#L470) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:476`](../hmr/platform.ts#L476) <!-- probe-site -->
 
 ### boot.plugins
 
 加载全部插件花了多久？所有已装插件一起的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:476`](../hmr/platform.ts#L476) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:482`](../hmr/platform.ts#L482) <!-- probe-site -->
 
 ### boot.module
 
@@ -34,13 +34,13 @@
 
 `attrs.module` 是模块名。
 
-记录于 [`packages/server/src/hmr/platform.ts:529`](../hmr/platform.ts#L529) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:554`](../hmr/platform.ts#L554) <!-- probe-site -->
 
 ### boot.modules
 
 创建服务端各部分花了多久？所有模块一起的时间。
 
-记录于 [`packages/server/src/hmr/platform.ts:533`](../hmr/platform.ts#L533) <!-- probe-site -->
+记录于 [`packages/server/src/hmr/platform.ts:558`](../hmr/platform.ts#L558) <!-- probe-site -->
 
 ### boot.create
 
@@ -56,7 +56,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 这期间 App 已在服务；这一项长，说明 machine 或会话回来得晚。
 
-记录于 [`packages/server/src/platform.ts:247`](../platform.ts#L247) <!-- probe-site -->
+记录于 [`packages/server/src/platform.ts:245`](../platform.ts#L245) <!-- probe-site -->
 
 ### hmr.park
 
@@ -116,7 +116,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.rows` 是返回了多少个会话。
 
-记录于 [`packages/server/src/services/session-service.ts:499`](../services/session-service.ts#L499) <!-- probe-site -->
+记录于 [`packages/server/src/services/session-service.ts:558`](../services/session-service.ts#L558) <!-- probe-site -->
 
 ### sessions.list.reconcile
 
@@ -124,7 +124,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.traces` 是找到了多少个 Trace。平时会跳过；经常出现，说明不断有索引没见过的会话进来。
 
-记录于 [`packages/server/src/services/session-service.ts:521`](../services/session-service.ts#L521) <!-- probe-site -->
+记录于 [`packages/server/src/services/session-service.ts:580`](../services/session-service.ts#L580) <!-- probe-site -->
 
 ### trace.reconcile
 
@@ -154,7 +154,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 含等会话锁的时间；`attrs.queued` 是这条消息是否排在一轮正在运行的之后。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:1195`](../runtime/session-manager.ts#L1195) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:1198`](../runtime/session-manager.ts#L1198) <!-- probe-site -->
 
 ### session.load
 
@@ -162,7 +162,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 `attrs.messages` 是载入时带了多少条历史。已在内存里的会话不记。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:2115`](../runtime/session-manager.ts#L2115) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:2118`](../runtime/session-manager.ts#L2118) <!-- probe-site -->
 
 ### session.memory
 
@@ -170,7 +170,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 它把会话占着的加在一起：载入的历史、为重连的页面留着的近期事件、还在流式输出的回复。每次读遥测时记一条。
 
-记录于 [`packages/server/src/runtime/session-manager.ts:965`](../runtime/session-manager.ts#L965) <!-- probe-site -->
+记录于 [`packages/server/src/runtime/session-manager.ts:968`](../runtime/session-manager.ts#L968) <!-- probe-site -->
 
 ## Machine
 
