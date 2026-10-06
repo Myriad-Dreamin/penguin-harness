@@ -31,8 +31,13 @@
  * stays valid after a paint. Where the API is missing (an older engine) the search still
  * works — navigation and the counter are unaffected — it simply does not paint.
  */
-import { matchAll, matchSnippet } from "./find-text";
-import type { FindQuery, MatchSnippet, TextMatch } from "./find-text";
+import {
+  matchAll,
+  matchSnippet,
+  type FindQuery,
+  type MatchSnippet,
+  type TextMatch,
+} from "./find-text";
 
 /** Attribute a container opts in with; its value is the region kind ("conversation", "files", …). */
 const REGION_ATTR = "data-find-region";

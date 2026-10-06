@@ -152,4 +152,3 @@ export function AppRouter({ initialPath }: AppRouterProps = {}) {
   );
   return <RouterProvider router={router} />;
 }
-

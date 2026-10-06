@@ -20,8 +20,8 @@ import {
   isMarkdownPath,
   newDocumentBody,
   resolveHandbookLink,
+  type HandbookNode,
 } from "../src/features/company/handbook-tree";
-import type { HandbookNode } from "../src/features/company/handbook-tree";
 
 const file = (path: string, size = 10): OrgHandbookFile => ({
   path,

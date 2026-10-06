@@ -13,8 +13,8 @@
  * only while the dialog is open, so every opening starts empty — the spec's 「创建弹窗不留草稿」.
  * A rejection from the server lands under the id, and the dialog stays open as it was.
  */
-import { useEffect, useState } from "react";
-import type { ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
+
 import type {
   AgentCreateRequest,
   PluginItem,
@@ -50,7 +50,9 @@ import {
   removeSkillNames,
   toggleSkillName,
 } from "../skills";
+
 import { StdioDisclosure, stdioServers } from "../plugins";
+
 import {
   SNAPSHOT_ACCEPT,
   SNAPSHOT_BUTTON_CLASS,

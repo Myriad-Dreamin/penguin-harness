@@ -17,8 +17,8 @@
  * the page expands the ones above the selected document.
  */
 import type { OrgHandbookFile } from "@prismshadow/penguin-server/api";
-import { FileTree, ICONS } from "@prismshadow/penguin-ui";
-import type { TreeToggle } from "@prismshadow/penguin-ui";
+import { FileTree, ICONS, type TreeToggle } from "@prismshadow/penguin-ui";
+
 import { S } from "../../lib/strings";
 import { formatBytes, formatDateTime, formatRelativeShort } from "../../lib/format";
 import type { Locale } from "../../state/locale";
