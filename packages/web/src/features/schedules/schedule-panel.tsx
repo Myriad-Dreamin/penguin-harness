@@ -53,8 +53,9 @@ import {
   filterSchedules,
   scheduleGlyph,
   sessionSchedules,
+  type ScheduleFilter,
 } from "./schedule-panel-state";
-import type { ScheduleFilter } from "./schedule-panel-state";
+
 import { refreshSchedules, useProjectSchedules } from "./schedule-store";
 import { ScheduleSuggestions } from "./schedule-suggestions";
 import { toggleBody } from "./schedule-upsert";
