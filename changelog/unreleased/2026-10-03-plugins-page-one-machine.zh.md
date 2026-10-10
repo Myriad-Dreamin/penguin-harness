@@ -3,7 +3,7 @@
 - **Date:** 2026-10-03
 - **Type:** fix
 - **Scope:** `web`, `docs`
-- **PR:** [Myriad-Dreamin/penguin-harness#213](https://github.com/Myriad-Dreamin/penguin-harness/pull/213)
+- **PR:** [#1014](https://github.com/Prism-Shadow/penguin-harness/pull/1014)
 
 [English](2026-10-03-plugins-page-one-machine.md)
 
