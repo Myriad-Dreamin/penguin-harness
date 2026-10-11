@@ -18,6 +18,7 @@
  * schedule (probe-schedule.ts) so a machine that went quiet is noticed without a tap.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import type { MachineInfo, MachinesResponse } from "@prismshadow/penguin-server/api";
 import {
   Button,
@@ -93,6 +94,7 @@ function toggled(set: Set<string>, id: string): Set<string> {
 export function MachinesPage() {
   useDocumentTitle(S.machines.pageTitle);
   const { locale } = useLocale();
+  const navigate = useNavigate();
   // Machines belong to the Project, like every other row in this nav group: switching
   // Projects switches which machines are listed, and enabling one here gives the machine to
   // THIS Project — the same one whose Model credentials it will be handed.
@@ -369,6 +371,11 @@ export function MachinesPage() {
       onOpen={() => setOpenId(machine.id)}
       onUse={() => act(machine, "use")}
       onConfigure={() => act(machine, "configure")}
+      onPorts={
+        machine.local || machine.machineId === null
+          ? null
+          : () => navigate(`/machines/${encodeURIComponent(machine.machineId!)}/ports`)
+      }
     />
   );
 

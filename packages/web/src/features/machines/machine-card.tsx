@@ -196,6 +196,8 @@ export interface MachineCardProps {
   /** Brings the machine up, or onto this server's build: the whole pipeline. */
   onUse: () => void;
   onConfigure: () => void;
+  /** Opens this machine's Ports page when it has an addressable id. */
+  onPorts?: (() => void) | null;
 }
 
 /** One stat on the card's third line: a glyph and a value. The dialog says what each one means. */
@@ -217,6 +219,7 @@ export function MachineCard({
   onOpen,
   onUse,
   onConfigure,
+  onPorts = null,
 }: MachineCardProps) {
   const reading = machine.local ? null : readMachine(machine, job, imageVersion);
   const mark = machineMark(reading);
@@ -307,6 +310,12 @@ export function MachineCard({
               className="text-gray-600 dark:text-gray-300"
             />
           </Button>
+          {onPorts !== null && (
+            <Button size="sm" variant="secondary" title={S.ports.verbTitle} onClick={onPorts}>
+              <GlyphIcon d={ICONS.arrowsOpposed} size={ICON_SIZE.inlineGlyph} />
+              {S.ports.verb}
+            </Button>
+          )}
         </div>
       )}
     </Card>
