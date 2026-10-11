@@ -870,7 +870,7 @@ export class MachinesService {
    */
   async proxyTarget(
     machineId: string,
-  ): Promise<{ agent: http.Agent; port: number; cookie: string } | null> {
+  ): Promise<{ agent: http.Agent; port: number; cookie: string; session: number } | null> {
     const row = this.#rowFor(machineId);
     return row === null ? null : this.#dial(row.address);
   }
@@ -880,9 +880,10 @@ export class MachinesService {
    * its server was last bound to, with a session there. Null when it is not connected — or when
    * no session can be had, which leaves nothing to call it with either.
    */
-  async #dial(address: string): Promise<RelayDial | null> {
+  async #dial(address: string): Promise<(RelayDial & { session: number }) | null> {
     const row = this.repo.get(address);
-    if (row === null || row.remotePort === null || this.#liveSession(address) === null) return null;
+    const live = this.#liveSession(address);
+    if (row === null || row.remotePort === null || live === null) return null;
     const target = this.#targetOf(address.slice("ssh:".length));
     const session = await this.#sessionOn(target);
     if (!("cookie" in session)) return null;
@@ -890,6 +891,8 @@ export class MachinesService {
       agent: this.#effects.agent(target, row.remotePort),
       port: row.remotePort,
       cookie: session.cookie,
+      // The socket relay reuses a socket only within one ssh session (socket-relay.ts).
+      session: live.pid,
     };
   }
 
@@ -2968,6 +2971,7 @@ export function machinesServerProxyRoutes(machines: MachinesService): Hono<AppEn
   const proxy = machinesProxy(
     (machineId) => machines.proxyTarget(machineId),
     (machineId, outcome) => machines.noteApiSeen(machineId, outcome),
+    (line) => console.log(line),
   );
   app.all("*", async (c) => {
     if (!c.var.user.isAdmin) {
