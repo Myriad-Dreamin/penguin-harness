@@ -4,7 +4,9 @@
  * browser, the load warning while the server gives one, and the overflow menu — on the desktop,
  * which browser the agents drive and how the user's Chrome stands (backend-menu.tsx), then
  * import from a system browser, clear browsing data, set the homepage, open the page in the
- * system browser, developer tools.
+ * system browser, developer tools. A browser that has none of the built-in one's own (a server's
+ * Chrome: no import, no data to clear, no page in this window) passes null for those, and the
+ * menu leaves them out.
  *
  * Icon buttons are flat: no fill at rest or on hover, the glyph darkens instead, and each is
  * named by a tooltip below it. The agent mark and the load warning are icons with their tooltip,
@@ -81,9 +83,12 @@ export interface BrowserToolbarProps {
   /** Goes to the homepage; null while none is set, which leaves the button out. */
   onHome: (() => void) | null;
   onNavigate: (url: string) => void;
-  onImport: () => void;
-  onClearData: () => void;
-  onSetHomepage: () => void;
+  /** Whether the address bar suggests from the built-in browser's history; on by default. */
+  suggest?: boolean;
+  /** The built-in browser's own: null where the browser shown has none of them. */
+  onImport: (() => void) | null;
+  onClearData: (() => void) | null;
+  onSetHomepage: (() => void) | null;
   /** Null when the page is not a web page the system browser could open. */
   onOpenExternal: (() => void) | null;
   onDevTools: () => void;
@@ -122,6 +127,9 @@ export function BrowserToolbar(props: BrowserToolbarProps) {
     setMenuOpen(false);
     run();
   };
+  const ownRows =
+    props.onImport !== null || props.onClearData !== null || props.onSetHomepage !== null;
+  const pageRows = props.onOpenExternal !== null || props.hostsPage;
 
   return (
     <div className="flex shrink-0 items-center gap-1 border-b border-line bg-canvas px-2 py-1">
@@ -163,6 +171,7 @@ export function BrowserToolbar(props: BrowserToolbarProps) {
         url={props.address}
         onNavigate={props.onNavigate}
         inputRef={props.addressRef}
+        {...(props.suggest !== undefined ? { suggest: props.suggest } : {})}
       />
       <AgentBusyMark activity={activity} />
       {props.loadWarning !== null && (
@@ -177,62 +186,66 @@ export function BrowserToolbar(props: BrowserToolbarProps) {
           </span>
         </Tooltip>
       )}
-      <Dropdown
-        open={menuOpen}
-        setOpen={setMenuOpen}
-        portal={{ direction: "down", align: "right" }}
-        menuClass="w-56"
-        button={
-          <ToolButton
-            label={S.builtinBrowser.more}
-            tooltipSuppressed={menuOpen}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            <GlyphIcon d={ICONS.ellipsis} size={ICON_SIZE.rowLead} filled />
-          </ToolButton>
-        }
-      >
-        <Menu density="sm">
-          {props.menuTop !== undefined && (
-            <>
-              {props.menuTop(() => setMenuOpen(false))}
-              <MenuSeparator />
-            </>
-          )}
-          <MenuItem
-            glyph={ICONS.download}
-            label={S.builtinBrowser.importAction}
-            onSelect={item(props.onImport)}
-          />
-          <MenuItem
-            glyph={ICONS.trash}
-            label={S.builtinBrowser.clearDataAction}
-            onSelect={item(props.onClearData)}
-          />
-          <MenuItem
-            glyph={ICONS.house}
-            label={S.builtinBrowser.setHomepageAction}
-            onSelect={item(props.onSetHomepage)}
-          />
-          {(props.onOpenExternal !== null || props.hostsPage) && <MenuSeparator />}
-          {props.onOpenExternal !== null && (
-            <MenuItem
-              glyph={ICONS.externalLink}
-              label={S.builtinBrowser.openExternal}
-              onSelect={item(props.onOpenExternal)}
-            />
-          )}
-          {props.hostsPage && (
-            <MenuItem
-              glyph={ICONS.angleBrackets}
-              label={S.builtinBrowser.devTools}
-              onSelect={item(props.onDevTools)}
-            />
-          )}
-        </Menu>
-      </Dropdown>
+      {(props.menuTop !== undefined || ownRows || pageRows) && (
+        <Dropdown
+          open={menuOpen}
+          setOpen={setMenuOpen}
+          portal={{ direction: "down", align: "right" }}
+          menuClass="w-56"
+          button={
+            <ToolButton
+              label={S.builtinBrowser.more}
+              tooltipSuppressed={menuOpen}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              <GlyphIcon d={ICONS.ellipsis} size={ICON_SIZE.rowLead} filled />
+            </ToolButton>
+          }
+        >
+          <Menu density="sm">
+            {props.menuTop?.(() => setMenuOpen(false))}
+            {props.menuTop !== undefined && (ownRows || pageRows) && <MenuSeparator />}
+            {props.onImport !== null && (
+              <MenuItem
+                glyph={ICONS.download}
+                label={S.builtinBrowser.importAction}
+                onSelect={item(props.onImport)}
+              />
+            )}
+            {props.onClearData !== null && (
+              <MenuItem
+                glyph={ICONS.trash}
+                label={S.builtinBrowser.clearDataAction}
+                onSelect={item(props.onClearData)}
+              />
+            )}
+            {props.onSetHomepage !== null && (
+              <MenuItem
+                glyph={ICONS.house}
+                label={S.builtinBrowser.setHomepageAction}
+                onSelect={item(props.onSetHomepage)}
+              />
+            )}
+            {ownRows && pageRows && <MenuSeparator />}
+            {props.onOpenExternal !== null && (
+              <MenuItem
+                glyph={ICONS.externalLink}
+                label={S.builtinBrowser.openExternal}
+                onSelect={item(props.onOpenExternal)}
+              />
+            )}
+            {props.hostsPage && (
+              <MenuItem
+                glyph={ICONS.angleBrackets}
+                label={S.builtinBrowser.devTools}
+                onSelect={item(props.onDevTools)}
+              />
+            )}
+          </Menu>
+        </Dropdown>
+      )}
     </div>
   );
 }

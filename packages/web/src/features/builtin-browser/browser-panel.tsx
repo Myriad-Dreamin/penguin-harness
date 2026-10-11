@@ -15,6 +15,11 @@
  * While the agents drive the user's own Chrome the panel is the Chrome surface instead
  * (chrome-surface.tsx): the built-in pages stay alive out of sight, since nothing registers a
  * slot for them.
+ *
+ * The panel belongs to a server: the one the conversation's Workspace lives on, where its
+ * agent's `penguin browser` runs. For this server that is all of the above. For a machine it is
+ * the Chrome that machine runs (hosted-panel.tsx), which is also this server's panel while
+ * hosted is the backend chosen here.
  */
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, EmptyState } from "@prismshadow/penguin-ui";
@@ -35,6 +40,7 @@ import {
   chromeInfo,
   currentActivity,
   guestForTab,
+  hostedInfo,
   tabBusy,
   type BrowserState,
 } from "./browser-state";
@@ -45,6 +51,7 @@ import { ChromeSurface } from "./chrome-surface";
 import { ClearDataDialog } from "./clear-data-dialog";
 import { HomepageDialog } from "./homepage-dialog";
 import { ImportDialog } from "./import-dialog";
+import { HostedPanel } from "./hosted-panel";
 import { heavyTabMemory, loadWarningText } from "./load";
 import { PairingDialog } from "./pairing-dialog";
 import { registerSlot, setSlotVisible } from "./slot-registry";
@@ -91,8 +98,20 @@ function unavailableDetail(state: BrowserState): string | undefined {
   }
 }
 
-export function BuiltinBrowserPanel({ active }: { active: boolean }) {
-  const state = useSyncExternalStore(subscribeBrowser, browserState, browserState);
+export function BuiltinBrowserPanel({
+  active,
+  server = null,
+}: {
+  active: boolean;
+  /** The server whose browser the panel shows: null for this one, a machine id otherwise. */
+  server?: string | null;
+}) {
+  const read = () => browserState(server);
+  const state = useSyncExternalStore(subscribeBrowser, read, read);
+  if (server !== null || (state.backend === "hosted" && hostedInfo(state) !== null)) {
+    // Keyed by server: another conversation's machine starts from its own reading.
+    return <HostedPanel key={server ?? ""} server={server} state={state} active={active} />;
+  }
   const chromeOffered = chromeInfo(state) !== null;
   if (state.backend === "chrome" && chromeOffered) {
     return <ChromeSurface state={state} active={active} />;
