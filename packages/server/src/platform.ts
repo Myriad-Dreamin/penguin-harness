@@ -82,6 +82,7 @@ import { MessagingBindingsRepo } from "./db/repos/messaging-bindings.js";
 import { MessagingConversationsRepo } from "./db/repos/messaging-conversations.js";
 import { OrgCacheRepo } from "./db/repos/organizations.js";
 import { ErrorsRepo } from "./db/repos/errors.js";
+import { AgentStateStore } from "./runtime/agent-state.js";
 import { SessionSources } from "./runtime/session-sources.js";
 import { SessionDriverRegistry } from "./runtime/session-drivers.js";
 import { ErrorRecorder } from "./runtime/error-recorder.js";
@@ -328,6 +329,7 @@ export class ProjectsModule {}
     SessionsRepo,
     SessionSources,
     SessionDriverRegistry,
+    AgentStateStore,
     SchedulesRepo,
     Scheduler,
     CoreSessionLoaders,
