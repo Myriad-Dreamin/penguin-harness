@@ -119,6 +119,9 @@ function installsOf(
   };
 }
 
+type ContributionsQuickStarts =
+  import("@prismshadow/penguin-server/api").ContributionsResponse["quickStarts"];
+
 /**
  * What updating EVERY outdated plugin on this page would write, grouped the way it is sent.
  *
@@ -292,6 +295,7 @@ export function PluginsPage() {
     specifier: string;
     name: string;
     install: boolean;
+    quickStart?: boolean;
   } | null>(null);
 
   /**
@@ -302,8 +306,11 @@ export function PluginsPage() {
    * running process has — including a load that failed, which is reported as such rather than
    * toasted as installed; otherwise the row waits for a restart.
    */
-  const runDeploymentInstall = async (specifier: string, install: boolean) => {
-    if (pendingSpecifier !== null || projectId === null) return;
+  const runDeploymentInstall = async (
+    specifier: string,
+    install: boolean,
+  ): Promise<InstalledPluginsResponse | null> => {
+    if (pendingSpecifier !== null || projectId === null) return null;
     setPendingSpecifier(specifier);
     try {
       const next = install
@@ -316,8 +323,10 @@ export function PluginsPage() {
       } else {
         toastSuccess(install ? S.plugins.deploymentInstalledToast(specifier) : S.common.saved);
       }
+      return next;
     } catch (e) {
       toastError(apiErrorText(e));
+      return null;
     } finally {
       setPendingSpecifier(null);
       setPendingApply(null);
@@ -591,15 +600,19 @@ export function PluginsPage() {
 
   /**
    * Quick start: a plugin's demo, opened as a new-chat draft on the currently selected Agent —
-   * written, never sent, so nothing runs (and no token is spent) until the person sends it. The
-   * prompt goes in per UI language, overwriting the draft body (any typed-but-unsent text is
-   * parked as a draft conversation first, draft-sessions.ts), with the demo's skills
-   * pre-selected and goal mode on when the demo is a goal. handoffAgentId must be cleared: a
-   * leftover handoff target would forward the demo to a different Agent.
+   * written, never sent, so nothing runs (and no token is spent) until the person sends it or
+   * chooses the prepared invocation. The prompt goes in per UI language, overwriting the draft body (any
+   * typed-but-unsent text is parked as a draft conversation first, draft-sessions.ts), with the
+   * demo's skills pre-selected and goal mode on when the demo is a goal. handoffAgentId must be
+   * cleared: a leftover handoff target would forward the demo to a different Agent. A demo that
+   * uses main's current library quick-start contract; retired surface sessions are not restored.
    */
   const openQuickStart = (quickStart: QuickStartItem) => {
     const agentId = currentAgent?.agentId;
     if (!agentId) return;
+    const text = localizedText(locale, quickStart.prompt, quickStart.promptZh);
+    setCurrentAgentId(agentId);
+
     if (userId && projectId) {
       // Typed-but-unsent draft text becomes a parked draft conversation instead of being
       // clobbered by the canned invocation body, and the Workspace and approval mode start on
@@ -610,7 +623,7 @@ export function PluginsPage() {
       saveDraft(key, {
         ...rest,
         agentId,
-        text: localizedText(locale, quickStart.prompt, quickStart.promptZh),
+        text,
         ...(quickStart.skills !== undefined && quickStart.skills.length > 0
           ? { skills: quickStart.skills }
           : {}),
@@ -618,7 +631,6 @@ export function PluginsPage() {
         handoffAgentId: undefined,
       });
     }
-    setCurrentAgentId(agentId);
     navigate(`/chat/${DRAFT_SESSION_ID}`, { state: { agentId } });
   };
 
@@ -644,6 +656,45 @@ export function PluginsPage() {
     setPendingQuickStart(null);
     const demo = libraryQuickStart(plugin);
     if (ok && demo !== null) openQuickStart(demo);
+  };
+
+  const [quickStarts, setQuickStarts] = useState<ContributionsQuickStarts>([]);
+  const refreshContributions = async () => {
+    try {
+      const res = await api.getContributions();
+      setQuickStarts(res.quickStarts ?? []);
+      return res;
+    } catch {
+      return null;
+    }
+  };
+  useEffect(() => {
+    void refreshContributions();
+  }, [reloadKey]);
+
+  /** A module plugin's quick start: the demo its modules contribute, or the generic one. */
+  const moduleQuickStart = (
+    specifier: string,
+    modules: readonly string[],
+    list: ContributionsQuickStarts = quickStarts,
+  ): QuickStartItem =>
+    list.find((q) => modules.includes(q.from)) ?? {
+      prompt: S.plugins.quickStartGenericText(specifier),
+    };
+
+  /** An installed module plugin's modules, by specifier (what its quick start is matched by). */
+  const modulesOf = (specifier: string, from: InstalledPluginsResponse | null = deployment) =>
+    from?.plugins.find((p) => p.specifier === specifier)?.modules ?? [];
+
+  /** Installs a module plugin for a quick start (after its confirmation), then opens the demo once it runs. */
+  const installForQuickStart = async (specifier: string) => {
+    const next = await runDeploymentInstall(specifier, true);
+    const row = next?.plugins.find((p) => p.specifier === specifier);
+    if (next === null || row === undefined || !row.active) return;
+    const contributions = await refreshContributions();
+    openQuickStart(
+      moduleQuickStart(specifier, modulesOf(specifier, next), contributions?.quickStarts ?? []),
+    );
   };
 
   const rows = pluginRows(groups ?? [], moduleParts(deployment, index ?? [], view));
@@ -684,6 +735,28 @@ export function PluginsPage() {
         pendingSpecifier !== row.module.specifier
       }
       onQuickStart={quickStartLibrary}
+      moduleQuickStart={
+        row.module === undefined
+          ? undefined
+          : row.module.state === "active" && viewIncludesHere
+            ? {
+                onStart: () =>
+                  openQuickStart(
+                    moduleQuickStart(row.module!.specifier, modulesOf(row.module!.specifier)),
+                  ),
+              }
+            : row.module.state === "none" && isAdmin && viewIncludesHere
+              ? {
+                  onStart: () =>
+                    setPendingApply({
+                      specifier: row.module!.specifier,
+                      name: row.name,
+                      install: true,
+                      quickStart: true,
+                    }),
+                }
+              : { reason: S.plugins.quickStartNotRunning }
+      }
       onDeletePlugin={deletePlugin}
       onToggleInstall={toggleInstall}
       onUpdateOutdated={updateOutdated}
@@ -864,9 +937,14 @@ export function PluginsPage() {
           cancelLabel={S.common.cancel}
           busy={pendingSpecifier !== null}
           onClose={() => setPendingApply(null)}
-          onConfirm={() => void runDeploymentInstall(pendingApply.specifier, pendingApply.install)}
+          onConfirm={() =>
+            void (pendingApply.quickStart === true
+              ? installForQuickStart(pendingApply.specifier)
+              : runDeploymentInstall(pendingApply.specifier, pendingApply.install))
+          }
         >
           <ModuleApplyBody install={pendingApply.install} name={pendingApply.name} />
+          {pendingApply.quickStart === true && <p>{S.plugins.quickStartAfterInstall}</p>}
         </ConfirmModal>
       )}
       {repairModal}
