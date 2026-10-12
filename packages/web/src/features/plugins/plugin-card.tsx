@@ -307,7 +307,12 @@ export function PluginCard(props: PluginCardProps) {
     }
     // An admin's package of Skills or hooks leaves the server from its dialog; a server module's
     // Remove above does the same for one with modules.
-    if (where === "footer" && props.isAdmin && plugin?.source === "installed" && props.onDeletePlugin !== null) {
+    if (
+      where === "footer" &&
+      props.isAdmin &&
+      plugin?.source === "installed" &&
+      props.onDeletePlugin !== null
+    ) {
       out.push(
         <Button
           key="delete"

@@ -814,11 +814,13 @@ export function PluginsPage() {
             {S.pluginRegistry.sourceUnavailable(indexFailures.length)}
           </Notice>
         )}
-        {remote !== null && "error" in remote && samePluginTarget(remote, { projectId, machineId: viewMachine }) && (
-          <Notice tone="attention" className="mt-4">
-            {S.plugins.machineUnreadable(nameOf(remote.machineId), remote.error)}
-          </Notice>
-        )}
+        {remote !== null &&
+          "error" in remote &&
+          samePluginTarget(remote, { projectId, machineId: viewMachine }) && (
+            <Notice tone="attention" className="mt-4">
+              {S.plugins.machineUnreadable(nameOf(remote.machineId), remote.error)}
+            </Notice>
+          )}
         {deployment !== null && viewingHere && deployment.restartPending && (
           <Notice tone="attention" className="mt-4">
             {S.plugins.restartPending}
@@ -891,23 +893,23 @@ export function PluginsPage() {
           small type under it. An install is primary; a removal is danger. */}
       {pendingApply !== null &&
         samePluginTarget(pendingApply, { projectId, machineId: viewMachine }) && (
-        <ConfirmModal
-          open
-          title={
-            pendingApply.install
-              ? S.plugins.applyConfirmInstall(pendingApply.name)
-              : S.plugins.applyConfirmRemove(pendingApply.name)
-          }
-          tone={pendingApply.install ? "primary" : "danger"}
-          {...(pendingApply.install ? { glyph: ICONS.download } : {})}
-          confirmLabel={pendingApply.install ? S.plugins.install : S.plugins.uninstall}
-          cancelLabel={S.common.cancel}
-          busy={pendingSpecifier !== null}
-          onClose={() => setPendingApply(null)}
-          onConfirm={() => void runDeploymentInstall(pendingApply)}
-        >
-          <ModuleApplyBody install={pendingApply.install} name={pendingApply.name} />
-        </ConfirmModal>
+          <ConfirmModal
+            open
+            title={
+              pendingApply.install
+                ? S.plugins.applyConfirmInstall(pendingApply.name)
+                : S.plugins.applyConfirmRemove(pendingApply.name)
+            }
+            tone={pendingApply.install ? "primary" : "danger"}
+            {...(pendingApply.install ? { glyph: ICONS.download } : {})}
+            confirmLabel={pendingApply.install ? S.plugins.install : S.plugins.uninstall}
+            cancelLabel={S.common.cancel}
+            busy={pendingSpecifier !== null}
+            onClose={() => setPendingApply(null)}
+            onConfirm={() => void runDeploymentInstall(pendingApply)}
+          >
+            <ModuleApplyBody install={pendingApply.install} name={pendingApply.name} />
+          </ConfirmModal>
       )}
       {repairModal}
       {/* A library plugin's quick start on an Agent that lacks it: installing comes first, and is asked. */}
