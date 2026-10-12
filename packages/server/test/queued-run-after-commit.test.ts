@@ -46,6 +46,7 @@ function controlledSession(
     skipReconnectWait: () => false,
     async *run(input: OmniMessage[], opts) {
       const call = ++calls;
+      events.push(`run:entered:${call}`);
       if (call > 1) await onQueuedStart();
       events.push(`start:${call}`);
       opts.signal.addEventListener("abort", () => events.push(`abort:${call}`), { once: true });
@@ -132,7 +133,7 @@ describe("queued work starts only in the serving generation", () => {
       const marker = path.join(t.root, "queued-run-side-effect.txt");
       const session = controlledSession(first.promise, events, async () => {
         // Read the actual serving tree, not the late module's boot-complete marker.
-        servingAtStart.push(await currentManager(t!));
+        servingAtStart.push(t!.boot.tree.api<SessionManager>("SessionRuntimeModule", "Sessions"));
         events.push("queued:serving-observed");
         await fs.appendFile(marker, "queued side effect\n");
         events.push("queued:side-effect");
@@ -171,6 +172,7 @@ describe("queued work starts only in the serving generation", () => {
       console.info("lifecycle boot observation", { fails, result, beforeCommit, events });
       expect(beforeCommit.candidateStarts).toBe(0);
       expect(beforeCommit.events.filter((e) => e === "start:2")).toHaveLength(0);
+      expect(beforeCommit.events).not.toContain("run:entered:2");
       expect(beforeCommit.sideEffect).toBe("");
       expect(beforeCommit.events).not.toContain("queued:side-effect");
       expect(result).toBe(!fails);
