@@ -564,6 +564,9 @@ async function createInner(
   // are disposed, and the declaration is overwritten (never released — see the ID's
   // doc) so the NEXT App reads this build's.
   for (const group of doomedGroups) ctx.resources.disposeGroup?.(group);
+  // Do not expose a fresh manager while the incompatible state's writer can still write.
+  // The old manager's handover drain has no deadline; process exit remains bounded.
+  if (handed !== undefined && !takenOver) await handed.stopped;
   ctx.resources.register(RESOURCE_IFACES_RESOURCE_ID, DECLARED_RESOURCES);
   // What THIS build's machine sessions look like, for the next build to compare against —
   // in the sessions' own group, so it is disposed with them. The sessions themselves are
@@ -579,7 +582,8 @@ async function createInner(
       shape: agentStateShape,
     };
     ctx.resources.register(AGENT_STATE_RESOURCE_ID, envelope, () => {
-      envelope.stopped = manager.shutdown(DRAIN_GRACE_MS);
+      // Unlike process exit, handover cannot treat a drain deadline as writer completion.
+      envelope.stopped = manager.shutdown(Infinity);
     });
     // A predecessor's state this build could not take over: the group's disposal above
     // stopped its runs with the predecessor's own logic; what was running is started again

@@ -1910,7 +1910,7 @@ export class SessionManager {
     return [...this.entries.values()].filter((e) => e.status === "running").map((e) => e.sessionId);
   }
 
-  /** Graceful shutdown: reject new tasks (503), interrupt all active runs, and wait for them to finish (default ≤5s). */
+  /** Graceful shutdown: reject new tasks (503), interrupt active runs, and wait (default ≤5s; Infinity for handover). */
   async shutdown(timeoutMs = 5000): Promise<void> {
     this.closed = true;
     clearInterval(this.sweepTimer);
@@ -1931,6 +1931,11 @@ export class SessionManager {
     }
     this.entries.clear();
     if (pending.length === 0) return;
+    // A handover needs actual writer completion, not expiry of the exit budget.
+    if (timeoutMs === Infinity) {
+      await Promise.allSettled(pending);
+      return;
+    }
     await Promise.race([
       Promise.allSettled(pending).then(() => undefined),
       new Promise<void>((resolve) => setTimeout(resolve, timeoutMs).unref?.()),
