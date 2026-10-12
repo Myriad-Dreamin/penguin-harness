@@ -25,7 +25,7 @@
  *   the agent runs in progress in every Project, so the confirm says what the install does and,
  *   in small type below, what it costs.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   AgentMcpServerItem,
@@ -73,7 +73,7 @@ import { draftKey, loadDraft, saveDraft } from "../chat/draft-cache";
 import { prepareNewChatDraft } from "../chat/new-chat";
 import { localizedText } from "../chat/skill-use";
 import { usePluginRepair } from "./plugin-repair";
-import { viewedMachine } from "./viewed-machine";
+import { samePluginTarget, viewedMachine } from "./viewed-machine";
 import { SettingsDialog } from "../settings/settings-dialog";
 import { pickDefaultAgent } from "../ai-create";
 import { toneInk } from "../../lib/tone";
@@ -176,7 +176,20 @@ export function PluginsPage() {
   const [error, setError] = useState<string | null>(null);
   const [installed, setInstalled] = useState<InstalledMap>(new Map());
   /** What this Project asks for of the module plugins, and which of those the process runs. */
-  const [deployment, setDeployment] = useState<InstalledPluginsResponse | null>(null);
+  const [deploymentRead, setDeploymentRead] = useState<{
+    projectId: string;
+    res: InstalledPluginsResponse;
+  } | null>(null);
+  const deployment = deploymentRead?.projectId === projectId ? deploymentRead.res : null;
+  const currentProjectId = useRef(projectId);
+  currentProjectId.current = projectId;
+  const deploymentRequest = useRef(0);
+  const setDeployment = (res: InstalledPluginsResponse) => {
+    if (projectId !== null && currentProjectId.current === projectId) {
+      deploymentRequest.current += 1;
+      setDeploymentRead({ projectId, res });
+    }
+  };
   /** The registry: every module plugin this deployment could ask for. */
   const [index, setIndex] = useState<PluginIndexEntry[] | null>(null);
   /**
@@ -217,8 +230,20 @@ export function PluginsPage() {
   // The Project's list, re-read whenever the Project changes; a read that fails leaves the
   // module rows without their state rather than failing the page.
   const reloadDeployment = useCallback(() => {
+    const request = ++deploymentRequest.current;
     if (projectId === null) return;
-    api.getInstalledPlugins(projectId).then(setDeployment, () => setDeployment(null));
+    api.getInstalledPlugins(projectId).then(
+      (res) => {
+        if (request === deploymentRequest.current && currentProjectId.current === projectId) {
+          setDeploymentRead({ projectId, res });
+        }
+      },
+      () => {
+        if (request === deploymentRequest.current && currentProjectId.current === projectId) {
+          setDeploymentRead(null);
+        }
+      },
+    );
   }, [projectId]);
   useEffect(reloadDeployment, [reloadDeployment]);
 
@@ -245,8 +270,8 @@ export function PluginsPage() {
   );
   /** What the viewed machine answered itself — or why it could not — when it is not this server. */
   const [remote, setRemote] = useState<
-    | { machineId: string; res: InstalledPluginsResponse }
-    | { machineId: string; error: string }
+    | { projectId: string; machineId: string; res: InstalledPluginsResponse }
+    | { projectId: string; machineId: string; error: string }
     | null
   >(null);
   // Read again after every change of the list: the machine is handed its part in the
@@ -256,8 +281,9 @@ export function PluginsPage() {
     if (projectId === null || viewMachine === undefined || viewMachine === selfId) return;
     let cancelled = false;
     api.getInstalledPlugins(projectId, viewMachine).then(
-      (res) => !cancelled && setRemote({ machineId: viewMachine, res }),
-      (e: unknown) => !cancelled && setRemote({ machineId: viewMachine, error: apiErrorText(e) }),
+      (res) => !cancelled && setRemote({ projectId, machineId: viewMachine, res }),
+      (e: unknown) =>
+        !cancelled && setRemote({ projectId, machineId: viewMachine, error: apiErrorText(e) }),
     );
     return () => {
       cancelled = true;
@@ -266,7 +292,15 @@ export function PluginsPage() {
   const view: PluginView | undefined =
     viewMachine === undefined
       ? undefined
-      : { machineId: viewMachine, remote: remote !== null && "res" in remote ? remote.res : null };
+      : {
+          machineId: viewMachine,
+          remote:
+            remote !== null &&
+            "res" in remote &&
+            samePluginTarget(remote, { projectId, machineId: viewMachine })
+              ? remote.res
+              : null,
+        };
   /** Whether the machine in view is this server itself. */
   const viewingHere = viewMachine === selfId;
 
@@ -297,6 +331,8 @@ export function PluginsPage() {
     specifier: string;
     name: string;
     install: boolean;
+    projectId: string;
+    machineId: string;
   } | null>(null);
 
   /**
@@ -307,14 +343,19 @@ export function PluginsPage() {
    * running process has — including a load that failed, which is reported as such rather than
    * toasted as installed; otherwise the row waits for a restart.
    */
-  const runDeploymentInstall = async (specifier: string, install: boolean) => {
-    // Always the viewed machine's own table: the page never edits the shared one.
-    if (pendingSpecifier !== null || projectId === null || viewMachine === undefined) return;
+  const runDeploymentInstall = async (target: NonNullable<typeof pendingApply>) => {
+    // A confirmation names the target that opened it, never a later picker or Project.
+    if (pendingSpecifier !== null) return;
+    if (!samePluginTarget(target, { projectId, machineId: viewMachine })) {
+      setPendingApply(null);
+      return;
+    }
+    const { specifier, install } = target;
     setPendingSpecifier(specifier);
     try {
       const next = install
-        ? await api.installPlugin(projectId, specifier, viewMachine)
-        : await api.uninstallPlugin(projectId, specifier, viewMachine);
+        ? await api.installPlugin(target.projectId, specifier, target.machineId)
+        : await api.uninstallPlugin(target.projectId, specifier, target.machineId);
       setDeployment(next);
       const row = next.plugins.find((p) => p.specifier === specifier);
       if (install && row?.error !== undefined) {
@@ -694,8 +735,14 @@ export function PluginsPage() {
       onToggleInstall={toggleInstall}
       onUpdateOutdated={updateOutdated}
       onModuleApply={(install) => {
-        if (row.module !== undefined) {
-          setPendingApply({ specifier: row.module.specifier, name: row.name, install });
+        if (row.module !== undefined && projectId !== null && viewMachine !== undefined) {
+          setPendingApply({
+            specifier: row.module.specifier,
+            name: row.name,
+            install,
+            projectId,
+            machineId: viewMachine,
+          });
         }
       }}
       onRepair={
@@ -765,7 +812,7 @@ export function PluginsPage() {
             {S.pluginRegistry.sourceUnavailable(indexFailures.length)}
           </Notice>
         )}
-        {remote !== null && "error" in remote && remote.machineId === viewMachine && (
+        {remote !== null && "error" in remote && samePluginTarget(remote, { projectId, machineId: viewMachine }) && (
           <Notice tone="attention" className="mt-4">
             {S.plugins.machineUnreadable(nameOf(remote.machineId), remote.error)}
           </Notice>
@@ -840,7 +887,8 @@ export function PluginsPage() {
 
       {/* A server module change: what it does is said before it runs, and what it costs in
           small type under it. An install is primary; a removal is danger. */}
-      {pendingApply !== null && (
+      {pendingApply !== null &&
+        samePluginTarget(pendingApply, { projectId, machineId: viewMachine }) && (
         <ConfirmModal
           open
           title={
@@ -854,7 +902,7 @@ export function PluginsPage() {
           cancelLabel={S.common.cancel}
           busy={pendingSpecifier !== null}
           onClose={() => setPendingApply(null)}
-          onConfirm={() => void runDeploymentInstall(pendingApply.specifier, pendingApply.install)}
+          onConfirm={() => void runDeploymentInstall(pendingApply)}
         >
           <ModuleApplyBody install={pendingApply.install} name={pendingApply.name} />
         </ConfirmModal>
@@ -980,7 +1028,7 @@ function CardGrid({ children }: { children: React.ReactNode }) {
  * list too): the search box, and beside it the grouping select, whose options each say what they
  * do ("Group by status") while its accessible name says what it groups; it is wide enough for its
  * longest English option. Then, for an admin, the machine picker (which machine's plugins the rows
- * show, and which table an install or a removal edits: the shared one, or that machine's own), then
+ * show, and which machine's own table an install or a removal edits), then
  * the pair the Agents page header has: Import plugin, the primary button, and Settings, the
  * secondary one, which opens the Settings dialog's Plugins page — each glyph before words that
  * always show. On a phone the search box and the select share the first line, the box taking what

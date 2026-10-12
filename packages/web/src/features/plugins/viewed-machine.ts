@@ -12,3 +12,11 @@ export function viewedMachine(
 ): string | undefined {
   return picked !== null && choices.includes(picked) ? picked : selfId;
 }
+
+/** A read or confirmation belongs to both a Project and a machine, not just a picker value. */
+export function samePluginTarget(
+  target: { projectId: string; machineId: string },
+  current: { projectId: string | null; machineId: string | undefined },
+): boolean {
+  return target.projectId === current.projectId && target.machineId === current.machineId;
+}

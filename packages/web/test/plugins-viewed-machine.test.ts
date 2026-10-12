@@ -4,7 +4,7 @@
  * does not hold the page on it once the picker is gone.
  */
 import { describe, expect, it } from "vitest";
-import { viewedMachine } from "../src/features/plugins/viewed-machine";
+import { samePluginTarget, viewedMachine } from "../src/features/plugins/viewed-machine";
 
 const SELF = "self-id";
 const GPU = "gpu-id";
@@ -24,5 +24,26 @@ describe("viewedMachine", () => {
 
   it("views nothing until this server's id is read", () => {
     expect(viewedMachine(GPU, [], undefined)).toBeUndefined();
+  });
+});
+
+describe("plugin target identity", () => {
+  const target = { projectId: "project-a", machineId: GPU };
+
+  it("accepts the Project and machine that opened the confirmation", () => {
+    expect(samePluginTarget(target, { projectId: "project-a", machineId: GPU })).toBe(true);
+  });
+
+  it("rejects a picker change while a confirmation or remote read is pending", () => {
+    expect(samePluginTarget(target, { projectId: "project-a", machineId: SELF })).toBe(false);
+  });
+
+  it("rejects another Project even when it uses the same machine", () => {
+    expect(samePluginTarget(target, { projectId: "project-b", machineId: GPU })).toBe(false);
+  });
+
+  it("rejects a target before the Project or this server id is ready", () => {
+    expect(samePluginTarget(target, { projectId: null, machineId: GPU })).toBe(false);
+    expect(samePluginTarget(target, { projectId: "project-a", machineId: undefined })).toBe(false);
   });
 });

@@ -94,7 +94,10 @@ function stateIn(
           : { state: "pending" as const };
   };
   if (view === undefined || view.machineId === selfId) return local(listed);
-  const there = view.remote?.plugins.find((p) => p.specifier === listed.specifier);
+  const there =
+    view.remote?.machineId === view.machineId
+      ? view.remote.plugins.find((p) => p.specifier === listed.specifier)
+      : undefined;
   return there === undefined ? { state: "unsynced" } : local(there);
 }
 

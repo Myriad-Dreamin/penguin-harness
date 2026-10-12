@@ -103,6 +103,29 @@ describe("server modules per machine", () => {
     ).toEqual([expect.objectContaining({ specifier: "@acme/gpu-only", state: "none" })]);
   });
 
+  it("a package pinned in both tables is one shared read-only row", () => {
+    const both = {
+      ...deployment,
+      plugins: [listed("@acme/shared", { everywhere: true, machines: [SELF], here: true })],
+    };
+    const parts = moduleParts(both, [], { machineId: SELF, remote: null });
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({
+      specifier: "@acme/shared",
+      state: "active",
+      shared: true,
+      removeBlocked: en.plugins.sharedHint,
+    });
+  });
+
+  it("does not use another machine's response as the selected machine's state", () => {
+    const view: PluginView = { machineId: GPU, remote: deployment };
+    expect(moduleParts(deployment, [], view).map((m) => [m.specifier, m.state])).toEqual([
+      ["@acme/shared", "unsynced"],
+      ["@acme/gpu-only", "unsynced"],
+    ]);
+  });
+
   it("does not offer this machine's failed plugin again", () => {
     const failing = {
       ...deployment,

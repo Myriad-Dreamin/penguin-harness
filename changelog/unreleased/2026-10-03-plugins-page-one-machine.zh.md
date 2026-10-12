@@ -16,4 +16,6 @@
 - Available 列出索引里与该机器构建自带的、两张表都没让它在该机器上运行的插件；只为别的机器装的插件照常可装。
 - 页面上的安装与移除一律写进所看机器自己的表，在读到本服务的机器 id 之前不可用。
 - 删除「仅在 …」标签与「本机不运行」状态，以及词条 `allMachines`、`onlyOn`、`notHere`、`sharedCannotRemove`；新增 `sharedTag` 与 `sharedHint`。
-- 插件文档（`packages/docs/content/plugins.*.md`）改为描述单机视图：安装与移除写进所看机器自己的表，共用行只读。
+- 服务端插件文档（`packages/docs/content/skills.*.md`）改为描述单机视图：安装与移除写进所看机器自己的表，共用行只读。
+
+- Project 列表忽略已被新请求取代的旧响应，远机快照仅用于匹配的 Project 与机器。安装或移除确认保留原目标，不会误写后来切换的 Project 或机器。
