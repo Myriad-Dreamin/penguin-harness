@@ -505,13 +505,9 @@ class PenguinServer {
 
   /** Terminal WebSocket wiring, shared by every listener this process opens. */
   private terminalWebSocketDeps() {
-    const auth = () => this.auth();
     return {
       hmr: this.deps.hmr,
-      // A getter: the upgrade handler asks per handshake, and gets the current generation's.
-      get authService() {
-        return auth();
-      },
+      // The handshake resolves Auth from the platform serving this upgrade.
       log: (line: string) => console.log(line),
     };
   }

@@ -39,7 +39,6 @@ const BACKPRESSURE_POLL_MS = 250;
 export interface TerminalWebSocketDeps {
   /** The booted platform owns the terminals; the runtime asks it per upgrade. */
   hmr: ServerHmrHost;
-  authService: Auth;
   log: (line: string) => void;
 }
 
@@ -55,17 +54,23 @@ export function attachTerminalWebSocket(server: HttpServer, deps: TerminalWebSoc
 
     if (!isAllowedOrigin(req)) return refuse(socket, 403, "Forbidden");
 
-    const authed =
-      sessionCookies(parseCookieHeader(req.headers.cookie), req.headers.host)
-        .map(({ token }) => deps.authService.authenticateWithMeta(token))
-        .find((a) => a !== null) ?? null;
-    if (!authed) return refuse(socket, 401, "Unauthorized");
+    const cookies = sessionCookies(parseCookieHeader(req.headers.cookie), req.headers.host);
+    if (cookies.length === 0) return refuse(socket, 401, "Unauthorized");
 
-    // The platform may be mid-swap; ensure() resolves the instance that owns the
-    // terminals right now, which is also the one whose protocol should serve this socket.
+    // Resolve credentials, terminals and the stream protocol from the same platform.
+    // A plugin re-assembly can dispose a tree without replacing the platform instance.
     void deps.hmr
       .ensure()
       .then((platform) => {
+        const auth = authOf(platform);
+        if (auth === null) {
+          deps.log("[terminal] stream upgrade refused: no Auth in the current platform");
+          return refuse(socket, 503, "Service Unavailable");
+        }
+        const authed =
+          cookies.map(({ token }) => auth.authenticateWithMeta(token)).find((a) => a !== null) ??
+          null;
+        if (!authed) return refuse(socket, 401, "Unauthorized");
         const manager = platform.api.terminals?.();
         const session = manager?.get(match[1] as string);
         if (!session || session.ownerUserId !== authed.user.userId) {
@@ -80,6 +85,17 @@ export function attachTerminalWebSocket(server: HttpServer, deps: TerminalWebSoc
         refuse(socket, 500, "Internal Server Error");
       });
   });
+}
+
+/** Read the serving App's Auth; a missing or disposed tree must fail closed. */
+function authOf(platform: Awaited<ReturnType<ServerHmrHost["ensure"]>>): Auth | null {
+  try {
+    const business =
+      typeof platform.api.business === "function" ? platform.api.business() : null;
+    return business?.api<Auth>("IdentityModule", "Auth") ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

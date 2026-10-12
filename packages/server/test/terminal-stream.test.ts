@@ -7,13 +7,14 @@
  * and hostile-input tolerance. These are the promises the web dock and /terminal page are
  * built on.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { serve } from "@hono/node-server";
 import type { Server as HttpServer } from "node:http";
 import { WebSocket } from "ws";
 import { createTestApp, loginAdmin, provisionUser, apiClient } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 import { attachTerminalWebSocket } from "../src/terminal/ws.js";
+import type { Reassembly } from "../src/hmr/capabilities.js";
 import {
   TerminalStreamOpcode,
   decodeTerminalFrame,
@@ -52,7 +53,6 @@ beforeAll(async () => {
   });
   attachTerminalWebSocket(server as unknown as HttpServer, {
     hmr: t.deps.hmr,
-    authService: t.deps.authService,
     // Kept, not discarded: the backpressure test's precondition (the server deciding a
     // viewer is too far behind) is only observable through this line.
     log: (line) => serverLogs.push(line),
@@ -238,6 +238,59 @@ async function waitForCapture(id: string, marker: string, timeoutMs = 15_000): P
 }
 
 describePty("terminal stream handshake", () => {
+  it(
+    "authenticates against the re-assembled App with no push",
+    async () => {
+      const oldTree = t.boot.tree;
+      const oldAuth = oldTree.api("IdentityModule", "Auth");
+      const reassembly = oldTree.api<Reassembly>("RuntimeModule", "Reassembly");
+      expect(await reassembly.reassemble()).toBe(true);
+      expect(t.boot.tree.api("IdentityModule", "Auth")).not.toBe(oldAuth);
+      expect(() => oldTree.api("IdentityModule", "Auth")).toThrow(/no api/);
+
+      const terminal = await createTerminal();
+      const client = await attach(terminal.id);
+      try {
+        await client.waitFor(
+          () => client.frames.some((frame) => frame.opcode === TerminalStreamOpcode.Restore),
+          "restore after re-assembly",
+        );
+        expect(server.listening).toBe(true);
+        expect((await api.get("/api/terminals")).status).toBe(200);
+      } finally {
+        await client.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    "refuses with 503 when the current Auth is unavailable",
+    async () => {
+      const platform = await t.deps.hmr.ensure();
+      const business = vi.spyOn(platform.api, "business");
+      const logStart = serverLogs.length;
+      try {
+        business.mockReturnValue(null);
+        await expectRefused("irrelevant", { cookie: adminCookie }, 503);
+        business.mockImplementation(() => {
+          throw new Error("disposed tree");
+        });
+        await expectRefused("irrelevant", { cookie: adminCookie }, 503);
+        expect(serverLogs.slice(logStart)).toEqual([
+          "[terminal] stream upgrade refused: no Auth in the current platform",
+          "[terminal] stream upgrade refused: no Auth in the current platform",
+        ]);
+        expect(server.listening).toBe(true);
+      } finally {
+        business.mockRestore();
+      }
+      await expectRefused("irrelevant", { cookie: adminCookie }, 404);
+      expect((await api.get("/api/terminals")).status).toBe(200);
+    },
+    TEST_TIMEOUT,
+  );
+
   it(
     "refuses the stream without a session cookie",
     async () => {

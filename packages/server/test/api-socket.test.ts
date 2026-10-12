@@ -32,7 +32,6 @@ beforeAll(async () => {
   });
   attachTerminalWebSocket(server as unknown as HttpServer, {
     hmr: t.deps.hmr,
-    authService: t.deps.authService,
     log: () => undefined,
   });
 });
