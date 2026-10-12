@@ -236,6 +236,10 @@ describe("installed plugins", () => {
       machines: [self],
       here: true,
     });
+    const config = await fs.readFile(listFile(), "utf8");
+    expect(config).toContain(`[plugins.${self}]\n"@acme/mine" = "*"`);
+    const shared = config.split("[plugins]")[1]?.split("\n[")[0] ?? "";
+    expect(shared).not.toContain('"@acme/mine"');
   });
 
   it("reports why a listed plugin failed to load, not a restart that would not help", async () => {

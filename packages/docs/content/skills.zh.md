@@ -324,6 +324,8 @@ npm 标准字段：
 | `hooks.stop` / `hooks.pre_tool_use` / `hooks.user_prompt` | 钩子包在各个[钩子点](/agent-loop#stop-hook)运行的命令：`[{ "command": "stop.mjs", "timeout": 60 }]`，路径以 `hooks/` 为起点，timeout 单位为秒。`user_prompt` 命令可以另加 `"trigger"`：`"prompt"`（缺省）表示用户每次提交 Prompt 时运行，`"host"` 表示只在宿主按包名启动该包的流程时运行 |
 | `mcp_servers` | 安装插件时加到 Agent 上的 MCP Server，见[插件中的 MCP Server](#插件中的-mcp-server) |
 
+插件页不提供会移除共用表与其他机器条目的整包 Delete plugin。Manage installs 仍管理 Agent 副本，模块 Remove 只写所看机器自己的表。前一次 Project 访问的响应（包括离开后再回到同一 Project）不会替换当前模块快照。
+
 缺失就是缺失。只有没有合法 `name` 或 `version` 的包才会被拒绝；其他字段缺失时只是显示为缺失，类型不对的字段会被丢弃，并在服务端日志中告警。名称不符合 `^[A-Za-z0-9_-]+$` 的 Skill 目录会被略过并告警，因为任何 Agent 都装不了它；Skill 目录中不是文本的文件（如 PNG）既不读取也不安装。插件的清单只有 `package.json`：旧包里仍带着的 `plugin.json` 不会被读取。
 
 ### 插件中的 MCP Server

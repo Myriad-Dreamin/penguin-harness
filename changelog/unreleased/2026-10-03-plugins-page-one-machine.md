@@ -19,3 +19,5 @@ The Plugins page had opened on an "All machines" view that judged Installed and 
 - The server-plugins guide (`packages/docs/content/skills.*.md`) describes the one-machine view: Install and Remove write the viewed machine's own table, and shared rows are read-only.
 
 - Project-scoped reads ignore superseded replies, and a remote snapshot is used only for the selected Project and machine. An install or removal confirmation keeps its original target and cannot apply to a later Project or picker selection.
+
+The Plugins page does not offer package-global Delete plugin, which would remove the shared and other machines’ entries. Manage installs still edits Agent copies; module Remove writes only the viewed machine’s own table. Replies from a previous Project visit, including a return to the same Project, do not replace the current module snapshot.

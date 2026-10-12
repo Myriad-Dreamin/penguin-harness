@@ -125,7 +125,7 @@ export interface PluginCardProps {
   blocked: boolean;
   onQuickStart: (plugin: PluginItem) => void;
   /** Deletes a package an admin installed on the server (the card has asked first). */
-  onDeletePlugin: (plugin: PluginItem) => Promise<void>;
+  onDeletePlugin: ((plugin: PluginItem) => Promise<void>) | null;
   onToggleInstall: (agentId: string, plugin: PluginItem, on: boolean) => Promise<boolean>;
   onUpdateOutdated: (name: string, agentIds: string[]) => Promise<void>;
   /** Asks to install (true) or remove (false) the server module; the page confirms first. */
@@ -307,7 +307,7 @@ export function PluginCard(props: PluginCardProps) {
     }
     // An admin's package of Skills or hooks leaves the server from its dialog; a server module's
     // Remove above does the same for one with modules.
-    if (where === "footer" && props.isAdmin && plugin?.source === "installed") {
+    if (where === "footer" && props.isAdmin && plugin?.source === "installed" && props.onDeletePlugin !== null) {
       out.push(
         <Button
           key="delete"
@@ -543,7 +543,7 @@ export function PluginCard(props: PluginCardProps) {
           </div>
         </ConfirmModal>
       )}
-      {plugin !== undefined && pendingDelete && (
+      {plugin !== undefined && pendingDelete && props.onDeletePlugin !== null && (
         <ConfirmModal
           open
           title={S.plugins.deleteConfirmTitle(plugin.package)}
@@ -553,7 +553,7 @@ export function PluginCard(props: PluginCardProps) {
           onClose={() => setPendingDelete(false)}
           onConfirm={() => {
             setDeleting(true);
-            void props.onDeletePlugin(plugin).finally(() => {
+            void props.onDeletePlugin!(plugin).finally(() => {
               setDeleting(false);
               setPendingDelete(false);
               setDetailOpen(false);

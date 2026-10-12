@@ -100,6 +100,8 @@ openrouter、fireworks、siliconflow、atlascloud、tokendance、opencode-go、q
 | `[providers.<id>]` | 表 | — | 分组的连接信息，组内模型跟随它；见[分组连接信息](#分组连接信息) |
 | `[[models]]` | 表数组 | — | 可用的模型条目 |
 
+插件页不提供会移除共用表与其他机器条目的整包 Delete plugin。Manage installs 仍管理 Agent 副本，模块 Remove 只写所看机器自己的表。前一次 Project 访问的响应（包括离开后再回到同一 Project）不会替换当前模块快照。
+
 ### 模型条目
 
 | 键 | 类型 | 默认值 | 说明 |

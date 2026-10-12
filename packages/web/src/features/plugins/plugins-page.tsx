@@ -178,16 +178,25 @@ export function PluginsPage() {
   /** What this Project asks for of the module plugins, and which of those the process runs. */
   const [deploymentRead, setDeploymentRead] = useState<{
     projectId: string;
+    generation: number;
     res: InstalledPluginsResponse;
   } | null>(null);
-  const deployment = deploymentRead?.projectId === projectId ? deploymentRead.res : null;
-  const currentProjectId = useRef(projectId);
-  currentProjectId.current = projectId;
+  // A return to the same Project is a new visit, not permission for an old reply.
+  const projectVisit = useRef({ projectId, generation: 0 });
+  if (projectVisit.current.projectId !== projectId) {
+    projectVisit.current = { projectId, generation: projectVisit.current.generation + 1 };
+  }
+  const visit = projectVisit.current;
+  const deployment =
+    deploymentRead?.projectId === projectId && deploymentRead.generation === visit.generation
+      ? deploymentRead.res
+      : null;
+  const isCurrentVisit = () => projectVisit.current === visit;
   const deploymentRequest = useRef(0);
   const setDeployment = (res: InstalledPluginsResponse) => {
-    if (projectId !== null && currentProjectId.current === projectId) {
+    if (projectId !== null && isCurrentVisit()) {
       deploymentRequest.current += 1;
-      setDeploymentRead({ projectId, res });
+      setDeploymentRead({ projectId, generation: visit.generation, res });
     }
   };
   /** The registry: every module plugin this deployment could ask for. */
@@ -234,23 +243,27 @@ export function PluginsPage() {
     if (projectId === null) return;
     api.getInstalledPlugins(projectId).then(
       (res) => {
-        if (request === deploymentRequest.current && currentProjectId.current === projectId) {
-          setDeploymentRead({ projectId, res });
+        if (request === deploymentRequest.current && isCurrentVisit()) {
+          setDeploymentRead({ projectId, generation: visit.generation, res });
         }
       },
       () => {
-        if (request === deploymentRequest.current && currentProjectId.current === projectId) {
+        if (request === deploymentRequest.current && isCurrentVisit()) {
           setDeploymentRead(null);
         }
       },
     );
-  }, [projectId]);
+  }, [projectId, visit]);
   useEffect(reloadDeployment, [reloadDeployment]);
 
   const { machineIds, machineLabels } = useSessions();
   /** The machine picked in the header; null until one is, which views this server. */
   const [pickedMachine, setPickedMachine] = useState<string | null>(null);
-  useEffect(() => setPickedMachine(null), [projectId]);
+  useEffect(() => {
+    setPickedMachine(null);
+    setPendingSpecifier(null);
+    setPendingApply(null);
+  }, [visit]);
   const selfId = deployment?.machineId;
   const nameOf = (machineId: string) =>
     machineId === selfId ? S.plugins.thisServer : (machineLabels.get(machineId) ?? machineId);
@@ -351,11 +364,14 @@ export function PluginsPage() {
       return;
     }
     const { specifier, install } = target;
+    const request = deploymentRequest.current;
     setPendingSpecifier(specifier);
     try {
       const next = install
         ? await api.installPlugin(target.projectId, specifier, target.machineId)
         : await api.uninstallPlugin(target.projectId, specifier, target.machineId);
+      // A later read owns the snapshot; an old write cannot invalidate it.
+      if (!isCurrentVisit() || request !== deploymentRequest.current) return;
       setDeployment(next);
       const row = next.plugins.find((p) => p.specifier === specifier);
       if (install && row?.error !== undefined) {
@@ -364,10 +380,12 @@ export function PluginsPage() {
         toastSuccess(install ? S.plugins.deploymentInstalledToast(specifier) : S.common.saved);
       }
     } catch (e) {
-      toastError(apiErrorText(e));
+      if (isCurrentVisit()) toastError(apiErrorText(e));
     } finally {
-      setPendingSpecifier(null);
-      setPendingApply(null);
+      if (isCurrentVisit()) {
+        setPendingSpecifier(null);
+        setPendingApply(null);
+      }
     }
   };
 
@@ -393,22 +411,6 @@ export function PluginsPage() {
   const reloadServerPlugins = () => {
     setReloadKey((k) => k + 1);
     reloadDeployment();
-  };
-
-  /**
-   * Deletes a package an admin installed on the server: off this Project's list, and off the
-   * server's disk once nothing lists it — through the same route Remove takes. The copies of its
-   * skills and hooks on Agents stay where they are.
-   */
-  const deletePlugin = async (plugin: PluginItem) => {
-    if (projectId === null) return;
-    try {
-      setDeployment(await api.uninstallPlugin(projectId, plugin.package));
-      toastSuccess(S.plugins.deletedToast(plugin.package));
-      reloadServerPlugins();
-    } catch (e) {
-      toastError(apiErrorText(e));
-    }
   };
 
   // Installed skills, hook packages and MCP servers for every Agent in the current Project
@@ -731,7 +733,7 @@ export function PluginsPage() {
           (pendingSpecifier !== null && pendingSpecifier !== row.module.specifier))
       }
       onQuickStart={quickStartLibrary}
-      onDeletePlugin={deletePlugin}
+      onDeletePlugin={null}
       onToggleInstall={toggleInstall}
       onUpdateOutdated={updateOutdated}
       onModuleApply={(install) => {

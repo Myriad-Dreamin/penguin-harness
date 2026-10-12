@@ -19,3 +19,5 @@
 - 服务端插件文档（`packages/docs/content/skills.*.md`）改为描述单机视图：安装与移除写进所看机器自己的表，共用行只读。
 
 - Project 列表忽略已被新请求取代的旧响应，远机快照仅用于匹配的 Project 与机器。安装或移除确认保留原目标，不会误写后来切换的 Project 或机器。
+
+插件页不提供会移除共用表与其他机器条目的整包 Delete plugin。Manage installs 仍管理 Agent 副本，模块 Remove 只写所看机器自己的表。前一次 Project 访问的响应（包括离开后再回到同一 Project）不会替换当前模块快照。
