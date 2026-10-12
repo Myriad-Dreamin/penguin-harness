@@ -164,6 +164,8 @@ zip 文件最大 14 MB，最多 200 个文件；解压后单个文件不超过 5
 
 插件市场一次只看一台机器，默认本服务。选择器列出本服务、Project 可用的机器及插件表点名的机器；选中的机器离开候选时回到本服务。已安装包含所看机器的 `[plugins.<machineId>]` 表与共享的 `[plugins]` 表；安装与移除只写该机器自己的表。共享行带「所有机器共用」标签，在页面上不可移除，包括两张表都钉住的插件：移除机器自己的条目后它仍会运行。Agent 与 API 仍可修改共享表。可安装列出两张表都未要求该机器运行的包。
 
+插件页不提供会移除共用表与其他机器条目的整包 Delete plugin。Manage installs 仍管理 Agent 副本，模块 Remove 只写所看机器自己的表。前一次 Project 访问的响应（包括离开后再回到同一 Project）不会替换当前模块快照。
+
 服务端插件扩展的是服务器本身，而不是 Agent：它是一个由服务端模块组成的 npm 包，例如 Agent 运行沙箱后端。它安装到整个服务端、由所有 Project 共用：每个 Project 声明自己需要的服务端插件，服务器运行任一 Project 要求的全部插件，因此插件提供的能力对所有 Project 都可用。
 
 在**插件市场**页面上，服务端插件和其他插件一样有一张卡片。四个 Agent 运行沙箱后端在 **Agent 运行沙箱**分类下：用于 Linux 的 `sandbox-bwrap`、用于 macOS 的 `sandbox-seatbelt`、用于 Windows 的 `sandbox-wsl`，以及三者通用、只限制文件写入的 `sandbox-dsh`。服务端插件的详情显示它的包名（旁边有复制按钮）和包自带的 README。
@@ -324,7 +326,6 @@ npm 标准字段：
 | `hooks.stop` / `hooks.pre_tool_use` / `hooks.user_prompt` | 钩子包在各个[钩子点](/agent-loop#stop-hook)运行的命令：`[{ "command": "stop.mjs", "timeout": 60 }]`，路径以 `hooks/` 为起点，timeout 单位为秒。`user_prompt` 命令可以另加 `"trigger"`：`"prompt"`（缺省）表示用户每次提交 Prompt 时运行，`"host"` 表示只在宿主按包名启动该包的流程时运行 |
 | `mcp_servers` | 安装插件时加到 Agent 上的 MCP Server，见[插件中的 MCP Server](#插件中的-mcp-server) |
 
-插件页不提供会移除共用表与其他机器条目的整包 Delete plugin。Manage installs 仍管理 Agent 副本，模块 Remove 只写所看机器自己的表。前一次 Project 访问的响应（包括离开后再回到同一 Project）不会替换当前模块快照。
 
 缺失就是缺失。只有没有合法 `name` 或 `version` 的包才会被拒绝；其他字段缺失时只是显示为缺失，类型不对的字段会被丢弃，并在服务端日志中告警。名称不符合 `^[A-Za-z0-9_-]+$` 的 Skill 目录会被略过并告警，因为任何 Agent 都装不了它；Skill 目录中不是文本的文件（如 PNG）既不读取也不安装。插件的清单只有 `package.json`：旧包里仍带着的 `plugin.json` 不会被读取。
 
