@@ -910,7 +910,7 @@ export function PluginsPage() {
           >
             <ModuleApplyBody install={pendingApply.install} name={pendingApply.name} />
           </ConfirmModal>
-      )}
+        )}
       {repairModal}
       {/* A library plugin's quick start on an Agent that lacks it: installing comes first, and is asked. */}
       {pendingQuickStart !== null && currentAgent && (

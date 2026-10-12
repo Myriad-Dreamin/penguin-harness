@@ -25,28 +25,55 @@ vi.mock("../src/state/auth", () => ({
   useAuth: () => ({ user: { userId: "admin", isAdmin: true } }),
 }));
 vi.mock("../src/state/locale", () => ({ useLocale: () => ({ locale: "en" }) }));
-vi.mock("../src/state/sessions", () => ({ useSessions: () => ({ machineIds: context.machines, machineLabels: new Map() }) }));
+vi.mock("../src/state/sessions", () => ({
+  useSessions: () => ({ machineIds: context.machines, machineLabels: new Map() }),
+}));
 vi.mock("../src/lib/use-update-badges", () => ({ useUpdateBadges: () => ({ todos: {} }) }));
-vi.mock("../src/features/plugins/plugin-repair", () => ({ usePluginRepair: () => ({ repair: vi.fn(), modal: null }) }));
+vi.mock("../src/features/plugins/plugin-repair", () => ({
+  usePluginRepair: () => ({ repair: vi.fn(), modal: null }),
+}));
 vi.mock("../src/features/settings/settings-dialog", () => ({ SettingsDialog: () => null }));
 vi.mock("../src/features/plugins/plugin-import-modal", () => ({ ImportPluginModal: () => null }));
 vi.mock("../src/features/chat/chat-page", () => ({ DRAFT_SESSION_ID: "draft" }));
 vi.mock("../src/features/machines/machine-picker", () => ({
   MachinePicker: (props: { choices: { value: string }[]; onChange: (id: string) => void }) =>
-    h("div", null, props.choices.map((c) => h("button", { key: c.value, "data-machine": c.value, onClick: () => props.onChange(c.value) }, c.value))),
+    h(
+      "div",
+      null,
+      props.choices.map((c) =>
+        h(
+          "button",
+          { key: c.value, "data-machine": c.value, onClick: () => props.onChange(c.value) },
+          c.value,
+        ),
+      ),
+    ),
 }));
 vi.mock("../src/features/plugins/plugin-card", () => ({
   libraryQuickStart: () => null,
   ModuleApplyBody: () => null,
-  PluginCard: (props: import("../src/features/plugins/plugin-card").PluginCardProps) => h("div", {
-    "data-row": props.row.name,
-    "data-state": props.row.module?.state,
-    "data-delete": props.onDeletePlugin === null ? "closed" : "open",
-  }, h("button", { disabled: props.blocked || props.busy, onClick: () => props.onModuleApply(props.row.module?.state === "none") }, "apply")),
+  PluginCard: (props: import("../src/features/plugins/plugin-card").PluginCardProps) =>
+    h(
+      "div",
+      {
+        "data-row": props.row.name,
+        "data-state": props.row.module?.state,
+        "data-delete": props.onDeletePlugin === null ? "closed" : "open",
+      },
+      h(
+        "button",
+        {
+          disabled: props.blocked || props.busy,
+          onClick: () => props.onModuleApply(props.row.module?.state === "none"),
+        },
+        "apply",
+      ),
+    ),
 }));
 vi.mock("@prismshadow/penguin-ui", async (original) => ({
   ...(await original<typeof import("@prismshadow/penguin-ui")>()),
-  ConfirmModal: (props: { onConfirm: () => void }) => h("button", { "data-confirm": true, onClick: props.onConfirm }, "confirm"),
+  ConfirmModal: (props: { onConfirm: () => void }) =>
+    h("button", { "data-confirm": true, onClick: props.onConfirm }, "confirm"),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
@@ -155,9 +182,26 @@ describe("the Plugins page's response lifecycle", () => {
 
   it("does not wire package-global Delete into the page, including an installed library/module row", async () => {
     vi.mocked(api.getInstalledPlugins).mockResolvedValue(snapshot("@penguinharness/mixed"));
-    vi.mocked(api.getPluginLibrary).mockResolvedValue({ groups: [{ id: "other", title: "Other", plugins: [{
-      name: "mixed", package: "@penguinharness/mixed", source: "installed", version: "1", description: "Mixed", skills: [], hooks: [], mcpServers: [],
-    }] }] });
+    vi.mocked(api.getPluginLibrary).mockResolvedValue({
+      groups: [
+        {
+          id: "other",
+          title: "Other",
+          plugins: [
+            {
+              name: "mixed",
+              package: "@penguinharness/mixed",
+              source: "installed",
+              version: "1",
+              description: "Mixed",
+              skills: [],
+              hooks: [],
+              mcpServers: [],
+            },
+          ],
+        },
+      ],
+    });
     await mount(h(PluginsPage));
     expect(row("mixed")?.getAttribute("data-delete")).toBe("closed");
     expect(api.uninstallPlugin).not.toHaveBeenCalled();
