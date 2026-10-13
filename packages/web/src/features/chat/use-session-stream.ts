@@ -29,14 +29,15 @@ import { probeSession } from "../../api/session-probe";
 import { apiSocket } from "../../api/socket";
 import { openSessionStream } from "../../api/sse";
 import { machineForSession } from "../../lib/session-machines";
-import { createStreamController } from "../../lib/omni/stream-controller";
-import type {
-  OlderHistoryState,
-  PendingApproval,
-  StreamController,
+import {
+  createStreamController,
+  type OlderHistoryState,
+  type PendingApproval,
+  type StreamController,
 } from "../../lib/omni/stream-controller";
-import { createStreamModel } from "../../lib/omni/stream-model";
-import type { ChatItem, StreamModel } from "../../lib/omni/stream-model";
+
+import { createStreamModel, type ChatItem, type StreamModel } from "../../lib/omni/stream-model";
+
 import type { GoalBannerState } from "./goal-use";
 
 export type { OlderHistoryState, PendingApproval } from "../../lib/omni/stream-controller";
