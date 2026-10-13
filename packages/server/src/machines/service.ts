@@ -125,7 +125,6 @@ import { machinesRoutes } from "../http/routes/machines.js";
 import { machinesProxy } from "./proxy.js";
 import { MachineEventRelay } from "./event-relay.js";
 import type { EventRelay, EventRelayDeps, RelayDial } from "./event-relay.js";
-import { SocketEventRelay } from "./event-hub-relay.js";
 import { MachineEventHub } from "./event-hub.js";
 import { MachineSockets } from "./machine-sockets.js";
 import { HttpError } from "../http/errors.js";
@@ -2965,7 +2964,6 @@ export class MachinesModule {
       {
         ...(checkout === null ? {} : { packCheckout: deployPacker(checkout) }),
         socketFact: (machineId) => sockets.fact(machineId),
-        relay: (deps) => new SocketEventRelay(deps, events),
         announce: () => toAdmins({ type: "machines_changed" }),
         publishEvent: (machineId, event) => toAdmins({ type: "machine_event", machineId, event }),
       },
