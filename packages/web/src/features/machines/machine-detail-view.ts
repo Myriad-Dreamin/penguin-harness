@@ -32,8 +32,8 @@ import {
   readingTone,
   sshWords,
   stepLabel,
+  type MachineReading,
 } from "./machines-view";
-import type { MachineReading } from "./machines-view";
 
 /** The machine's state as one chip: a glyph (or a spinner) and one plain word. */
 export interface MachineChip {
