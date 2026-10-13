@@ -37,6 +37,7 @@ function controlledSession(
   events: string[],
   inputs: OmniMessage[][],
   failedCleanup?: Promise<void>,
+  disposeCleanup?: Promise<void>,
 ): RuntimeSession {
   let calls = 0;
   return {
@@ -69,7 +70,11 @@ function controlledSession(
       }
     },
     async *compact() {},
-    dispose: () => events.push("dispose"),
+    async dispose() {
+      events.push("dispose:start");
+      await disposeCleanup;
+      events.push("dispose:end");
+    },
   };
 }
 
@@ -101,10 +106,17 @@ describe("Agent state writer completion", () => {
       `waits for an incompatible writer ${exceedsBudget ? "past the drain budget" : "that finishes promptly"}`,
       async () => {
         const release = deferred();
-        releases.push(release.resolve);
+        const disposal = deferred();
+        releases.push(release.resolve, disposal.resolve);
         const events: string[] = [];
         const inputs: OmniMessage[][] = [];
-        const session = controlledSession(release.promise, events, inputs);
+        const session = controlledSession(
+          release.promise,
+          events,
+          inputs,
+          undefined,
+          disposal.promise,
+        );
         t = await createTestApp({ loader: { load: async () => session } });
         t.deps.sessionsRepo.insert(row(t.root));
         await t.deps.manager.startTask(SID, [userText("first")]);
@@ -130,8 +142,16 @@ describe("Agent state writer completion", () => {
         expect(swapped).toBe(false);
         expect(beforeRelease).not.toContain("start:2");
         expect(beforeRelease).not.toContain("end:1");
-        expect(beforeRelease).not.toContain("dispose");
+        expect(beforeRelease).not.toContain("dispose:start");
         release.resolve();
+        await waitFor(() => events.includes("dispose:start"));
+        // The drive has settled, but its explicit dispose completion is still pending.
+        expect(events).toContain("end:1");
+        expect(events).not.toContain("dispose:end");
+        expect(events).not.toContain("start:2");
+        expect(stopped).toBe(false);
+        expect(swapped).toBe(false);
+        disposal.resolve();
         expect(await swap).toBe(true);
         await waitFor(() => events.includes("end:2"));
         await waitFor(() => currentManager(t!).statusOf(SID) === "idle");
@@ -141,7 +161,8 @@ describe("Agent state writer completion", () => {
           "abort:1",
           "write:1",
           "end:1",
-          "dispose",
+          "dispose:start",
+          "dispose:end",
           "start:2",
           "write:2",
           "end:2",

@@ -298,7 +298,7 @@ export interface RuntimeSession {
   /** Subscribes background-task state changes (core `Session.onBackgroundState`): the manager re-counts the live registries and publishes `session_background` when the counts moved. Optional. */
   onBackgroundState?(listener: () => void): void;
   /** Releases environment resources — kills the remaining background processes (core `Session.dispose`). Optional, idempotent. */
-  dispose?(): void;
+  dispose?(): void | Promise<void>;
 }
 
 /** The underlying loader behind get-or-resume-or-heal. */
@@ -1918,16 +1918,17 @@ export class SessionManager {
     for (const entry of this.entries.values()) {
       entry.approvals.denyAll();
       entry.abort?.abort();
-      if (entry.running) pending.push(entry.running);
       // Suspend means the environment too: dispose kills the Session's remaining
       // background processes (a dev server the conversation started, etc.). Without
       // this, a hot swap orphans them — the OS process keeps running while the next
       // App's freshly resumed Session starts with an empty process list, so the stop
       // control has gone blind. Sequenced after the in-flight drive settles, the same
-      // ordering disposeRemoved uses.
-      const dispose = (): void => entry.session.dispose?.();
-      if (entry.running) void entry.running.then(dispose, dispose);
-      else dispose();
+      // ordering disposeRemoved uses. Keep the whole chain in pending: a settled drive
+      // is not a completed shutdown while dispose is still cleaning up.
+      const dispose = async (): Promise<void> => {
+        await entry.session.dispose?.();
+      };
+      pending.push((entry.running ?? Promise.resolve()).then(dispose, dispose));
     }
     this.entries.clear();
     if (pending.length === 0) return;
