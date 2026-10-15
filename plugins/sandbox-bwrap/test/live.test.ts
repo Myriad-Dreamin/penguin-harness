@@ -13,7 +13,7 @@
  * package depends on core alone), which creates the scratchpad bwrap binds.
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,7 @@ import { mustRun } from "../../../scripts/must-run.mjs";
 /** The slice of the server's SandboxService these cases drive. */
 interface ServiceUnderTest {
   whenReady(): Promise<void>;
-  confinerFor(policyOf: () => { mode: "workspace-write" }): SpawnConfiner;
+  confinerFor(policyOf: () => { mode: "workspace-write"; stateReadonly?: boolean }): SpawnConfiner;
 }
 const { SandboxService } = (await import(
   fileURLToPath(new URL("../../../packages/server/src/sandbox/index.ts", import.meta.url))
@@ -36,7 +36,10 @@ const { SandboxService } = (await import(
   ) => ServiceUnderTest;
 };
 
-const ws = mkdtempSync(path.join(tmpdir(), "penguin-bwrap-live-"));
+// Under the home directory, not the temp area: every policy here grants the host's temp
+// dir (writableTemp), so a workspace inside it could not prove that read-only denies the
+// workspace — or the outside-write cases anything — on a host whose TMPDIR is not /tmp.
+const ws = mkdtempSync(path.join(homedir(), "penguin-bwrap-live-"));
 const outsideProbe = path.join(homedir(), `penguin-bwrap-live-${process.pid}.txt`);
 const provider = createPenguinBwrapProvider();
 
@@ -70,6 +73,18 @@ async function run(cmd: string): Promise<{ code: number | null; out: string }> {
   return { code: session.exit?.code ?? null, out };
 }
 
+/** The same, through a manager the caller owns (the service-driven cases below). */
+async function runIn(
+  manager: CommandSessionManager,
+  cmd: string,
+): Promise<{ code: number | null; out: string }> {
+  const session = manager.spawn({ cmd, cwd: ws });
+  let out = "";
+  for await (const chunk of session.collect(15000)) out += chunk;
+  if (session.running) session.kill();
+  return { code: session.exit?.code ?? null, out };
+}
+
 /**
  * Interfaces as the CONFINED process sees them: /proc/net/dev, a fresh procfs inside
  * the namespace — NOT /sys/class/net, which arrives through the read-only bind of `/`
@@ -85,8 +100,56 @@ const interfaces = (procNetDev: string): string[] =>
 
 afterAll(() => {
   mgr.dispose();
+  stateServed.dispose();
+  inWsServed.dispose();
+  inTmpServed.dispose();
   rmSync(ws, { recursive: true, force: true });
   rmSync(outsideProbe, { force: true });
+  rmSync(agentState, { recursive: true, force: true });
+  rmSync(stateInTmp, { recursive: true, force: true });
+});
+
+/**
+ * The read-only state root, service-driven: the service adds `readonlyRoots` from the
+ * spawn's `stateRoot`, refuses a root missing on disk, and bwrap enforces. Three layouts,
+ * because the whole point of the one mount order is that the layout cannot break it:
+ * the state root in the read-only home (with the scratchpad carved out of it), inside
+ * the Workspace, and inside the temp area the private tmpfs covers.
+ */
+const stateRoot = path.join(
+  mkdtempSync(path.join(homedir(), "penguin-bwrap-live-state-")),
+  "agent",
+);
+mkdirSync(stateRoot);
+writeFileSync(path.join(stateRoot, "marker.txt"), "state-marker");
+const stateScratchpad = path.join(stateRoot, "scratchpad", "session-1");
+const stateInWs = path.join(ws, "state-root");
+mkdirSync(stateInWs);
+const stateInTmp = mkdtempSync(path.join(tmpdir(), "penguin-bwrap-state-tmp-"));
+writeFileSync(path.join(stateInTmp, "marker.txt"), "tmp-state-marker");
+const agentState = path.dirname(stateRoot);
+
+const stateService = new SandboxService([["penguin-bwrap", provider]]);
+await stateService.whenReady();
+const stateConfiner = stateService.confinerFor(() => ({
+  mode: "workspace-write",
+  stateReadonly: true,
+}));
+const stateServed = new CommandSessionManager({
+  confineSpawn: () => stateConfiner,
+  workspaceDir: ws,
+  scratchpadDir: stateScratchpad,
+  stateRoot,
+});
+const inWsServed = new CommandSessionManager({
+  confineSpawn: () => stateConfiner,
+  workspaceDir: ws,
+  stateRoot: stateInWs,
+});
+const inTmpServed = new CommandSessionManager({
+  confineSpawn: () => stateConfiner,
+  workspaceDir: ws,
+  stateRoot: stateInTmp,
 });
 
 describe.skipIf(!usable)("penguin-bwrap live enforcement (host-gated)", () => {
@@ -195,3 +258,88 @@ describe.skipIf(!usable)("penguin-bwrap behind the sandbox service: the Session 
     }
   });
 });
+
+describe.skipIf(!usable)(
+  "penguin-bwrap behind the sandbox service: the read-only state root",
+  () => {
+    it("the workspace stays writable under the state-read-only policy, host-side", async () => {
+      const r = await runIn(stateServed, "echo state-ws-ok > state-ws.txt && cat state-ws.txt");
+      expect(r.code).toBe(0);
+      expect(r.out).toContain("state-ws-ok");
+      expect(existsSync(path.join(ws, "state-ws.txt"))).toBe(true);
+    });
+
+    it("the scratchpad inside the state root is writable, host-side", async () => {
+      const target = path.join(stateScratchpad, "pad.txt");
+      const r = await runIn(stateServed, `echo pad > ${JSON.stringify(target)}`);
+      expect(r.code).toBe(0);
+      expect(readFileSync(target, "utf8")).toBe("pad\n");
+    });
+
+    it("a write into the state root itself is denied and leaves nothing on the host", async () => {
+      const target = path.join(stateRoot, "written-by-command.txt");
+      const r = await runIn(
+        stateServed,
+        `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`,
+      );
+      expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
+      expect(existsSync(target)).toBe(false);
+    });
+
+    it("the state root stays readable: its files list and cat", async () => {
+      const r = await runIn(
+        stateServed,
+        `cat ${JSON.stringify(path.join(stateRoot, "marker.txt"))}`,
+      );
+      expect(r.code).toBe(0);
+      expect(r.out).toContain("state-marker");
+    });
+
+    it("after the denial, the scratchpad deeper inside the state root still writes", async () => {
+      const target = path.join(stateScratchpad, "still.txt");
+      const r = await runIn(stateServed, `echo still > ${JSON.stringify(target)}`);
+      expect(r.code).toBe(0);
+      expect(readFileSync(target, "utf8")).toBe("still\n");
+    });
+
+    it("a state root the layout placed inside the workspace still reads read-only", async () => {
+      const target = path.join(stateInWs, "leak.txt");
+      const r = await runIn(inWsServed, `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`);
+      expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
+      expect(existsSync(target)).toBe(false);
+    });
+
+    it("a state root the layout placed inside the temp area stays read-only under the tmpfs", async () => {
+      const target = path.join(stateInTmp, "leak.txt");
+      const r = await runIn(
+        inTmpServed,
+        `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`,
+      );
+      expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
+      expect(existsSync(target)).toBe(false);
+      const read = await runIn(
+        inTmpServed,
+        `cat ${JSON.stringify(path.join(stateInTmp, "marker.txt"))}`,
+      );
+      expect(read.out).toContain("tmp-state-marker");
+    });
+
+    it("a state root missing on disk refuses the spawn, and the service does not create it", async () => {
+      const absent = path.join(agentState, "never-made");
+      const refused = new CommandSessionManager({
+        confineSpawn: () => stateConfiner,
+        workspaceDir: ws,
+        scratchpadDir: stateScratchpad,
+        stateRoot: absent,
+      });
+      try {
+        expect(() => refused.spawn({ cmd: "true", cwd: ws })).toThrow(
+          /does not exist as a directory/,
+        );
+        expect(existsSync(absent)).toBe(false);
+      } finally {
+        refused.dispose();
+      }
+    });
+  },
+);

@@ -163,6 +163,103 @@ describe("bwrapArgs", () => {
       bwrapArgs({ mode: "workspace-write", workspaceRoot: "\\\\server\\share\\ws" }, HOST),
     ).toThrow(/penguin-wsl: .*no path inside the WSL distro/);
   });
+
+  it("refuses a read-only root with no path in the distro rather than dropping it", () => {
+    // Another distro's files and a network share: dropping the root would widen the sandbox,
+    // which is the one direction the field exists to forbid.
+    expect(() =>
+      bwrapArgs(
+        {
+          mode: "workspace-write",
+          workspaceRoot: WS,
+          readonlyRoots: ["\\\\wsl.localhost\\Ubuntu\\home\\x"],
+        },
+        HOST,
+      ),
+    ).toThrow(/penguin-wsl: the read-only root .*no path inside the WSL distro/);
+    expect(() =>
+      bwrapArgs(
+        { mode: "workspace-write", workspaceRoot: WS, readonlyRoots: ["\\\\server\\share\\state"] },
+        HOST,
+      ),
+    ).toThrow(/penguin-wsl: .*no path inside the WSL distro/);
+  });
+
+  it("sorts the Workspace, writable and read-only mounts by depth: deeper later, read-only after writable", () => {
+    const state = "C:\\Users\\k\\.penguin\\data\\p\\agents\\a";
+    const scratchpad = `${state}\\scratchpad\\session-1`;
+    const linux = "/mnt/c/Users/k/.penguin/data/p/agents/a";
+    const args = bwrapArgs(
+      {
+        mode: "workspace-write",
+        workspaceRoot: WS,
+        writableRoots: [scratchpad],
+        readonlyRoots: [state],
+      },
+      HOST,
+    );
+    const wsAt = args.indexOf("/mnt/c/Users/k/ws");
+    const stateAt = args.indexOf(linux);
+    const padAt = args.indexOf(`${linux}/scratchpad/session-1`);
+    expect(args[wsAt - 1]).toBe("--bind");
+    expect(args[stateAt - 1]).toBe("--ro-bind");
+    expect(args[padAt - 1]).toBe("--bind");
+    // Deeper mounts later: the workspace, then the state root, then the scratchpad carved
+    // out of it — all under the covering tmpfs, and before it is sealed read-only.
+    expect(stateAt).toBeGreaterThan(wsAt);
+    expect(padAt).toBeGreaterThan(stateAt);
+    for (const at of [wsAt, stateAt, padAt]) {
+      expect(at).toBeGreaterThan(args.indexOf("/mnt"));
+      expect(at).toBeLessThan(args.indexOf("--remount-ro"));
+    }
+  });
+
+  it("at equal depth a read-only mount goes after the writable one, so it wins the tie", () => {
+    const sibling = "C:\\Users\\k\\st"; // the same depth as the Workspace, disjoint
+    const args = bwrapArgs(
+      { mode: "workspace-write", workspaceRoot: WS, readonlyRoots: [sibling] },
+      HOST,
+    );
+    expect(args.indexOf("/mnt/c/Users/k/st")).toBeGreaterThan(args.indexOf("/mnt/c/Users/k/ws"));
+  });
+
+  it("a state root the layout placed inside the Workspace still mounts read-only over it", () => {
+    const inWs = `${WS}\\.penguin\\agents\\a`;
+    const args = bwrapArgs(
+      { mode: "workspace-write", workspaceRoot: WS, readonlyRoots: [inWs] },
+      HOST,
+    );
+    const stateAt = args.indexOf("/mnt/c/Users/k/ws/.penguin/agents/a");
+    expect(args[stateAt - 1]).toBe("--ro-bind");
+    expect(stateAt).toBeGreaterThan(args.indexOf("/mnt/c/Users/k/ws"));
+    expect(stateAt).toBeLessThan(args.indexOf("--remount-ro"));
+  });
+
+  it("a read-only root inside the temp area mounts after the tmpfs covering it", () => {
+    const args = bwrapArgs(
+      {
+        mode: "workspace-write",
+        workspaceRoot: WS,
+        writableTemp: true,
+        readonlyRoots: ["/tmp/state-root"],
+      },
+      HOST,
+    );
+    const stateAt = args.indexOf("/tmp/state-root");
+    expect(args[stateAt - 1]).toBe("--ro-bind");
+    expect(stateAt).toBeGreaterThan(args.indexOf("/tmp"));
+  });
+
+  it("full access still mounts the read-only roots, shadowing the writable bind of /", () => {
+    const state = "C:\\Users\\k\\.penguin\\data\\p\\agents\\a";
+    const linux = "/mnt/c/Users/k/.penguin/data/p/agents/a";
+    const args = bwrapArgs(
+      { mode: "danger-full-access", workspaceRoot: WS, readonlyRoots: [state] },
+      HOST,
+    );
+    expect(args.join(" ")).toContain("--bind / /");
+    expect(args.join(" ")).toContain(`--ro-bind ${linux} ${linux}`);
+  });
 });
 
 describe("the launcher", () => {
