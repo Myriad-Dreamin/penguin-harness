@@ -1880,6 +1880,7 @@ export function buildFixtures(lang: Lang, now: number): DemoFixtures {
         imageCompressionMaxMb: 64,
       },
       companyMode: false,
+      telemetry: false,
     },
     prefs: {
       lastProjectId: IDS.project,

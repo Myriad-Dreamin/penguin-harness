@@ -161,12 +161,16 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
             },
           ]
         : []),
-      {
-        id: "harness-history",
-        label: S.commandPalette.harnessHistory,
-        keywords: ["harness history", "version", "hmr", "ifaces"],
-        run: () => setHistoryOpen(true),
-      },
+      ...(isAdmin
+        ? [
+            {
+              id: "harness-history",
+              label: S.commandPalette.harnessHistory,
+              keywords: ["harness history", "version", "hmr", "ifaces", "rollback"],
+              run: () => setHistoryOpen(true),
+            },
+          ]
+        : []),
       ...hostCommandActions(offers, locale).map(({ command, action }): PaletteAction => {
         return {
           id: `host-${command}`,
@@ -192,6 +196,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
       },
     ],
     [added, safe, extra, offers, locale, newWindow],
+    [extra, offers, locale, isAdmin, newWindow],
   );
 
   return (
@@ -205,7 +210,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         emptyText={S.commandPalette.noResults}
         hint={S.commandPalette.hint(toggleShortcut)}
       />
-      <HarnessHistoryOverlay open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <HarnessHistoryOverlay open={historyOpen && isAdmin} onClose={() => setHistoryOpen(false)} />
     </>
   );
 }

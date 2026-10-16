@@ -37,6 +37,8 @@ export interface MeRouteDeps {
   serverSettingsRepo: Settings;
   /** The `users` table itself, for the one route that writes a column no service owns (PUT /api/me/profile). */
   usersRepo: Users;
+  /** Whose switch `telemetry` reports: the page loads its collector only when it is on. */
+  telemetry: Telemetry;
 }
 import { resolvePreviewTarget } from "../../services/preview-token.js";
 import { validateDraftShortcuts } from "../../services/draft-shortcuts.js";
@@ -51,6 +53,7 @@ import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import { Config, Desktop } from "../../hmr/capabilities.js";
 import type { Auth, Users } from "../../mechanisms/identity.js";
 import type { Settings, UiPrefsStore } from "../../mechanisms/settings.js";
+import type { Telemetry } from "../../mechanisms/telemetry.js";
 
 /** Nickname bounds, counted in user-perceived code points so a CJK name is 32 characters, not 96. */
 const DISPLAY_NAME_MIN = 1;
@@ -145,6 +148,7 @@ export function meRoutes(deps: MeRouteDeps): Hono<AppEnv> {
         imageCompressionMaxMb: MAX_IMAGE_COMPRESSION_OVER_MB,
       },
       companyMode: deps.serverSettingsRepo.getCompanyMode(),
+      telemetry: deps.telemetry.on(),
     } satisfies MeResponse);
   });
 
@@ -302,6 +306,7 @@ export class MeRoutes {
   @Use() private readonly prefs!: UiPrefsStore;
   @Use() private readonly settings!: Settings;
   @Use() private readonly users!: Users;
+  @Use() private readonly telemetry!: Telemetry;
   @Bind("MeRoutes.routes") routes!: Hono<AppEnv>;
   setup() {
     this.routes = meRoutes({
@@ -311,6 +316,7 @@ export class MeRoutes {
       prefsRepo: this.prefs,
       serverSettingsRepo: this.settings,
       usersRepo: this.users,
+      telemetry: this.telemetry,
     });
   }
 }

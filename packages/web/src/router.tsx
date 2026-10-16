@@ -90,6 +90,13 @@ function renderPage(page: PageEntry): React.ReactNode {
   return Component === undefined ? <Navigate to="/chat" replace /> : <Component />;
 }
 
+/** Apply an admin-only page's flag even when its URL is entered directly. */
+function PageRoute({ page }: { page: PageEntry }) {
+  const { user } = useAuth();
+  if (page.admin && user?.isAdmin !== true) return <Navigate to="/" replace />;
+  return renderPage(page);
+}
+
 /** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
 function RequireAuth() {
   const { user } = useAuth();
@@ -180,11 +187,10 @@ function appRoutes() {
       )}
       <Route element={<RequireAuth />}>
         <Route index element={<HomeRedirect />} />
-        {/* Every page is a module.json entry (lib/pages.ts). Admin-only ones are refused
-            server-side (403); the sidebar hides their row, so a member only ever reaches
-            one by typing the URL. */}
+        {/* Every page is a module.json entry (lib/pages.ts). Admin-only ones are guarded
+            here as well as server-side (403); typing the URL cannot bypass the sidebar. */}
         {PAGES.map((page) => (
-          <Route key={page.id} path={page.path} element={renderPage(page)} />
+          <Route key={page.id} path={page.path} element={<PageRoute page={page} />} />
         ))}
         {/* Company mode: /org resolves to an organization (or the empty landing), and an
             organization opens on its overview — the page that says what the whole
@@ -204,7 +210,7 @@ function appRoutes() {
               their paths are relative to this layout, and the nav row beside them is the
               sidebar's (features/company/company-nav.ts ORG_PAGE_RENDERERS). */}
           {orgPagesOf(PAGES).map((page) => (
-            <Route key={page.id} path={page.path} element={renderPage(page)} />
+            <Route key={page.id} path={page.path} element={<PageRoute page={page} />} />
           ))}
           <Route path="*" element={<Navigate to="overview" replace />} />
         </Route>

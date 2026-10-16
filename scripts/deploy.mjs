@@ -55,8 +55,9 @@ import {
   refusedPlugins,
   saidYes,
 } from "./deploy-unsatisfied-plugins.mjs";
-import { checkoutFacts, originUrl } from "./build-git-stamp.mjs";
 import { compilePushBundle, pushBundleOptions } from "./push-bundle.mjs";
+import { checkoutFacts, originUrl } from "./build-git-stamp.mjs";
+import { probeSitesDefine } from "./probe-sites.mjs";
 import { FAR_SIDE_SCRIPTS } from "./far-side-scripts.mjs";
 import { buildBuiltinPlugins } from "./build-plugins.mjs";
 import { archiveName, packArchive, prefixPackages } from "./asset-archives.mjs";
@@ -286,7 +287,11 @@ async function compileEntry(entry, outfile) {
     ],
     { stdio: "inherit" },
   );
-  await compilePushBundle(pushBundleOptions(entry, outfile));
+  const options = pushBundleOptions(entry, outfile);
+  // The probe sites ride along the same way as the revision define pushBundleOptions
+  // inlines: the pushed platform is compiled here, not by tsup, so it needs its own copy.
+  options.define = { ...options.define, ...probeSitesDefine(["packages/server/src"]) };
+  await compilePushBundle(options);
 }
 
 /** The built web dist as a { relPath: base64 } manifest. */
