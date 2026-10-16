@@ -54,6 +54,17 @@
 - 部署运行结束后，内置的 `deploy.*` after 挂钩刷新 PR 关系图。
 - 删除组织时先停止它的 Action 运行：运行启动的每个进程（包括部署的进程）先收到 SIGTERM，10 秒后收到 SIGKILL，该运行记为 `failed`；随后注册表关闭它的 `company.db` 连接并释放该组织的 company workflow 树，提案服务最后才关闭自己的连接。热更新之前的实例启动的运行同样会被停止。[删除组织](2026-10-03-proposals-relational-store.zh.md)中针对部署脚本的部分随部署脚本一并移除。
 
+## 通知
+
+- 提案与 roadmap 写操作告诉员工的每一段话，都改为内置的通知 Action，每处一个键：`notify.proposal.created`、`notify.proposal.approved`、`notify.proposal.rejected`、`notify.proposal.changes_requested`、`notify.proposal.revised_after_approval`、`notify.proposal.feedback`、`notify.proposal.brief_edited`、`notify.proposal.discussion_concluded`、`notify.roadmap.room_joined`（每位开房员工的工位：它所在的讨论室与讨论室会话）、`notify.roadmap.derived`（派生 roadmap 的 moderator：讨论室已开，或请它开房）、`notify.roadmap.approval_requested`（moderator 的讨论室会话）、`notify.roadmap.item_approved`、`notify.roadmap.base_linked` 与 `notify.roadmap.reopened`（重开的 roadmap 每条开着的讨论室会话）。对象是原操作的对象——`proposal:<n>`、`discussion:<n>/<session>`、`roadmap:<n>` 或 `item:<n>/<key>`——唯有 `notify.roadmap.derived` 的对象是派生出的 roadmap。
+- 写操作在写入提交之后，经运行的 `act.notify` 按键运行对应的通知，调用方与原操作相同。通知记成一条 ActionRun：`via` 为 `notify`（`ActionRunVia` 的新取值），参数 `runId` 为发出它的运行 id，另有收件人 `to` 与要投的那段话 `text`。
+- 内置通知把与此前相同的话投到相同的工位；工位收不下时照旧记 `notify_failed` 并返回提示。讨论的结论仍在记录之前发出，未送达工位的结论仍让讨论保持开启。
+- company workflow 贡献同键的 `action` 即取代内置通知，其 guard 与挂钩与任何 Action 一样生效。通知被拒绝或失败从不让原操作失败：它列在原操作的 `hookErrors` 里，并作为提示返回。
+- `notify.*` Action 只作为写操作的通知运行：单独运行会以 403 `notify_direct` 拒绝，Action 列表也如此标注。
+- 网页 Activity 把通知的执行标为「作为通知」，挂钩错误一行改为「after 挂钩或通知失败」。现有 `company.db` 的 `action_runs` 会被放宽一次以接受 `via = 'notify'`（见[向后兼容](2026-10-04-backward-compatibility-notify-actions.zh.md)）。
+- 派生 roadmap 的委派按其通知的答复记录 `delivered`：替换实现在 `delivered` 中未列出 moderator，即记为未送达。重开时，除通知报告失败的会话外，每条讨论室会话的转述深度都重新计起，无论替换实现是否告知了它们。
+- 讨论室转述（成员在讨论室说的话转给其他讨论室会话）是讨论本身，不是通知。一条测试检查两个插件中工位投递与讨论室会话投递只出现在内置通知与转述里，出现在别处即失败。
+
 ## CLI
 
 - `penguin org proposal` 的写子命令保持原有形状，各自执行对应的 Action；`penguin org proposal deploy` 执行 `deploy.<id>` 并跟随输出。
