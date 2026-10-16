@@ -30,7 +30,7 @@ import type {
   SessionIndex,
 } from "@prismshadow/penguin-server/plugin";
 import { RoadmapService } from "./service.js";
-import { ProposalCreator } from "./proposals.js";
+import { ModeratorRegistration, ProposalCreator, roadmapModerators } from "./proposals.js";
 import { ROUTES_ID, roadmapRoutes } from "./routes.js";
 import { roadmapCode } from "./builtin-actions.js";
 import { ROADMAP_NOTICE_IDS } from "./notices.js";
@@ -43,81 +43,7 @@ import {
   type RetireListener,
 } from "./org-retire.js";
 
-export { RoadmapError, orgDirOf } from "./domain.js";
-export type {
-  Clone,
-  Delegation,
-  DraftItem,
-  ProposalItem,
-  Roadmap,
-  RoadmapItem,
-  RoadmapStatus,
-  RoadmapWrite,
-} from "./domain.js";
-export { COMPANY_DB, ROADMAP_SCHEMA, companyDbPath, openCompanyDb } from "./schema.js";
-export { SqliteRoadmapStore, briefSha } from "./store.js";
-export type { RoadmapStore } from "./ports.js";
-export {
-  DEFAULT_APPROVAL_ROLES,
-  approvalRole,
-  defaultAct,
-  moderatorOf,
-  requireStatus,
-  roadmapGuards,
-  rolesOf,
-  verdictRoles,
-  withApprovalRoles,
-} from "./guards.js";
-export type { Caller, WriteAct } from "./guards.js";
-export {
-  ROADMAP_ACTION_IDS,
-  ROADMAP_SUBJECTS_ID,
-  roadmapCode,
-  writeActOf,
-} from "./builtin-actions.js";
-export type * from "./action-shapes.js";
-export {
-  CHANNEL_ID,
-  agentMembers,
-  endCursor,
-  parseMessage,
-  readRoom,
-  readSince,
-  recentMessages,
-} from "./room.js";
-export type { RoomConfig, RoomCursor, RoomMessage } from "./room.js";
-export { planRelay } from "./relay.js";
-export type { RelayPlan } from "./relay.js";
-export {
-  PLUGIN_NAME,
-  RECENT_CONTEXT,
-  RELAY_FILE,
-  RoadmapService,
-  basesOf,
-  headingsOf,
-  parseItems,
-  unknownCites,
-} from "./service.js";
-export type { RoadmapView, ServiceDeps, WriteResult } from "./service.js";
-export { CONFIG_GROUP, DEFAULT_POLL_SECONDS, DEFAULT_RELAY_DEPTH, configOf } from "./config.js";
-export { ROUTES_ID, roadmapRoutes } from "./routes.js";
-export {
-  PAGE_PREFIX,
-  PAGE_ROUTES_ID,
-  PAGE_SRC,
-  PAGE_STRINGS,
-  PAGE_TIMEOUT_MS,
-  THEME_HREF,
-  THEME_VARS,
-  pageHtml,
-  pageRoutes,
-} from "./page.js";
-export { claimListeners, discussingRoomOf, roomClaim } from "./claim.js";
-export { ProposalCreator };
-export * from "./notices.js";
-export { RetiredOrgs, retireListeners, retireRegistered } from "./org-retire.js";
-export type { OrgRef, RetireListener } from "./org-retire.js";
-export type { ChannelRef, ClaimListener } from "./claim.js";
+export * from "./public.js";
 
 /** The channel claim's contribution id, as the manifest names it. */
 export const CLAIM_ID = "company-roadmaps.channel-claim";
@@ -226,6 +152,17 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
         description: "Bind the room of a derived roadmap waiting for one.",
       },
       {
+        id: "company-roadmaps.action.members",
+        kind: "action",
+        key: "roadmap.members",
+        subjects: ["roadmap"],
+        params: {
+          employees: "string[]",
+          moderator: "string",
+        },
+        description: "Replace a roadmap's members and name its moderator; the room follows.",
+      },
+      {
         id: "company-roadmaps.subjects",
         kind: "subject",
         subjects: ["roadmap", "item"],
@@ -237,7 +174,8 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
         key: "notify.roadmap.room_joined",
         subjects: ["roadmap"],
         params: { to: "string[]", text: "string", runId: "string" },
-        description: "Tell an opening employee the room it is in and its room session there.",
+        description:
+          "Tell an opening or added employee the room it is in and its room session there.",
       },
       {
         id: "company-roadmaps.notify.derived",
@@ -365,6 +303,7 @@ export class CompanyRoadmapsPlugin {
   @Use("RuntimeModule") private readonly log!: Log;
   @Use("PluginConfigModule") private readonly pluginConfig!: PluginConfig;
   @Use("CompanyProposalsPlugin") private readonly proposals!: ProposalCreator;
+  @Use("CompanyProposalsPlugin") private readonly moderatorSeat!: ModeratorRegistration;
   @Bind(ROUTES_ID) routes!: Hono;
   @Bind(PAGE_ROUTES_ID) page!: Hono;
   // The code halves of the contributions to CompanyActionRegistry.actions (builtin-actions.ts).
@@ -377,6 +316,7 @@ export class CompanyRoadmapsPlugin {
   @Bind("company-roadmaps.action.reopen") reopenAction!: unknown;
   @Bind("company-roadmaps.action.rename") renameAction!: unknown;
   @Bind("company-roadmaps.action.room") roomAction!: unknown;
+  @Bind("company-roadmaps.action.members") membersAction!: unknown;
   @Bind("company-roadmaps.subjects") subjects!: unknown;
   @Bind("company-roadmaps.notify.room-joined") roomJoinedNotice!: unknown;
   @Bind("company-roadmaps.notify.derived") derivedNotice!: unknown;
@@ -411,6 +351,7 @@ export class CompanyRoadmapsPlugin {
     this.reopenAction = code["company-roadmaps.action.reopen"];
     this.renameAction = code["company-roadmaps.action.rename"];
     this.roomAction = code["company-roadmaps.action.room"];
+    this.membersAction = code["company-roadmaps.action.members"];
     this.subjects = code["company-roadmaps.subjects"];
     this.roomJoinedNotice = code[ROADMAP_NOTICE_IDS.room_joined];
     this.derivedNotice = code[ROADMAP_NOTICE_IDS.derived];
@@ -418,6 +359,8 @@ export class CompanyRoadmapsPlugin {
     this.baseLinkedNotice = code[ROADMAP_NOTICE_IDS.base_linked];
     this.approvalRequestedNotice = code[ROADMAP_NOTICE_IDS.approval_requested];
     this.reopenedNotice = code[ROADMAP_NOTICE_IDS.reopened];
+    // company-proposals asks who moderates a roadmap (the default guard of `proposal.author`).
+    effect(this.moderatorSeat.provideRoadmapModerators(roadmapModerators(service)));
     // What the claim node claims is relayed at once, not at the next poll (claim.ts).
     const listener: ClaimListener = (channel, number) => {
       setImmediate(() => {
