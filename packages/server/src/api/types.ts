@@ -6770,6 +6770,13 @@ export interface ProposalMaterial {
  */
 export interface ProposalComment {
   id: string;
+  /**
+   * What the comment is on, when it is not a passage of a section; absent for a passage (then
+   * `sectionId`, `range` and `quote` anchor it). A targeted comment carries `sectionId: ""` and an
+   * empty range, and its `quote` is what it was written on: the file for a scope or test entry
+   * or a changed file, the lines themselves (joined by `\n`) for a line range.
+   */
+  target?: ProposalCommentTarget;
   /** The section the range lies in (section ids follow the heading, so they survive revisions). */
   sectionId: string;
   /** Offsets into the section's source, `[start, end)`, of the revision `revision`. */
@@ -6969,6 +6976,70 @@ export interface ProposalImplDiff {
   compareUrl: string;
   /** The impl PR, null when none is registered. */
   pr: string | null;
+}
+
+/** One line of a hunk: added, deleted, or context on both sides. */
+export interface ProposalImplDiffLine {
+  kind: "add" | "del" | "context";
+  text: string;
+}
+
+/** One hunk of a file's diff: where it starts on each side and how many lines it spans there. */
+export interface ProposalImplHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** The text after the second `@@` (the enclosing function, when git found one); empty otherwise. */
+  section: string;
+  lines: ProposalImplDiffLine[];
+}
+
+/** One file of an impl branch's structured diff. */
+export interface ProposalImplChangedFile {
+  path: string;
+  /** The path before a rename; null otherwise. */
+  oldPath: string | null;
+  status: "added" | "deleted" | "modified" | "renamed";
+  additions: number;
+  deletions: number;
+  /** A binary file: counts are zero and there are no hunks. */
+  binary: boolean;
+  /**
+   * Why the hunks are left out while the counts stay: `tooLarge` — the file is over the per-file
+   * cap; `diffLimit` — the whole diff reached its cap before this file; `noPatch` — GitHub sent
+   * no patch for it (a binary file or one too large, which GitHub does not tell apart). Null when
+   * the hunks are given.
+   */
+  omitted: "tooLarge" | "diffLimit" | "noPatch" | null;
+  hunks: ProposalImplHunk[];
+}
+
+/**
+ * `GET …/:number/impl/changes[?w=1]`: the impl branch's diff, file by file with hunks — the merge
+ * base of base and head, up to head. Read from the delivery repository's mirror, or, when the
+ * mirror cannot answer, parsed from GitHub's comparison (`source: "github"`).
+ */
+export interface ProposalImplChanges {
+  head: ProposalResolvedBranch;
+  base: ProposalResolvedBranch;
+  headSha: string;
+  baseSha: string;
+  mergeBase: string | null;
+  source: "mirror" | "github";
+  /** Why the mirror did not answer; null when it did. */
+  fallbackReason: string | null;
+  /** Whether whitespace changes were ignored: asked for and honoured (GitHub's comparison cannot). */
+  ignoreWhitespace: boolean;
+  files: ProposalImplChangedFile[];
+  /** The sums over `files`. */
+  additions: number;
+  deletions: number;
+  /** GitHub lists at most 300 files of a comparison: true when there were more (`source: "github"` only). */
+  truncated: boolean;
+  /** The caps the hunks were read under, in bytes: one file's content, and the whole diff's text. */
+  limits: { fileBytes: number; diffBytes: number };
+  compareUrl: string;
 }
 
 /** How one head stands against another: `ahead` = it contains the other and more. */
@@ -7409,7 +7480,29 @@ export interface ProposalDetail extends ProposalItem {
   seq: number;
   /** The test groups the proposals plugin's configuration declares, in display order — on a read. */
   testGroups?: ProposalTestGroup[];
+  /**
+   * The impl branch's `+N/−M`, on a read while an impl is registered: computed in the background
+   * and cached by the head and base commits (the cache the diff view reads), so a read never waits
+   * for it — `computing` until known, then a plugin event (`impl_stat`) says to read again.
+   */
+  implStat?: ProposalImplStat;
 }
+
+/** An impl branch's totals: computing, known (with the commits they were read at), or why not. */
+export type ProposalImplStat =
+  | { state: "computing" }
+  | {
+      state: "ready";
+      head: ProposalResolvedBranch;
+      base: ProposalResolvedBranch;
+      headSha: string;
+      baseSha: string;
+      files: number;
+      additions: number;
+      deletions: number;
+      compareUrl: string;
+    }
+  | { state: "unavailable"; reason: string };
 
 /**
  * A discussion: a session of the owner's Agent (the implementer, else the author) that a
@@ -7530,14 +7623,47 @@ export interface ProposalFeedbackRequest {
   agentId?: string;
 }
 
-/** `POST …/:number/comments` — a comment on `[start, end)` of `sectionId`'s source; `quote` must equal that slice. */
-export interface ProposalCommentRequest {
-  sectionId: string;
-  start: number;
-  end: number;
-  quote: string;
-  text: string;
-}
+/**
+ * What a comment that is not on a passage is on:
+ *
+ * - `scope` — an entry of the current revision's scope, by its file and kind;
+ * - `test` — an entry of the current revision's tests, by its file;
+ * - `change-file` — a file of the impl branch's diff;
+ * - `change-lines` — lines `start`..`end` (inclusive, 1-based) of a changed file, on the old side
+ *   (the merge base) or the new side (the head).
+ *
+ * A comment on the diff records the head and base commits the diff was read at: once either
+ * branch moves, the page marks it outdated and still shows the lines it was written on (its
+ * `quote`).
+ */
+export type ProposalCommentTarget =
+  | { kind: "scope"; file: string; scopeKind: ProposalScopeKind }
+  | { kind: "test"; file: string }
+  | { kind: "change-file"; path: string; headSha: string; baseSha: string }
+  | {
+      kind: "change-lines";
+      path: string;
+      side: "old" | "new";
+      start: number;
+      end: number;
+      headSha: string;
+      baseSha: string;
+    };
+
+/**
+ * The `target` param of `proposal.comment`: what to comment on, as the page names it. A diff
+ * target carries the commits the page read the diff at; the server refuses it once they are not
+ * the current ones, and reads a line range's text itself.
+ */
+export type ProposalCommentTargetRequest = ProposalCommentTarget;
+
+/**
+ * `proposal.comment` — a comment on `[start, end)` of `sectionId`'s source (`quote` must equal
+ * that slice), or on a `target` (no section fields then).
+ */
+export type ProposalCommentRequest =
+  | { sectionId: string; start: number; end: number; quote: string; text: string }
+  | { target: ProposalCommentTargetRequest; text: string };
 
 /**
  * `GET …/:number/comments[?pending=1]` — the comments the caller may see (`pending`: the
@@ -7576,7 +7702,8 @@ export interface ProposalPluginEvent {
   orgId: string;
   number: number;
   seq: number;
-  kind: ProposalEventKind | "comment";
+  /** `impl_stat`: the impl's `+N/−M` (`implStat`) was computed or changed — no write, re-read the detail. */
+  kind: ProposalEventKind | "comment" | "impl_stat";
 }
 
 // ---------------------------------------------------------------------------
