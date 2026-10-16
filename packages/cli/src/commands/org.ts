@@ -27,6 +27,18 @@
  *                    | send -m <text> [--channel <id>] [--ref-ticket] [--ref-session]
  *   penguin org handbook list | show [path] | write <path> (-m <text> | --file <f>) | rm <path>
  *   penguin org finance [--period <yyyy-mm>]
+ *   penguin org proposal ls [--status <s>] | show <n> | create [--author <agent_id>] --brief <s> [--title <s>]
+ *                    | publish <n> --file <md> | brief <n> (-m <text> | --file <f>) | ready <n>
+ *                    | implement <n> [--agent <agent_id>] [-m] [--workspace]
+ *                    | material <n> add <kind>=<url> [--label <s>] | feedback <n> -m <text> [--runtime]
+ *                    | conclude <n> -m <text> [--discussion <session_id>]
+ *                    | comments <n> [--pending] | resolve <n> <comment_id> [-m <text>] | merged <n>
+ *                    | approve <n> | reject <n> --reason <s> | groups
+ *                    | impl <n> [url] [--head <remote> <branch> --base <remote> <branch>] | impl --adopt
+ *                    | diff <n> [--stat]
+ *                    | deploy <n> --to <id> [--dry-run] [-- <args...>]
+ *                    | deploy-script add <id> [--description <s>] -- <command...> | ls | rm <id>
+ *                    (the company-proposals plugin's routes: without the plugin, every one is a 404)
  *
  * Every subcommand takes `--org-id` (default: PENGUIN_ORG_ID, the variable company mode
  * adds to the control environment of desk and ticket sessions; there is no default
@@ -72,8 +84,21 @@ import type {
   OrgTicketsResponse,
   OrganizationDetail,
   OrganizationsResponse,
+  ProposalCommentsResponse,
+  ProposalDetail,
+  ProposalGraphNode,
+  ProposalGraphResponse,
+  ProposalGraphDeployment,
+  ProposalDeploymentsResponse,
+  ProposalTestGroupsResponse,
+  ProposalTestEntry,
+  ProposalItem,
+  ProposalMaterialKind,
+  ProposalStatus,
+  ProposalsResponse,
 } from "@prismshadow/penguin-server/api";
 import {
+  ApiError,
   resolveAgentId,
   resolveConnection,
   resolveProjectId,
@@ -81,6 +106,8 @@ import {
   ServerClient,
 } from "../client.js";
 import { getSessionInfo } from "../server-session.js";
+import { registerProposalDeploy, type DeployKit } from "./proposal-deploy.js";
+import { implLine, registerProposalImpl } from "./proposal-impl.js";
 import { dim } from "../render.js";
 import { renderTable } from "../table.js";
 import type { Messages } from "../i18n.js";
@@ -105,6 +132,37 @@ const DEFAULT_CHANNEL_ID = "default_channel";
  * Budgets accumulate along the reporting line, so the CEO's is the whole company's.
  */
 const DEFAULT_CEO_BUDGET = 100;
+/** A proposal's lifecycle states (the server's ProposalStatus; only its type is imported here). */
+const PROPOSAL_STATUSES: readonly ProposalStatus[] = [
+  "drafting",
+  "ready",
+  "approved",
+  "merged",
+  "rejected",
+];
+/** What `material add <kind>=<url>` accepts as the kind. */
+const MATERIAL_KINDS: readonly ProposalMaterialKind[] = [
+  "pr",
+  "issue",
+  "branch",
+  "doc",
+  "ticket",
+  "url",
+];
+/**
+ * The 404 codes the organization routes answer with. A 404 carrying none of them comes from
+ * nothing — the server has no route at all under `…/proposals`, which is what an organization
+ * without the company-proposals plugin looks like — and is reported as that.
+ */
+const ORG_404_CODES: ReadonlySet<string> = new Set([
+  "company_mode_off",
+  "org_not_found",
+  "proposal_not_found",
+  "comment_not_found",
+  "discussion_not_found",
+  "deploy_script_not_found",
+  "deploy_not_found",
+]);
 
 // ---------------------------------------------------------------------------
 // Scope: the organization, its Project and the connection
@@ -314,6 +372,62 @@ function parseCount(raw: string, t: Messages): number | null {
   return value;
 }
 
+/** A proposal number (`<n>`): a positive integer. Null after the error. */
+function parseProposalNumber(raw: string, t: Messages): number | null {
+  const value = Number(raw.replace(/^#/, ""));
+  if (!Number.isInteger(value) || value <= 0) {
+    fail(t, t.org.proposalNumberInvalid(raw));
+    return null;
+  }
+  return value;
+}
+
+/** `--status` on `proposal ls`: one of the lifecycle states. Null after the error. */
+function parseProposalStatus(raw: string, t: Messages): ProposalStatus | null {
+  if ((PROPOSAL_STATUSES as readonly string[]).includes(raw)) return raw as ProposalStatus;
+  fail(t, t.org.proposalStatusInvalid(raw));
+  return null;
+}
+
+/** `material add <kind>=<url>`: the kind before the first `=`, the URL after it. Null after the error. */
+function parseMaterial(
+  raw: string,
+  t: Messages,
+): { kind: ProposalMaterialKind; url: string } | null {
+  const at = raw.indexOf("=");
+  const kind = at === -1 ? "" : raw.slice(0, at).trim();
+  const url = at === -1 ? "" : raw.slice(at + 1).trim();
+  if (!(MATERIAL_KINDS as readonly string[]).includes(kind) || url === "") {
+    fail(t, t.org.proposalMaterialInvalid(raw));
+    return null;
+  }
+  return { kind: kind as ProposalMaterialKind, url };
+}
+
+/**
+ * A request under the organization's `proposals` routes. They are the company-proposals
+ * plugin's, not the server's own: a 404 without an organization code means the plugin is not
+ * installed on this Project, and that is said in so many words instead of "not found". Null
+ * after that error; every other failure surfaces verbatim as the other commands' do.
+ */
+async function proposalRequest<T>(
+  scope: OrgScope,
+  t: Messages,
+  method: string,
+  suffix: string,
+  body?: unknown,
+): Promise<T | null> {
+  try {
+    return await scope.client.request<T>(method, `${scope.base}/proposals${suffix}`, body);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404 && !ORG_404_CODES.has(err.code)) {
+      fail(t, t.org.proposalsPluginMissing());
+      return null;
+    }
+    throw err;
+  }
+}
+
 /** Costs print with four decimals (cents matter at these magnitudes), budgets with two. */
 const usd = (cost: number): string => `$${cost.toFixed(4)}`;
 const usdBudget = (budget: number): string => `$${budget.toFixed(2)}`;
@@ -453,6 +567,267 @@ function renderTicket(d: OrgTicketDetail, t: Messages): string {
     head.join("\n"),
     ...prose,
     ...(history.length > 0 ? [`${t.org.ticketHistory()}\n${history.join("\n")}`] : []),
+  ];
+  return `${blocks.join("\n\n")}\n`;
+}
+
+/** `proposal ls`: one row per proposal, unread first the way the page's queue is, then by number descending. */
+function renderProposals(items: readonly ProposalItem[], t: Messages): string {
+  const sorted = [...items].sort(
+    (a, b) => Number(b.unread > 0) - Number(a.unread > 0) || b.number - a.number,
+  );
+  return renderTable(
+    [
+      t.org.colNumber(),
+      t.org.colState(),
+      t.org.colRevision(),
+      t.org.colAuthor(),
+      t.org.colImplementer(),
+      t.org.colUnread(),
+      t.org.colTitle(),
+    ],
+    sorted.map((p) => [
+      `#${p.number}`,
+      p.status,
+      String(p.revision),
+      p.author,
+      p.implementer ?? "-",
+      String(p.unread),
+      p.title,
+    ]),
+  );
+}
+
+/**
+ * `proposal graph`: the chain from the base branch, one PR per line indented by its depth,
+ * then the PRs off the chain with the reason each is off, and the proposals whose impl is not
+ * on the graph with the reason why. Each line: the PR, its branch and head, the layer's size,
+ * the marks, the proposal, the origins' twins. Relations, statuses and marks stay in English:
+ * they are field values; the reasons are sentences and follow the locale.
+ */
+function renderGraph(g: ProposalGraphResponse, t: Messages): string {
+  const short = (sha: string | null): string => (sha === null ? "?" : sha.slice(0, 9));
+  const label = (n: number | null): string =>
+    n === null ? "?" : n === 0 ? g.base.branch : `#${n}`;
+  // Every stack's top; a server older than `tops` names at most one.
+  const tops = g.tops ?? (g.top === null ? [] : [g.top]);
+  // Stacks side by side on the base branch: its children on the chain.
+  const stacks = g.nodes.filter((n) => n.parent === 0 && n.onChain).length;
+  const line = (n: ProposalGraphNode): string => {
+    const marks = [
+      ...(n.draft ? ["draft"] : []),
+      ...(n.fork ? ["fork"] : []),
+      ...(tops.includes(n.number) ? ["top"] : []),
+      ...n.via.map((v) => `via ${v.state} #${v.number}`),
+      ...(n.stale ? ["stale, restack pending"] : []),
+      ...(n.off === null
+        ? []
+        : [
+            t.org.graphOffReason(
+              n.off.reason,
+              label(n.off.reason === "old-line" || n.off.reason === "unread" ? n.parent : n.off.at),
+              n.relation,
+              n.base,
+            ),
+          ]),
+    ];
+    const size = n.ahead === null ? "" : ` +${n.ahead}${n.behind ? ` -${n.behind}` : ""}`;
+    const proposal =
+      n.proposal === null
+        ? t.org.graphNoProposal()
+        : `proposal #${n.proposal.number} ${n.proposal.status}`;
+    const origins = n.origins.map((o) => `${o.origin} #${o.number} ${o.relation}`);
+    return [
+      `#${n.number} ${n.branch} ${short(n.head)}${size}`,
+      ...(marks.length > 0 ? [`[${marks.join(", ")}]`] : []),
+      proposal,
+      ...origins,
+    ].join("  ");
+  };
+  const byNumber = new Map(g.nodes.map((n) => [n.number, n]));
+  const depth = (n: ProposalGraphNode): number => {
+    let d = 1;
+    let at = n.parent;
+    // The nodes arrive in chain order; the cap guards a cycle of declared bases.
+    while (at !== null && at !== 0 && d < g.nodes.length + 1) {
+      d++;
+      at = byNumber.get(at)?.parent ?? null;
+    }
+    return d;
+  };
+  // Each deployment sits on a layer (0 = the base branch) or on none; a server older than the field sends none.
+  const deployments = g.deployments ?? [];
+  const deploymentMark = (d: ProposalGraphDeployment): string =>
+    `@${d.id} ${short(d.commit)}${d.relation === "ahead" ? ` +${d.ahead}` : ""}`;
+  const on = (at: number): string => {
+    const marks = deployments.filter((d) => d.at === at).map(deploymentMark);
+    return marks.length > 0 ? `  ${marks.join("  ")}` : "";
+  };
+  const offDeployments = deployments.filter((d) => d.at === null);
+  const chain = g.nodes.filter((n) => n.onChain);
+  const off = g.nodes.filter((n) => !n.onChain);
+  const blocks = [
+    [
+      `${g.repo} ${g.base.branch} ${short(g.base.head)}${g.base.fork ? (stacks > 1 ? `  [${stacks} stacks]` : "  [fork]") : ""}${on(0)}`,
+      ...chain.map((n) => indent(depth(n), line(n) + on(n.number))),
+    ].join("\n"),
+    ...(off.length > 0
+      ? [[t.org.graphOffChain(), ...off.map((n) => indent(1, line(n) + on(n.number)))].join("\n")]
+      : []),
+    ...(offDeployments.length > 0
+      ? [
+          [
+            t.org.graphDeploymentsOff(),
+            ...offDeployments.map((d) =>
+              indent(
+                1,
+                `@${d.id} ${short(d.commit)}  ${d.describe ?? "-"}  ${d.url ?? "-"}${d.error === null ? "" : `  (${d.error})`}`,
+              ),
+            ),
+          ].join("\n"),
+        ]
+      : []),
+    ...(g.unplaced.length > 0
+      ? [
+          [
+            t.org.graphUnplaced(),
+            ...g.unplaced.map((p) =>
+              indent(
+                1,
+                `proposal #${p.number} ${p.status}  ${p.implPr ?? p.branch ?? "?"}  [${t.org.graphUnplacedReason(
+                  p.reason,
+                  label(p.at),
+                  p.into ?? "?",
+                  g.base.branch,
+                )}]`,
+              ),
+            ),
+          ].join("\n"),
+        ]
+      : []),
+    ...(g.errors.length > 0
+      ? [[t.org.graphErrors(), ...g.errors.map((e) => indent(1, e))].join("\n")]
+      : []),
+  ];
+  return `${blocks.join("\n\n")}\n`;
+}
+
+/** `proposal deployment ls`: one registered deployment per line — id, url, install id, who registered it and when. */
+function renderDeployments(res: ProposalDeploymentsResponse): string {
+  if (res.deployments.length === 0) return "";
+  const lines = res.deployments.map((d) =>
+    [d.id, d.url ?? "-", d.installId ?? "-", d.by, d.registeredAt].join("  "),
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+/** The order when the server sends no declared groups (one older than the declaration). */
+const DEFAULT_TEST_GROUP_ORDER = ["unit", "integration", "e2e", "bench"];
+
+/**
+ * A proposal's tests by group, in the declared order; a group no longer declared follows,
+ * alphabetically, marked. Without a declaration (a server older than it) nothing is marked.
+ */
+function testGroups(
+  tests: readonly ProposalTestEntry[],
+  declaredGroups: readonly string[] | undefined,
+): [string, ProposalTestEntry[], boolean][] {
+  const declared = declaredGroups ?? DEFAULT_TEST_GROUP_ORDER;
+  const byGroup = new Map<string, ProposalTestEntry[]>();
+  for (const test of tests) byGroup.set(test.group, [...(byGroup.get(test.group) ?? []), test]);
+  const rank = (g: string): number => {
+    const i = declared.indexOf(g);
+    return i === -1 ? declared.length : i;
+  };
+  return [...byGroup]
+    .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(([g, entries]) => [g, entries, declaredGroups === undefined || declared.includes(g)]);
+}
+
+/**
+ * `proposal show`: the head, the brief, the scope, the materials, the sections as Markdown —
+ * with the comments' passages marked and the comments by id when the server sent that text —
+ * the tests by group, and the events.
+ */
+function renderProposal(d: ProposalDetail, t: Messages, marked: string | null): string {
+  const head = [
+    t.org.proposalHead(d.number, d.title, d.status, d.revision),
+    ...(d.approvedRevision !== null ? [t.org.proposalApproved(d.approvedRevision)] : []),
+    ...(d.approvedRevision !== null && d.approvedRevision < d.revision
+      ? [t.org.proposalRevisedAfterApproval(d.approvedRevision, d.revision)]
+      : []),
+    t.org.proposalPeople(d.author, d.implementer, d.delegatedBy),
+    ...(implLine(d, t) !== null ? [implLine(d, t)!] : []),
+    ...(d.brief.trim() !== "" ? [t.org.proposalBrief(d.brief)] : []),
+    ...(d.sessions.length > 0 ? [t.org.proposalSessions(d.sessions.join(", "))] : []),
+  ];
+  const scope =
+    d.scope.length === 0
+      ? []
+      : [
+          [
+            t.org.proposalScope(d.root),
+            // Kinds and states stay in English: they are field values, like the events' kinds.
+            ...d.scope.map(
+              (s) =>
+                `  ${s.kind === "rename" && s.from !== undefined ? `rename ${s.from} → ${s.file}` : `${s.kind} ${s.file}`}${s.state !== undefined ? `  [${s.state}]` : ""}${s.name !== undefined ? `  /${s.name}/` : ""}`,
+            ),
+          ].join("\n"),
+        ];
+  const materials =
+    d.materials.length === 0
+      ? []
+      : [
+          [
+            t.org.proposalMaterials(),
+            ...d.materials.map(
+              (m) =>
+                `  ${m.kind}  ${m.label}  ${m.url}${m.status === undefined ? "" : `  (${m.status})`}`,
+            ),
+          ].join("\n"),
+        ];
+  // The sections are the document itself: what `show` prints is what `publish --file` sent —
+  // or, once there are comments, the server's marked rendering of it (`⟦<id>⟧…⟦/<id>⟧` around
+  // each passage, the comments by id under it), which is how an agent reads a comment.
+  const sections =
+    marked !== null
+      ? [marked.trimEnd()]
+      : d.sections.map((section) =>
+          [`## ${section.heading}`, ...section.paragraphs.map((p) => p.text)].join("\n\n"),
+        );
+  const tests =
+    d.tests.length === 0
+      ? []
+      : [
+          [
+            t.org.proposalTests(),
+            // Kinds, groups and states stay in English: they are field values.
+            ...testGroups(
+              d.tests,
+              d.testGroups?.map((g) => g.id),
+            ).flatMap(([group, entries, declared]) => [
+              `  ${group} (${entries.length})${declared ? "" : ` ${t.org.proposalGroupUndeclared()}`}:`,
+              ...entries.map(
+                (e) =>
+                  `    ${e.kind} ${e.file}${e.name !== undefined ? ` [${e.name}]` : ""} — ${e.description}${e.state !== undefined ? ` (${e.state})` : ""}`,
+              ),
+            ]),
+          ].join("\n"),
+        ];
+  const comments: string[] = [];
+  // The kinds stay in English: they are field values, like a ticket history's actions.
+  const events = d.events.map(
+    (e) =>
+      `${e.at} ${e.by} ${e.kind}${e.revision !== undefined ? ` r${e.revision}` : ""}${e.text !== undefined ? `: ${e.text}` : ""}`,
+  );
+  const blocks = [
+    head.join("\n"),
+    ...scope,
+    ...materials,
+    ...sections,
+    ...tests,
+    ...comments,
+    ...(events.length > 0 ? [`${t.org.proposalEvents()}\n${events.join("\n")}`] : []),
   ];
   return `${blocks.join("\n\n")}\n`;
 }
@@ -1631,6 +2006,481 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     await scope.client.request("DELETE", `${scope.base}/handbook/files/${encPath(rel)}`);
     if (opts.json === true) printJson({ ok: true, path: rel });
     else printLine(t.org.handbookRemoved(rel));
+  });
+
+  // ---- proposals (the company-proposals plugin's routes) ----
+
+  const proposal = org.command("proposal").description(t.org.proposalDesc);
+
+  /** The write commands that carry only the caller's identity and print the proposal's new state. */
+  const statusCommand = (name: string, description: string, action: string): void => {
+    scoped(proposal.command(`${name} <number>`).description(description), t).action(
+      async (raw: string, opts) => {
+        const number = parseProposalNumber(raw, t);
+        if (number === null) return;
+        const scope = await orgScope(opts, t);
+        if (scope === null) return;
+        const detail = await proposalRequest<ProposalDetail>(
+          scope,
+          t,
+          "POST",
+          `/${number}/${action}`,
+          { ...actorFields() },
+        );
+        if (detail === null) return;
+        if (opts.json === true) printJson(detail);
+        else printLine(t.org.proposalStatusSet(detail.number, detail.status));
+      },
+    );
+  };
+
+  scoped(
+    proposal
+      .command("ls")
+      .description(t.org.proposalLsDesc)
+      .option("--status <status>", t.org.proposalStatusFilter),
+    t,
+  ).action(async (opts) => {
+    const status = opts.status !== undefined ? parseProposalStatus(String(opts.status), t) : null;
+    if (opts.status !== undefined && status === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const res = await proposalRequest<ProposalsResponse>(scope, t, "GET", "");
+    if (res === null) return;
+    const proposals =
+      status === null ? res.proposals : res.proposals.filter((p) => p.status === status);
+    if (opts.json === true) {
+      printJson({ proposals });
+      return;
+    }
+    if (proposals.length === 0) {
+      printLine(t.org.proposalsEmpty());
+      return;
+    }
+    process.stdout.write(renderProposals(proposals, t));
+  });
+
+  scoped(proposal.command("groups").description(t.org.proposalGroupsDesc), t).action(
+    async (opts) => {
+      const scope = await orgScope(opts, t);
+      if (scope === null) return;
+      const res = await proposalRequest<ProposalTestGroupsResponse>(
+        scope,
+        t,
+        "GET",
+        "/test-groups",
+      );
+      if (res === null) return;
+      if (opts.json === true) {
+        printJson(res);
+        return;
+      }
+      if (res.groups.length === 0) {
+        printLine(t.org.proposalGroupsEmpty());
+        return;
+      }
+      for (const g of res.groups) printLine(`${g.id}: ${g.description}`);
+    },
+  );
+
+  scoped(proposal.command("show <number>").description(t.org.proposalShowDesc), t).action(
+    async (raw: string, opts) => {
+      const number = parseProposalNumber(raw, t);
+      if (number === null) return;
+      const scope = await orgScope(opts, t);
+      if (scope === null) return;
+      const detail = await proposalRequest<ProposalDetail>(
+        scope,
+        t,
+        "GET",
+        `/${number}${query(actorQuery())}`,
+      );
+      if (detail === null) return;
+      if (opts.json === true) {
+        printJson(detail);
+        return;
+      }
+      // With comments on it, the body is printed as the server marks it for an agent.
+      const marked =
+        detail.comments.length === 0
+          ? null
+          : await proposalRequest<ProposalCommentsResponse>(
+              scope,
+              t,
+              "GET",
+              `/${number}/comments${query(actorQuery())}`,
+            );
+      process.stdout.write(renderProposal(detail, t, marked === null ? null : marked.text));
+    },
+  );
+
+  scoped(
+    proposal
+      .command("create")
+      .description(t.org.proposalCreateDesc)
+      .option("--author <agent_id>", t.org.proposalAuthor)
+      .requiredOption("--brief <text>", t.org.proposalBrief_)
+      .option("--title <title>", t.org.proposalTitle),
+    t,
+  ).action(async (opts) => {
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "POST", "", {
+      ...(opts.author !== undefined ? { author: String(opts.author) } : {}),
+      brief: String(opts.brief),
+      ...(opts.title !== undefined ? { title: String(opts.title) } : {}),
+      ...actorFields(),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else printLine(t.org.proposalCreated(detail.number, detail.title));
+  });
+
+  scoped(
+    proposal
+      .command("publish <number>")
+      .description(t.org.proposalPublishDesc)
+      .requiredOption("--file <file>", t.org.proposalFile),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    let markdown: string;
+    try {
+      markdown = fs.readFileSync(String(opts.file), "utf8");
+    } catch {
+      fail(t, t.org.bodyFileUnreadable(String(opts.file)));
+      return;
+    }
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "PUT", `/${number}`, {
+      markdown,
+      ...actorFields(),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else {
+      printLine(t.org.proposalPublished(detail.number, detail.revision));
+      for (const hint of detail.hints ?? []) printLine(t.org.proposalHint(hint));
+    }
+  });
+
+  scoped(
+    proposal
+      .command("brief <number>")
+      .description(t.org.proposalBriefDesc)
+      .option("-m, --message <text>", t.org.proposalBriefText)
+      .option("--file <file>", t.org.proposalBriefFile),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    if ((opts.message === undefined) === (opts.file === undefined)) {
+      fail(t, t.org.proposalBriefOneSource);
+      return;
+    }
+    let brief: string;
+    if (opts.file !== undefined) {
+      try {
+        brief = fs.readFileSync(String(opts.file), "utf8");
+      } catch {
+        fail(t, t.org.bodyFileUnreadable(String(opts.file)));
+        return;
+      }
+    } else brief = String(opts.message);
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "PUT", `/${number}/brief`, {
+      brief,
+      ...actorFields(),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else {
+      printLine(t.org.proposalBriefRewritten(detail.number));
+      for (const hint of detail.hints ?? []) printLine(t.org.proposalHint(hint));
+    }
+  });
+
+  statusCommand("ready", t.org.proposalReadyDesc, "ready");
+  statusCommand("approve", t.org.proposalApproveDesc, "approve");
+  statusCommand("merged", t.org.proposalMergedDesc, "merged");
+
+  scoped(
+    proposal
+      .command("reject <number>")
+      .description(t.org.proposalRejectDesc)
+      .requiredOption("--reason <text>", t.org.proposalRejectReason),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "POST", `/${number}/reject`, {
+      reason: String(opts.reason),
+      ...actorFields(),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else printLine(t.org.proposalStatusSet(detail.number, detail.status));
+  });
+
+  scoped(
+    proposal
+      .command("implement <number>")
+      .description(t.org.proposalImplementDesc)
+      .option("--agent <agent_id>", t.org.proposalImplementer)
+      .option("-m, --message <text>", t.org.proposalMessage)
+      .option("--workspace <path>", t.org.proposalWorkspace),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    // `agentId` names the IMPLEMENTER here, so the caller's own identity travels as
+    // `callerAgentId` rather than under the field {@link actorFields} would use.
+    const { sessionId, agentId: callerAgentId } = actorFields();
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "POST", `/${number}/implement`, {
+      ...(opts.agent !== undefined ? { agentId: String(opts.agent) } : {}),
+      ...(opts.message !== undefined ? { message: String(opts.message) } : {}),
+      ...(opts.workspace !== undefined ? { workspace: String(opts.workspace) } : {}),
+      ...(sessionId !== undefined ? { sessionId } : {}),
+      ...(callerAgentId !== undefined ? { callerAgentId } : {}),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else {
+      printLine(
+        t.org.proposalImplementing(
+          detail.number,
+          detail.implementer ?? detail.author,
+          detail.sessions[detail.sessions.length - 1] ?? "",
+        ),
+      );
+    }
+  });
+
+  scoped(proposal.command("graph").description(t.org.proposalGraphDesc), t).action(async (opts) => {
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const graph = await proposalRequest<ProposalGraphResponse>(
+      scope,
+      t,
+      "GET",
+      `/graph${query(actorQuery())}`,
+    );
+    if (graph === null) return;
+    if (opts.json === true) printJson(graph);
+    else process.stdout.write(renderGraph(graph, t));
+  });
+
+  const kit: DeployKit = {
+    scoped: (cmd) => scoped(cmd, t),
+    open: async (opts) => {
+      const scope = await orgScope(opts, t);
+      if (scope === null) return null;
+      return <T>(method: string, suffix: string, body?: unknown) =>
+        proposalRequest<T>(scope, t, method, suffix, body);
+    },
+    actorFields,
+    actorQuery: () => query(actorQuery()),
+    fail: (message) => fail(t, message),
+    print: printLine,
+    printJson,
+    write: (text) => process.stdout.write(text),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  };
+  registerProposalImpl(proposal, t, kit);
+  registerProposalDeploy(proposal, t, kit);
+
+  const deployment = proposal.command("deployment").description(t.org.proposalDeploymentDesc);
+  scoped(
+    deployment
+      .command("add <id>")
+      .description(t.org.proposalDeploymentAddDesc)
+      .option("--url <url>", t.org.proposalDeploymentUrlOpt),
+    t,
+  ).action(async (id: string, opts) => {
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const url = typeof opts.url === "string" ? opts.url : undefined;
+    const res = await proposalRequest<ProposalDeploymentsResponse>(
+      scope,
+      t,
+      "POST",
+      "/deployments",
+      { id, ...(url !== undefined ? { url } : {}), ...actorFields() },
+    );
+    if (res === null) return;
+    if (opts.json === true) printJson(res);
+    else {
+      const added = res.deployments.find((d) => d.id === id);
+      printLine(t.org.deploymentRegistered(id, added?.url ?? url ?? null));
+    }
+  });
+  scoped(deployment.command("ls").description(t.org.proposalDeploymentLsDesc), t).action(
+    async (opts) => {
+      const scope = await orgScope(opts, t);
+      if (scope === null) return;
+      const res = await proposalRequest<ProposalDeploymentsResponse>(
+        scope,
+        t,
+        "GET",
+        `/deployments${query(actorQuery())}`,
+      );
+      if (res === null) return;
+      if (opts.json === true) printJson(res);
+      else process.stdout.write(renderDeployments(res));
+    },
+  );
+
+  const material = proposal.command("material").description(t.org.proposalMaterialDesc);
+  scoped(
+    material
+      .command("add <number> <material>")
+      .description(t.org.proposalMaterialAddDesc)
+      .option("--label <text>", t.org.proposalMaterialLabel),
+    t,
+  ).action(async (raw: string, rawMaterial: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    const parsed = parseMaterial(rawMaterial, t);
+    if (parsed === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "POST", `/${number}/materials`, {
+      kind: parsed.kind,
+      url: parsed.url,
+      ...(opts.label !== undefined ? { label: String(opts.label) } : {}),
+      ...actorFields(),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else printLine(t.org.proposalMaterialAdded(detail.number, parsed.kind));
+  });
+
+  scoped(
+    proposal
+      .command("feedback <number>")
+      .description(t.org.proposalFeedbackDesc)
+      .requiredOption("-m, --message <text>", t.org.proposalFeedbackText)
+      .option("--runtime", t.org.proposalRuntime),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(scope, t, "POST", `/${number}/feedback`, {
+      text: String(opts.message),
+      ...(opts.runtime === true ? { runtime: true } : {}),
+      ...actorFields(),
+    });
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else printLine(t.org.proposalFeedbackRecorded(detail.number));
+  });
+
+  scoped(
+    proposal
+      .command("conclude <number>")
+      .description(t.org.proposalConcludeDesc)
+      .requiredOption("-m, --message <text>", t.org.proposalConclusionText)
+      .option("--discussion <session_id>", t.org.proposalDiscussion),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    // Inside the discussion the session is the discussion; a person outside names it.
+    const discussion =
+      (typeof opts.discussion === "string" ? opts.discussion.trim() : "") || callerSessionId();
+    if (discussion === undefined) {
+      fail(t, t.org.proposalDiscussionMissing);
+      return;
+    }
+    if (refuseDotSegments(discussion, t)) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(
+      scope,
+      t,
+      "POST",
+      `/${number}/discussions/${enc(discussion)}/conclude`,
+      { text: String(opts.message), ...actorFields() },
+    );
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else {
+      const owner =
+        detail.discussions.find((d) => d.sessionId === discussion)?.agentId ??
+        detail.implementer ??
+        detail.author;
+      printLine(t.org.proposalConcluded(detail.number, owner));
+    }
+  });
+
+  scoped(
+    proposal
+      .command("comments <number>")
+      .description(t.org.proposalCommentsDesc)
+      .option("--pending", t.org.proposalPending),
+    t,
+  ).action(async (raw: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    // `--pending` is the author's view: what a person has requested and nobody has resolved.
+    // The server renders the text: the passages marked, the comments by id — no offsets.
+    const res = await proposalRequest<ProposalCommentsResponse>(
+      scope,
+      t,
+      "GET",
+      `/${number}/comments${query([
+        ["pending", opts.pending === true ? "1" : undefined],
+        ...actorQuery(),
+      ])}`,
+    );
+    if (res === null) return;
+    if (opts.json === true) {
+      printJson({ number: res.number, comments: res.comments });
+      return;
+    }
+    if (res.comments.length === 0) {
+      printLine(t.org.proposalCommentsEmpty(res.number));
+      return;
+    }
+    process.stdout.write(res.text.endsWith("\n") ? res.text : `${res.text}\n`);
+  });
+
+  scoped(
+    proposal
+      .command("resolve <number> <comment_id>")
+      .description(t.org.proposalResolveDesc)
+      .option("-m, --message <text>", t.org.proposalResolveText),
+    t,
+  ).action(async (raw: string, commentId: string, opts) => {
+    const number = parseProposalNumber(raw, t);
+    if (number === null) return;
+    if (refuseDotSegments(commentId, t)) return;
+    const scope = await orgScope(opts, t);
+    if (scope === null) return;
+    const detail = await proposalRequest<ProposalDetail>(
+      scope,
+      t,
+      "POST",
+      `/${number}/comments/${enc(commentId)}/resolve`,
+      {
+        ...(opts.message !== undefined ? { text: String(opts.message) } : {}),
+        ...actorFields(),
+      },
+    );
+    if (detail === null) return;
+    if (opts.json === true) printJson(detail);
+    else printLine(t.org.proposalCommentResolved(detail.number, commentId));
   });
 
   // ---- finance ----
