@@ -33,6 +33,7 @@ import { RoadmapService } from "./service.js";
 import { ProposalCreator } from "./proposals.js";
 import { ROUTES_ID, roadmapRoutes } from "./routes.js";
 import { roadmapCode } from "./builtin-actions.js";
+import { ROADMAP_NOTICE_IDS } from "./notices.js";
 import { PAGE_ROUTES_ID, pageRoutes } from "./page.js";
 import { claimListeners, roomClaim, type ClaimListener } from "./claim.js";
 import {
@@ -113,6 +114,7 @@ export {
 } from "./page.js";
 export { claimListeners, discussingRoomOf, roomClaim } from "./claim.js";
 export { ProposalCreator };
+export * from "./notices.js";
 export { RetiredOrgs, retireListeners, retireRegistered } from "./org-retire.js";
 export type { OrgRef, RetireListener } from "./org-retire.js";
 export type { ChannelRef, ClaimListener } from "./claim.js";
@@ -228,6 +230,55 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
         kind: "subject",
         subjects: ["roadmap", "item"],
       },
+      // The notices the writes send (notices.ts): replaceable, run only as a write's notice.
+      {
+        id: "company-roadmaps.notify.room-joined",
+        kind: "action",
+        key: "notify.roadmap.room_joined",
+        subjects: ["roadmap"],
+        params: { to: "string[]", text: "string", runId: "string" },
+        description: "Tell an opening employee the room it is in and its room session there.",
+      },
+      {
+        id: "company-roadmaps.notify.derived",
+        kind: "action",
+        key: "notify.roadmap.derived",
+        subjects: ["roadmap"],
+        params: { to: "string[]", text: "string", runId: "string" },
+        description: "Tell a derived roadmap's moderator its room is open, or to open one.",
+      },
+      {
+        id: "company-roadmaps.notify.item-approved",
+        kind: "action",
+        key: "notify.roadmap.item_approved",
+        subjects: ["item"],
+        params: { to: "string[]", text: "string", runId: "string" },
+        description: "Tell an item's owner its proposal was created (or rewritten) on approval.",
+      },
+      {
+        id: "company-roadmaps.notify.base-linked",
+        kind: "action",
+        key: "notify.roadmap.base_linked",
+        subjects: ["item"],
+        params: { to: "string[]", text: "string", runId: "string" },
+        description: "Tell the owner of a stacked item the number of its base's proposal.",
+      },
+      {
+        id: "company-roadmaps.notify.approval-requested",
+        kind: "action",
+        key: "notify.roadmap.approval_requested",
+        subjects: ["roadmap"],
+        params: { to: "string[]", text: "string", sessionId: "string", runId: "string" },
+        description: "Ask the moderator, in its room session, for its approvals of the briefs.",
+      },
+      {
+        id: "company-roadmaps.notify.reopened",
+        kind: "action",
+        key: "notify.roadmap.reopened",
+        subjects: ["roadmap"],
+        params: { to: "string[]", text: "string", sessionIds: "string[]", runId: "string" },
+        description: "Tell every open room session the roadmap is discussed again, and why.",
+      },
     ],
     "HttpModule.routes": [
       {
@@ -327,6 +378,12 @@ export class CompanyRoadmapsPlugin {
   @Bind("company-roadmaps.action.rename") renameAction!: unknown;
   @Bind("company-roadmaps.action.room") roomAction!: unknown;
   @Bind("company-roadmaps.subjects") subjects!: unknown;
+  @Bind("company-roadmaps.notify.room-joined") roomJoinedNotice!: unknown;
+  @Bind("company-roadmaps.notify.derived") derivedNotice!: unknown;
+  @Bind("company-roadmaps.notify.item-approved") itemApprovedNotice!: unknown;
+  @Bind("company-roadmaps.notify.base-linked") baseLinkedNotice!: unknown;
+  @Bind("company-roadmaps.notify.approval-requested") approvalRequestedNotice!: unknown;
+  @Bind("company-roadmaps.notify.reopened") reopenedNotice!: unknown;
 
   setup({ effect }: ClassCtx) {
     const service = new RoadmapService({
@@ -355,6 +412,12 @@ export class CompanyRoadmapsPlugin {
     this.renameAction = code["company-roadmaps.action.rename"];
     this.roomAction = code["company-roadmaps.action.room"];
     this.subjects = code["company-roadmaps.subjects"];
+    this.roomJoinedNotice = code[ROADMAP_NOTICE_IDS.room_joined];
+    this.derivedNotice = code[ROADMAP_NOTICE_IDS.derived];
+    this.itemApprovedNotice = code[ROADMAP_NOTICE_IDS.item_approved];
+    this.baseLinkedNotice = code[ROADMAP_NOTICE_IDS.base_linked];
+    this.approvalRequestedNotice = code[ROADMAP_NOTICE_IDS.approval_requested];
+    this.reopenedNotice = code[ROADMAP_NOTICE_IDS.reopened];
     // What the claim node claims is relayed at once, not at the next poll (claim.ts).
     const listener: ClaimListener = (channel, number) => {
       setImmediate(() => {
