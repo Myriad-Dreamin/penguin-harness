@@ -76,11 +76,11 @@ describe("NodeListSection", () => {
   it("gives every listed PR the deploy menu the page wraps its rows in", () => {
     const html = list((n, row) =>
       createElement(DeployableRow, {
+        projectId: "p",
+        orgId: "o",
         node: n,
-        scripts: [],
-        scriptsError: null,
+        subject: `pr:acme/app#${n.number}`,
         onPick: () => {},
-        onAssociate: () => {},
         children: row,
       }),
     );
@@ -132,11 +132,11 @@ describe("a branch node", () => {
   it("keeps the deploy menu, named by its branch", () => {
     const html = renderToStaticMarkup(
       createElement(DeployableRow, {
+        projectId: "p",
+        orgId: "o",
         node: branch,
-        scripts: [],
-        scriptsError: null,
+        subject: "proposal:184",
         onPick: () => {},
-        onAssociate: () => {},
         children: createElement(NodeRow, {
           graph: withBranch,
           node: branch,
