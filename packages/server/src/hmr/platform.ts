@@ -79,7 +79,7 @@ import {
 import type { Interfaces, MembersOf, ReassemblyChange } from "./capabilities.js";
 import { PLUGINS_RESOURCE_ID, pluginHostFrom } from "../plugin/host.js";
 import type { PluginHost } from "../plugin/host.js";
-import { loadPluginHost } from "../plugin/loader.js";
+import { loadPluginHost, RESIDENT_PLUGINS } from "../plugin/loader.js";
 import {
   useInstalledPluginPrefix,
   usePushedPluginLibrary,
@@ -477,6 +477,7 @@ async function createInner(
           // A Project may list a plugin for one machine only (`[plugins.<machineId>]`); this
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
+          RESIDENT_PLUGINS,
           // Telemetry's plugin.load, one per plugin imported — kept like the boot timings. A
           // plugin named by a path (a dev checkout) goes unnamed: samples carry no paths.
           (plugin, ms, ok) =>
