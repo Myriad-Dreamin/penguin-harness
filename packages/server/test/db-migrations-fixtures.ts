@@ -96,6 +96,8 @@ export function dropPortForwardsAndLater(db: DatabaseSync): void {
   );
   // And the machine definitions, newer still.
   db.exec("DROP TABLE IF EXISTS machine_definitions;");
+  // And the desk-mention queue, newer again.
+  db.exec("DROP TABLE IF EXISTS org_desk_mentions;");
   db.exec("DROP TABLE IF EXISTS messaging_conversations");
   db.exec(
     "DROP INDEX IF EXISTS idx_agent_api_keys_agent; DROP TABLE IF EXISTS agent_api_keys; DROP TABLE IF EXISTS agent_api;",
