@@ -84,6 +84,7 @@ import type {
   OrganizationsResponse,
   PluginConfigActionResponse,
   PluginConfigResponse,
+  PluginContentsResponse,
   PluginFilesResponse,
   PluginIndexEntry,
   PluginLibraryResponse,
@@ -2137,6 +2138,15 @@ router
     const name = query.get("name") ?? "";
     return { name, readme: store.f.readmes[name] ?? null };
   })
+  // The contents behind a name's row: the ones the demo's index lists, none of them in a store.
+  .get("/api/plugins/registry/contents", ({ store, query }): PluginContentsResponse => {
+    const name = query.get("name") ?? "";
+    const rows = store.f.pluginIndex.plugins.filter((p) => p.name === name);
+    return {
+      name,
+      contents: rows.map((p) => ({ version: p.version, stored: false, linked: false })),
+    };
+  })
   // A listed server module's package as a zip: the demo's bytes stand in for the package.
   .get("/api/plugins/registry/archive", ({ store, query }) => {
     const name = query.get("name") ?? "";
@@ -2618,6 +2628,13 @@ router
     "/api/projects/:projectId/organizations/:orgId/roadmaps/:number/items/:key/approve",
     companyOff,
   )
+  // The company-proposals plugin's Action routes — every write to the organization's proposals
+  // and roadmaps is an Action run, `POST …/actions/<key>/runs`, recorded as one and read back
+  // from `/runs`: company mode is off in the demo, as for every other organization route.
+  .post("/api/projects/:projectId/organizations/:orgId/actions/:key/runs", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/actions", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/actions/runs", companyOff)
+  .get("/api/projects/:projectId/organizations/:orgId/actions/runs/:id", companyOff)
   // The company-proposals plugin's routes: company mode is off in the demo, as for the rest.
   .get("/api/projects/:projectId/organizations/:orgId/proposals", companyOff)
   .post("/api/projects/:projectId/organizations/:orgId/proposals", companyOff)

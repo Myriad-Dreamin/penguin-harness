@@ -32,8 +32,12 @@ function wrappers(): [name: string, fn: AnyFn][] {
   return found;
 }
 
-/** Dummy arguments: ids everywhere; a wrapper reading a field off one gets `undefined`, which its path tolerates. */
-const ARGS = ["a", "b", "c", "d", "e", "f"];
+/**
+ * Dummy arguments: ids for the first three, plain objects for the rest — a wrapper reading a
+ * field off either gets `undefined`, and a membership test on a body takes the arm without the
+ * field; each one's path tolerates that.
+ */
+const ARGS: unknown[] = ["a", "b", "c", {}, {}, {}];
 
 describe("the mocked API", () => {
   // One fresh store per wrapper rebuilds every fixture, the Self-evolution transcript and the
