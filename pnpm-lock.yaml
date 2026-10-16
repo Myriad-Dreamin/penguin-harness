@@ -202,6 +202,9 @@ importers:
       '@penguinharness/agent-company':
         specifier: workspace:*
         version: link:../../plugins/agent-company
+      '@penguinharness/agent-company-proposals':
+        specifier: workspace:*
+        version: link:../../plugins/agent-company-proposals
       '@penguinharness/agent-development':
         specifier: workspace:*
         version: link:../../plugins/agent-development
@@ -308,6 +311,9 @@ importers:
       '@penguinharness/agent-company':
         specifier: workspace:*
         version: link:../../plugins/agent-company
+      '@penguinharness/agent-company-proposals':
+        specifier: workspace:*
+        version: link:../../plugins/agent-company-proposals
       '@penguinharness/agent-development':
         specifier: workspace:*
         version: link:../../plugins/agent-development
@@ -989,7 +995,6 @@ importers:
         specifier: ^3.2.6
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)(happy-dom@20.14.5)(jiti@2.7.0)(lightningcss@1.32.0)(supports-color@10.2.2)(tsx@4.22.4)(yaml@2.9.0)
 
-  plugins/model-development: {}
   plugins/model-development:
     devDependencies:
       '@prismshadow/skills':
