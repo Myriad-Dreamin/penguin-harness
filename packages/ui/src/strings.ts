@@ -130,6 +130,10 @@ export interface UiStrings {
   pagePosition: (page: number, pageCount: number) => string;
   /** The A2UI blocks' words. */
   a2ui: A2uiStrings;
+  /** The name of the handle on a resizable dialog's side border (`PagedDialog`). */
+  resizeWidth: string;
+  /** The name of the handle on a resizable dialog's bottom border (`PagedDialog`). */
+  resizeHeight: string;
 }
 
 /** The English fallbacks, used wherever no provider is mounted (a test, a stand-alone page). */
@@ -205,6 +209,8 @@ export const DEFAULT_UI_STRINGS: UiStrings = {
     deltaUp: "up",
     deltaDown: "down",
   },
+  resizeWidth: "Resize width",
+  resizeHeight: "Resize height",
 };
 
 const UiStringsContext = createContext<UiStrings>(DEFAULT_UI_STRINGS);
