@@ -49,7 +49,7 @@ import { useLocale } from "../../state/locale";
 import { agentDisplayName } from "../../state/project";
 import { SkillTile } from "../skills/skill-icon-view";
 import { MetaLine, PluginDetailModal, moduleOnThisServer } from "./plugin-detail";
-import type { PluginRow } from "./plugin-groups";
+import { platformName, type PluginRow } from "./plugin-groups";
 import { McpServerMarks, McpSetUpModal, StdioInstallBody } from "./plugin-mcp";
 import {
   PluginTag,
@@ -300,6 +300,8 @@ export function PluginCard(props: PluginCardProps) {
         const cannotInstall =
           install && !mod.shipped && mod.entry !== undefined && mod.entry.integrity === undefined
             ? S.plugins.cannotInstallHere
+          install && mod.otherPlatform !== undefined
+            ? S.plugins.otherPlatformHint(mod.otherPlatform.map(platformName).join(" / "))
             : null;
         const label = install
           ? props.busy
@@ -317,6 +319,7 @@ export function PluginCard(props: PluginCardProps) {
             data-tooltip-extra={
               (!install && mod.removeBlocked !== undefined) || cannotInstall !== null
             }
+            data-tooltip-extra={!install && mod.removeBlocked !== undefined}
             aria-describedby={
               !install && mod.shared === true ? `${sharedId}-tag ${sharedId}-hint` : undefined
             }
@@ -458,7 +461,17 @@ export function PluginCard(props: PluginCardProps) {
         <div className="mt-2.5">
           <MetaLine>
             {version !== undefined && <span className="shrink-0 font-mono">v{version}</span>}
-            <StatusMark status={status} hint={hint} />
+            {row.module?.otherPlatform !== undefined ? (
+              <span
+                title={S.plugins.otherPlatformHint(
+                  row.module.otherPlatform.map(platformName).join(" / "),
+                )}
+              >
+                {S.plugins.otherPlatform(row.module.otherPlatform.map(platformName).join(" / "))}
+              </span>
+            ) : (
+              <StatusMark status={status} hint={hint} />
+            )}
             {usage !== null && (
               <span className="min-w-0 truncate">
                 {S.plugins.usedByAgents(usage.usedBy.length)}

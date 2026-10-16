@@ -17,6 +17,8 @@
   "author": "Prism Shadow",
   "categories": [
     "sandbox"
+  "penguinOs": [
+    "win32"
   ],
   "repository": {
     "type": "git",

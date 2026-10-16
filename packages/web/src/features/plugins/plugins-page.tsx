@@ -210,9 +210,10 @@ export function PluginsPage() {
   /** The registry: every module plugin this deployment could ask for. */
   const [index, setIndex] = useState<PluginIndexEntry[] | null>(null);
   /**
-   * Sources that answered with nothing. A published index that is down shortens the list
-   * instead of emptying it (the server merges tolerantly), so the page has to say so — a
-   * silently shorter list reads as "that plugin does not exist".
+   * The registry's request failed. A published index that is down shortens the list instead
+   * of emptying it (the server merges tolerantly), and the whole request failing leaves none
+   * of it — so the page has to say so: a silently shorter list reads as "that plugin does
+   * not exist", and a missing entry must not claim the registry had answered.
    */
   /** The specifier whose install or removal is running: the list is written one verb at a time. */
   const [pendingSpecifier, setPendingSpecifier] = useState<string | null>(null);
@@ -336,6 +337,28 @@ export function PluginsPage() {
         if (!cancelled) setIndex([]);
       },
     );
+    let recheck: ReturnType<typeof setTimeout> | undefined;
+    const read = () =>
+      api.getPluginIndex().then(
+        (res) => {
+          if (cancelled) return;
+          setIndex(res.plugins);
+          setIndexFailures(res.failures ?? []);
+          const pending = res.pending?.length ?? 0;
+          setIndexPending(pending);
+          if (pending > 0) recheck = setTimeout(() => void read(), INDEX_RECHECK_MS);
+        },
+        () => {
+          if (cancelled) return;
+          // A re-read that fails keeps what the last one listed.
+          // An empty answer is an answer; a failed request is not, and the rows with no entry
+          // must not read as though the registry had said "not listed".
+          setIndex((prev) => prev ?? []);
+          setIndexFailures([]);
+          setIndexPending(0);
+        },
+      );
+    void read();
     return () => {
       cancelled = true;
     };

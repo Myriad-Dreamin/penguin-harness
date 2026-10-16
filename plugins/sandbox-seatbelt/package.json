@@ -16,6 +16,8 @@
   "author": "Prism Shadow",
   "categories": [
     "sandbox"
+  "penguinOs": [
+    "darwin"
   ],
   "repository": {
     "type": "git",
