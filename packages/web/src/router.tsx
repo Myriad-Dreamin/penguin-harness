@@ -40,7 +40,7 @@ import { ModelsPage } from "./features/models/models-page";
 import { UsagePage } from "./features/usage/usage-page";
 import { BenchmarkPage } from "./features/benchmark/benchmark-page";
 import { BenchmarkDetailPage } from "./features/benchmark/benchmark-detail-page";
-import { TerminalPage } from "./features/terminal/terminal-page";
+import { TerminalPage } from "./features/terminal";
 import { OrgIndexRedirect, OrgLayout } from "./features/company/org-layout";
 import { OverviewPage } from "./features/company/overview-page";
 import { OrgChartPage } from "./features/company/org-chart-page";
@@ -50,6 +50,8 @@ import { FinancePage } from "./features/company/finance-page";
 import { ChannelView } from "./features/company/channel-view";
 import { HandbookPage } from "./features/company/handbook-page";
 import { MachinesPage } from "./features/machines/machines-page";
+import { MachinePortsPage } from "./features/ports/machine-ports-page";
+import { DashboardPage } from "./features/dashboard/dashboard-page";
 import { WorkflowAppPage } from "./features/workflows/workflow-app-page";
 import { PAGES } from "./lib/pages";
 import type { PageEntry } from "./lib/pages";
@@ -65,9 +67,11 @@ const BUILTIN_PAGES: Record<string, React.ComponentType> = {
   PluginsPage,
   ModelsPage,
   MachinesPage,
+  MachinePortsPage,
   UsagePage,
   BenchmarkPage,
   BenchmarkDetailPage,
+  DashboardPage,
 };
 
 function renderPage(page: PageEntry): React.ReactNode {

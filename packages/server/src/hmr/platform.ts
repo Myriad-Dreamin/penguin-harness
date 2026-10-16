@@ -92,7 +92,7 @@ import { takePushSlip } from "./push-plugins.js";
 import type { PushSlip } from "./push-plugins.js";
 import type { Errors } from "../mechanisms/observability.js";
 import type { UnsatisfiedPlugin } from "../api/types.js";
-import { migrate } from "../db/migrations.js";
+import { migrate } from "../db/migrations/index.js";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
 
@@ -302,11 +302,22 @@ export const DECLARED_RESOURCES: ParkedInterfaces = {
     "dispose",
   ],
   // A held ssh session to a machine, as the successor's transport claims it back
-  // (machines/transport/ssh-session.ts): commands, the SOCKS port, and its command stream. Every member the adopter calls, for the same reason as `terminal` — and the
-  // group's NAME carries a version, because a member that exists on an old object still runs
-  // the old object's code: a behavior change bumps the name, so the old group is disposed
-  // here (its sessions closed) and the machines are re-held fresh.
-  [SESSION_GROUP]: ["hold", "held", "retarget", "adopt", "run", "session", "close"],
+  // (machines/transport/ssh-session.ts): commands, the SOCKS port, its command stream, and
+  // the forwards it carries. Every member the adopter calls, for the same reason as `terminal`
+  // — and the group's NAME carries a version, because a member that exists on an old object
+  // still runs the old object's code: a behavior change bumps the name, so the old group is
+  // disposed here (its sessions closed) and the machines are re-held fresh.
+  [SESSION_GROUP]: [
+    "hold",
+    "held",
+    "retarget",
+    "adopt",
+    "run",
+    "session",
+    "close",
+    "setForwards",
+    "forwardFacts",
+  ],
   agent: ["state", "shape", "stopped"],
 };
 
@@ -349,9 +360,15 @@ async function createInner(
   // A pushed platform carries its own migrations, which is the only way the tables its
   // business needs can reach a runtime older than they are — that runtime will never grow
   // them by restarting, because it does not have them. swapPath: this boot can be rolled
-  // back, so a restart-only migration is refused here instead of being left behind. Before
-  // any node is created: every repo below prepares its statements against this schema.
-  if (caps !== null) migrate(caps.db, { swapPath: true });
+  // back, so contract migrations stay pending for the runtime's next open instead of being
+  // applied here; the boot never fails on them. Before any node is created: every repo below
+  // prepares its statements against this schema.
+  if (caps !== null) {
+    const { deferred } = migrate(caps.db, { swapPath: true });
+    if (deferred.length > 0) {
+      console.log(`[platform] left for the runtime's next restart: ${deferred.join(", ")}`);
+    }
+  }
   // Resource-interface reconciliation, BEFORE anything is adopted: integrate the groups
   // the predecessor declared at the version this build also declares, hard-stop the
   // rest — a version bump or a dropped group means this create() does not speak the
@@ -543,7 +560,9 @@ async function createInner(
   //
   // DELIVERED (survives the swap; the successor adopts it at load):
   //   - pty sessions        registry `terminal:*` + the terminal module's parked ids
-  //   - machine sessions    held ssh children claimed by the successor through the registry
+  //   - machine sessions    registry `machineSession.v2:*` — the held `ssh -T -D` child, its
+  //                         SOCKS channels and its port forwards; the successor's transport
+  //                         claims each by address (transient sessions are closed instead)
   //   - runtime singletons  db / auth-state / channels / config / proxy / desktop —
   //                         runtime-owned, re-claimed by every App
   //   - the Agent state     registry `agent:state` (PRFC-0015): running Tasks, pending

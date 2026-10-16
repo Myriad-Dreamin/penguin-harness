@@ -106,6 +106,7 @@ import type {
   SessionCreateResponse,
   SessionForkResponse,
   SessionInfo,
+  SessionsOverviewResponse,
   SessionProcessesResponse,
   SessionResponse,
   SessionsBatchResponse,
@@ -1085,6 +1086,21 @@ router
     });
     return { results };
   })
+  // The dashboard's read: every non-archived Session of the Project, over every Agent.
+  .get("/api/projects/:projectId/sessions/overview", ({ store }): SessionsOverviewResponse => ({
+    sessions: store.f.sessions
+      .filter((s) => !s.archived)
+      .map((s) => ({
+        sessionId: s.sessionId,
+        agentId: s.agentId,
+        workspace: s.workspace,
+        status: s.status,
+        hasTrace: s.hasTrace,
+        lastActiveAt: s.lastActiveAt,
+        ...(s.title !== undefined ? { title: s.title } : {}),
+        ...(s.source !== undefined ? { source: s.source } : {}),
+      })),
+  }))
   .get("/api/projects/:projectId/dirs", ({ store, query }): DirListResponse => {
     const path = query.get("path") || "/home/demo";
     const listing = store.f.dirs[path] ?? { path, parent: "/home/demo", entries: [] };
@@ -2350,6 +2366,15 @@ router
     }),
   )
   .post("/api/projects/:projectId/agents/:agentId/import", () => readOnly("import a snapshot"));
+
+// ---------------------------------------------------------------------------------------------
+// Port forwarding: the demo holds no machine session, so it lists none and opens none.
+// ---------------------------------------------------------------------------------------------
+
+router
+  .get("/api/port-forwards", () => ({ forwards: [] }))
+  .post("/api/port-forwards", () => readOnly("forward a port"))
+  .delete("/api/port-forwards/:id", () => readOnly("remove a port forward"));
 
 // ---------------------------------------------------------------------------------------------
 // Agent packages: publishing to a gist and installing from a source both reach GitHub or a

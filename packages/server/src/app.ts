@@ -52,7 +52,6 @@ import {
 import { ensureCliShim } from "./services/cli-shim.js";
 import { openDatabase } from "./db/database.js";
 import { MachinesRepo } from "./db/repos/machines.js";
-import { migrate } from "./db/migrations.js";
 import { ErrorsRepo } from "./db/repos/errors.js";
 import { MessagingBindingsRepo } from "./db/repos/messaging-bindings.js";
 import { SchedulesRepo } from "./db/repos/schedules.js";
@@ -61,7 +60,7 @@ import { SessionsRepo } from "./db/repos/sessions.js";
 import { UiPrefsRepo } from "./db/repos/ui-prefs.js";
 import { UsersRepo } from "./db/repos/users.js";
 import type { UserRow } from "./db/repos/users.js";
-import { authMiddleware, jsonOnlyWrites } from "./auth/middleware.js";
+import { authMiddleware, jsonOnlyWrites, sameOriginWrites } from "./auth/middleware.js";
 import { AMSP_PREFIX, amspAllowOrigin } from "./amsp/cors.js";
 import { mintApiToken, storeApiToken } from "./auth/api-token.js";
 import type { Identity } from "./terminal/identity.js";
@@ -523,6 +522,7 @@ export function createApp(boot: ServerBoot): Hono<AppEnv> {
     }
     return capped.mw(c, next);
   });
+  app.use("/api/*", sameOriginWrites);
   app.use("/api/*", jsonOnlyWrites);
 
   // THE seam: every route is one the platform may take over by push — the upgrade channel

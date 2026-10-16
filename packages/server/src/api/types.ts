@@ -2132,6 +2132,41 @@ export interface SessionsBatchResponse {
   results: SessionBatchResult[];
 }
 
+/**
+ * One Session's live facts, for the dashboard: where it is, whether it is working, whether it
+ * ever ran, and when it last did. The dashboard counts running and to-review from these the
+ * way the sidebar draws its glyphs — to-review is "finished since this browser last opened
+ * it", a per-browser fact the server cannot know, so it hands over the facts and not a count.
+ */
+export interface SessionActivityInfo {
+  sessionId: string;
+  /** The Agent the Session belongs to (SessionInfo.agentId): opening it makes that Agent current. */
+  agentId: string;
+  /** The Workspace path as the Session carries it (SessionInfo.workspace). */
+  workspace: string;
+  status: SessionStatus;
+  /** Whether a Task has been started (SessionInfo.hasTrace): a Session that never ran has nothing to review. */
+  hasTrace: boolean;
+  /** SessionInfo.lastActiveAt — what the read/unread marker is compared against. */
+  lastActiveAt: string;
+  /** SessionInfo.title; absent while none has been generated. */
+  title?: string;
+  /**
+   * SessionInfo.source: how the Session came to be. The dashboard leaves a subagent Session
+   * out of its counts — it belongs to the conversation that spawned it, which is the row the
+   * sidebar shows and the one a person opens.
+   */
+  source?: SessionSource;
+}
+
+/**
+ * `GET /api/projects/:projectId/sessions/overview`: every non-archived Session of the Project,
+ * over every Agent, less an organization's (the rows the list's `excludeOrg=1` leaves out).
+ */
+export interface SessionsOverviewResponse {
+  sessions: SessionActivityInfo[];
+}
+
 /** Server directory browsing (the Workspace picker): starts from the home directory by default, can navigate up to the root. */
 export interface DirEntryInfo {
   name: string;
@@ -2637,7 +2672,7 @@ export interface SessionProcessesResponse {
 // ---------------------------------------------------------------------------
 
 /** Messaging channels a Session can bind to. */
-export type MessagingChannel = "feishu" | "telegram" | "qq" | "wechat";
+export type MessagingChannel = "feishu" | "telegram" | "qq" | "wechat" | "discord";
 
 /** Event-connection runtime state of one binding (kept in memory, not persisted). */
 export type MessagingRuntimeState = "disconnected" | "connecting" | "connected" | "error";
@@ -2858,9 +2893,28 @@ export interface WeChatBindingInfo extends MessagingBindingCommon {
   botTokenMasked?: string;
 }
 
+/**
+ * The stored Discord config, token masked (plaintext never leaves the server).
+ *
+ * No preference field is re-declared: the three delivery preferences cost what they cost on
+ * Telegram here — no reply budget, no expiring window. The one thing the channel charges
+ * differently for is size, and that is the connector's, not a preference's.
+ */
+export interface DiscordBindingInfo extends MessagingBindingCommon {
+  channel: "discord";
+  /** The bot's user id, decoded from the token's first segment — the channel-scoped account identity, never secret. */
+  botId: string;
+  /**
+   * Masked bot token (site-wide mask rule: `***`, or `first4…last4` for long values);
+   * absent when no token is stored (cleared) — the binding cannot be enabled until one
+   * is saved.
+   */
+  botTokenMasked?: string;
+}
+
 /** A Session's saved config for one messaging channel (`channel` is the discriminant). */
 export type MessagingBindingInfo =
-  FeishuBindingInfo | TelegramBindingInfo | QQBindingInfo | WeChatBindingInfo;
+  FeishuBindingInfo | TelegramBindingInfo | QQBindingInfo | WeChatBindingInfo | DiscordBindingInfo;
 
 /** One saved channel config with its event-connection runtime status. */
 export interface MessagingChannelState {
@@ -2899,6 +2953,12 @@ export interface QQBindingResponse {
 /** GET / PUT …/messaging/wechat response (the WeChat narrowing of the same envelope). */
 export interface WeChatBindingResponse {
   binding: WeChatBindingInfo | null;
+  status: MessagingRuntimeStatus;
+}
+
+/** GET / PUT …/messaging/discord response (the Discord narrowing of the same envelope). */
+export interface DiscordBindingResponse {
+  binding: DiscordBindingInfo | null;
   status: MessagingRuntimeStatus;
 }
 
@@ -2968,6 +3028,23 @@ export interface QQBindingPutRequest extends MessagingDeliveryPatch {
    * it). Refused with 409 `messaging_disable_before_clear` while the binding is enabled.
    */
   clearAppSecret?: boolean;
+}
+
+/**
+ * PUT …/messaging/discord — saves the credential ONLY, the Telegram contract exactly: the
+ * whole credential is the one bot token from the developer portal, whose first segment
+ * names the bot (400 `discord_token_invalid` when it cannot be read); an enabled binding's
+ * connector restarts with the new token; the connection toggle is POST …/state.
+ */
+export interface DiscordBindingPutRequest extends MessagingDeliveryPatch {
+  /** Omitted or blank keeps the stored token (the masked value never round-trips). */
+  botToken?: string;
+  /**
+   * Drops the STORED token (the models-page clear idiom; a typed `botToken` wins over
+   * it — and the row keeps its bot identity). Refused with 409
+   * `messaging_disable_before_clear` while the binding is enabled.
+   */
+  clearBotToken?: boolean;
 }
 
 /**
@@ -3102,6 +3179,20 @@ export interface WeChatTestResponse {
   error?: string;
 }
 
+/** POST …/messaging/discord/test — the draft token; omitted, the stored one is probed. */
+export interface DiscordTestRequest {
+  botToken?: string;
+}
+
+/** Discord credential-test outcome: success additionally names the bot the token signs in as. */
+export interface DiscordTestResponse {
+  ok: boolean;
+  latencyMs?: number;
+  /** The bot's `@username`, as `GET /users/@me` reports it. */
+  botUsername?: string;
+  error?: string;
+}
+
 /**
  * POST …/messaging/wechat/scan — starts a scan-to-connect flow, which on this channel is the
  * ONLY way to bind: the bot token has no console to be copied out of.
@@ -3178,7 +3269,8 @@ export interface WeChatScanVerifyRequest {
 
 /**
  * POST …/messaging/<channel>/test-message — sent to the last known chat (409
- * `feishu_no_chat` / `telegram_no_chat` / `qq_no_chat` before one exists). On QQ this can
+ * `feishu_no_chat` / `telegram_no_chat` / `qq_no_chat` / `wechat_no_chat` / `discord_no_chat`
+ * before one exists). On QQ this can
  * still fail with 502 afterwards: the platform accepts only replies to a message sent from
  * QQ minutes earlier, so a known chat does not mean a deliverable one.
  */
@@ -5725,6 +5817,54 @@ export interface MachinesStopUsingRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Port forwarding (a machine's TCP port on this server's loopback, per Workspace)
+// ---------------------------------------------------------------------------
+
+/**
+ * One forward, its record and what is known of it right now. The status names which layer
+ * speaks — the session, or ssh — and is never one "working" flag.
+ */
+export interface PortForwardInfo {
+  id: string;
+  /** That machine's own id. */
+  machineId: string;
+  /** The Workspace directory on that machine the forward belongs to. */
+  workspace: string;
+  /** `in`: the machine's port comes here (ssh -L). `out`: our port goes there (ssh -R). */
+  direction: "in" | "out";
+  /** `127.0.0.1:<remotePort>` over there. */
+  remotePort: number;
+  /** `127.0.0.1:<localPort>` on this server; fixed once given. */
+  localPort: number;
+  createdAt: string;
+  status:
+    /** ssh has it. */
+    | { kind: "active" }
+    /** The session is up and ssh has not answered yet. */
+    | { kind: "pending" }
+    /** The machine's session is down; the forward is wanted and waits for it. */
+    | { kind: "not-connected" }
+    /** ssh said no — in its own words. */
+    | { kind: "failed"; detail: string };
+}
+
+/** `GET /api/port-forwards?machine=&workspace=` — both filters optional. */
+export interface PortForwardsResponse {
+  forwards: PortForwardInfo[];
+}
+
+/** `POST /api/port-forwards`; 201 with the forward. `localPort` omitted = chosen here, starting at `remotePort`. */
+export interface PortForwardCreateRequest {
+  machineId: string;
+  workspace: string;
+  /** Default `in`. */
+  direction?: "in" | "out";
+  remotePort: number;
+  /** `in`: omitted = chosen here, starting at `remotePort`. `out`: required — the service being sent. */
+  localPort?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Company mode: organizations (files are the truth; every DTO here is a projection)
 // ---------------------------------------------------------------------------
 
@@ -5803,6 +5943,12 @@ export interface OrganizationSummary {
   blockedTickets: number;
   createdBy: string;
   spend: OrgSpendSummary;
+  /**
+   * The machine this organization RUNS on, when that is not the server answering: the one its
+   * shared workspace is on. The organization's own requests (`…/organizations/:orgId/…`) are
+   * answered there; this server holds a mirror. Absent or null: it runs here.
+   */
+  machineId?: string | null;
   /** Present when `org_config.toml` / `org_chart.yaml` fail validation: the organization is listed but every automatic trigger is held until it is fixed. */
   invalid?: string;
 }
@@ -6219,6 +6365,12 @@ export interface OrganizationCreateRequest {
   timezone?: string;
   /** An existing absolute directory to use as the shared workspace; default = the organization's own `workspace/`. */
   workspace?: string;
+  /**
+   * The machine `workspace` is on, by its own id (one of the Project's connected machines);
+   * absent = this server. The organization RUNS there — that server opens its desks and drives
+   * its calendar — and belongs to the Project here, which keeps a mirror of its files.
+   */
+  workspaceMachine?: string;
   /** The model for desks and ticket sessions (a configured pair); default = the Project default. */
   model?: { provider: string; modelId: string };
   /**

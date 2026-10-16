@@ -88,6 +88,9 @@ import type {
   ModelProtocolDetectRequest,
   ModelProtocolDetectResponse,
   MachinesUseResponse,
+  PortForwardCreateRequest,
+  PortForwardInfo,
+  PortForwardsResponse,
   SshHostRequest,
   SshHostResponse,
   SshHostsResponse,
@@ -189,12 +192,17 @@ import type {
   LanguageIndexResponse,
   PluginReadmeResponse,
   SessionsResponse,
+  SessionsOverviewResponse,
   SessionSwitchModelRequest,
   SessionBatchPageRequest,
   SessionsBatchRequest,
   SessionsBatchResponse,
   SessionTracesResponse,
   SkillArchiveInstallRequest,
+  DiscordBindingPutRequest,
+  DiscordBindingResponse,
+  DiscordTestRequest,
+  DiscordTestResponse,
   SteerRequest,
   SubagentMessageResponse,
   TaskCreateRequest,
@@ -263,6 +271,7 @@ import type {
 import type { MCPServerConfig } from "@prismshadow/penguin-core/interfaces";
 import type { RunRequest } from "@prismshadow/amsp";
 import { apiFetch, apiFetchStream, apiFetchWithMeta } from "./client";
+import { rememberSessionsIn, rememberOrgMachine } from "../lib/org-machines";
 import { machineForSession, rememberSessionMachine } from "../lib/session-machines";
 import { apiUrl } from "../lib/server-context";
 import { activityCursorParam } from "../lib/session-grouping";
@@ -424,8 +433,11 @@ export const putCommandPolicy = (
 
 // Model configuration -------------------------------------------------------------------
 
-export const getModels = (projectId: string) =>
-  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`);
+/** The Project's models on this server, or on the machine named: model config is per server. */
+export const getModels = (projectId: string, machineId: string | null = null) =>
+  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {
+    server: machineId,
+  });
 
 export const putModels = (projectId: string, body: ModelsUpdateRequest) =>
   apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {
@@ -856,6 +868,18 @@ export const batchSessions = (
     server: machineId ?? null,
   });
 
+/**
+ * The dashboard's read: every non-archived Session of the Project over every Agent, as
+ * per-Session facts (status, last activity, origin) the page counts from against this
+ * browser's seen markers. Asked of one server at a time, like the list — this one with no
+ * machine, or a machine by its id.
+ */
+export const getSessionsOverview = (projectId: string, machineId?: string | null) =>
+  apiFetch<SessionsOverviewResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/sessions/overview`,
+    { server: machineId ?? null },
+  );
+
 /** Server directory browsing: `path` is an absolute path; empty means start from the server's home directory. */
 /**
  * Browses directories. With no machine, this server's own filesystem; with one, THAT
@@ -1024,6 +1048,13 @@ export const putQQBinding = (sessionId: string, body: QQBindingPutRequest) =>
     body,
   });
 
+/** Saves the Discord bot token only — the same save/enable split as the Telegram PUT. */
+export const putDiscordBinding = (sessionId: string, body: DiscordBindingPutRequest) =>
+  apiFetch<DiscordBindingResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/messaging/discord`,
+    { method: "PUT", body },
+  );
+
 /**
  * Saves the WeChat delivery preferences. No credential rides along: this channel's token
  * comes only from a scan, so a PUT before one answers 400 `wechat_token_required`.
@@ -1040,15 +1071,28 @@ export const setMessagingBindingState = (
   channel: MessagingChannel,
   enabled: boolean,
 ) =>
-  apiFetch<FeishuBindingResponse | TelegramBindingResponse | QQBindingResponse>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/messaging/${channel}/state`,
-    { method: "POST", body: { enabled } },
-  );
+  apiFetch<
+    | FeishuBindingResponse
+    | TelegramBindingResponse
+    | QQBindingResponse
+    | WeChatBindingResponse
+    | DiscordBindingResponse
+  >(`/api/sessions/${encodeURIComponent(sessionId)}/messaging/${channel}/state`, {
+    method: "POST",
+    body: { enabled },
+  });
 
 /** Feishu credential probe with the form's draft values; omitted fields fall back to the stored binding. */
 export const testFeishuBinding = (sessionId: string, body: FeishuTestRequest) =>
   apiFetch<FeishuTestResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/feishu/test`,
+    { method: "POST", body },
+  );
+
+/** Discord credential probe (`GET /users/@me`); success additionally names the bot's @username. */
+export const testDiscordBinding = (sessionId: string, body: DiscordTestRequest) =>
+  apiFetch<DiscordTestResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/messaging/discord/test`,
     { method: "POST", body },
   );
 
@@ -1135,7 +1179,7 @@ export const testQQBinding = (sessionId: string, body: QQTestRequest) =>
     body,
   });
 
-/** Short fixed text to the binding's last known chat (409 `feishu_no_chat` / `telegram_no_chat` / `qq_no_chat` / `wechat_no_chat` before one exists; on QQ the send can still fail with 502 when no recent QQ message can be replied to, and on WeChat it answers 409 `wechat_needs_recent_message` when the platform will not take a bot message until the user messages the bot again). */
+/** Short fixed text to the binding's last known chat (409 `<channel>_no_chat` before one exists; on QQ the send can still fail with 502 when no recent QQ message can be replied to, and on WeChat it answers 409 `wechat_needs_recent_message` when the platform will not take a bot message until the user messages the bot again). */
 export const sendMessagingTestMessage = (sessionId: string, channel: MessagingChannel) =>
   apiFetch<MessagingTestMessageResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/${channel}/test-message`,
@@ -2044,6 +2088,24 @@ export const stopUsingMachines = (projectId: string, machineIds: string[]) =>
     body: { machines: machineIds },
   });
 
+// Port forwarding (admin only) ---------------------------------------------------------
+//
+// Always THIS server's: a forward is a listener on the server the browser is talking to,
+// reaching into a machine — never a request for that machine's own server to answer.
+
+/** A Workspace's forwards (`workspace` given) or every forward of a machine, with what is known of each. */
+export const listPortForwards = (machineId: string, workspace?: string) =>
+  apiFetch<PortForwardsResponse>(
+    `/api/port-forwards?machine=${encodeURIComponent(machineId)}` +
+      (workspace === undefined ? "" : `&workspace=${encodeURIComponent(workspace)}`),
+  );
+
+export const createPortForward = (forward: PortForwardCreateRequest) =>
+  apiFetch<PortForwardInfo>("/api/port-forwards", { method: "POST", body: forward });
+
+export const deletePortForward = (id: string) =>
+  apiFetch<void>(`/api/port-forwards/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 export const installOnMachine = (projectId: string, machineId: string, replaceProgram = false) =>
   apiFetch<MachinesResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/machines/${encodeURIComponent(machineId)}/install`,
@@ -2162,21 +2224,43 @@ const orgBase = (projectId: string, orgId?: string) =>
     orgId === undefined ? "" : `/${encodeURIComponent(orgId)}`
   }`;
 
+/**
+ * The Project's organizations, from this server. One whose shared workspace is on a machine
+ * RUNS there and says so (`machineId`); that is remembered (lib/org-machines.ts), which is what
+ * routes every organization-scoped call below without any of them naming a machine.
+ */
 export const listOrganizations = (projectId: string) =>
   apiFetch<OrganizationsResponse>(orgBase(projectId));
 
-export const createOrganization = (projectId: string, body: OrganizationCreateRequest) =>
-  apiFetch<OrganizationDetail>(orgBase(projectId), { method: "POST", body });
+/**
+ * Creates the organization in this Project. With `workspaceMachine` it is created ON that
+ * machine — its Agents and Sessions are there — and mirrored here; where it runs (and so where
+ * its CEO desk Session is, which is what opens next) is remembered before the caller navigates.
+ */
+export const createOrganization = async (projectId: string, body: OrganizationCreateRequest) => {
+  const detail = await apiFetch<OrganizationDetail>(orgBase(projectId), { method: "POST", body });
+  rememberOrgMachine(projectId, detail.orgId, detail.machineId ?? null);
+  // This answer came from here, not through the machine, so the Sessions it names (the CEO
+  // desk) are recorded by hand — the client only does it for answers a machine gave.
+  rememberSessionsIn(detail, detail.machineId ?? null);
+  return detail;
+};
 
 /**
  * A semantic id for a display name — a Project's, an Agent's, a Benchmark's, an organization's or
  * a channel's, by `kind` — from the default model of the Project in the path, with an ASCII
- * fallback and a dated placeholder behind it.
+ * fallback and a dated placeholder behind it. `machineId` asks the server the thing will live on
+ * (an organization's machine); null is this one.
  */
-export const suggestSemanticId = (projectId: string, body: SemanticIdSuggestRequest) =>
+export const suggestSemanticId = (
+  projectId: string,
+  body: SemanticIdSuggestRequest,
+  machineId: string | null = null,
+) =>
   apiFetch<SemanticIdSuggestResponse>(`/api/projects/${encodeURIComponent(projectId)}/suggest-id`, {
     method: "POST",
     body,
+    server: machineId,
   });
 
 export const getOrganization = (projectId: string, orgId: string) =>
