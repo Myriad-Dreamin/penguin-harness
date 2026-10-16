@@ -963,7 +963,7 @@ export class MachinesService {
     const target = this.#targetOf(machine.id);
     if (target === null) {
       // Its kind is not loaded: nothing can reach it, so every check is skipped.
-      return done([{ id: "ssh", state: "skip" }, ...skipped]);
+      return done(skipped);
     }
     const signIn = { password: false };
     const probe = await this.#effects.runOn(target, posixProbe(this.#layout));
@@ -1940,7 +1940,7 @@ export class MachinesService {
       this.#effects.now,
       job === null ? null : (job.stages ??= []),
     );
-    const result = await this.#connectStages(machine, say, askPhase, expected, clock);
+    const result = await this.#connectStages(machine, say, askPhase, expected, false, clock);
     clock.done(result);
     return result;
   }
@@ -3293,9 +3293,8 @@ export class MachinesModule {
   @Provide() machines!: Machines;
   @Bind("MachinesModule.routes") routes!: Hono<AppEnv>;
   @Bind("MachinesModule.server-proxy") serverProxyRoutes!: Hono<AppEnv>;
-  setup({ effect, contributions }: ClassCtx) {
   @Bind("MachinesModule.server-proxy-oauth-callback") oauthCallbackRoutes!: Hono<AppEnv>;
-  setup({ effect }: ClassCtx) {
+  setup({ effect, contributions }: ClassCtx) {
     // This machine's own id is minted on the first boot of this data root and stable ever
     // after — every stored reference to this machine, here and on the machines it reaches,
     // points at it. A test that supplies its own service mints none.
