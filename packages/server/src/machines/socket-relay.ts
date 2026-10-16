@@ -34,7 +34,7 @@ import {
 } from "./event-hub.js";
 import type { MachineEventHubOptions } from "./event-hub.js";
 import { SOCKET_DIAL_TIMEOUT_MS, MachineSockets } from "./machine-sockets.js";
-import type { MachineSocket, MachineSocketTarget, Sink } from "./machine-sockets.js";
+import type { MachineFault, MachineSocket, MachineSocketTarget, Sink } from "./machine-sockets.js";
 
 export { SOCKET_DIAL_TIMEOUT_MS, STREAM_OPEN_TIMEOUT_MS };
 export type { MachineSocketTarget };
@@ -55,15 +55,21 @@ export class MachineSocketRelay {
   readonly #sockets: MachineSockets;
   readonly #events: MachineEventHub;
   readonly #openTimeoutMs: number;
+  readonly #fault: MachineFault | undefined;
 
   constructor(
     private readonly log: (line: string) => void,
     options: MachineSocketRelayOptions = {},
   ) {
     this.#sockets =
-      options.sockets ?? new MachineSockets(log, { dialTimeoutMs: options.dialTimeoutMs });
+      options.sockets ??
+      new MachineSockets(log, {
+        dialTimeoutMs: options.dialTimeoutMs,
+        ...(options.fault !== undefined ? { fault: options.fault } : {}),
+      });
     this.#events = options.events ?? new MachineEventHub(this.#sockets, log, options);
     this.#openTimeoutMs = options.openTimeoutMs ?? STREAM_OPEN_TIMEOUT_MS;
+    this.#fault = options.fault;
   }
 
   /**
@@ -101,6 +107,11 @@ export class MachineSocketRelay {
         this.log(
           `[machines] stream ${request.path} on ${machineId}: not opened in ${this.#openTimeoutMs} ms over a socket that is alive; terminating the socket, the next stream dials again`,
         );
+        this.#fault?.({
+          machineId,
+          code: "machine_stream_not_opened",
+          err: `${request.path} not opened in ${this.#openTimeoutMs} ms over a socket that is alive`,
+        });
         socket.cancel(id);
         socket.terminate();
         base.onResponse(504, {

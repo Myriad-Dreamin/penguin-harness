@@ -56,7 +56,7 @@ How long until everything was back after a start? The time until sessions were a
 
 The App already serves while these run; a long one means machines or sessions came back late.
 
-Recorded at [`packages/server/src/platform.ts:244`](../platform.ts#L244) <!-- probe-site -->
+Recorded at [`packages/server/src/platform.ts:245`](../platform.ts#L245) <!-- probe-site -->
 
 ### hmr.park
 
@@ -244,4 +244,4 @@ Recorded at [`packages/web/src/state/sessions.tsx:743`](../../../web/src/state/s
 
 Is the page slow to connect to the server? From opening its connection to the server's first message.
 
-Recorded at [`packages/web/src/api/socket.ts:450`](../../../web/src/api/socket.ts#L450) <!-- probe-site -->
+Recorded at [`packages/web/src/api/socket.ts:467`](../../../web/src/api/socket.ts#L467) <!-- probe-site -->

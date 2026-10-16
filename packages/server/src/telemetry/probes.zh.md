@@ -56,7 +56,7 @@ App 过了多久才能提供服务？从开始创建到就绪的时间。
 
 这期间 App 已在服务；这一项长，说明 machine 或会话回来得晚。
 
-记录于 [`packages/server/src/platform.ts:244`](../platform.ts#L244) <!-- probe-site -->
+记录于 [`packages/server/src/platform.ts:245`](../platform.ts#L245) <!-- probe-site -->
 
 ### hmr.park
 
@@ -244,4 +244,4 @@ machine 回答命令慢吗？一条命令从发起到答复的时间。
 
 页面连上服务端慢吗？从打开连接到收到服务端第一条消息的时间。
 
-记录于 [`packages/web/src/api/socket.ts:450`](../../../web/src/api/socket.ts#L450) <!-- probe-site -->
+记录于 [`packages/web/src/api/socket.ts:467`](../../../web/src/api/socket.ts#L467) <!-- probe-site -->

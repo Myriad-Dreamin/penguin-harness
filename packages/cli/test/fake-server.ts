@@ -281,6 +281,12 @@ export class FakeServer {
     sessions: [],
     samples: [],
   };
+  /** What GET /api/projects/:p/usage/errors answers (the fake does not filter; the query is in `requests`). */
+  errors: { items: Json[]; total: number; suppressed: Json[] } = {
+    items: [],
+    total: 0,
+    suppressed: [],
+  };
   /** Messages a task emits between running and idle (default: one assistant echo). */
   onTask: (session: FakeSessionState, body: Json) => unknown[] = () => [];
   /** Messages GET /messages returns. */
@@ -2456,6 +2462,9 @@ export class FakeServer {
       if (method === "PUT") this.adminSettings = { ...this.adminSettings, ...body };
       return this.json({ settings: this.adminSettings });
     }
+
+    m = /^\/api\/projects\/([^/]+)\/usage\/errors$/.exec(apiPath);
+    if (m && method === "GET") return this.json(this.errors);
 
     m = /^\/api\/projects\/([^/]+)\/usage$/.exec(apiPath);
     if (m) {

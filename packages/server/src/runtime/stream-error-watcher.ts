@@ -274,7 +274,13 @@ export class StreamErrorWatcher {
   private ctxFor(key: string): ErrorContext {
     const child = this.originCtx.get(key);
     if (!child) return this.ctx;
-    return { projectId: this.ctx.projectId, agentId: child.agentId, sessionId: child.sessionId };
+    // A child's failure is its own Session's, inside the parent's Task: the Task key carries over.
+    return {
+      projectId: this.ctx.projectId,
+      agentId: child.agentId,
+      sessionId: child.sessionId,
+      ...(this.ctx.taskId !== undefined ? { taskId: this.ctx.taskId } : {}),
+    };
   }
 
   // —— LLM ——

@@ -311,6 +311,7 @@ describe("machines-columns → current: browser-extensions", () => {
         "model-tables-adoption",
         "machine-definitions",
         "company-mode-desk-mentions",
+        "error-records-context",
         "messaging-conversations",
       ]);
       db.exec("PRAGMA foreign_keys = ON");

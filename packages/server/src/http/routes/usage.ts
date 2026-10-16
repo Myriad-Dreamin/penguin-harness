@@ -143,9 +143,9 @@ export function usageRoutes(deps: UsageRouteDeps): Hono<AppEnv> {
 
   // One page of the error detail table, newest first. The dashboard response above already
   // carries the first page; this serves "show me earlier ones" without refetching the whole
-  // aggregate. Takes the date/agent filter only — the model filter never applied to errors
-  // (HTTP and process errors have no Model dimension), so accepting it here would imply a
-  // narrowing the summary above does not do.
+  // aggregate. Takes the date/agent filter — the model filter never applied to errors (HTTP
+  // and process errors have no Model dimension), so accepting it here would imply a narrowing
+  // the summary above does not do — plus a Session and a request, which only this read offers.
   app.get("/errors", (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.access.requireProjectAccess(c.var.user.userId, projectId);
@@ -155,6 +155,9 @@ export function usageRoutes(deps: UsageRouteDeps): Hono<AppEnv> {
     const window = tsWindowQuery(c);
     const utcOffsetMinutes = utcOffsetQuery(c);
     const agentId = c.req.query("agentId");
+    // One Session's errors (an Agent reading its own), one request's (a telemetry sample's key).
+    const sessionId = c.req.query("sessionId");
+    const requestId = c.req.query("requestId");
     const kindRaw = c.req.query("kind");
     // `kind` narrows to one of the two categories the panel's stats already separate. It is
     // validated against that closed set rather than passed through, so a typo asks for
@@ -179,6 +182,8 @@ export function usageRoutes(deps: UsageRouteDeps): Hono<AppEnv> {
         ...(utcOffsetMinutes !== undefined ? { utcOffsetMinutes } : {}),
         ...(agentId !== undefined && agentId !== "" ? { agentId } : {}),
         ...(kindRaw !== undefined && kindRaw !== "" ? { kind: kindRaw } : {}),
+        ...(sessionId !== undefined && sessionId !== "" ? { sessionId } : {}),
+        ...(requestId !== undefined && requestId !== "" ? { requestId } : {}),
       }),
     );
   });

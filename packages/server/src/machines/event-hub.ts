@@ -35,6 +35,7 @@ import type { ServerEvent } from "../api/types.js";
 import { HEARTBEAT_MS } from "../http/sse.js";
 import type { EventFrame } from "../socket/frames.js";
 import type {
+  MachineFault,
   MachineSocket,
   MachineSocketTarget,
   MachineSockets,
@@ -183,6 +184,8 @@ export interface MachineEventHubOptions {
   openTimeoutMs?: number;
   reissueMinMs?: number;
   reissueMaxMs?: number;
+  /** Files a stream that did not open or went silent into the error table (see MachineFault). */
+  fault?: MachineFault;
 }
 
 /** One tab's end of the aggregate: the machines it watches, and where its frames go. */
@@ -258,6 +261,7 @@ export class MachineEventHub {
   readonly #openTimeoutMs: number;
   readonly #reissueMinMs: number;
   readonly #reissueMaxMs: number;
+  readonly #fault: MachineFault | undefined;
 
   constructor(
     private readonly sockets: MachineSockets,
@@ -270,6 +274,7 @@ export class MachineEventHub {
     this.#openTimeoutMs = options.openTimeoutMs ?? STREAM_OPEN_TIMEOUT_MS;
     this.#reissueMinMs = options.reissueMinMs ?? REISSUE_MIN_MS;
     this.#reissueMaxMs = options.reissueMaxMs ?? REISSUE_MAX_MS;
+    this.#fault = options.fault;
     this.#aggregate = new MachineEventAggregate(this.#replayCount, this.#replayBytes);
   }
 
@@ -494,6 +499,11 @@ export class MachineEventHub {
     this.log(
       `[machines] stream /api/events on ${machineId}: not opened in ${this.#openTimeoutMs} ms over a socket that is alive; terminating the socket, the next stream dials again`,
     );
+    this.#fault?.({
+      machineId,
+      code: "machine_stream_not_opened",
+      err: `/api/events not opened in ${this.#openTimeoutMs} ms over a socket that is alive`,
+    });
     if (subscription.callId >= 0) subscription.socket?.cancel(subscription.callId);
     subscription.socket?.terminate();
     subscription.socket = null;
@@ -511,6 +521,11 @@ export class MachineEventHub {
     this.log(
       `[machines] no event on ${subscription.machineId}'s stream for ${SILENT_BEATS * this.#heartbeatMs} ms; re-subscribing it from its last event id`,
     );
+    this.#fault?.({
+      machineId: subscription.machineId,
+      code: "machine_stream_silent",
+      err: `no event for ${SILENT_BEATS * this.#heartbeatMs} ms`,
+    });
     if (subscription.callId >= 0) subscription.socket?.cancel(subscription.callId);
     subscription.callId = -1;
     this.#ended(subscription);
