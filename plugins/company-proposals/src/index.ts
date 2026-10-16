@@ -12,8 +12,8 @@
  * reads, comments in batches and approves, and the build lands as a pull request the
  * proposal links as material. The harness lends this package what it already has — the
  * organization (its people, an employee's desk and sessions, the Project's event
- * stream), the settings store, the data root — through the organization gateway; what
- * makes those a proposal lives here: ledger.ts is the append-only record, markdown.ts the
+ * stream), the data root — through the organization gateway; what makes those a proposal
+ * lives here: the organization's relational store (schema.ts, store.ts), markdown.ts the
  * document form, service.ts the state machine and the desk deliveries that drive the
  * employees, routes.ts the API, deploy.ts the organization's deploy scripts and their runs. The page is the web app's own `OrgProposalsPage` renderer,
  * declared here as a company-mode page so it appears — with its nav row — only while the
@@ -28,22 +28,35 @@ import type {
   OrgGateway,
   Paths,
   PluginConfig,
-  Settings,
 } from "@prismshadow/penguin-server/plugin";
 import { ProposalService } from "./service.js";
 import { DeployService } from "./deploy.js";
 import { ROUTES_ID, proposalRoutes } from "./routes.js";
+import {
+  retireListeners,
+  retireRegistered,
+  type OrgRef,
+  type RetireListener,
+} from "./org-retire.js";
 
 export {
-  Ledger,
-  LEDGER_FILE,
-  applyLine,
-  foldLedger,
-  ledgerPath,
-  migrateScopeKinds,
-  parseLedger,
-} from "./ledger.js";
-export type { LedgerEntry, LedgerLine, LedgerState, Proposal } from "./ledger.js";
+  COMPANY_DB,
+  GRAPH_SCHEMA,
+  PROPOSAL_SCHEMA,
+  companyDbPath,
+  openCompanyDb,
+} from "./schema.js";
+export { ProposalError } from "./domain.js";
+export type { Project, Proposal, ProposalImpl, RegisteredDeployment } from "./domain.js";
+export type * from "./ports.js";
+export { SqliteProposalStore } from "./store-write.js";
+export { SqliteGraphStore } from "./graph-store.js";
+export { DEPLOYMENTS_FILE, DeploymentStore, deploymentsPath } from "./deploy-store.js";
+export { defaultRules } from "./guards.js";
+export type { Caller, ProposalRules } from "./guards.js";
+export { GithubForge, NoForge } from "./forge.js";
+export { LocalGitMirror, githubUrl, mirrorDir } from "./git-mirror.js";
+export { GraphRefresher, intervalAfter } from "./graph-refresh.js";
 export {
   ProposalDocumentError,
   linksToFile,
@@ -55,7 +68,6 @@ export {
   MATERIAL_KINDS,
   PLUGIN_NAME,
   SKILLS_PLUGIN,
-  ProposalError,
   compareDatedVersions,
   ProposalService,
   slugOf,
@@ -72,10 +84,13 @@ export {
 } from "./deploy.js";
 export type { DeployDeps, DeployRequest, DeployScope } from "./deploy.js";
 export { startProcess } from "./deploy-process.js";
+export { RetiredOrgs, retireListeners, retireOrg, retireRegistered } from "./org-retire.js";
+export type { OrgRef, RetireListener } from "./org-retire.js";
 export type { DeployProcess, StartProcess } from "./deploy-process.js";
 export {
   CONFIG_GROUP,
   DEFAULT_DELIVERY_BASE,
+  DEFAULT_GRAPH_REFRESH_MINUTES,
   DEFAULT_TEST_GROUPS,
   ORIGIN_LINE,
   TEST_GROUP_LINE,
@@ -84,7 +99,8 @@ export {
   undeclaredGroupsMessage,
 } from "./config.js";
 export type { GraphConfig } from "./config.js";
-export { PrGraphReader } from "./pr-graph.js";
+export { PrGraphReader, compareInMirror } from "./graph-reader.js";
+export { inputsOf, layout, storedFacts } from "./pr-graph.js";
 export { buildGraph, pullKey } from "./pr-chain.js";
 export type { GraphInput, GraphProposal } from "./pr-chain.js";
 export { checkScope, scopeBase, scopeStates, suggestPaths } from "./scope-check.js";
@@ -186,6 +202,18 @@ export const PAGE_ID = "company-proposals.page";
             patternErrorMessage: "lines must read `name=owner/repo`",
             default: [],
           },
+          graphRefreshMinutes: {
+            type: "number",
+            title: "PR graph refresh (minutes)",
+            titleZh: "PR 关系图刷新间隔（分钟）",
+            description:
+              "How stale the PR graph may grow: a read older than this probes the delivery repository again (doubling up to 30 minutes while nothing changes). The page's refresh button reads it at once.",
+            descriptionZh:
+              "PR 关系图最多陈旧多久：超过这个时间的读取会重新探测交付仓库（无变化时间隔逐次加倍，最长 30 分钟）。页面上的刷新按钮立即刷新。",
+            minimum: 1,
+            maximum: 30,
+            default: 5,
+          },
         },
       },
     ],
@@ -205,28 +233,38 @@ export class CompanyProposalsPlugin {
   @Use("CompanyModule") private readonly gateway!: OrgGateway;
   @Use("AgentsModule") private readonly agents!: AgentLifecycle;
   @Use("RuntimeModule") private readonly paths!: Paths;
-  @Use("SettingsModule") private readonly settings!: Settings;
   @Use("RuntimeModule") private readonly log!: Log;
   @Use("PluginConfigModule") private readonly pluginConfig!: PluginConfig;
   @Bind(ROUTES_ID) routes!: Hono;
   private service!: ProposalService;
 
-  setup(_ctx: ClassCtx) {
+  setup({ effect }: ClassCtx) {
     const service = new ProposalService({
       gateway: this.gateway,
       agents: this.agents,
       root: this.paths.root,
-      settings: this.settings,
       log: this.log,
       pluginConfig: this.pluginConfig,
     });
     this.service = service;
+    // The stores close and the graph refreshes stop with the App (a hot update starts anew).
+    effect(() => {
+      service.close();
+    });
     const deploys = new DeployService({
       scope: (projectId, orgId, actor) => service.deployScope(projectId, orgId, actor),
       root: this.paths.root,
       log: (line) => this.log.line(line),
+      onFinished: (projectId, orgId) => service.deployFinished(projectId, orgId),
     });
     this.routes = proposalRoutes(service, deploys);
+    // An organization being deleted: its deploy runs, then the rest of what the service holds.
+    const retire: RetireListener = (org) =>
+      service.retire(org.projectId, org.orgId, () => deploys.retire(org.projectId, org.orgId));
+    retireListeners.add(retire);
+    effect(() => {
+      retireListeners.delete(retire);
+    });
   }
 
   /**
@@ -247,8 +285,54 @@ export class CompanyProposalsPlugin {
   ): Promise<number> {
     return this.service.createFromRoadmap(projectId, orgId, req);
   }
+
+  /**
+   * The brief of the proposal a roadmap item is linked to, rewritten when the item's changed
+   * brief is approved again (ProposalService.rebriefFromRoadmap). Answers false, writing
+   * nothing, when that proposal is merged or rejected: the roadmap creates a new one instead.
+   */
+  rebriefFromRoadmap(
+    projectId: string,
+    orgId: string,
+    number: number,
+    req: {
+      owner: string;
+      brief: string;
+      delegatedBy: string;
+      roadmap: { number: number; key: string };
+    },
+  ): Promise<boolean> {
+    return this.service.rebriefFromRoadmap(projectId, orgId, number, req);
+  }
 }
 
-const plugin: Plugin = { modules: [CompanyProposalsPlugin] };
+/** The retirement's contribution id, as the manifest names it. */
+export const RETIRE_ID = "company-proposals.retirement";
+
+/**
+ * The retirement, as a node of its own: it contributes to the organization module, so it must
+ * not require the organization gateway that module provides (a cycle). It hands the
+ * organization to the retirements the plugin's module registered (org-retire.ts).
+ */
+@Component({
+  contributes: {
+    "OrganizationModule.retirements": [
+      {
+        id: "company-proposals.retirement",
+        description:
+          "Stops the organization's PR graph refresh and deploy runs and closes its proposals database.",
+      },
+    ],
+  },
+})
+export class ProposalsRetirement {
+  @Bind(RETIRE_ID) retire!: (org: OrgRef) => Promise<void>;
+
+  setup() {
+    this.retire = retireRegistered;
+  }
+}
+
+const plugin: Plugin = { modules: [CompanyProposalsPlugin, ProposalsRetirement] };
 
 export default plugin;

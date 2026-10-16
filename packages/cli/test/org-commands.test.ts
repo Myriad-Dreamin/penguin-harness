@@ -1862,9 +1862,10 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
     expect(await cli(["org", "proposal", "diff", "7"])).toBe(1);
   });
 
-  it("graph prints the chain indented by depth, each line with its PR, proposal, origins and marks, then what is off the chain and why", async () => {
+  it("graph prints the server's smartlog rows, each node's with its PR, proposal, origins and marks, then what it cannot draw and why", async () => {
     server.addProposal("acme", { number: 1 });
     const node = (n: Record<string, unknown>) => ({
+      key: n.branch,
       url: `https://github.com/acme/site/pull/${String(n.number)}`,
       title: `PR ${String(n.number)}`,
       draft: false,
@@ -1890,8 +1891,12 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           branch: "feat/a",
           head: "bbbbbbbbbbbb",
           base: "dev",
-          parent: 0,
+          parent: "",
           ahead: 2,
+          // The base moved on after the stack was built: the bottom layer is stale against it.
+          behind: 3,
+          relation: "diverged",
+          stale: true,
           proposal: { number: 1, title: "A", status: "ready" },
           origins: [
             {
@@ -1909,18 +1914,30 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           branch: "feat/b",
           head: "cccccccccccc",
           base: "feat/gone",
-          parent: 11,
+          parent: "feat/a",
           ahead: 1,
           behind: 2,
           via: [{ number: 9, state: "closed" }],
           stale: true,
+        }),
+        // An impl branch no PR is open on yet: a node with no number.
+        node({
+          number: null,
+          url: null,
+          title: "D",
+          branch: "impl/d",
+          head: "eeeeeeeeeeee",
+          base: "feat/a",
+          parent: "feat/a",
+          ahead: 1,
+          proposal: { number: 3, title: "D", status: "drafting" },
         }),
         node({
           number: 13,
           branch: "feat/c",
           head: "dddddddddddd",
           base: "feat/a",
-          parent: 11,
+          parent: "feat/a",
           ahead: 3,
           behind: 4,
           relation: "diverged",
@@ -1928,8 +1945,37 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           onChain: false,
           off: { reason: "old-line", at: null },
         }),
+        // Its declared base leads nowhere: the graph cannot draw it.
+        node({
+          number: 14,
+          branch: "feat/x",
+          head: "ffffffffffff",
+          base: "gone",
+          parent: null,
+          ahead: null,
+          relation: "unknown",
+          stacked: false,
+          onChain: false,
+          off: { reason: "no-base", at: null },
+        }),
       ],
-      top: 12,
+      top: null,
+      tops: ["feat/b", "impl/d"],
+      rows: [
+        { kind: "node", key: "feat/b", cells: ["○ "], behind: null, connector: false },
+        { kind: "node", key: "impl/d", cells: ["│ ", "○ "], behind: null, connector: false },
+        { kind: "join", key: "feat/a", cells: ["├─", "╯ "], behind: null, connector: false },
+        { kind: "node", key: "feat/c", cells: ["│ ", "× "], behind: null, connector: false },
+        { kind: "join", key: "feat/a", cells: ["├─", "╯ "], behind: null, connector: false },
+        { kind: "node", key: "feat/a", cells: ["○ "], behind: null, connector: false },
+        { kind: "base", key: "", cells: ["~ "], behind: 3, connector: false },
+      ],
+      // The own view: #1's layer and impl/d (proposal #3); #12 and #13 are nobody's proposal.
+      ownRows: [
+        { kind: "node", key: "impl/d", cells: ["○ "], behind: null, connector: false },
+        { kind: "node", key: "feat/a", cells: ["○ "], behind: null, connector: false },
+        { kind: "base", key: "", cells: ["~ "], behind: 3, connector: false },
+      ],
       unplaced: [
         {
           number: 2,
@@ -1943,16 +1989,39 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
       ],
       errors: [],
       checkedAt: "2026-09-30T00:00:00.000Z",
+      deployments: [],
     };
+    expect(await cli(["org", "proposal", "graph", "--all"])).toBe(0);
+    expect(out()).toBe(
+      [
+        // Base on top: the smartlog rows reversed, each join drawn as `├─╮`.
+        "acme/site",
+        `~  dev aaaaaaaaa ${t.org.graphBaseBehind(3)}`,
+        "○  #11 feat/a bbbbbbbbb +2 -3  [stale, behind dev by 3, restack pending]  proposal #1 ready  origin #801 behind",
+        "├─╮",
+        `│ ×  #13 feat/c ddddddddd +3 -4  [${t.org.graphOffReason("old-line", "#11", "diverged", "feat/a")}]  ${t.org.graphNoProposal()}`,
+        "├─╮",
+        "│ ○  branch impl/d eeeeeeeee +1  [top]  proposal #3 drafting",
+        `○  #12 feat/b ccccccccc +1 -2  [top, via closed #9, stale, restack pending]  ${t.org.graphNoProposal()}`,
+        "",
+        t.org.graphOffChain(),
+        `  #14 feat/x fffffffff  [${t.org.graphOffReason("no-base", "?", "unknown", "gone")}]  ${t.org.graphNoProposal()}`,
+        "",
+        t.org.graphUnplaced(),
+        `  proposal #2 approved  https://github.com/acme/site/pull/5  [${t.org.graphUnplacedReason("merged", "?", "feat/a", "dev")}]`,
+        "",
+      ].join("\n"),
+    );
+    // By default only the organization's own part: #12 and #13 are left out and counted, and
+    // #14, which carries no proposal, is not listed apart either.
+    stdout.length = 0;
     expect(await cli(["org", "proposal", "graph"])).toBe(0);
     expect(out()).toBe(
       [
-        "acme/site dev aaaaaaaaa",
-        "  #11 feat/a bbbbbbbbb +2  proposal #1 ready  origin #801 behind",
-        `    #12 feat/b ccccccccc +1 -2  [top, via closed #9, stale, restack pending]  ${t.org.graphNoProposal()}`,
-        "",
-        t.org.graphOffChain(),
-        `  #13 feat/c ddddddddd +3 -4  [${t.org.graphOffReason("old-line", "#11", "diverged", "feat/a")}]  ${t.org.graphNoProposal()}`,
+        `acme/site  ${t.org.graphOthersHidden(2)}`,
+        `~  dev aaaaaaaaa ${t.org.graphBaseBehind(3)}`,
+        "○  #11 feat/a bbbbbbbbb +2 -3  [stale, behind dev by 3, restack pending]  proposal #1 ready  origin #801 behind",
+        "○  branch impl/d eeeeeeeee +1  [top]  proposal #3 drafting",
         "",
         t.org.graphUnplaced(),
         `  proposal #2 approved  https://github.com/acme/site/pull/5  [${t.org.graphUnplacedReason("merged", "?", "feat/a", "dev")}]`,
@@ -2026,6 +2095,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
       origins: [],
       nodes: [
         {
+          key: "feat/a",
           number: 11,
           url: "https://github.com/acme/site/pull/11",
           title: "PR 11",
@@ -2033,7 +2103,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           branch: "feat/a",
           head: "bbbbbbbbbbbb",
           base: "dev",
-          parent: 0,
+          parent: "",
           relation: "ahead",
           ahead: 2,
           behind: 0,
@@ -2047,7 +2117,17 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           origins: [],
         },
       ],
-      top: 11,
+      top: "feat/a",
+      tops: ["feat/a"],
+      rows: [
+        { kind: "node", key: "feat/a", cells: ["○ "], behind: null, connector: false },
+        { kind: "base", key: "", cells: ["~ "], behind: null, connector: false },
+      ],
+      // feat/a carries no proposal but a proposal's PR is stacked on it: a connector.
+      ownRows: [
+        { kind: "node", key: "feat/a", cells: ["○ "], behind: null, connector: true },
+        { kind: "base", key: "", cells: ["~ "], behind: null, connector: false },
+      ],
       unplaced: [],
       errors: [],
       checkedAt: "2026-09-30T00:00:00.000Z",
@@ -2057,7 +2137,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           url: "http://h:0",
           commit: "bbbbbbbbbbbb",
           describe: "v1-1-gbbbbbbb",
-          at: 11,
+          at: "feat/a",
           relation: "same",
           ahead: 0,
           error: null,
@@ -2067,7 +2147,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           url: "http://h:1",
           commit: "aaaaaaaaaaaa",
           describe: "v1",
-          at: 0,
+          at: "",
           relation: "same",
           ahead: 0,
           error: null,
@@ -2077,7 +2157,7 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
           url: "http://h:2",
           commit: "eeeeeeeeeeee",
           describe: "v1-9-geeeeeee",
-          at: 11,
+          at: "feat/a",
           relation: "ahead",
           ahead: 3,
           error: null,
@@ -2117,8 +2197,9 @@ describe("penguin org proposal (the company-proposals plugin's routes)", () => {
     expect(await cli(["org", "proposal", "graph"])).toBe(0);
     expect(out()).toBe(
       [
-        "acme/site dev aaaaaaaaa  @old aaaaaaaaa",
-        `  #11 feat/a bbbbbbbbb +2  [top]  ${t.org.graphNoProposal()}  @here bbbbbbbbb  @late eeeeeeeee +3`,
+        "acme/site",
+        "~  dev aaaaaaaaa  @old aaaaaaaaa",
+        `○  #11 feat/a bbbbbbbbb +2  [top]  ${t.org.graphNoProposal()}  [connector]  @here bbbbbbbbb  @late eeeeeeeee +3`,
         "",
         t.org.graphDeploymentsOff(),
         "  @local fffffffff  v1-5-gfffffffff  http://h:3",

@@ -88,6 +88,7 @@ import type {
   ProposalDetail,
   ProposalGraphNode,
   ProposalGraphResponse,
+  ProposalGraphRow,
   ProposalGraphDeployment,
   ProposalDeploymentsResponse,
   ProposalTestGroupsResponse,
@@ -599,27 +600,42 @@ function renderProposals(items: readonly ProposalItem[], t: Messages): string {
 }
 
 /**
- * `proposal graph`: the chain from the base branch, one PR per line indented by its depth,
- * then the PRs off the chain with the reason each is off, and the proposals whose impl is not
- * on the graph with the reason why. Each line: the PR, its branch and head, the layer's size,
- * the marks, the proposal, the origins' twins. Relations, statuses and marks stay in English:
- * they are field values; the reasons are sentences and follow the locale.
+ * `proposal graph`: the repository, then the graph as the server laid it out (Sapling's smartlog
+ * shape: newest on top, a line forking off a node in the column to its right right above it,
+ * joining back with `├─╯`, the base branch the last row `~`), each node's row followed by its
+ * line; then the nodes the graph cannot draw, with the reason, and the proposals whose impl is not
+ * on the graph with the reason why. By default only the organization's own part is drawn
+ * (`ownRows`: its proposals' nodes and the PRs below them their lines need, marked `connector`)
+ * and the first line says how many others are left out; `all` draws every node (`rows`). Each line: the PR (`branch` for an impl branch no PR is open
+ * on), its branch and head, the layer's size, the marks, the proposal, the origins' twins.
+ * Relations, statuses and marks stay in English: they are field values; the reasons are
+ * sentences and follow the locale.
  */
-function renderGraph(g: ProposalGraphResponse, t: Messages): string {
+function renderGraph(g: ProposalGraphResponse, t: Messages, all: boolean): string {
   const short = (sha: string | null): string => (sha === null ? "?" : sha.slice(0, 9));
-  const label = (n: number | null): string =>
-    n === null ? "?" : n === 0 ? g.base.branch : `#${n}`;
-  // Every stack's top; a server older than `tops` names at most one.
-  const tops = g.tops ?? (g.top === null ? [] : [g.top]);
+  const byKey = new Map(g.nodes.map((n) => [n.key, n]));
+  // A node by its key: `""` is the base branch, a PR is its number, a branch node its branch.
+  const label = (key: string | null): string => {
+    if (key === null) return "?";
+    if (key === "") return g.base.branch;
+    const n = byKey.get(key);
+    return n?.number != null ? `#${n.number}` : (n?.branch ?? key);
+  };
   // Stacks side by side on the base branch: its children on the chain.
-  const stacks = g.nodes.filter((n) => n.parent === 0 && n.onChain).length;
+  const stacks = g.nodes.filter((n) => n.parent === "" && n.onChain).length;
   const line = (n: ProposalGraphNode): string => {
     const marks = [
       ...(n.draft ? ["draft"] : []),
       ...(n.fork ? ["fork"] : []),
-      ...(tops.includes(n.number) ? ["top"] : []),
+      ...(g.tops.includes(n.key) ? ["top"] : []),
       ...n.via.map((v) => `via ${v.state} #${v.number}`),
-      ...(n.stale ? ["stale, restack pending"] : []),
+      ...(n.stale
+        ? [
+            n.parent === ""
+              ? `stale, behind ${g.base.branch} by ${n.behind ?? 0}, restack pending`
+              : "stale, restack pending",
+          ]
+        : []),
       ...(n.off === null
         ? []
         : [
@@ -638,41 +654,48 @@ function renderGraph(g: ProposalGraphResponse, t: Messages): string {
         : `proposal #${n.proposal.number} ${n.proposal.status}`;
     const origins = n.origins.map((o) => `${o.origin} #${o.number} ${o.relation}`);
     return [
-      `#${n.number} ${n.branch} ${short(n.head)}${size}`,
+      `${n.number === null ? "branch" : `#${n.number}`} ${n.branch} ${short(n.head)}${size}`,
       ...(marks.length > 0 ? [`[${marks.join(", ")}]`] : []),
       proposal,
       ...origins,
     ].join("  ");
   };
-  const byNumber = new Map(g.nodes.map((n) => [n.number, n]));
-  const depth = (n: ProposalGraphNode): number => {
-    let d = 1;
-    let at = n.parent;
-    // The nodes arrive in chain order; the cap guards a cycle of declared bases.
-    while (at !== null && at !== 0 && d < g.nodes.length + 1) {
-      d++;
-      at = byNumber.get(at)?.parent ?? null;
-    }
-    return d;
-  };
-  // Each deployment sits on a layer (0 = the base branch) or on none; a server older than the field sends none.
-  const deployments = g.deployments ?? [];
+  // Each deployment sits on a layer (`""` = the base branch) or on none.
+  const deployments = g.deployments;
   const deploymentMark = (d: ProposalGraphDeployment): string =>
     `@${d.id} ${short(d.commit)}${d.relation === "ahead" ? ` +${d.ahead}` : ""}`;
-  const on = (at: number): string => {
+  const on = (at: string): string => {
     const marks = deployments.filter((d) => d.at === at).map(deploymentMark);
     return marks.length > 0 ? `  ${marks.join("  ")}` : "";
   };
   const offDeployments = deployments.filter((d) => d.at === null);
-  const chain = g.nodes.filter((n) => n.onChain);
-  const off = g.nodes.filter((n) => !n.onChain);
+  const nodeKeys = (rows: readonly ProposalGraphRow[]) =>
+    new Set(rows.filter((r) => r.kind === "node").map((r) => r.key));
+  const drawable = nodeKeys(g.rows);
+  const rows = all ? g.rows : g.ownRows;
+  const shown = nodeKeys(rows);
+  const others = [...drawable].filter((k) => !shown.has(k)).length;
+  // What the graph cannot draw at all; in the own view only what carries a proposal.
+  const off = g.nodes.filter((n) => !drawable.has(n.key) && (all || n.proposal !== null));
+  const cells = (r: ProposalGraphRow): string => r.cells.join("");
+  const row = (r: ProposalGraphRow): string => {
+    if (r.kind === "join") return cells(r).trimEnd();
+    if (r.kind === "node") {
+      return `${cells(r)} ${line(byKey.get(r.key)!)}${r.connector ? "  [connector]" : ""}${on(r.key)}`;
+    }
+    const behind = r.behind === null || r.behind === 0 ? "" : ` ${t.org.graphBaseBehind(r.behind)}`;
+    return `${cells(r)} ${g.base.branch} ${short(g.base.head)}${behind}${stacks > 1 ? `  [${stacks} stacks]` : ""}${on("")}`;
+  };
   const blocks = [
     [
-      `${g.repo} ${g.base.branch} ${short(g.base.head)}${g.base.fork ? (stacks > 1 ? `  [${stacks} stacks]` : "  [fork]") : ""}${on(0)}`,
-      ...chain.map((n) => indent(depth(n), line(n) + on(n.number))),
+      `${g.repo}${!all && others > 0 ? `  ${t.org.graphOthersHidden(others)}` : ""}`,
+      // Base on top: the smartlog rows reversed, each join turned from `├─╯` into `├─╮`.
+      ...[...rows]
+        .reverse()
+        .map((r) => row({ ...r, cells: r.cells.map((x) => x.replace("╯", "╮")) })),
     ].join("\n"),
     ...(off.length > 0
-      ? [[t.org.graphOffChain(), ...off.map((n) => indent(1, line(n) + on(n.number)))].join("\n")]
+      ? [[t.org.graphOffChain(), ...off.map((n) => indent(1, line(n) + on(n.key)))].join("\n")]
       : []),
     ...(offDeployments.length > 0
       ? [
@@ -696,7 +719,7 @@ function renderGraph(g: ProposalGraphResponse, t: Messages): string {
                 1,
                 `proposal #${p.number} ${p.status}  ${p.implPr ?? p.branch ?? "?"}  [${t.org.graphUnplacedReason(
                   p.reason,
-                  label(p.at),
+                  p.at === null ? "?" : `#${p.at}`,
                   p.into ?? "?",
                   g.base.branch,
                 )}]`,
@@ -2263,7 +2286,13 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     }
   });
 
-  scoped(proposal.command("graph").description(t.org.proposalGraphDesc), t).action(async (opts) => {
+  scoped(
+    proposal
+      .command("graph")
+      .description(t.org.proposalGraphDesc)
+      .option("--all", t.org.proposalGraphAllOpt),
+    t,
+  ).action(async (opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const graph = await proposalRequest<ProposalGraphResponse>(
@@ -2274,7 +2303,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     );
     if (graph === null) return;
     if (opts.json === true) printJson(graph);
-    else process.stdout.write(renderGraph(graph, t));
+    else process.stdout.write(renderGraph(graph, t, opts.all === true));
   });
 
   const kit: DeployKit = {
