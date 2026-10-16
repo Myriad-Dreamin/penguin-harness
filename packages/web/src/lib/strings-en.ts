@@ -6,6 +6,7 @@
  * of a label/sentence or in a proper name (Agent State).
  */
 import type { PeakWindows } from "../features/models/model-grouping";
+import { terminalEn } from "../features/terminal/strings";
 import type { Strings } from "./strings";
 
 export const en: Strings = {
@@ -405,45 +406,43 @@ export const en: Strings = {
     saveFailed: "Shortcuts could not be saved to the account",
   },
 
-  /** Server-side terminal (the in-app dock and the standalone /terminal page). */
-  terminal: {
-    title: "Terminal",
-    newShell: "New terminal",
-    /** Tab strip ×: kills the shell itself (server-side), unlike closing the dock. */
-    killShell: "Kill this terminal",
-    /** Boundary drag handle between the dock and the main content (double-click resets). */
-    /** Hover menu when the user has no live terminal yet. */
-    /** Pane body when creating/attaching a shell failed (the server message follows). */
-    createFailed: "Could not start a terminal",
-    /** A create that 404s: the server predates the terminal API (or the shell attached to an older one). */
-    noTerminalApi:
-      "this server has no terminal API: the running runtime predates it. A hot push replaces the platform and Web App, but the terminal endpoints are runtime-owned — the runtime itself has to be updated (restarting will not help)",
-    /** Codex-style handoff: opens /terminal?id=… in a new window, the dock lets go. */
-    detach: "Open in new window",
-    status: {
-      connecting: "connecting",
-      ready: "ready",
-      exited: "exited",
-      error: "error",
-    },
-    /** Suffix shown after `status.exited`; `code` is the shell's numeric exit code. */
-    exitedWithCode: (code: string): string => `exit code ${code}`,
-    touchKeys: {
-      label: "Terminal keys",
-      esc: "Escape",
-      tab: "Tab",
-      ctrl: "Ctrl (tap, then the next character)",
-      alt: "Alt (tap, then the next character)",
-      up: "Arrow up",
-      down: "Arrow down",
-      left: "Arrow left",
-      right: "Arrow right",
-      interrupt: "Interrupt (Ctrl+C)",
-      paste: "Paste",
-      hideKeyboard: "Dismiss the keyboard",
-      showKeyboard: "Show the keyboard",
-    },
+  /** Port forwarding: the dock's Ports panel, and a machine's Ports page. */
+  ports: {
+    panelTitle: "Ports",
+    here: "here",
+    machine: "machine",
+    formTitle: "New forward",
+    autoPort: "auto",
+    localNote:
+      "This Workspace is on this server: its ports are reachable on localhost as they are.",
+    adminOnly: "Only an admin can forward a machine's port.",
+    empty: "No forwarded ports yet.",
+    remotePort: "Remote port",
+    localPort: "Local port (auto)",
+    forward: "Forward",
+    copyAddress: "Copy local address",
+    open: "Open in browser",
+    remove: "Remove forward",
+    invalidRemotePort: "The remote port must be a whole number from 1 to 65535.",
+    invalidLocalPort: "The local port must be a whole number from 1024 to 65535.",
+    statusOnSession: "On the ssh session",
+    statusPending: "Waiting for ssh to answer",
+    statusNotConnected: "Machine not connected — applied once it is",
+    statusFailed: (detail: string) => `Failed: ${detail}`,
+    flipDirection: "Flip direction",
+    directionIn: "Machine → here: bring a port of the machine's here",
+    directionOut: "Here → machine: send a port of ours there",
+    samePort: "same",
+    machineTitle: (alias: string) => `Port forwards of ${alias}`,
+    backToMachines: "Machines",
+    machineEmpty:
+      "No port forwards on this machine yet. Add one from the Ports panel of a conversation on it.",
+    verb: "Ports",
+    verbTitle: "Every port forward of this machine",
   },
+
+  /** Server-side terminal (the in-app dock and the standalone /terminal page): the terminal module owns this copy. */
+  terminal: terminalEn,
 
   dock: {
     addTab: "Add panel",
@@ -455,9 +454,6 @@ export const en: Strings = {
     rightDock: "Right sidebar",
     bottomDock: "Bottom panel",
     draftEmpty: "Available once the conversation starts",
-    killConfirmTitle: "Close this terminal?",
-    killConfirmBody: (name: string): string =>
-      `This ends the shell "${name}" — it cannot be restored.`,
     launcher: "Shortcuts",
     launcherCaption: "Shortcuts",
     launcherOpen: "Open",
@@ -728,6 +724,27 @@ export const en: Strings = {
     loadFailed: "Failed to load traces",
   },
 
+  dashboard: {
+    title: "Dashboard",
+    /** The two counts, read beside their numbers: "3 running", "1 to review". */
+    running: "running",
+    pendingReview: "to review",
+    /** The merged row of auto-created temporary Workspaces, as the sidebar groups them. */
+    temporaryWorkspaces: "Temporary workspaces",
+    empty: "Nothing is running",
+    /** The empty state while a machine did not answer: this server has nothing, the rest is unknown. */
+    emptyHere: "Nothing is running on this server",
+    /** The same while this server is the one that did not answer: only the machines that did are known. */
+    emptyAnswered: "Nothing is running on the machines that answered",
+    emptyHint:
+      "Workspaces with a Session running, or finished since you last opened it, appear here.",
+    loadFailed: "Failed to load",
+    silentMachines: (n: number) =>
+      `${n} machine${n > 1 ? "s" : ""} did not answer — Sessions there are not counted. Connect to it on the Machines page.`,
+    /** Tooltip on a row's count: it unfolds into the Sessions it counts. */
+    toggleList: "Show or hide these Sessions",
+  },
+
   settings: {
     language: "Language",
     languageInfo: "Interface language; can follow the browser.",
@@ -745,6 +762,8 @@ export const en: Strings = {
     agentApiOffConfirm:
       "Every agent's API on this server refuses requests at once, and the programs calling them fail until it is on again. Per-agent switches, approval modes and keys are kept.",
     agentApiOff: "Turn off",
+    /** Sidebar user-menu row, under the settings row, opening the dashboard page. */
+    dashboard: "Dashboard",
     /** Rail headings: the viewer's own preferences vs. the whole server's. */
     groupPersonal: "Personal",
     groupServer: "Server",
@@ -4374,10 +4393,41 @@ Scenarios:
     ],
   },
 
+  /** Discord-channel strings of the messaging binding editor (channel-neutral ones live under `messaging`). */
+  discord: {
+    /** The what-binding-does FAQ fold's body (this channel's flavor). */
+    intro:
+      "Once bound, direct messages to the Discord bot — and messages that @-mention it in a server channel or thread — flow into this conversation, and the AI's replies are sent back to the same channel. Create an application in the Discord developer portal, add a bot to it and paste its token — no public URL is needed.",
+    botToken: "Bot Token",
+    /** Shown while a saved token exists: submitting an empty field keeps it. */
+    botTokenKeepHint: "Leave empty to keep the saved Bot Token",
+    /** The stored-token row's clear checkbox (the models-page clear idiom). */
+    clearToken: "Clear stored Bot Token",
+    /** The Bot Token field's corner link: the developer portal's application list. */
+    openPortal: "Open developer portal",
+    invalidToken:
+      "The Bot Token looks like three dot-separated segments, as copied from the Bot page of the developer portal",
+    /** Why "send test message" is disabled before the bot has ever been messaged. */
+    testMessageNoChat:
+      "Message the bot once in Discord first, so it knows which channel to send to",
+    /**
+     * The rule that cannot wait for a collapsed fold: a server channel delivers only messages
+     * that @-mention the bot, so a user who writes without the mention sees nothing arrive.
+     */
+    mentionOnly:
+      "In a server channel or thread the bot reads only messages that @-mention it; direct messages reach it as they are.",
+    /** The setup FAQ fold's steps. */
+    setupSteps: [
+      "Open the Discord developer portal, create an application, and on its Bot page reset the token and copy it into the form above",
+      "Under OAuth2 → URL Generator pick the bot scope with the Send Messages, Read Message History and Attach Files permissions, then open the generated link to add the bot to your server",
+      "@-mention the bot in a channel, or send it a direct message",
+    ],
+  },
+
   /**
    * Session ↔ messaging-bot binding: the dock panel, the row action + dialog, and the
    * channel-neutral editor strings (per-channel fields live under `feishu` / `telegram` /
-   * `qq`).
+   * `qq` / `wechat` / `discord`).
    */
   messaging: {
     panelTitle: "Remote control",
@@ -4391,6 +4441,7 @@ Scenarios:
       telegram: "Telegram",
       qq: "QQ",
       wechat: "WeChat",
+      discord: "Discord",
     },
     /**
      * Shared link labels: the tutorial (in the setup FAQ fold) and, at the credential field's
@@ -4436,6 +4487,7 @@ Scenarios:
     credentialMissingHint: {
       feishu: "Enter and save the App ID and App Secret first, then enable the connection",
       telegram: "Enter and save the Bot Token first, then enable the connection",
+      discord: "Enter and save the Bot Token first, then enable the connection",
       qq: "Scan the QR code, or enter and save the App ID and App Secret, then enable the connection",
       wechat: "Scan the QR code to link WeChat first, then enable the connection",
     },
@@ -4456,6 +4508,8 @@ Scenarios:
       "A reply's Markdown arrives as formatting instead of as `**characters**`. QQ shows headings, bold, italic, strikethrough, lists, quotes, rules and links; it has no code formatting and no tables, so a code block arrives as plain lines and a table as its rows. If QQ refuses the formatting, the reply is sent as plain text — which costs one more of the few replies QQ allows per message.",
     renderMarkdownHelpWeChat:
       "A reply's Markdown arrives as formatting instead of as `**characters**`. WeChat reads Markdown itself and shows the most of the four channels: headings, bold, strikethrough, lists, quotes, rules, links, inline code, code blocks and tables all render. What it cannot show keeps its words and loses its markers — headings past the fourth level, italics around Chinese text, and inline images, which become links.",
+    renderMarkdownHelpDiscord:
+      "A reply's Markdown arrives as formatting instead of as `**characters**`. Discord reads Markdown itself: headings up to the third level, bold, italic, strikethrough, lists, quotes, links, inline code and code blocks all render. It has no tables and no horizontal rules, so a table arrives as a code block and a rule as a short dash line; a heading past the third level becomes a bold line.",
     /** The saved delivery option: one message per non-blank line of a reply. */
     linePerMessage: "One message per line",
     /** Its disclosure, beside the label: what the option does to a reply, and its two edges. */
@@ -4479,6 +4533,7 @@ Scenarios:
       telegram: "Telegram connection enabled",
       qq: "QQ connection enabled",
       wechat: "WeChat connection enabled",
+      discord: "Discord connection enabled",
     },
     /**
      * Delivery observability under the toggle: has anything arrived, and did the last one get
@@ -4521,6 +4576,12 @@ Scenarios:
     /** WeChat has no group inbound at all — the answer to "I @-ed it in a group and nothing happened". */
     troubleWeChatDirect:
       "The WeChat channel receives direct chats only: @-mentioning the bot in a group does nothing at all. Message it directly instead.",
+    /** Discord delivers a server-channel message only when it @-mentions the bot — the answer to "I wrote in the channel and nothing happened". */
+    troubleDiscordMention:
+      "The bot ignores what you write in a Discord server channel? It reads only messages that @-mention it there (this needs no privileged intent in the developer portal, so nothing has to be switched on). Start the message with @the-bot, or send it a direct message.",
+    /** Direct messages to a bot need a shared server and the user's own DM setting. */
+    troubleDiscordDm:
+      "A direct message to the bot never arrives, or the reply fails with “does not accept direct messages”? Discord only routes DMs between a bot and a user who share a server, and the user's privacy settings for that server must allow direct messages from its members.",
     /** WeChat's reply budget and window — the answer to "replies arrive combined, or late". */
     troubleWeChatReplyWindow:
       "Replies in WeChat arrive combined, or late? WeChat lets the bot send about 10 messages for each message you send it, and only for a while after your last one. A run that produces more is combined into fewer messages, and anything WeChat will not take yet is held and sent as soon as you next message the bot.",
@@ -5323,9 +5384,11 @@ Scenarios:
     modelProjectDefaultNamed: (name: string): string => `Project default (${name})`,
     modelsLoadFailed:
       "The model list could not be read; you can still create with the Project default",
+    machineCompanyModeOff:
+      "Company mode is off on that machine. Turn it on in that machine's Settings first, then create the organization on it.",
     workspaceField: "Company workspace",
     workspaceInfo:
-      "The directory the employees work in together: each employee's workspace is one of its sub-directories (or all of it), and desk and ticket sessions run inside it.",
+      "The directory the employees work in together: each employee's workspace is one of its sub-directories (or all of it), and desk and ticket sessions run inside it. It can be on one of the Project's connected machines: the organization then runs on that machine — its Agents and Sessions are there — and still belongs to this Project, which keeps a copy of its files. It cannot be moved afterwards.",
     workspaceEmpty: "The organization's own workspace/ directory",
     workspaceClear: "Use the organization's own directory",
     /** CEO budget field (create dialog): the CEO's ceiling is the company's, since everyone reports to it. */
@@ -6128,6 +6191,12 @@ Scenarios:
       telegram_no_chat:
         "No Telegram message received yet — message the bot once in Telegram first.",
       telegram_send_failed: "Sending the Telegram message failed.",
+      discord_token_required: "Bot Token is required.",
+      discord_token_invalid:
+        "The Bot Token is malformed: it looks like three dot-separated segments, as copied from the developer portal.",
+      discord_not_bound: "This Session has no Discord binding yet.",
+      discord_no_chat: "No Discord message received yet — message the bot once in Discord first.",
+      discord_send_failed: "Sending the Discord message failed.",
       wechat_no_chat: "No WeChat message received yet — message the bot once in WeChat first.",
       wechat_send_failed: "Sending the WeChat message failed.",
       wechat_needs_recent_message:

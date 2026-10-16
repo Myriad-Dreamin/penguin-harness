@@ -45,6 +45,7 @@ import { QQTransportProvider } from "./runtime/messaging/qq-connector.js";
 import { QQScanTransportProvider } from "./runtime/messaging/qq-scan.js";
 import { WeChatTransportProvider } from "./runtime/messaging/wechat-connector.js";
 import { WeChatScanTransportProvider } from "./runtime/messaging/wechat-scan.js";
+import { DiscordTransportProvider } from "./runtime/messaging/discord-connector.js";
 import { PluginConfig, PluginConfigProvider } from "./plugin/config.js";
 import { PluginConfigAdmin, PluginConfigPage } from "./plugin/config-page.js";
 import {
@@ -113,6 +114,7 @@ import { SandboxSettings } from "./sandbox/settings-store.js";
 import { SandboxSettingsStatus } from "./sandbox/settings-status.js";
 import { SchedulerRoutes } from "./http/routes/schedules.js";
 import { Machines, MachinesModule } from "./machines/service.js";
+import { PortForwardsModule } from "./port-forwards/module.js";
 import { OrganizationModule, OrgScheduler, OrgService } from "./runtime/organization/service.js";
 import { OrgRoutes } from "./http/routes/organizations.js";
 import { OrgRuns, OrgSessions } from "./runtime/organization/deps.js";
@@ -427,6 +429,7 @@ export class WorkspaceModule {}
     QQScanTransportProvider,
     WeChatTransportProvider,
     WeChatScanTransportProvider,
+    DiscordTransportProvider,
     DefaultMessagingTuning,
     MessagingBindingsRepo,
     MessagingConversationsRepo,
@@ -508,6 +511,7 @@ export class PackagesModule {}
     SandboxSettingsModule,
     TerminalModule,
     MachinesModule,
+    PortForwardsModule,
     TerminalRelay,
     WorkflowsModule,
     BuiltinBrowserModule,

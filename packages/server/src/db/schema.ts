@@ -144,13 +144,13 @@ CREATE TABLE IF NOT EXISTS schedule_state (    -- schedule runtime state (files 
 );
 CREATE TABLE IF NOT EXISTS messaging_bindings ( -- Session ↔ messaging-channel bot bindings (runtime/messaging/ holds the long connections)
   session_id       TEXT NOT NULL,              -- a Session keeps at most one saved config PER channel (composite PK below); at most ONE of them is enabled at a time (route-enforced, 409 another_channel_enabled), and enabling is what binds the account to this Session
-  channel          TEXT NOT NULL,              -- messaging channel discriminator ('feishu' | 'telegram' | 'qq' | 'wechat')
-  account_id       TEXT NOT NULL,              -- channel-scoped bot/app identity (feishu: app_id; telegram: the bot token's numeric id; qq: the bot's App ID; wechat: the scanned bot id); NOT unique — any number of Sessions may keep the same account saved side by side, each with its own config and last-chat memory; only ENABLING is exclusive (route-enforced, 409 account_enabled_elsewhere: one account has one event stream, two live connections on it would race)
-  config_json      TEXT NOT NULL,              -- channel-specific credentials/config JSON (feishu: appId/appSecret/baseDomain; telegram: botToken; qq: appId/appSecret; wechat: botId/botToken/baseUrl/userId); secrets plaintext at rest (same trade-off as the proxy address in server_settings), masked at every API surface; a cleared secret is stored as "" (the row and its account identity stay)
+  channel          TEXT NOT NULL,              -- messaging channel discriminator ('feishu' | 'telegram' | 'qq' | 'wechat' | 'discord')
+  account_id       TEXT NOT NULL,              -- channel-scoped bot/app identity (feishu: app_id; telegram: the bot token's numeric id; qq: the bot's App ID; wechat: the scanned bot id; discord: the bot user id the token encodes); NOT unique — any number of Sessions may keep the same account saved side by side, each with its own config and last-chat memory; only ENABLING is exclusive (route-enforced, 409 account_enabled_elsewhere: one account has one event stream, two live connections on it would race)
+  config_json      TEXT NOT NULL,              -- channel-specific credentials/config JSON (feishu: appId/appSecret/baseDomain; telegram: botToken; qq: appId/appSecret; wechat: botId/botToken/baseUrl/userId; discord: botToken); secrets plaintext at rest (same trade-off as the proxy address in server_settings), masked at every API surface; a cleared secret is stored as "" (the row and its account identity stay)
   enabled          INTEGER NOT NULL DEFAULT 0, -- INTENT state (the connection's runtime status stays in memory): new bindings start disabled — saving credentials never opens a connection, the explicit state toggle does
   line_per_message INTEGER NOT NULL DEFAULT 0, -- delivery preference: 1 = every non-blank line of a relayed assistant reply is sent as its own message (a reply written as spoken lines arrives as spoken lines), 0 = one message per reply. Channel-agnostic, so it lives here rather than in config_json, which each connector owns
   final_reply_only INTEGER NOT NULL DEFAULT 0, -- delivery preference: 1 = a run's intermediate assistant messages are held and only its LAST completed one is sent, at the run's end, 0 = every completed assistant message mirrors the moment it completes. Channel-agnostic like the column above and independent of it: with both set, that one final text is the one split per line
-  render_markdown  INTEGER NOT NULL DEFAULT 1, -- delivery preference: 1 = a relayed reply's Markdown is rendered in the channel's own markup (Telegram HTML, a Feishu card, QQ markdown, the subset WeChat itself reads), 0 = the reply's characters are sent as written. DEFAULT 1 because the model writes Markdown and showing it raw was the defect; the per-channel subsets and the plain-text fallback live in the connectors
+  render_markdown  INTEGER NOT NULL DEFAULT 1, -- delivery preference: 1 = a relayed reply's Markdown is rendered in the channel's own markup (Telegram HTML, a Feishu card, QQ markdown, the subsets WeChat and Discord themselves read), 0 = the reply's characters are sent as written. DEFAULT 1 because the model writes Markdown and showing it raw was the defect; the per-channel subsets and the plain-text fallback live in the connectors
   last_chat_id     TEXT,                       -- most recent inbound chat (NULL until the bot is messaged once; replies and test messages target it); CONNECTOR-OPAQUE, not necessarily a bare chat id — telegram appends the forum topic (see telegram-connector.ts chatRefOf), so only that channel's connector may interpret it
   last_chat_is_direct INTEGER NOT NULL DEFAULT 1, -- 1 = direct chat (reply by chat id), 0 = group chat (prefer reply-to-message)
   last_inbound_message_id TEXT,                 -- channel id of the most recently PROCESSED inbound message (NULL until one arrives); the durable half of the bridge's redelivery guard, so a channel replaying an event this server already turned into a Task after a restart does not run it twice
@@ -229,6 +229,18 @@ CREATE TABLE IF NOT EXISTS machine_project (   -- which machines a Project uses;
   project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,
   addresses  TEXT NOT NULL                     -- JSON array of 'ssh:<alias>'
 );
+CREATE TABLE IF NOT EXISTS port_forwards (     -- a port forward on a machine's ssh session, per Workspace (port-forwards/service.ts)
+  id          TEXT PRIMARY KEY,
+  machine_id  TEXT NOT NULL,                   -- that machine's own id (machines.machine_id); no FK — a machine row is keyed by address, and one id may have two
+  workspace   TEXT NOT NULL,                   -- the Workspace directory ON that machine; a forward belongs to (machine, directory), not to a Session
+  direction   TEXT NOT NULL,                   -- 'in': the machine's port comes here (ssh -L); 'out': our port goes there (ssh -R)
+  remote_port INTEGER NOT NULL,                -- 127.0.0.1:<remote_port> over there
+  local_port  INTEGER NOT NULL,                -- 127.0.0.1:<local_port> here; fixed once given, so an address a person saved stays true across restarts
+  created_at  TEXT NOT NULL,
+  UNIQUE (machine_id, workspace, direction, remote_port)
+);
+CREATE INDEX IF NOT EXISTS idx_port_forwards_machine ON port_forwards(machine_id, workspace);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_port_forwards_local_in ON port_forwards(local_port) WHERE direction = 'in';  -- two 'in' forwards cannot share a local port; 'out' ones may name any
 CREATE TABLE IF NOT EXISTS trace_files (       -- DERIVED CACHE of the on-disk Trace tree (services/trace-index.ts): the directories stay the single source of truth, every row is rebuildable from disk, and a row is never authority for absence — consumers reconcile + retry on a miss, so a stale index costs one extra scan, never a false 404
   project_id TEXT NOT NULL,
   agent_id   TEXT NOT NULL,

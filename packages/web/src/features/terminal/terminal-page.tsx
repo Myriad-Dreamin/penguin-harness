@@ -214,7 +214,7 @@ export function TerminalPage() {
           className={`flex min-w-0 max-w-[50%] items-center gap-1 ${
             status === "ready"
               ? chrome.success
-              : status === "connecting"
+              : status === "connecting" || status === "reconnecting"
                 ? chrome.attention
                 : chrome.danger
           }`}
@@ -247,7 +247,7 @@ export function TerminalPage() {
       />
       <ConfirmModal
         open={confirmKill}
-        title={S.dock.killConfirmTitle}
+        title={S.terminal.killConfirmTitle}
         onClose={() => setConfirmKill(false)}
         onConfirm={() => void killConfirmed()}
         confirmLabel={S.terminal.killShell}
@@ -255,7 +255,7 @@ export function TerminalPage() {
       >
         {info && (
           <p className="break-words text-sm text-gray-600 dark:text-gray-300">
-            {S.dock.killConfirmBody(info.name)}
+            {S.terminal.killConfirmBody(info.name)}
           </p>
         )}
       </ConfirmModal>
