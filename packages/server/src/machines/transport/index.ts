@@ -50,12 +50,5 @@ export function forwardKey(spec: {
   return `${spec.direction}:${spec.localPort}:${spec.remotePort}`;
 }
 export type { ForwardFact } from "../../mechanisms/machines.js";
-export {
-  appendHostBlock,
-  listHostAliases,
-  listHostEntries,
-  readSshConfig,
-  writeSshConfig,
-} from "./targets.js";
 export { emit, round, setTimingsSink, timingsSink } from "./timings.js";
 export type { MachineSample, TimingsSink } from "./timings.js";
