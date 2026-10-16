@@ -184,8 +184,7 @@ export function roadmapCode(service: RoadmapService): Record<string, ActionCode 
     },
   };
   out[ROADMAP_SUBJECTS_ID] = subjects;
-  // The built-in notices (notices.ts): the desk lines, the approval request into the
-  // moderator's room session, and the reopening into every open room session.
+  // The built-in notices (notices.ts): every one is a line on each desk of `to`.
   const desk: ActionCode = {
     run: (ctx) =>
       service.notices.desk(
@@ -197,27 +196,6 @@ export function roadmapCode(service: RoadmapService): Record<string, ActionCode 
         ctx.caller.principal,
       ),
   };
-  out[ROADMAP_NOTICE_IDS.room_joined] = desk;
-  out[ROADMAP_NOTICE_IDS.derived] = desk;
-  out[ROADMAP_NOTICE_IDS.item_approved] = desk;
-  out[ROADMAP_NOTICE_IDS.base_linked] = desk;
-  out[ROADMAP_NOTICE_IDS.approval_requested] = {
-    run: (ctx) => {
-      const to = ctx.params.to as string[];
-      return service.notices.inSession(
-        ctx.params.sessionId as string,
-        to[0] ?? "",
-        ctx.params.text as string,
-      );
-    },
-  };
-  out[ROADMAP_NOTICE_IDS.reopened] = {
-    run: (ctx) =>
-      service.notices.inSessions(
-        ctx.params.to as string[],
-        ctx.params.sessionIds as string[],
-        ctx.params.text as string,
-      ),
-  };
+  for (const id of Object.values(ROADMAP_NOTICE_IDS)) out[id] = desk;
   return out;
 }

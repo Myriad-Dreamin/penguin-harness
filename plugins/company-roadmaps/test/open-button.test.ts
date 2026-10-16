@@ -248,7 +248,7 @@ describe("the Open a roadmap button", () => {
   });
 
   it("stays on the new roadmap and says so first when the server had something to add", async () => {
-    const p = await page(organization({ hints: ["No room session for acme_dev: offline"] }));
+    const p = await page(organization({ hints: ["acme_dev was not told: acme_dev is paused."] }));
     await p.click("button[data-open]");
     await p.pick("acme_dev");
     await p.name("Queue migration");
@@ -256,7 +256,7 @@ describe("the Open a roadmap button", () => {
     expect(p.pushed).toEqual([]);
     expect(p.hash()).toBe("#1");
     expect(p.text()).toContain(T.opened.replace("{n}", "1"));
-    expect(p.text()).toContain("No room session for acme_dev: offline");
+    expect(p.text()).toContain("acme_dev was not told: acme_dev is paused.");
     expect(p.$<HTMLElement>("a[data-room]").getAttribute("href")).toBe(
       "/org/proj/acme/channels/roadmap_1",
     );

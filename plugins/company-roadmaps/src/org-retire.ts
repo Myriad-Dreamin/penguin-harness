@@ -2,8 +2,7 @@
  * Deleting an organization, as this plugin takes part in it (the host's
  * `OrganizationModule.retirements`, contributed by index.ts's retirement node). The plugin keeps
  * per organization its `company.db` connection, opened on first use, and the lock chain its
- * writes and relay passes run on; the relay state itself is a file in the organization's
- * directory and moves to the trash with it. A retirement awaits the organization's writes in
+ * writes run on. A retirement awaits the organization's writes in
  * flight, closes its connection and drops both; other organizations are not touched.
  *
  * Until the host has moved the directory, nothing may open the organization's store again: a new
@@ -57,8 +56,8 @@ export type RetireListener = (org: OrgRef) => Promise<void>;
 
 /**
  * The service's retirements, registered at its setup and removed when its App stops; the
- * retirement node reaches them through this module's scope, as the channel claim reaches its
- * listeners (claim.ts), and for the same reason: it contributes to the organization module.
+ * retirement node reaches them through this module's scope, since it contributes to the
+ * organization module and so cannot require the service's own dependencies (index.ts).
  */
 export const retireListeners = new Set<RetireListener>();
 

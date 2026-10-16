@@ -1,15 +1,13 @@
 /**
  * The plugin on the real server: installed through a Project's config, loaded by the real
- * loader, and its requirements — the organization gateway (CompanyModule) and the session
- * runtime (SessionRuntimeModule), which is what lets it clone a desk for a room and feed it —
- * and company-proposals' module (CompanyProposalsPlugin), through which an approved item's
- * proposal is created, installed beside it —
- * resolved from the real module tree, and its channel claim contributed to the organization
- * module by a node of its own (the tree refuses a node that contributes there while requiring
- * the gateway: a cycle); its settings group declared on the Plugins page; its
- * routes mounted behind the cookie gate, answering 404 while company mode is off and for an
- * organization that does not exist once it is on. Creating an organization needs a model to
- * run its CEO, so the lifecycle itself is exercised in service.test.ts over the fakes.
+ * loader, and its requirements — the organization gateway (CompanyModule) and company-proposals'
+ * module (CompanyProposalsPlugin), through which an approved item's proposal is created,
+ * installed beside it — resolved from the real module tree, and its retirement contributed to
+ * the organization module by a node of its own (the tree refuses a node that contributes there
+ * while requiring the gateway: a cycle); its routes mounted behind the cookie gate, answering
+ * 404 while company mode is off and for an organization that does not exist once it is on.
+ * Creating an organization needs a model to run its CEO, so the lifecycle itself is exercised
+ * in service.test.ts over the fakes.
  *
  * Needs the server and this package built (see README).
  */
@@ -24,7 +22,6 @@ import {
   type HarnessApi,
   type HarnessApiError,
 } from "@prismshadow/penguin-plugin-test";
-import { CONFIG_GROUP, DEFAULT_POLL_SECONDS, DEFAULT_RELAY_DEPTH } from "../src/config.js";
 import { PAGE_SRC } from "../src/page.js";
 
 const PLUGIN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -53,13 +50,13 @@ describe("the company-roadmaps plugin on a real server", () => {
     await harness?.stop();
   });
 
-  it("is loaded, all three nodes: the gateway, the session runtime and company-proposals resolved, and the claim and the retirement taken by the organization module without a cycle", async () => {
+  it("is loaded, both nodes: the gateway and company-proposals resolved, and the retirement taken by the organization module without a cycle", async () => {
     const row = (await harness.installedPlugins()).find((r) =>
       r.modules.includes("CompanyRoadmapsPlugin"),
     );
     expect(row).toMatchObject({
       active: true,
-      modules: ["CompanyRoadmapsPlugin", "RoadmapRoomClaim", "RoadmapsRetirement"],
+      modules: ["CompanyRoadmapsPlugin", "RoadmapsRetirement"],
       replaces: [],
     });
     // Its Actions go to company-proposals' registry, a module of that plugin's own.
@@ -94,16 +91,6 @@ describe("the company-roadmaps plugin on a real server", () => {
     );
     const anonymous = await fetch(`${harness.baseUrl}${PAGE_SRC}`);
     expect(anonymous.status).toBe(401);
-  });
-
-  it("declares its settings group on the Plugins page", async () => {
-    const read = await api.get<{
-      plugins: Array<{ name: string; values: Record<string, unknown> }>;
-    }>("/api/admin/plugin-config");
-    expect(read.plugins.find((p) => p.name === CONFIG_GROUP)?.values).toMatchObject({
-      relayDepth: DEFAULT_RELAY_DEPTH,
-      pollSeconds: DEFAULT_POLL_SECONDS,
-    });
   });
 
   it("answers 404 while company mode is off, and 404 for a missing organization once it is on — the reads and the roadmap Actions alike", async () => {

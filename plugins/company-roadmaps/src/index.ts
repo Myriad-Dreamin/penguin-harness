@@ -8,10 +8,10 @@
  *
  * A roadmap is what a discussion among several employees settles into: a body written as a
  * paper, and the proposals (brief and owner, stacked on one another) and roadmaps it leads to.
- * The discussion happens in an organization channel, borrowed as it is (room.ts reads it and
- * never writes it); every employee in the room gets its desk cloned for the room — a session of
- * its own opened through the organization gateway — and the room's messages reach those
- * sessions through the session runtime (service.ts's relay). Establishing a roadmap ends the
+ * The discussion happens in an organization channel, an ordinary one: the roadmap's members are
+ * its members, and the organization delivers its messages to their desks as it does any
+ * channel's. The plugin keeps the channel's members in step with the roadmap's through the
+ * organization gateway (members.ts) and otherwise only reads it (room.ts). Establishing a roadmap ends the
  * discussion; a proposal item's last approval (the moderator's and another member's by default)
  * creates its proposal in company-proposals — through that plugin's module, wired below — and
  * links it. Every write is a roadmap Action contributed to company-proposals' Action registry
@@ -20,22 +20,13 @@
 import type { Hono } from "hono";
 import { Bind, Component, Use } from "@prismshadow/penguin-core/plugin";
 import type { ClassCtx, Plugin } from "@prismshadow/penguin-core/plugin";
-import type {
-  Log,
-  MessagingTaskRunner,
-  OrgChannelRef,
-  OrgGateway,
-  Paths,
-  PluginConfig,
-  SessionIndex,
-} from "@prismshadow/penguin-server/plugin";
+import type { OrgGateway, Paths } from "@prismshadow/penguin-server/plugin";
 import { RoadmapService } from "./service.js";
 import { ModeratorRegistration, ProposalCreator, roadmapModerators } from "./proposals.js";
 import { ROUTES_ID, roadmapRoutes } from "./routes.js";
 import { roadmapCode } from "./builtin-actions.js";
 import { ROADMAP_NOTICE_IDS } from "./notices.js";
 import { PAGE_ROUTES_ID, pageRoutes } from "./page.js";
-import { claimListeners, roomClaim, type ClaimListener } from "./claim.js";
 import {
   retireListeners,
   retireRegistered,
@@ -45,13 +36,10 @@ import {
 
 export * from "./public.js";
 
-/** The channel claim's contribution id, as the manifest names it. */
-export const CLAIM_ID = "company-roadmaps.channel-claim";
-
 /**
- * The plugin's one module: the service over the organization gateway, the session runtime and
- * the data root, its routes on the HttpModule.routes slot, its settings group, and the relay
- * that runs while it is loaded. Its manifest is generated into ifaces.json from here.
+ * The plugin's main module: the service over the organization gateway and the data root, its
+ * routes on the HttpModule.routes slot, and its Actions on company-proposals' registry. Its
+ * manifest is generated into ifaces.json from here.
  */
 @Component({
   contributes: {
@@ -174,8 +162,7 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
         key: "notify.roadmap.room_joined",
         subjects: ["roadmap"],
         params: { to: "string[]", text: "string", runId: "string" },
-        description:
-          "Tell an opening or added employee the room it is in and its room session there.",
+        description: "Tell an employee the roadmap's room it is in, and how to take part there.",
       },
       {
         id: "company-roadmaps.notify.derived",
@@ -206,16 +193,16 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
         kind: "action",
         key: "notify.roadmap.approval_requested",
         subjects: ["roadmap"],
-        params: { to: "string[]", text: "string", sessionId: "string", runId: "string" },
-        description: "Ask the moderator, in its room session, for its approvals of the briefs.",
+        params: { to: "string[]", text: "string", runId: "string" },
+        description: "Ask the moderator, at its desk, for its approvals of the briefs.",
       },
       {
         id: "company-roadmaps.notify.reopened",
         kind: "action",
         key: "notify.roadmap.reopened",
         subjects: ["roadmap"],
-        params: { to: "string[]", text: "string", sessionIds: "string[]", runId: "string" },
-        description: "Tell every open room session the roadmap is discussed again, and why.",
+        params: { to: "string[]", text: "string", runId: "string" },
+        description: "Tell every member the roadmap is discussed again, and why.",
       },
     ],
     "HttpModule.routes": [
@@ -247,42 +234,6 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
         renderer: { iframe: { src: "/api/company-roadmaps/page", namespace: "company-roadmaps" } },
       },
     ],
-    "PluginConfigProvider.groups": [
-      {
-        // A manifest is data: these literals repeat config.ts's CONFIG_GROUP and defaults, and a
-        // test holds the two copies together.
-        id: "company-roadmaps",
-        title: "Company roadmaps",
-        titleZh: "公司路线图",
-        description:
-          "Roadmap rooms in company mode. The settings apply to every organization on this server.",
-        descriptionZh: "公司模式下的路线图讨论室。设置对本服务器上的所有组织生效。",
-        properties: {
-          relayDepth: {
-            type: "number",
-            title: "Relay depth",
-            titleZh: "转发深度",
-            description:
-              "How far a reply travels between the room sessions: a person's message is depth 0, a reply one more than the message it answers, and a message at this depth reaches no one.",
-            descriptionZh:
-              "回复在讨论室会话之间最多传几跳：人的消息为 0，回复比它所回应的消息多 1，到达此深度的消息不再转给任何人。",
-            minimum: 1,
-            maximum: 10,
-            default: 3,
-          },
-          pollSeconds: {
-            type: "number",
-            title: "Poll interval (seconds)",
-            titleZh: "轮询间隔（秒）",
-            description: "How often the rooms are read for new messages.",
-            descriptionZh: "多久读一次讨论室的新消息。",
-            minimum: 1,
-            maximum: 300,
-            default: 5,
-          },
-        },
-      },
-    ],
     "WebModule.quickStarts": [
       {
         id: "company-roadmaps.quick-start",
@@ -297,11 +248,7 @@ export const CLAIM_ID = "company-roadmaps.channel-claim";
 })
 export class CompanyRoadmapsPlugin {
   @Use("CompanyModule") private readonly gateway!: OrgGateway;
-  @Use("SessionRuntimeModule") private readonly runner!: MessagingTaskRunner;
-  @Use("SessionRuntimeModule") private readonly sessions!: SessionIndex;
   @Use("RuntimeModule") private readonly paths!: Paths;
-  @Use("RuntimeModule") private readonly log!: Log;
-  @Use("PluginConfigModule") private readonly pluginConfig!: PluginConfig;
   @Use("CompanyProposalsPlugin") private readonly proposals!: ProposalCreator;
   @Use("CompanyProposalsPlugin") private readonly moderatorSeat!: ModeratorRegistration;
   @Bind(ROUTES_ID) routes!: Hono;
@@ -328,14 +275,9 @@ export class CompanyRoadmapsPlugin {
   setup({ effect }: ClassCtx) {
     const service = new RoadmapService({
       gateway: this.gateway,
-      runner: this.runner,
-      sessions: this.sessions,
       proposals: this.proposals,
       root: this.paths.root,
-      log: this.log,
-      pluginConfig: this.pluginConfig,
     });
-    service.start();
     effect(() => {
       void service.stop();
     });
@@ -361,16 +303,6 @@ export class CompanyRoadmapsPlugin {
     this.reopenedNotice = code[ROADMAP_NOTICE_IDS.reopened];
     // company-proposals asks who moderates a roadmap (the default guard of `proposal.author`).
     effect(this.moderatorSeat.provideRoadmapModerators(roadmapModerators(service)));
-    // What the claim node claims is relayed at once, not at the next poll (claim.ts).
-    const listener: ClaimListener = (channel, number) => {
-      setImmediate(() => {
-        void service.relayRoadmap(channel.projectId, channel.orgId, number);
-      });
-    };
-    claimListeners.add(listener);
-    effect(() => {
-      claimListeners.delete(listener);
-    });
     // An organization being deleted: its writes awaited, its connection closed (org-retire.ts).
     const retire: RetireListener = (org) => service.retire(org.projectId, org.orgId);
     retireListeners.add(retire);
@@ -380,40 +312,13 @@ export class CompanyRoadmapsPlugin {
   }
 }
 
-/**
- * The channel claim, as a node of its own: it contributes to the organization module, so it
- * must not require the organization gateway that module provides (a cycle) — it answers from
- * the organization's store under the data root and hands what it claims to the service (claim.ts).
- */
-@Component({
-  contributes: {
-    "OrganizationModule.channelClaims": [
-      {
-        id: "company-roadmaps.channel-claim",
-        description:
-          "The room of a roadmap under discussion: its messages reach the room sessions, not desks.",
-      },
-    ],
-  },
-})
-export class RoadmapRoomClaim {
-  @Use("RuntimeModule") private readonly paths!: Paths;
-  @Bind(CLAIM_ID) claim!: (channel: OrgChannelRef) => boolean;
-
-  setup() {
-    this.claim = roomClaim(this.paths.root, (channel, number) => {
-      for (const listener of claimListeners) listener(channel, number);
-    });
-  }
-}
-
 /** The retirement's contribution id, as the manifest names it. */
 export const RETIRE_ID = "company-roadmaps.retirement";
 
 /**
- * The retirement, as a node of its own for the claim's reason: it contributes to the
- * organization module, so it must not require the gateway that module provides. It hands the
- * organization to the retirement the service registered (org-retire.ts).
+ * The retirement, as a node of its own: it contributes to the organization module, so it must
+ * not require the gateway that module provides (a cycle, which the tree refuses to boot). It
+ * hands the organization to the retirement the service registered (org-retire.ts).
  */
 @Component({
   contributes: {
@@ -434,7 +339,7 @@ export class RoadmapsRetirement {
 }
 
 const plugin: Plugin = {
-  modules: [CompanyRoadmapsPlugin, RoadmapRoomClaim, RoadmapsRetirement],
+  modules: [CompanyRoadmapsPlugin, RoadmapsRetirement],
 };
 
 export default plugin;

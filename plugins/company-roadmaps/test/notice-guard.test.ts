@@ -1,11 +1,10 @@
 /**
  * Every line company-proposals and company-roadmaps tell an employee is a notice: a notify
  * Action a company workflow may replace (notices.ts, company-proposals' notify-actions.ts). A
- * write never delivers by itself. This scans both plugins' sources for the two ways a line
- * reaches an employee — a desk delivery (`deliverToDesk(`) and a room-session line
- * (`tellSession(`, and the session runtime's `startTask(` / `steer(` it wraps) — and fails on a
- * call outside the functions allowed below, so a new direct delivery cannot slip past the
- * notify Actions.
+ * write never delivers by itself. This scans both plugins' sources for the ways a line reaches
+ * an employee — a desk delivery (`deliverToDesk(`), and an input into a session through the
+ * session runtime (`startTask(` / `steer(`) — and fails on a call outside the functions allowed
+ * below, so a new direct delivery cannot slip past the notify Actions.
  *
  * Opening a session (`openEmployeeSession`, whose first message is the session's brief) is not a
  * line told to an existing desk or session, and is not scanned.
@@ -20,7 +19,6 @@ const PLUGINS = path.dirname(PLUGIN_DIR);
 /** A call that delivers, by the pattern that finds it. */
 const CALLS: Record<string, RegExp> = {
   deliverToDesk: /\bdeliverToDesk\(/,
-  tellSession: /(?<!function\s+)\btellSession\(/,
   startTask: /\.startTask\(/,
   steer: /\.steer\(/,
 };
@@ -32,22 +30,12 @@ const CALLS: Record<string, RegExp> = {
 const ALLOWED: Record<string, Record<string, string>> = {
   deliverToDesk: {
     "company-proposals/src/desk.ts#deliver": "the built-in proposal notices",
-    "company-roadmaps/src/notice-delivery.ts#desk":
-      "the built-in roadmap desk notices (room_joined, derived, item_approved, base_linked)",
+    "company-roadmaps/src/notice-delivery.ts#desk": "the built-in roadmap notices",
   },
-  tellSession: {
-    "company-roadmaps/src/notice-delivery.ts#inSession":
-      "the built-in roadmap session notices (approval_requested, reopened)",
-    "company-roadmaps/src/service.ts#relayUnlocked":
-      "the room relay: what one member says in the room, passed to the others' room sessions " +
-      "(relayLine). It is the discussion itself, not a notice of a write.",
-  },
-  startTask: {
-    "company-roadmaps/src/session-tell.ts#tellSession": "the one room-session primitive",
-  },
-  steer: {
-    "company-roadmaps/src/session-tell.ts#tellSession": "the one room-session primitive",
-  },
+  // No plugin puts input into a session itself: a roadmap's room is a channel, which the
+  // organization delivers.
+  startTask: {},
+  steer: {},
 };
 
 /** Every `.ts` file under `dir`. */
@@ -93,7 +81,7 @@ function callSites(call: string): string[] {
 
 describe("notices are the only deliveries", () => {
   for (const call of Object.keys(CALLS)) {
-    it(`${call} is called only where a notice (or the relay) delivers`, () => {
+    it(`${call} is called only where a notice delivers`, () => {
       const sites = callSites(call);
       const allowed = Object.keys(ALLOWED[call] ?? {});
       expect(sites.filter((s) => !allowed.includes(s))).toEqual([]);

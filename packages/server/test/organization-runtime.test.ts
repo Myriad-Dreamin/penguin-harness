@@ -31,7 +31,7 @@ import { parseChannelConfig, serializeCalendarEvent } from "../src/organization/
 import { DEFAULT_CHANNEL_ID, ticketPath } from "../src/organization/paths.js";
 import { zonedDate } from "../src/organization/zoned.js";
 import type { ErrorRecordArgs } from "../src/runtime/error-recorder.js";
-import { DEFAULT_EMPLOYEE_PLUGINS, channelClaimsOf } from "../src/runtime/organization/deps.js";
+import { DEFAULT_EMPLOYEE_PLUGINS } from "../src/runtime/organization/deps.js";
 import type { OrgDeps } from "../src/runtime/organization/deps.js";
 import { MENTIONS_PER_RUN } from "../src/runtime/organization/reconcile.js";
 import { OrganizationScheduler } from "../src/runtime/organization/scheduler.js";

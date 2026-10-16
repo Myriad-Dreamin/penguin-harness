@@ -1,14 +1,12 @@
 /**
- * The roadmap state machine, the room relay and the desk deliveries.
+ * The roadmap state machine and the desk deliveries.
  *
  * A roadmap is opened by a person or an employee over an organization channel (its room) with one
  * or more employees, the first of whom moderates (until `roadmap.members` names a moderator:
- * members.ts). For every employee in the room the relay
- * opens a room session — the employee's desk cloned for this discussion — through the
- * organization gateway, and puts every later room message into those sessions through the
- * session runtime — steered into the Task a session is running, else started as its next
- * one: the room reaches the clones, never the desks, and an organization that runs on another
- * machine is relayed there, not from its mirror here. The moderator
+ * members.ts). The room is an ordinary channel: its members are the roadmap's, and the
+ * organization delivers its messages to their desks as it delivers any channel's — the plugin
+ * opens no session of its own and relays nothing. Each member's desk is told once that it is
+ * in the room (`notify.roadmap.room_joined`). The moderator
  * keeps the draft (a record, a body written as a paper, items that are only briefs); nothing
  * is created while the room discusses. Establishing ends the discussion; a proposal item
  * waits there as a brief until a person and the moderator approve it, and the second approval
@@ -17,18 +15,8 @@
  * roadmap item becomes a derived roadmap waiting for its room. An owner who finds the roadmap
  * lacking reopens it, and the room discusses again.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
-import type {
-  Log,
-  OrgActor,
-  OrgGateway,
-  OrgView,
-  PluginConfig,
-  SessionIndex,
-} from "@prismshadow/penguin-server/plugin";
+import type { OrgActor, OrgGateway, OrgView } from "@prismshadow/penguin-server/plugin";
 import { RetiredOrgs } from "./org-retire.js";
-import { CONFIG_GROUP, configOf, type RoadmapConfig } from "./config.js";
 import { proposalOfApproval, type ProposalCreator } from "./proposals.js";
 import {
   RoadmapError,
@@ -50,40 +38,20 @@ import {
 import type { Subject } from "./action-shapes.js";
 import { sendNotice } from "./notices.js";
 import { NoticeDelivery } from "./notice-delivery.js";
-import { tellSession, type SessionRunner } from "./session-tell.js";
 import type { RoadmapStore } from "./ports.js";
-import { COMPANY_DB, companyDbPath } from "./schema.js";
+import { companyDbPath } from "./schema.js";
 import { SqliteRoadmapStore } from "./store.js";
 import {
   baseLinkedLine,
-  cloneBrief,
   approvalRequestLine,
   approvedLine,
-  relayLine,
   reopenLine,
   roomJoinedLine,
   roomOpenedLine,
   roomRequestLine,
 } from "./lines.js";
-import { planRelay } from "./relay.js";
-import { changeMembers, type MembersRequest } from "./members.js";
-import {
-  CHANNEL_ID,
-  agentMembers,
-  endCursor,
-  readRoom,
-  readSince,
-  recentMessages,
-  type RoomCursor,
-} from "./room.js";
-
-export const PLUGIN_NAME = "company-roadmaps";
-
-/** The relay's own state beside the store (progress, not organization data): per roadmap, the room cursor and each room session's depth. */
-export const RELAY_FILE = "roadmaps-relay.json";
-
-/** How many earlier room messages a new room session starts with. */
-export const RECENT_CONTEXT = 20;
+import { changeMembers, roomFollowsRoadmap, type MembersRequest } from "./members.js";
+import { CHANNEL_ID, agentMembers, readRoom } from "./room.js";
 
 export { RoadmapError } from "./domain.js";
 export { moderatorOf } from "./guards.js";
@@ -97,37 +65,19 @@ export interface ServiceDeps {
     | "organization"
     | "principalOf"
     | "deliverToDesk"
-    | "openEmployeeSession"
     | "openRoom"
     | "changeRoomMembers"
   >;
-  /**
-   * The session runtime's input: a later room message into an existing room session — into
-   * the Task it is running when it runs one, else as its next Task.
-   */
-  runner: SessionRunner;
-  /** Whether a room session still exists. */
-  sessions: Pick<SessionIndex, "findById">;
   /** company-proposals' creation: what an item's second approval calls. */
   proposals: ProposalCreator;
   /** The data root (Paths.root). */
   root: string;
-  log: Pick<Log, "line">;
-  pluginConfig?: Pick<PluginConfig, "get">;
   now?: () => number;
 }
 
-interface RelayRoom {
-  cursor: RoomCursor | null;
-  depths: Record<string, number>;
-}
-
-type RelayState = Record<string, RelayRoom>;
-
-/** A roadmap as the API answers it: the store's roadmap, its moderator and its open room sessions. */
+/** A roadmap as the API answers it: the store's roadmap and its moderator. */
 export interface RoadmapView extends Roadmap {
   moderator: string | null;
-  openClones: Array<{ agentId: string; sessionId: string }>;
 }
 
 export interface WriteResult {
@@ -292,18 +242,15 @@ export function basesOf(items: readonly DraftItem[]): Map<string, string | null>
 export class RoadmapService {
   private readonly stores = new Map<string, RoadmapStore>();
   private readonly locks = new Map<string, Promise<unknown>>();
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private relaying: Promise<void> | null = null;
   /** Organizations being (or already) deleted, whose store may not open again (org-retire.ts). */
   private readonly retired = new RetiredOrgs();
 
-  /** What the built-in notices do: the desk lines and the room-session lines (notice-delivery.ts). */
+  /** What the built-in notices do: the desk lines (notice-delivery.ts). */
   readonly notices: NoticeDelivery;
 
   constructor(private readonly deps: ServiceDeps) {
     this.notices = new NoticeDelivery({
       gateway: deps.gateway,
-      runner: deps.runner,
       recordFailed: (projectId, orgId, number, agentId, error, by) =>
         this.store(projectId, orgId).write({ kind: "notify_failed", number, agentId, error, by }),
     });
@@ -311,10 +258,6 @@ export class RoadmapService {
 
   private now(): number {
     return this.deps.now?.() ?? Date.now();
-  }
-
-  config(): RoadmapConfig {
-    return configOf(this.deps.pluginConfig?.get(CONFIG_GROUP) ?? {});
   }
 
   // -------------------------------------------------------------------------
@@ -340,7 +283,7 @@ export class RoadmapService {
     return store;
   }
 
-  /** Runs `fn` after every earlier write of the same organization: numbers and relay state are read and written as one step. */
+  /** Runs `fn` after every earlier write of the same organization: numbers are read and written as one step. */
   private withLock<T>(projectId: string, orgId: string, fn: () => Promise<T>): Promise<T> {
     const key = `${projectId}/${orgId}`;
     const prior = this.locks.get(key) ?? Promise.resolve();
@@ -385,13 +328,7 @@ export class RoadmapService {
   }
 
   private view(r: Roadmap): RoadmapView {
-    return {
-      ...r,
-      moderator: moderatorOf(r),
-      openClones: r.clones
-        .filter((c) => c.closedAt === undefined)
-        .map((c) => ({ agentId: c.agentId, sessionId: c.sessionId })),
-    };
+    return { ...r, moderator: moderatorOf(r) };
   }
 
   /** The room, checked: it exists, is not archived, and holds every one of `employees`. */
@@ -513,16 +450,14 @@ export class RoadmapService {
       });
       return number;
     });
-    // The room sessions open now, before the answer — the moderator's first — and every
-    // employee's desk is told where it is.
-    const hints = await this.relayRoadmap(projectId, orgId, result);
-    hints.push(...(await this.announce(projectId, orgId, result, act)));
+    // Every employee's desk is told where it is — the moderator's first.
+    const hints = await this.announce(projectId, orgId, result, act);
     return { roadmap: await this.get(projectId, orgId, result, actor), hints };
   }
 
   /**
-   * One line on each opening employee's desk: the room it is in, and the session that takes part
-   * there — each the notice `notify.roadmap.room_joined` of the opening (`act`).
+   * One line on each member's desk: the room it is in and how to take part there — each the
+   * notice `notify.roadmap.room_joined` of the write (`act`) that opened the room or bound it.
    */
   private announce(
     projectId: string,
@@ -537,13 +472,7 @@ export class RoadmapService {
       if (r.channelId === null) return hints;
       const moderator = moderatorOf(r) ?? "";
       for (const agentId of r.employees) {
-        const clone = r.clones.find((c) => c.agentId === agentId && c.closedAt === undefined);
-        const line = roomJoinedLine({
-          roadmap: r,
-          agentId,
-          moderator,
-          sessionId: clone?.sessionId ?? null,
-        });
+        const line = roomJoinedLine({ orgId, roadmap: r, agentId, moderator });
         await sendNotice(
           act,
           "room_joined",
@@ -645,7 +574,7 @@ export class RoadmapService {
    * The room agrees: the roadmap is established. A roadmap item derives its roadmap at once. A
    * proposal item is established as a brief and nothing more: no proposal is created and its
    * owner is not told until a person and the moderator have both approved that brief
-   * ({@link approve}); the moderator's room session is asked for its approvals. An item already
+   * ({@link approve}); the moderator's desk is asked for its approvals. An item already
    * established (a reopened roadmap established again) starts again only when its owner or its
    * brief changed; a roadmap item that already derived its roadmap is left to it.
    */
@@ -656,7 +585,7 @@ export class RoadmapService {
     actor: OrgActor,
     act?: WriteAct,
   ): Promise<WriteResult> {
-    // The derived roadmaps that got a room: their room sessions open once the lock is let go.
+    // The derived roadmaps that got a room: their members are told once the lock is let go.
     const discussing: number[] = [];
     const result = await this.withLock(projectId, orgId, async () => {
       const { caller, store } = await this.open(projectId, orgId, actor, act);
@@ -784,34 +713,29 @@ export class RoadmapService {
           });
         }
       }
-      // The moderator is asked for its approvals in its room session, where it works the roadmap.
+      // The moderator is asked for its approvals at its desk, where it works the roadmap.
       if (briefed.length > 0) {
         const established = this.require(store, number);
         const moderator = moderatorOf(established);
-        const clone = established.clones.find(
-          (c) => c.agentId === moderator && c.closedAt === undefined,
-        );
-        if (clone === undefined) {
-          hints.push(
-            `The moderator ${moderator ?? "(none)"} has no open room session to ask for its approvals.`,
-          );
+        if (moderator === null) {
+          hints.push("The roadmap has no moderator to ask for its approvals.");
         } else {
           const text = approvalRequestLine({ orgId, roadmap: established, items: briefed });
           await sendNotice(
             a,
             "approval_requested",
             roadmapSubject(number).text,
-            { to: [clone.agentId], text, sessionId: clone.sessionId },
-            () => this.notices.inSession(clone.sessionId, clone.agentId, text),
+            { to: [moderator], text },
+            () => this.notices.desk(projectId, orgId, number, [moderator], text, caller.principal),
             hints,
-            (f) => `The moderator's room session was not asked for its approvals: ${f.error}`,
+            (f) => `The moderator was not asked for its approvals: ${f.error}`,
           );
         }
       }
       return { roadmap: this.view(this.require(store, number)), hints };
     });
     for (const child of discussing) {
-      result.hints.push(...(await this.relayRoadmap(projectId, orgId, child)));
+      result.hints.push(...(await this.announce(projectId, orgId, child, act)));
     }
     return result;
   }
@@ -1136,41 +1060,38 @@ export class RoadmapService {
         a.check(now),
       );
       const reopened = this.require(store, number);
-      const line = reopenLine(reopened, caller.principal, why, moderatorOf(reopened) ?? "");
       const out: string[] = [];
-      const relay = await this.readRelay(projectId, orgId);
-      const room = relay[String(number)] ?? { cursor: null, depths: {} };
-      const open = reopened.clones.filter((c) => c.closedAt === undefined);
-      if (open.length > 0) {
-        const to = open.map((c) => c.agentId);
-        const sessionIds = open.map((c) => c.sessionId);
-        const sent = await sendNotice(
+      // The room discusses again with the roadmap's members in it: one who left the channel
+      // meanwhile is brought back. The reopening stands when the channel cannot follow.
+      if (reopened.channelId !== null) {
+        try {
+          await roomFollowsRoadmap(
+            this.deps.gateway,
+            orgDirOf(this.deps.root, projectId, orgId),
+            projectId,
+            orgId,
+            reopened,
+            caller.principal,
+          );
+        } catch (err) {
+          out.push(err instanceof Error ? err.message : String(err));
+        }
+      }
+      const to = reopened.employees;
+      if (to.length > 0) {
+        const line = reopenLine(reopened, caller.principal, why, moderatorOf(reopened) ?? "");
+        await sendNotice(
           a,
           "reopened",
           roadmapSubject(number).text,
-          { to, text: line, sessionIds },
-          () => this.notices.inSessions(to, sessionIds, line),
+          { to, text: line },
+          () => this.notices.desk(projectId, orgId, number, to, line, caller.principal),
           out,
-          (f) => `${f.agentId}'s room session was not told: ${f.error}`,
+          notTold,
         );
-        // The reopening starts the room's discussion again: every room session's relay depth
-        // starts over, but one the notice reports it failed to reach (its depth is left as it
-        // was, as when the line could not be told). A replacement that tells the sessions
-        // nothing still reopens the discussion.
-        const failed = new Set(sent.failed.map((f) => f.agentId));
-        for (const agentId of to) if (!failed.has(agentId)) room.depths[agentId] = 0;
       }
-      // What the room said while the roadmap stood established was never relayed and is not now:
-      // the reopening, not the backlog, is what the room sessions answer.
-      room.cursor =
-        reopened.channelId === null
-          ? null
-          : await endCursor(orgDirOf(this.deps.root, projectId, orgId), reopened.channelId);
-      relay[String(number)] = room;
-      await this.writeRelay(projectId, orgId, relay);
       return out;
     });
-    hints.push(...(await this.relayRoadmap(projectId, orgId, number)));
     return { roadmap: await this.get(projectId, orgId, number, actor), hints };
   }
 
@@ -1194,7 +1115,8 @@ export class RoadmapService {
         a.check(now),
       );
     });
-    const hints = await this.relayRoadmap(projectId, orgId, number);
+    // The members are in the room already (requireRoom); each desk is told it is there.
+    const hints = await this.announce(projectId, orgId, number, act);
     return { roadmap: await this.get(projectId, orgId, number, actor), hints };
   }
 
@@ -1213,7 +1135,6 @@ export class RoadmapService {
       withLock: this.withLock.bind(this),
       open: this.open.bind(this),
       get: this.get.bind(this),
-      relayRoadmap: this.relayRoadmap.bind(this),
     };
     return changeMembers(host, projectId, orgId, number, req, actor, act);
   }
@@ -1238,255 +1159,8 @@ export class RoadmapService {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // The relay
-  // -------------------------------------------------------------------------
-
-  private relayPath(projectId: string, orgId: string): string {
-    return path.join(orgDirOf(this.deps.root, projectId, orgId), RELAY_FILE);
-  }
-
-  private async readRelay(projectId: string, orgId: string): Promise<RelayState> {
-    try {
-      const v = JSON.parse(await fs.readFile(this.relayPath(projectId, orgId), "utf8")) as unknown;
-      return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as RelayState) : {};
-    } catch {
-      return {};
-    }
-  }
-
-  private async writeRelay(projectId: string, orgId: string, state: RelayState): Promise<void> {
-    const file = this.relayPath(projectId, orgId);
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf8");
-    await fs.rename(tmp, file);
-  }
-
-  /** One pass over one roadmap's room, under the organization's lock; what went wrong comes back as hints. */
-  relayRoadmap(projectId: string, orgId: string, number: number): Promise<string[]> {
-    // A write that already landed (an opening, a reopening, a bound room) must not answer 500
-    // because the pass after it failed: the failure is said, and the next pass tries again.
-    return this.withLock(projectId, orgId, () =>
-      this.relayUnlocked(projectId, orgId, number).catch((err: unknown) => {
-        const error = err instanceof Error ? err.message : String(err);
-        this.deps.log.line(`[company-roadmaps] #${number}: relay pass failed: ${error}`);
-        return [`The room was not relayed this time: ${error}`];
-      }),
-    );
-  }
-
   /**
-   * Syncs the room sessions with the room's members — one opened for every employee in the
-   * room without one, the one of an employee who left (or whose session is gone) closed — then
-   * relays every message after the cursor. Only a roadmap that is discussing, in an
-   * organization that is not paused, over a room (channel) that is there and not archived.
-   */
-  private async relayUnlocked(projectId: string, orgId: string, number: number): Promise<string[]> {
-    const hints: string[] = [];
-    if (!this.deps.gateway.companyModeEnabled()) return hints;
-    const store = this.store(projectId, orgId);
-    const r = store.get(number);
-    if (r === null || r.status !== "discussing" || r.channelId === null) return hints;
-    const org = await this.deps.gateway.organization(projectId, orgId);
-    if (org === null) return hints;
-    // An organization that runs on another machine is relayed THERE. What this server holds of
-    // it is a mirror: its room sessions are that machine's, so here they would read as gone —
-    // closed, and a second set opened on this server, speaking in the same room. Only a machine
-    // named there counts: a server older than `OrgView.machineId` says nothing of where the
-    // organization runs, and it is relayed as it always was rather than silently not at all.
-    if (typeof org.machineId === "string" && org.machineId !== "") return hints;
-    const orgDir = orgDirOf(this.deps.root, projectId, orgId);
-    const room = await readRoom(orgDir, r.channelId);
-    if (room === null || room.archived) return hints;
-    const relay = await this.readRelay(projectId, orgId);
-    const state: RelayRoom = relay[String(number)] ?? { cursor: null, depths: {} };
-    const by = `plugin:${PLUGIN_NAME}`;
-    const employees = new Set(org.employees.map((e) => e.agentId));
-    const inRoom = agentMembers(room).filter((a) => employees.has(a));
-    // Close what no longer belongs: an employee who left the room, a session deleted by hand.
-    for (const c of r.clones.filter((x) => x.closedAt === undefined)) {
-      const reason = !inRoom.includes(c.agentId)
-        ? "left the room"
-        : this.deps.sessions.findById(c.sessionId) === null
-          ? "session gone"
-          : null;
-      if (reason === null) continue;
-      store.write({
-        kind: "clone_closed",
-        number,
-        agentId: c.agentId,
-        sessionId: c.sessionId,
-        reason,
-        by,
-      });
-      delete state.depths[c.agentId];
-    }
-    // The room so far is the new sessions' context; the cursor starts after it.
-    if (state.cursor === null) state.cursor = await endCursor(orgDir, r.channelId);
-    const openNow = (): string[] =>
-      this.require(store, number)
-        .clones.filter((c) => c.closedAt === undefined)
-        .map((c) => c.agentId);
-    const order = [
-      ...r.employees.filter((e) => inRoom.includes(e)),
-      ...inRoom.filter((e) => !r.employees.includes(e)),
-    ];
-    const missing = order.filter((a) => !openNow().includes(a));
-    if (missing.length > 0 && org.status !== "paused") {
-      const recent = await recentMessages(orgDir, r.channelId, RECENT_CONTEXT);
-      for (const agentId of missing) {
-        const current = this.require(store, number);
-        const moderator =
-          current.explicitModerator ??
-          current.employees.find((e) => inRoom.includes(e)) ??
-          order[0]!;
-        try {
-          const opened = await this.deps.gateway.openEmployeeSession({
-            projectId,
-            orgId,
-            agentId,
-            title: `${r.name} · roadmap #${number}`,
-            body: cloneBrief({
-              orgId,
-              roadmap: current,
-              agentId,
-              moderator,
-              members: order,
-              recent,
-            }),
-          });
-          store.write({ kind: "clone", number, agentId, sessionId: opened.sessionId, by });
-          state.depths[agentId] = 0;
-        } catch (err) {
-          const error = err instanceof Error ? err.message : String(err);
-          hints.push(`No room session for ${agentId}: ${error}`);
-          this.deps.log.line(
-            `[company-roadmaps] #${number}: no room session for ${agentId}: ${error}`,
-          );
-        }
-      }
-    }
-    const { messages, cursor, skipped } = await readSince(orgDir, r.channelId, state.cursor);
-    if (skipped > 0)
-      this.deps.log.line(`[company-roadmaps] #${number}: ${skipped} room line(s) skipped`);
-    // A paused organization is not relayed to; its messages are passed over, as its desks' are.
-    if (org.status !== "paused") {
-      const limit = this.config().relayDepth;
-      const current = this.require(store, number);
-      for (const msg of messages) {
-        const open = current.clones.filter((c) => c.closedAt === undefined);
-        const plan = planRelay(
-          msg,
-          open.map((c) => c.agentId),
-          state.depths,
-          limit,
-        );
-        for (const agentId of plan.to) {
-          const clone = open.find((c) => c.agentId === agentId)!;
-          try {
-            await tellSession(this.deps.runner, clone.sessionId, relayLine(current, msg));
-          } catch (err) {
-            // Closed now, reopened on the next pass (with the room so far as its context).
-            const error = err instanceof Error ? err.message : String(err);
-            store.write({
-              kind: "clone_closed",
-              number,
-              agentId,
-              sessionId: clone.sessionId,
-              reason: error,
-              by,
-            });
-            delete state.depths[agentId];
-            hints.push(`${agentId}'s room session did not take ${msg.id}: ${error}`);
-          }
-        }
-      }
-    }
-    state.cursor = cursor;
-    relay[String(number)] = state;
-    await this.writeRelay(projectId, orgId, relay);
-    return hints;
-  }
-
-  /** The organizations with a store on disk. */
-  private async knownOrgs(): Promise<Array<{ projectId: string; orgId: string }>> {
-    const out: Array<{ projectId: string; orgId: string }> = [];
-    const seen = new Set<string>();
-    for (const key of this.stores.keys()) {
-      const [projectId, orgId] = key.split("/") as [string, string];
-      seen.add(key);
-      out.push({ projectId, orgId });
-    }
-    let projects: string[] = [];
-    try {
-      projects = await fs.readdir(this.deps.root);
-    } catch {
-      return out;
-    }
-    for (const projectId of projects) {
-      let orgs: string[];
-      try {
-        orgs = await fs.readdir(path.join(this.deps.root, projectId, "organizations"));
-      } catch {
-        continue;
-      }
-      for (const orgId of orgs) {
-        if (seen.has(`${projectId}/${orgId}`)) continue;
-        try {
-          await fs.access(path.join(orgDirOf(this.deps.root, projectId, orgId), COMPANY_DB));
-        } catch {
-          continue;
-        }
-        seen.add(`${projectId}/${orgId}`);
-        out.push({ projectId, orgId });
-      }
-    }
-    return out;
-  }
-
-  /** One pass over every discussing roadmap of every organization; a pass still running is not doubled. */
-  relayOnce(): Promise<void> {
-    if (this.relaying !== null) return this.relaying;
-    this.relaying = (async () => {
-      try {
-        if (!this.deps.gateway.companyModeEnabled()) return;
-        for (const { projectId, orgId } of await this.knownOrgs()) {
-          // A retired organization is not reopened by a pass: its delete is running or done.
-          if (!this.retired.admit(`${projectId}/${orgId}`)) continue;
-          const store = this.store(projectId, orgId);
-          for (const r of store.list({ status: "discussing" })) {
-            if (r.status !== "discussing") continue;
-            await this.relayRoadmap(projectId, orgId, r.number);
-          }
-        }
-      } catch (err) {
-        this.deps.log.line(
-          `[company-roadmaps] relay pass failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      } finally {
-        this.relaying = null;
-      }
-    })();
-    return this.relaying;
-  }
-
-  /** Relays on a timer (the configured period, re-read every tick). */
-  start(): void {
-    if (this.timer !== null) return;
-    let last = 0;
-    this.timer = setInterval(() => {
-      const period = this.config().pollSeconds * 1000;
-      if (this.now() - last < period) return;
-      last = this.now();
-      void this.relayOnce();
-    }, 1000);
-    this.timer.unref?.();
-  }
-
-  /**
-   * The organization is being deleted (org-retire.ts): its writes and relay passes in flight
-   * awaited, its connection closed, its lock chain dropped; its store opens again only for an
+   * The organization is being deleted (org-retire.ts): its writes in flight awaited, its connection closed, its lock chain dropped; its store opens again only for an
    * organization found anew.
    */
   async retire(projectId: string, orgId: string): Promise<void> {
@@ -1500,9 +1174,6 @@ export class RoadmapService {
   }
 
   async stop(): Promise<void> {
-    if (this.timer !== null) clearInterval(this.timer);
-    this.timer = null;
-    await this.relaying;
     for (const store of this.stores.values()) store.close();
     this.stores.clear();
   }
