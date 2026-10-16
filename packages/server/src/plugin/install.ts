@@ -5,7 +5,7 @@
  * where it can exist is not free: the installation directory belongs to the installer (the
  * desktop app's is inside the application bundle, and read-only in the places that matter), so
  * the harness owns one of its own — `<root>/plugins/`, an ordinary npm prefix. `npm install`
- * writes the package there, and the loader resolves from there before the installation.
+ * writes library content there; server modules are copied into the store and load from an activated generation.
  *
  * npm is the whole implementation on purpose: a plugin is an npm package, its dependencies are
  * npm's problem, and a registry, a proxy or a private scope is then configured the way every
@@ -86,11 +86,13 @@ export async function prefixDependencies(prefix: string): Promise<Record<string,
 
 async function npm(prefix: string, args: readonly string[], cwd = prefix): Promise<string> {
   try {
-    const { stdout } = await execFileAsync(npmCommand(), [...args], {
+    const invocation = npmCommand(args);
+    const { stdout } = await execFileAsync(invocation.command, invocation.args, {
       cwd,
       timeout: INSTALL_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
-      env: process.env,
+      shell: invocation.shell,
+      env: npmEnv(process.env),
     });
     return stdout;
   } catch (err) {
@@ -300,20 +302,52 @@ export async function readInstalledVersion(prefix: string, name: string): Promis
  * The line of npm's stderr worth showing. npm ends every failure with "A complete log of this
  * run can be found in …", so the last line is the one line that never says anything; the
  * reason is the first `npm error` line that is not that pointer, not a bare code, and not the
- * empty continuation lines npm pads the block with.
+ * empty continuation lines npm pads the block with. Warnings printed before it (a deprecated
+ * package, an engine mismatch) are not the reason; stderr without any `npm error` line — a
+ * shell that could not start npm at all — answers its own first line.
  */
-function npmReason(stderr: string | undefined, err: Error): string {
-  const lines = (stderr ?? "")
-    .split("\n")
+export function npmReason(stderr: string | undefined, err: Error): string {
+  const raw = (stderr ?? "").split(/\r?\n/);
+  const errors = raw.filter((l) => /^npm (error|ERR!)/.test(l));
+  const lines = (errors.length > 0 ? errors : raw.filter((l) => !/^npm (warn|WARN)/.test(l)))
     .map((l) => l.replace(/^npm (error|ERR!)\s*/, "").trim())
     .filter((l) => l !== "" && !/^A complete log/.test(l) && !/^code [A-Z0-9]+$/.test(l));
   const reason = lines.find((l) => l.length > 8);
   return reason ?? err.message;
 }
 
-/** Windows resolves `npm` through npm.cmd; everywhere else the plain name is on PATH. */
-function npmCommand(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+/** How to start npm: the file, its arguments, and whether through a shell. */
+export interface NpmCommand {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
+
+/**
+ * cmd.exe does not unquote spawn arguments: under `shell: true` they are joined into one
+ * command line. Inside double quotes cmd takes `& | < > ^` and spaces literally — a version
+ * range like `>=1 <2` included — so every argument is quoted; what quotes cannot contain (a
+ * quote, `%` expansion, a line break) is refused rather than passed to a shell.
+ */
+function cmdQuote(arg: string): string {
+  if (/["%\r\n]/.test(arg)) {
+    throw new PluginInstallError(`'${arg}' cannot be passed to npm.cmd through cmd.exe`);
+  }
+  return `"${arg}"`;
+}
+
+/**
+ * The npm on PATH, the way every other npm consumer on the machine runs it. On Windows that is
+ * `npm.cmd`, which Node starts only through a shell (EINVAL without one), so there it runs
+ * through cmd.exe with every argument quoted.
+ */
+export function npmCommand(
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): NpmCommand {
+  return platform === "win32"
+    ? { command: "npm.cmd", args: args.map(cmdQuote), shell: true }
+    : { command: "npm", args: [...args], shell: false };
 }
 
 /**
@@ -323,16 +357,115 @@ function npmCommand(): string {
 @Component()
 export class NpmPluginPackages implements PluginPackages {
   /** By name or by link (see installPluginSource). */
-  install(root: string, source: string): Promise<InstalledPackage> {
-    return installPluginSource(root, source);
+  async install(root: string, source: string, expected?: string): Promise<InstalledPackage> {
+    if (expected !== undefined) {
+      // Verify before touching the visible library prefix. Install those exact stored bytes,
+      // not a second registry fetch, which could resolve to different content.
+      const { fetchIntoStore, PACKAGE_DIR } = await import("./store.js");
+      const entry = await fetchIntoStore(root, source, { expected });
+      const prefix = await ensurePrefix(root);
+      const archives = path.join(prefix, ARCHIVES_DIR);
+      await fs.mkdir(archives, { recursive: true });
+      const dir = path.join(entry.dir, PACKAGE_DIR);
+      // Pack the verified local bytes; never perform a second registry lookup for the package.
+      const packed = await npm(
+        prefix,
+        ["pack", "--ignore-scripts", "--json", "--pack-destination", archives],
+        dir,
+      );
+      await install(prefix, `./${ARCHIVES_DIR}/${packedFileName(packed)}`);
+      await pruneArchives(prefix);
+      return { name: entry.name, version: entry.version };
+    }
+    const installed = await installPluginSource(root, source);
+    await storeInstalledPlugin(root, installed.name);
+    return installed;
   }
 
   /** An uploaded package's files (see installPluginFiles). */
-  installFiles(root: string, files: Record<string, Uint8Array>): Promise<InstalledPackage> {
-    return installPluginFiles(root, new Map(Object.entries(files)));
+  async installFiles(root: string, files: Record<string, Uint8Array>): Promise<InstalledPackage> {
+    const installed = await installPluginFiles(root, new Map(Object.entries(files)));
+    await storeInstalledPlugin(root, installed.name);
+    return installed;
   }
 
   remove(root: string, name: string): Promise<void> {
     return removePluginPackage(root, name);
+  }
+}
+
+/**
+ * The environment of the fetch's npm, and of nothing else: `env` with the directory of the Node
+ * runtime running this server appended to PATH. A CLI bundle carries its own runtime, npm
+ * beside node, so a machine without npm still fetches; appended rather than prepended, a user's
+ * own npm keeps coming first. Only this child sees it: the server's PATH, and every agent
+ * command inheriting it, stay as they were. Windows spells the variable `Path`, so the key
+ * already present is the one extended.
+ */
+export function npmEnv(
+  env: NodeJS.ProcessEnv,
+  runtimeDir: string = path.dirname(process.execPath),
+  delimiter: string = path.delimiter,
+): NodeJS.ProcessEnv {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+  const dirs = (env[key] ?? "").split(delimiter).filter((d) => d !== "");
+  if (dirs.includes(runtimeDir)) return { ...env };
+  return { ...env, [key]: [...dirs, runtimeDir].join(delimiter) };
+}
+
+/** Library content stays in its prefix; server modules load only from an activated store entry. */
+export async function storeInstalledPlugin(root: string, name: string): Promise<void> {
+  const { storePackage } = await import("./store.js");
+  const { INTEGRITY, tarballIntegrity } = await import("../../../../scripts/plugin-entry.mjs");
+  const prefix = pluginsPrefix(root);
+  const dir = installedPackageDir(prefix, name);
+  const lock = JSON.parse(
+    await fs.readFile(path.join(prefix, "package-lock.json"), "utf8").catch(() => "{}"),
+  ) as {
+    packages?: Record<string, { integrity?: string }>;
+  };
+  const recorded = lock.packages?.[`node_modules/${name}`]?.integrity;
+  let integrity = recorded?.split(/\s+/).find((value) => INTEGRITY.test(value));
+  if (integrity === undefined) {
+    // Git links need not have npm lockfile integrity. Name their locally packed tarball,
+    // rather than pretending that the registry vouched for this non-registry source.
+    const archives = path.join(prefix, ARCHIVES_DIR);
+    await fs.mkdir(archives, { recursive: true });
+    const packed = await npm(
+      prefix,
+      ["pack", "--ignore-scripts", "--json", "--pack-destination", archives],
+      dir,
+    );
+    integrity = await tarballIntegrity(path.join(archives, packedFileName(packed)));
+  }
+  await storePackage(root, dir, prefix, integrity);
+  await pruneArchives(prefix);
+}
+
+/** Adopt server modules installed before generations existed; leave their library prefix intact. */
+export async function adoptInstalledPlugins(
+  root: string,
+  log: (message: string) => void,
+): Promise<void> {
+  const { PACKAGE_NAME } = await import("./loader.js");
+  const prefix = pluginsPrefix(root);
+  for (const name of Object.keys(await prefixDependencies(prefix))) {
+    if (!PACKAGE_NAME.test(name)) continue;
+    const dir = installedPackageDir(prefix, name);
+    if (
+      !(await fs.access(path.join(dir, "ifaces.json")).then(
+        () => true,
+        () => false,
+      ))
+    )
+      continue;
+    try {
+      // Reuse the exact recorded SRI, or locally pack sources without one. A matching
+      // name and version alone cannot establish that an entry has the same content.
+      // storePackage itself skips entries whose exact integrity is already stored.
+      await storeInstalledPlugin(root, name);
+    } catch (err) {
+      log(`[plugin-store] adopting ${name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }

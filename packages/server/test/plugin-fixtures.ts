@@ -5,9 +5,13 @@
  * and lowered the way its build would lower it, so the fixture exercises the same
  * decorators the host reads.
  */
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { stringify as stringifyToml } from "smol-toml";
 import ts from "typescript";
+import { layOutEntry, sortIndex } from "../../../scripts/plugin-entry.mjs";
 
 /**
  * The decorators, as a plugin's bundle would carry them — here imported from this
@@ -26,6 +30,8 @@ export interface ClassPackage {
   name: string;
   /** The one module class the package exports (a `@Module()` with nothing to require or provide). */
   module: string;
+  /** package.json `version`; default `1.0.0` (the plugin store keys an entry by name and version). */
+  version?: string;
   /** package.json `main`; default `./index.js`. */
   main?: string;
   /** package.json `exports`, when the package declares them. */
@@ -43,6 +49,7 @@ export async function writeClassPackage(dir: string, pkg: ClassPackage): Promise
     path.join(dir, "package.json"),
     JSON.stringify({
       name: pkg.name,
+      version: pkg.version ?? "1.0.0",
       type: "module",
       main,
       ...(pkg.exports !== undefined ? { exports: pkg.exports } : {}),
@@ -76,4 +83,40 @@ export async function writeClassPackage(dir: string, pkg: ClassPackage): Promise
     "utf8",
   );
   return entry;
+}
+
+/**
+ * A stand-in for a package's npm integrity (`sha512-<base64>` of its tarball): what a fixture's
+ * index row and store entry are keyed by. Distinct per name, version and optional `content`
+ * tag, the way two packs of different content differ.
+ */
+export function integrityOf(name: string, version: string, content = ""): string {
+  return `sha512-${createHash("sha512").update(`${name}@${version}#${content}`).digest("base64")}`;
+}
+
+/**
+ * Rebuilds a shipped prefix's `index.json` the way scripts/build-plugins.mjs does: a row per
+ * package the prefix's own package.json names, with the integrity its tarball would have
+ * (`integrityOf`).
+ */
+export async function writeShippedIndex(prefix: string): Promise<void> {
+  const manifest = JSON.parse(await readFile(path.join(prefix, "package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
+  };
+  const index = [];
+  for (const name of Object.keys(manifest.dependencies ?? {})) {
+    const stage = await mkdtemp(path.join(tmpdir(), "shipped-entry-"));
+    try {
+      const pkgDir = path.join(prefix, "node_modules", ...name.split("/"));
+      const { version, main = "index.js" } = JSON.parse(
+        await readFile(path.join(pkgDir, "package.json"), "utf8"),
+      ) as { version: string; main?: string };
+      // Different content packs to a different tarball, so it is tagged by its entry's code.
+      const integrity = integrityOf(name, version, await readFile(path.join(pkgDir, main), "utf8"));
+      index.push((await layOutEntry(stage, pkgDir, prefix, { stringifyToml, integrity })).manifest);
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  }
+  await writeFile(path.join(prefix, "index.json"), JSON.stringify(sortIndex(index)));
 }

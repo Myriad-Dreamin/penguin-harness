@@ -142,7 +142,7 @@ test("plugins: the Plugins page renders the library and index the server serves,
   const library = await (await page.request.get(`${BASE}/api/plugins`)).json();
   const plugins = library.groups.flatMap((g) => g.plugins);
   expect(plugins.length, "the library this build ships").toBeGreaterThan(0);
-  const index = (await (await page.request.get(`${BASE}/api/plugins/registry`)).json()).plugins;
+  const index = await (await page.request.get(`${BASE}/api/plugins/registry`)).json();
   const deployment = await (
     await page.request.get(`${BASE}/api/projects/${projectId}/plugins/installed`)
   ).json();
@@ -245,7 +245,7 @@ test("plugins: a registry entry's detail page renders the index entry and the re
 }) => {
   await provisionAndLogin(page.request, U, P);
   await configureProjectModel(page.request);
-  const index = (await (await page.request.get(`${BASE}/api/plugins/registry`)).json()).plugins;
+  const index = await (await page.request.get(`${BASE}/api/plugins/registry`)).json();
   expect(index.length, "the builtin registry this build embeds").toBeGreaterThan(0);
   const entry = index[0];
   const readme = (

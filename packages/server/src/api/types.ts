@@ -4813,10 +4813,9 @@ export interface SkillArchiveInstallRequest {
 
 /**
  * One published version of a plugin — the index entry format every plugin registry
- * speaks (modeled on the typst/packages `index.json` schema: a flat array of
- * per-version entries; a plugin published at several versions appears once per
- * version). Installation is out of scope here: an entry's `name` is the package
- * specifier a Project's plugin list names.
+ * speaks: a flat array of per-version entries, so a plugin published at several
+ * versions appears once per version. Installation is out of scope here: an entry's
+ * `name` is the package specifier a Project's plugin list names.
  */
 export interface PluginIndexEntry {
   /** Package specifier — the string a Project's plugin list names. */
@@ -4847,24 +4846,15 @@ export interface PluginIndexEntry {
   categories?: string[];
   /** Unix timestamp (seconds) of the entry's last update. */
   updatedAt?: number;
-}
-
-/** GET /api/plugins/registry: the merged index of every configured registry (currently the builtin one). */
-export interface PluginIndexResponse {
-  plugins: PluginIndexEntry[];
   /**
-   * Sources that could not be read, by `source` and reason. Present and empty when every
-   * source answered. A remote index that is down shortens the listing rather than emptying
-   * it, so the page needs to be able to say so instead of silently showing less.
+   * npm's `dist.integrity` of the entry's package: `sha512-<base64>` of the published tarball's
+   * bytes (scripts/plugin-entry.mjs). A fetch is checked against it — what npm recorded for the
+   * tarball it downloaded must be this value — before it enters the store; an entry without
+   * one is listed and cannot be installed.
    */
-  failures: { source: string; error: string }[];
-  /**
-   * Sources the server was still reading when it answered, by `source`. Present and empty when
-   * every source answered. The listing does not wait long for a published index, so one on a slow
-   * or unreachable network is named here and its entries are missing; a later read lists them
-   * once they have arrived, or names the source under `failures` once it has failed.
-   */
-  pending: string[];
+  integrity?: string;
+  /** A yanked entry stays in its source as a record and is left out of the listing. */
+  yanked?: boolean;
 }
 
 /**
@@ -4877,6 +4867,27 @@ export interface PluginReadmeResponse {
   name: string;
   /** Markdown, rendered by the Web App. Null when this entry has no readme. */
   readme: string | null;
+}
+
+/** One content of a plugin name, as its detail page lists it. */
+export interface PluginContent {
+  version: string;
+  /** npm's `sha512-<base64>`; absent for an index entry that names none. */
+  integrity?: string;
+  /** In this machine's plugin store. */
+  stored: boolean;
+  /** Linked by the current generation, i.e. what this machine runs under the name. */
+  linked: boolean;
+}
+
+/**
+ * GET /api/plugins/registry/contents?name=… — every content the merged index lists under one
+ * name, highest version first. The Plugins page shows a name as one row; this is where the
+ * contents behind it are listed.
+ */
+export interface PluginContentsResponse {
+  name: string;
+  contents: PluginContent[];
 }
 
 // ---------------------------------------------------------------------------
@@ -8739,3 +8750,6 @@ export interface DesktopBrowserEventMessage {
   type: "desktop-browser-event";
   event: DesktopBrowserEvent;
 }
+
+// The rule an install picks an index entry by, shared with the Plugins page (see plugin-pick.ts).
+export { compareVersions, pickIndexEntry, satisfies } from "./plugin-pick.js";
