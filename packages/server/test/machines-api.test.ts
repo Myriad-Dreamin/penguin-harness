@@ -3,10 +3,11 @@
  * as the Machines page sees it — start, poll, finish, and every way a start is refused
  * before an ssh runs.
  *
- * The service's three reaching-out effects are faked (see MachinesEffects): the real ones
- * read the developer's own ~/.ssh/config and spawn ssh against whatever it names. What the
- * push actually does over ssh is covered by machines-push.test.ts, against a fake ssh
- * binary and the real installOnRemote.
+ * The service's reaching-out effects are faked (see MachinesEffects), and its machines come
+ * from a TEST kind contributed the way a plugin's is (MachinesModule.kinds): named `ssh`, so
+ * every address reads as it always has, discovering whatever the test names — no ssh config is
+ * read and nothing is spawned. What the push actually does over a session is covered by
+ * machines-push.test.ts, against a scripted channel and the real installOnRemote.
  *
  * One App serves the file; each case builds its own service (data root, store, effects),
  * which the App's machines node forwards to. The one case about the App's own boot boots
@@ -39,10 +40,7 @@
  * - Given a batch to use, machines work side by side and each ends connected; stop using keeps
  *   the install.
  * - Given an ssh-config edit, a new block is appended, this app's block is rewritten in place,
- *   and a hand-written one is refused. A password is stored beside the config, never in it or in
- *   an answer, set even on a hand-written block, and deleted by key sign-in and with the machine.
- * - Given a stored password the machine refuses, a machine kept connected stops retrying until a
- *   password is saved for it again.
+ *   and a hand-written one is refused.
  * - Given a refusal decidable without ssh (self-install, a second install, an unknown host, no
  *   image), nothing runs. Given ssh's own refusal, the job ends at the first step with why, for
  *   the page to say, and no offer to install anyway.
@@ -77,7 +75,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "../src/db/database.js";
 import { MachinesRepo } from "../src/db/repos/machines.js";
 import { MachinesService } from "../src/machines/service.js";
-import type { MachinesEffects } from "../src/machines/service.js";
+import type { MachineKindEntry, MachinesEffects } from "../src/machines/service.js";
+import type { Machine, MachineKind } from "../src/mechanisms/machines.js";
 import { remoteLayoutFor } from "../src/machines/layout.js";
 import type { RemoteLayout } from "../src/machines/layout.js";
 import type { PushPlan, RemoteInstallOutcome } from "../src/machines/install-server.js";
@@ -161,8 +160,67 @@ export function quietRelay(): EventRelay & { subscribed: Set<string> } {
   };
 }
 
+/** What a test hands the service: the effects to fake, and what the test kind discovers. */
+type Over = Partial<MachinesEffects> & { listAliases?: () => string[] };
+
+/** A machine of a test kind: nothing in it is reached — the effects are the reaching-out. */
+const inertMachine: Machine = {
+  launch: async () => {
+    throw new Error("the test kind launches nothing");
+  },
+  up: async () => {},
+  ready: async () => ({ ok: true }),
+  dial: async () => {
+    throw new Error("the test kind dials nothing");
+  },
+  oneShot: async () => ({ code: 1, stdout: "", stderr: "", timedOut: false }),
+  copyTo: async () => ({ code: 1, stdout: "", stderr: "", timedOut: false }),
+  diagnose: () => null,
+  forwards: () => null,
+};
+
+/** A test kind as a contribution delivers it; `discover` answers what the test names. */
+function testKind(
+  kind: string,
+  list: () => string[],
+  over: Partial<MachineKind> = {},
+): MachineKindEntry {
+  return {
+    kind,
+    title: kind.toUpperCase(),
+    impl: {
+      discover: list,
+      form: () => null,
+      define: async () => ({ ok: false, field: null, message: "not here" }),
+      read: () => null,
+      connect: () => inertMachine,
+      ...over,
+    },
+  };
+}
+
+/** The service over a test kind named `ssh`, discovering `listAliases` (two hosts by default). */
+function testService(
+  root: string,
+  repo: MachinesRepo,
+  over: Over,
+  layout?: RemoteLayout,
+  kinds?: MachineKindEntry[],
+): MachinesService {
+  const { listAliases, ...rest } = over;
+  return new MachinesService(
+    root,
+    LOCAL_ID,
+    repo,
+    rest,
+    undefined,
+    layout,
+    kinds ?? [testKind("ssh", listAliases ?? (() => ["build-box", "nas"]))],
+  );
+}
+
 /** An effects set that names two hosts and installs successfully, with the parts a test cares about overridden. */
-function effects(over: Partial<MachinesEffects> = {}): Partial<MachinesEffects> {
+function effects(over: Over = {}): Over {
   return {
     relay: () => quietRelay(),
     // The transport's own registry is not this suite's: its ups and downs are told by hand.
@@ -184,10 +242,10 @@ function effects(over: Partial<MachinesEffects> = {}): Partial<MachinesEffects> 
     // The connection: a fake registry this suite marks machines connected in, the way the
     // transport's own registry answers `session` for a held ssh session.
     hold: async (target) => {
-      connected.add(`ssh:${target.alias}`);
-      return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+      connected.add(target.address);
+      return { ok: true, session: { pid: process.pid } };
     },
-    session: (address) => (connected.has(address) ? { pid: process.pid, socksPort: 1 } : null),
+    session: (address) => (connected.has(address) ? { pid: process.pid } : null),
     agent: () => new http.Agent(),
     probe: async () => ({ state: { kind: "running", port: 7364, pid: 4242 }, machineId: null }),
     install: async (opts): Promise<RemoteInstallOutcome> => {
@@ -211,7 +269,7 @@ describe("machines API", () => {
   const built: Array<{ service: MachinesService; store: DatabaseSync; root: string }> = [];
 
   /** Builds the case's service over a fresh data root and store, with its effects overridden. */
-  const boot = async (over: Partial<MachinesEffects> = {}, layout?: RemoteLayout) => {
+  const boot = async (over: Over = {}, layout?: RemoteLayout, kinds?: MachineKindEntry[]) => {
     connected.clear();
     machinesRoot = await makeTempRoot();
     // The store is the service's own here, not the App's, so it needs the Project row the
@@ -226,14 +284,7 @@ describe("machines API", () => {
       .prepare("INSERT INTO projects (project_id, owner_user_id, created_at) VALUES (?, ?, ?)")
       .run("default_project", "admin", "2026-08-24T00:00:00.000Z");
     machinesRepo = new MachinesRepo(store);
-    service = new MachinesService(
-      machinesRoot,
-      LOCAL_ID,
-      machinesRepo,
-      effects(over),
-      undefined,
-      layout,
-    );
+    service = testService(machinesRoot, machinesRepo, effects(over), layout, kinds);
     built.push({ service, store, root: machinesRoot });
   };
 
@@ -297,7 +348,7 @@ describe("machines API", () => {
   });
 
   describe("the list", () => {
-    it("is the ssh config's aliases, with the version this server would push", async () => {
+    it("is what the kind discovers, with the version this server would push", async () => {
       await boot();
       const body = (await (
         await admin.get("/api/projects/default_project/machines")
@@ -315,6 +366,7 @@ describe("machines API", () => {
         {
           id: "ssh:build-box",
           alias: "build-box",
+          kind: "ssh",
           machineId: null,
           installed: null,
           local: false,
@@ -331,6 +383,7 @@ describe("machines API", () => {
         {
           id: "ssh:nas",
           alias: "nas",
+          kind: "ssh",
           machineId: null,
           installed: null,
           local: false,
@@ -369,7 +422,7 @@ describe("machines API", () => {
       });
     });
 
-    it("an empty or unreadable ssh config leaves this machine alone in the list, not an error", async () => {
+    it("a kind that discovers nothing leaves this machine alone in the list, not an error", async () => {
       await boot({ listAliases: () => [] });
       const res = await admin.get("/api/projects/default_project/machines");
       expect(res.status).toBe(200);
@@ -760,7 +813,7 @@ describe("machines API", () => {
 
       // A new instance has no job and no memory — only the file. This is the restart case,
       // and the hot-push case: the App is rebuilt, the data root is not.
-      const reborn = new MachinesService(machinesRoot, LOCAL_ID, machinesRepo, effects());
+      const reborn = testService(machinesRoot, machinesRepo, effects());
       expect(reborn.job()).toBeNull();
       expect(reborn.list("default_project").find((m) => m.id === "ssh:nas")?.installed).toEqual({
         version: "9.9.9",
@@ -889,7 +942,7 @@ describe("machines API", () => {
       const probed: string[] = [];
       await boot({
         probe: async (target) => {
-          probed.push(target.alias);
+          probed.push(target.name);
           return { state: { kind: "running", port: 7364, pid: 1 }, machineId: null };
         },
       });
@@ -1172,7 +1225,7 @@ describe("machines API", () => {
         },
         hold: async () => {
           holds++;
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       installed("9.9.9");
@@ -1223,7 +1276,7 @@ describe("machines API", () => {
         }),
         hold: async () => {
           holds++;
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       installed("9.9.9");
@@ -1252,9 +1305,9 @@ describe("machines API", () => {
       const heldNow: string[] = [];
       await boot({
         hold: async (target) => {
-          heldNow.push(target.alias);
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          heldNow.push(target.name);
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       // nas was held by the generation before; build-box was installed on but never asked
@@ -1284,9 +1337,9 @@ describe("machines API", () => {
       const heldNow: string[] = [];
       await boot({
         hold: async (target) => {
-          heldNow.push(target.alias);
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          heldNow.push(target.name);
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       machinesRepo.patch("ssh:nas", {
@@ -1310,9 +1363,9 @@ describe("machines API", () => {
       const heldNow: string[] = [];
       await boot({
         hold: async (target) => {
-          heldNow.push(target.alias);
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          heldNow.push(target.name);
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       installed("9.9.9");
@@ -1964,7 +2017,7 @@ describe("machines API", () => {
       const asked: string[] = [];
       await boot({
         runOn: async (target, command) => {
-          asked.push(target.alias);
+          asked.push(target.name);
           return listing("/home/deploy\n---penguin-dirs---\n")(target, command);
         },
       });
@@ -2056,7 +2109,7 @@ describe("machines API", () => {
       await admin.post("/api/projects/default_project/machines/probe");
       expect((await byId("ssh:nas"))?.machineId).toBe(ID);
 
-      const reborn = new MachinesService(machinesRoot, LOCAL_ID, machinesRepo, effects());
+      const reborn = testService(machinesRoot, machinesRepo, effects());
       expect(reborn.list("default_project").find((m) => m.id === "ssh:nas")?.machineId).toBe(ID);
     });
 
@@ -2140,7 +2193,7 @@ describe("machines API", () => {
       const installs: string[] = [];
       await boot({
         install: async (opts) => {
-          installs.push(opts.target.alias);
+          installs.push(opts.target.name);
           if (installs.length === 1) await held;
           return { kind: "installed", output: "done", identity: IDENTITY };
         },
@@ -2232,7 +2285,7 @@ describe("machines API", () => {
     it("an install that fails stops that machine's job there, with the forced install on offer, and the next machine still runs", async () => {
       await boot({
         install: async (opts) =>
-          opts.target.alias === "build-box"
+          opts.target.name === "build-box"
             ? { kind: "failed", step: "install", detail: "error: checksum mismatch for Bundle." }
             : { kind: "installed", output: "done", identity: IDENTITY },
       });
@@ -2462,8 +2515,8 @@ describe("machines API", () => {
         },
         hold: async (target) => {
           at.hold = jobOf("ssh:nas")?.phase ?? null;
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       await use(["ssh:nas"]);
@@ -2555,8 +2608,8 @@ describe("machines API", () => {
         watchSessions: watch,
         hold: async (target) => {
           holds += 1;
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       kept();
@@ -2636,8 +2689,8 @@ describe("machines API", () => {
         watchSessions: watch,
         hold: async (target) => {
           holds += 1;
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
         probe: async () =>
           running
@@ -2688,8 +2741,8 @@ describe("machines API", () => {
         hold: async (target) => {
           holds += 1;
           await answered;
-          connected.add(`ssh:${target.alias}`);
-          return { ok: true, session: { pid: process.pid, socksPort: 1 } };
+          connected.add(target.address);
+          return { ok: true, session: { pid: process.pid } };
         },
       });
       kept();
@@ -2712,54 +2765,6 @@ describe("machines API", () => {
       } finally {
         vi.useRealTimers();
       }
-    });
-
-    it("a refused password stops the retries until a password is saved for the machine again", async () => {
-      let clock = new Date("2026-08-24T12:00:00.000Z");
-      const refusal =
-        "nas rejected the password saved for it. Enter it again in this machine's SSH settings. " +
-        "(ssh: deploy@nas: Permission denied (publickey,password).)";
-      let probes = 0;
-      let signedInWithPassword = false;
-      let accepts = false;
-      await boot({
-        now: () => clock,
-        passwordSignIn: async () => ({ ok: true, detached: false }),
-        readConfig: () =>
-          "# Added by PenguinHarness on 2026-08-01T00:00:00.000Z\nHost nas\n  HostName 10.0.0.2\n",
-        writeConfig: () => {},
-        probe: async (target) => {
-          probes += 1;
-          signedInWithPassword = target.password !== undefined;
-          return accepts
-            ? { state: { kind: "running", port: 7364, pid: 4242 }, machineId: null }
-            : { state: { kind: "unreachable", detail: refusal }, machineId: null };
-        },
-      });
-      kept();
-      const host = "/api/projects/default_project/machines/ssh-hosts/nas";
-      expect((await admin.put(host, { hostName: "10.0.0.2", password: "old" })).status).toBe(200);
-      await t.deps.machines.autoConnect();
-      expect(probes).toBe(1);
-      expect(signedInWithPassword).toBe(true);
-      expect(nas()?.reconnect).toMatchObject({
-        attempts: 1,
-        nextAt: null,
-        sshReason: "password-rejected",
-        waitsForPassword: true,
-        diagnosis: null,
-      });
-      // However long it waits, nothing tries the account again.
-      clock = new Date(clock.getTime() + 60 * 60_000);
-      await t.deps.machines.autoConnect();
-      expect(probes).toBe(1);
-
-      // A password saved for it: tried once, at once, and connected.
-      accepts = true;
-      expect((await admin.put(host, { hostName: "10.0.0.2", password: "new" })).status).toBe(200);
-      await waitFor(() => nas()?.reconnect === undefined);
-      expect(probes).toBeGreaterThan(1);
-      expect(nas()?.connection).not.toBeNull();
     });
 
     it("a deleted machine is let go: no retries", async () => {
@@ -2888,188 +2893,169 @@ describe("machines API", () => {
     });
   });
 
-  describe("adding a host to the ssh config", () => {
-    it("lists every host with what its own block says, for the add dialog's rows", async () => {
-      await boot({
-        listHosts: () => [
-          { alias: "build-box", hostName: "box.example.net", user: "deploy", port: 2222 },
-          { alias: "nas" },
-        ],
-      });
-      const res = await admin.get("/api/projects/default_project/machines/ssh-hosts");
-      expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({
-        hosts: [
-          { alias: "build-box", hostName: "box.example.net", user: "deploy", port: 2222 },
-          { alias: "nas" },
-        ],
-      });
-    });
-
-    const HOSTS = "/api/projects/default_project/machines/ssh-hosts";
-    const post = (body: Record<string, unknown>) => admin.post(HOSTS, body);
-
-    it("appends the block, and the list names the new host at once", async () => {
-      const written: string[] = [];
-      const aliases = ["build-box", "nas"];
-      await boot({
-        listAliases: () => aliases,
-        appendHost: (block) => {
-          written.push(block);
-          aliases.push("orchid-2");
+  describe("machine kinds", () => {
+    /** A kind that keeps its own definitions (as ssh keeps Host blocks): the host stores nothing. */
+    const selfStoring = (names: string[], written: string[]) =>
+      testKind("ssh", () => names, {
+        form: () => ({ name: { type: "string", title: "Alias" }, fields: {} }),
+        define: async (name, values, existing) => {
+          if (values.hostName === "") return { ok: false, field: "hostName", message: "required" };
+          written.push(`${existing ? "rewrote" : "wrote"} ${name}`);
+          if (!existing) names.push(name);
+          return { ok: true, spec: null };
         },
+        read: (name) =>
+          names.includes(name)
+            ? { values: { hostName: "h" }, editable: name !== "build-box" }
+            : null,
       });
-      const res = await post({ alias: "orchid-2", hostName: "10.0.0.9", user: "k", port: "2222" });
+    /** A kind that leaves its definitions to the host (as containers do). */
+    const hostStored = () =>
+      testKind("box", () => [], {
+        form: () => ({
+          name: { type: "string", title: "Name" },
+          fields: { image: { type: "string", title: "Image" } },
+        }),
+        define: async (_name, values) =>
+          typeof values.image === "string" && values.image !== ""
+            ? { ok: true, spec: { image: values.image } }
+            : { ok: false, field: "image", message: "name an image" },
+        read: (_name, spec) => (spec === null ? null : { values: spec, editable: true }),
+      });
+    const define = (kind: string, body: Record<string, unknown>) =>
+      admin.post(`/api/projects/${PROJECT}/machines/kinds/${kind}/definitions`, body);
+
+    it("lists each kind's machines by kind, and a definition goes where its kind keeps it", async () => {
+      const written: string[] = [];
+      await boot({}, undefined, [selfStoring(["build-box", "nas"], written), hostStored()]);
+      const listed = (await (
+        await admin.get(`/api/projects/${PROJECT}/machines`)
+      ).json()) as MachinesResponse;
+      expect(listed.kinds.map((k) => k.kind)).toEqual(["ssh", "box"]);
+
+      // Host-stored: a row in machine_definitions, and the list names it under its kind.
+      const res = await define("box", { name: "cuda", values: { image: "ubuntu:24.04" } });
       expect(res.status).toBe(201);
-      expect(written).toEqual([
-        [
-          "# Added by PenguinHarness on 2026-08-24T12:00:00.000Z",
-          "Host orchid-2",
-          "  HostName 10.0.0.9",
-          "  User k",
-          "  Port 2222",
-          "  StrictHostKeyChecking accept-new",
-          "",
-        ].join("\n"),
-      ]);
       const body = (await res.json()) as MachinesResponse;
-      expect(body.machines.some((m) => m.id === "ssh:orchid-2")).toBe(true);
-    });
-
-    it("refuses an alias the config already declares, writing nothing", async () => {
-      const written: string[] = [];
-      await boot({ appendHost: (block) => void written.push(block) });
-      const res = await post({ alias: "nas", hostName: "10.0.0.9" });
-      expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
-        "ssh_host_exists",
-      );
-      expect(written).toEqual([]);
-    });
-
-    const CONFIG = [
-      "# Added by PenguinHarness on 2026-08-01T00:00:00.000Z",
-      "Host nas",
-      "  HostName 10.0.0.2",
-      "",
-      "Host build-box",
-      "  HostName box.example.net",
-      "  ProxyJump bastion",
-    ].join("\n");
-
-    it("reads a block back, saying whether this app wrote it", async () => {
-      await boot({ readConfig: () => CONFIG });
-      const ours = await admin.get("/api/projects/default_project/machines/ssh-hosts/nas");
-      expect(ours.status).toBe(200);
-      expect(await ours.json()).toEqual({ alias: "nas", hostName: "10.0.0.2", editable: true });
-      const theirs = await admin.get("/api/projects/default_project/machines/ssh-hosts/build-box");
-      expect(((await theirs.json()) as { editable: boolean }).editable).toBe(false);
-      const none = await admin.get("/api/projects/default_project/machines/ssh-hosts/nope");
-      expect(none.status).toBe(404);
-    });
-
-    it("rewrites a block this app wrote in place, and refuses one written by hand", async () => {
-      const written: string[] = [];
-      await boot({ readConfig: () => CONFIG, writeConfig: (text) => void written.push(text) });
-      const ok = await admin.put("/api/projects/default_project/machines/ssh-hosts/nas", {
-        hostName: "10.0.0.3",
-        user: "deploy",
-      });
-      expect(ok.status).toBe(200);
-      expect(written).toHaveLength(1);
-      expect(written[0]!.split("\n").slice(0, 6)).toEqual([
-        "# Added by PenguinHarness on 2026-08-24T12:00:00.000Z",
-        "Host nas",
-        "  HostName 10.0.0.3",
-        "  User deploy",
-        "  StrictHostKeyChecking accept-new",
-        "",
+      expect(body.machines.slice(1).map((m) => [m.id, m.kind])).toEqual([
+        ["ssh:build-box", "ssh"],
+        ["ssh:nas", "ssh"],
+        ["box:cuda", "box"],
       ]);
-      expect(written[0]!.endsWith("  ProxyJump bastion")).toBe(true);
+      expect(machinesRepo.definition("box:cuda")?.spec).toEqual({ image: "ubuntu:24.04" });
+      const read = await admin.get(`/api/projects/${PROJECT}/machines/kinds/box/definitions/cuda`);
+      expect(await read.json()).toEqual({
+        name: "cuda",
+        values: { image: "ubuntu:24.04" },
+        editable: true,
+        forgettable: true,
+      });
 
+      // Self-storing: handed to the kind alone; the host keeps nothing.
+      const ssh = await define("ssh", { name: "orchid-2", values: { hostName: "10.0.0.9" } });
+      expect(ssh.status).toBe(201);
+      expect(written).toEqual(["wrote orchid-2"]);
+      expect(machinesRepo.definition("ssh:orchid-2")).toBeNull();
+      expect(
+        ((await ssh.json()) as MachinesResponse).machines.some((m) => m.id === "ssh:orchid-2"),
+      ).toBe(true);
+
+      // A refused field is named; a taken name is a conflict; a hand-written one stays as it is.
+      const bad = await define("box", { name: "empty", values: {} });
+      expect(bad.status).toBe(400);
+      expect(((await bad.json()) as { error: { message: string } }).error.message).toBe(
+        "image: name an image",
+      );
+      expect((await define("ssh", { name: "nas", values: { hostName: "x" } })).status).toBe(409);
       const foreign = await admin.put(
-        "/api/projects/default_project/machines/ssh-hosts/build-box",
-        { hostName: "x" },
+        `/api/projects/${PROJECT}/machines/kinds/ssh/definitions/build-box`,
+        {
+          values: { hostName: "x" },
+        },
       );
       expect(foreign.status).toBe(409);
-      expect(((await foreign.json()) as { error: { code: string } }).error.code).toBe(
-        "ssh_host_foreign",
+      expect(written).toEqual(["wrote orchid-2"]);
+
+      // Forgetting: only what the host keeps; the machine's record goes with it.
+      machinesRepo.patch("box:cuda", { version: "9.9.9" });
+      const forgot = await admin.delete(
+        `/api/projects/${PROJECT}/machines/kinds/box/definitions/cuda`,
       );
-      expect(written).toHaveLength(1);
+      expect(forgot.status).toBe(200);
+      expect(machinesRepo.definition("box:cuda")).toBeNull();
+      expect(machinesRepo.get("box:cuda")).toBeNull();
+      const kept = await admin.delete(
+        `/api/projects/${PROJECT}/machines/kinds/ssh/definitions/nas`,
+      );
+      expect(kept.status).toBe(409);
     });
 
-    it("keeps a host's password beside the config, never in it, says only that one is saved, and deletes it", async () => {
-      const written: string[] = [];
-      const aliases = ["build-box", "nas"];
-      let config = CONFIG;
-      let plan: Awaited<ReturnType<MachinesEffects["passwordSignIn"]>> = {
-        ok: true,
-        detached: false,
-      };
-      await boot({
-        listAliases: () => aliases,
-        readConfig: () => config,
-        appendHost: (block) => {
-          written.push(block);
-          aliases.push("orchid-2");
-          config += `\n${block}`;
+    it("keeps a machine whose kind is not loaded listed, marked, and refuses to start anything for it", async () => {
+      let reached = 0;
+      await boot(
+        {
+          probe: async () => {
+            reached += 1;
+            return { state: { kind: "running", port: 7364, pid: 1 }, machineId: null };
+          },
+          hold: async () => {
+            reached += 1;
+            return { ok: true, session: { pid: process.pid } };
+          },
+          install: async () => {
+            reached += 1;
+            return { kind: "installed", output: "", identity: IDENTITY };
+          },
         },
-        writeConfig: (text) => {
-          written.push(text);
-          config = text;
-        },
-        passwordSignIn: async () => plan,
+        undefined,
+        [hostStored()],
+      );
+      // On record from before — installed, held — while no `ssh` kind is loaded now.
+      machinesRepo.patch("ssh:nas", {
+        version: "9.9.9",
+        installedAt: "2026-08-01T00:00:00.000Z",
+        sessionPid: 4242,
+        remotePort: 7364,
       });
-      const stored = (alias: string) =>
-        path.join(machinesRoot, "machines", "ssh-passwords", Buffer.from(alias).toString("hex"));
-      const created = await post({ alias: "orchid-2", hostName: "10.0.0.9", password: "hunter2" });
-      expect(created.status).toBe(201);
-      expect(written.join("\n")).not.toContain("hunter2");
-      expect(fs.readFileSync(stored("orchid-2"), "utf8")).toBe("hunter2");
-      const listed = (await created.json()) as MachinesResponse;
-      expect(listed.machines.find((m) => m.alias === "orchid-2")?.passwordSaved).toBe(true);
-      const read = await (await admin.get(`${HOSTS}/orchid-2`)).text();
-      expect(read).not.toContain("hunter2");
-      expect(JSON.parse(read)).toMatchObject({ alias: "orchid-2", passwordSaved: true });
-
-      // A block written by hand keeps its lines; its password alone may still be set.
-      const theirs = await admin.put(`${HOSTS}/build-box`, {
-        hostName: "box.example.net",
-        password: "pw",
+      machinesRepo.setMembers(PROJECT, ["ssh:nas"]);
+      const body = (await (
+        await admin.get(`/api/projects/${PROJECT}/machines`)
+      ).json()) as MachinesResponse;
+      const row = body.machines.find((m) => m.id === "ssh:nas");
+      expect(row).toMatchObject({
+        id: "ssh:nas",
+        alias: "nas",
+        kind: "ssh",
+        installed: { version: "9.9.9" },
       });
-      expect(theirs.status).toBe(200);
-      expect(written).toHaveLength(1);
-      expect(fs.existsSync(stored("build-box"))).toBe(true);
+      expect(row?.unavailable).toContain("ssh");
 
-      // Key sign-in deletes the password; so does deleting the machine from its last Project.
+      for (const verb of ["install", "connect", "restart"]) {
+        const res = await admin.post(`/api/projects/${PROJECT}/machines/ssh:nas/${verb}`);
+        expect(res.status).toBe(409);
+        expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+          "machine_kind_unavailable",
+        );
+      }
+      const use = (await (
+        await admin.post(`/api/projects/${PROJECT}/machines/use`, { machines: ["ssh:nas"] })
+      ).json()) as MachinesUseResponse;
+      expect(use.refused).toEqual([{ machineId: "ssh:nas", why: "kind-unavailable" }]);
+
+      // The standing re-hold passes it by, and does not count it as a failure.
+      await t.deps.machines.autoConnect();
+      await t.deps.machines.autoConnect();
+      await admin.post(`/api/projects/${PROJECT}/machines/probe`);
+      expect(reached).toBe(0);
+      expect(t.deps.machines.job()).toBeNull();
+    });
+
+    it("the ssh-hosts routes are gone", async () => {
+      await boot();
       expect(
-        (await admin.put(`${HOSTS}/orchid-2`, { hostName: "10.0.0.9", password: null })).status,
-      ).toBe(200);
-      expect(fs.existsSync(stored("orchid-2"))).toBe(false);
-      await admin.post("/api/projects/default_project/machines/stop-using", {
-        machines: ["ssh:build-box"],
-      });
-      expect(fs.existsSync(stored("build-box"))).toBe(false);
-
-      // An ssh here that cannot be handed a password: refused by name, nothing stored.
-      plan = { ok: false, detail: "needs OpenSSH 8.4", ssh: "OpenSSH_for_Windows_8.1p1" };
-      const old = await admin.put(`${HOSTS}/nas`, { hostName: "10.0.0.2", password: "pw" });
-      expect(old.status).toBe(409);
-      expect(await old.json()).toMatchObject({
-        error: { code: "ssh_password_unsupported", details: { ssh: "OpenSSH_for_Windows_8.1p1" } },
-      });
-      expect(fs.existsSync(stored("nas"))).toBe(false);
-    });
-
-    it("names the field that would not survive as one config line", async () => {
-      const written: string[] = [];
-      await boot({ appendHost: (block) => void written.push(block) });
-      const res = await post({ alias: "new box", hostName: "h" });
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as { error: { code: string; message: string } };
-      expect(body.error.code).toBe("ssh_host_invalid");
-      expect(body.error.message).toContain("alias");
-      expect(written).toEqual([]);
+        (await admin.post(`/api/projects/${PROJECT}/machines/ssh-hosts`, { alias: "x" })).status,
+      ).toBe(404);
+      expect((await admin.get(`/api/projects/${PROJECT}/machines/ssh-hosts/nas`)).status).toBe(404);
     });
   });
 
@@ -3252,7 +3238,7 @@ describe("machines API", () => {
       await checkout({
         packCheckout: packing(CHECKOUT_BUILD, edited),
         install: async (opts) => {
-          if (opts.target.alias === "nas") {
+          if (opts.target.name === "nas") {
             nasImage = path.dirname(opts.plan.hmrDir!);
             await downloading;
             // What the copy reads, once the release is down.

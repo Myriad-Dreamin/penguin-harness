@@ -70,6 +70,7 @@ import { portForwardsLegacyShape } from "./steps/port-forwards-legacy-shape.js";
 import { portForwardsAdoption } from "./steps/port-forwards-adoption.js";
 import { portForwardsDirection } from "./steps/port-forwards-direction.js";
 import { modelTablesAdoption } from "./steps/model-tables-adoption.js";
+import { machineDefinitions } from "./steps/machine-definitions.js";
 
 export type { Migration } from "./migration.js";
 export { IrreversibleMigrationError, UnknownMigrationError, appliedMigrations } from "./runner.js";
@@ -101,6 +102,7 @@ export const MIGRATIONS: readonly Migration[] = [
   portForwardsAdoption,
   portForwardsDirection,
   modelTablesAdoption,
+  machineDefinitions,
   messagingConversations,
   sessionsKeptAt,
   agentApiSessionSettings,

@@ -1,7 +1,7 @@
 /**
  * What the Machine dialog says about one machine, derived without a DOM: the status chip under
- * its title, the toolbar's verbs and the one sentence on those that wait, the reconnecting
- * section, the job's steps, and the facts with their glyphs.
+ * its title, the facts with their glyphs, the job's steps, the one thing to do next, the verbs
+ * Actions lists, and why a verb is held.
  *
  * Every derivation reads the reading the card reads (`readMachine`), so the dialog and the card
  * never disagree about a machine's state: the dialog only says more of it.
@@ -11,7 +11,7 @@ import type {
   MachineInfo,
   MachineJob,
   MachinePhase,
-  SshHostResponse,
+  MachineDefinitionResponse,
 } from "@prismshadow/penguin-server/api";
 import { ICONS } from "@prismshadow/penguin-ui";
 import {
@@ -24,15 +24,8 @@ import {
 import { S } from "../../lib/strings";
 import type { Tone } from "../../lib/tone";
 import { reasonText } from "./machine-card";
-import {
-  canSyncConfig,
-  failureText,
-  isPhase,
-  outOfDate,
-  readingTone,
-  sshWords,
-  stepLabel,
-} from "./machines-view";
+import type { MachineVerb } from "./machine-detail-dialog";
+import { failureText, isPhase, readingTone, sshWords, stepLabel } from "./machines-view";
 import type { MachineReading } from "./machines-view";
 
 /** The machine's state as one chip: a glyph (or a spinner) and one plain word. */
@@ -69,7 +62,8 @@ const CHIP_GLYPH: Record<MachineReading["kind"], string | null> = {
 /**
  * The chip for a reading; `reading` is null for this server's own entry, which is simply running.
  * The reason is the far side's own words where there are any — the failure, ssh's diagnostic, the
- * line a working job is on — and, for a machine on another build, the version it would get.
+ * line a working job is on, the attempt a reconnect is on — and, for a machine on another build,
+ * the version it would get.
  */
 export function machineChip(
   reading: MachineReading | null,
@@ -91,11 +85,9 @@ export function machineChip(
   };
 }
 
-/** `user@host:port`, the way ssh itself would be told; the default port goes unsaid. */
-export function hostLine(host: SshHostResponse): string {
-  const user = host.user === undefined || host.user === "" ? "" : `${host.user}@`;
-  const port = host.port === undefined || host.port === 22 ? "" : `:${host.port}`;
-  return `${user}${host.hostName}${port}`;
+/** The definition's own fields, without assuming any particular machine kind. */
+export function hostLine(host: MachineDefinitionResponse): string {
+  return Object.entries(host.values).map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`).join(" · ");
 }
 
 export type FactKey =
@@ -183,7 +175,7 @@ function checkedValue(
  */
 export function machineFacts(
   machine: MachineInfo,
-  host: SshHostResponse | null,
+  host: MachineDefinitionResponse | null,
   imageVersion: string | null,
   locale: "zh" | "en",
   now: number,
@@ -197,7 +189,7 @@ export function machineFacts(
           key: "connection",
           icon: ICONS.terminalPrompt,
           label: f.connection,
-          value: f.viaSsh(machine.alias),
+          value: `${machine.kind} · ${machine.alias}`,
           mono: true,
         },
   ];
@@ -272,7 +264,7 @@ const failedResult = (job: MachineJob) =>
 
 /**
  * The job's own steps in order, each marked by where the job stands: a queued job has every step
- * still to come, a running one is on its phase with the earlier ones done, one that finished well
+ * still to come, a running one is on its phase with the earlier steps done, one that finished well
  * has them all done, and a failed one is marked failed at its phase — or, when it stopped before
  * naming one (ssh refused the sign-in every job opens with), at the step its failure names.
  */
@@ -295,7 +287,6 @@ export function jobSteps(job: MachineJob): JobStep[] {
   }));
 }
 
-/** The connection check the server ran after a job failed: still running, or its lines. */
 export type JobCheck = { kind: "running" } | { kind: "done"; lines: CheckLine[] };
 
 /** What the Progress section shows for a job. */
@@ -319,8 +310,7 @@ export type JobView =
 
 /**
  * The job as the Progress section shows it: its steps while it is queued or running, or after it
- * failed — with where and why, and what the connection check found — and nothing but a line once
- * it finished well.
+ * failed — with where and why — and nothing but a line once it finished well.
  */
 export function jobView(job: MachineJob): JobView {
   if (job.queued) return { kind: "queued", steps: jobSteps(job) };
@@ -343,86 +333,169 @@ export function jobView(job: MachineJob): JobView {
   };
 }
 
-/** The toolbar's verbs, by what each one does. */
-export type ToolbarVerb =
-  "enable" | "update" | "stop" | "start" | "restart" | "syncConfig" | "configure" | "uninstall";
+export type PrimaryKind = "update" | "start" | "connect" | "tryAgain" | "retry";
 
-/** Why a toolbar verb waits: a job on its way, a machine out of reach, a stopped server, no build. */
-export type HoldReason = "moving" | "unreachable" | "stopped" | "noImage";
-
-/** One button of the toolbar: its verb, word and glyph, whether it is the primary, and why it waits. */
-export interface ToolbarItem {
-  verb: ToolbarVerb;
+/** The one thing to do for a machine: its button's word and glyph, and what it does. */
+export interface PrimaryAction {
+  kind: PrimaryKind;
   label: string;
   glyph: string;
-  primary: boolean;
-  /** Why it cannot run now; null when it can. */
-  held: HoldReason | null;
+  why: string;
 }
 
-const GLYPH: Record<ToolbarVerb, string> = {
-  enable: ICONS.plug,
-  update: ICONS.refresh,
-  stop: ICONS.stopCircle,
-  start: ICONS.play,
-  restart: ICONS.rotateCw,
-  // The config leaving this server for that machine.
-  syncConfig: ICONS.upload,
-  configure: ICONS.slidersHorizontal,
-  uninstall: ICONS.trash,
-};
+/**
+ * The one thing to do for this machine; every kind asks for the `use` verb — the whole pipeline,
+ * which installs, starts and connects as far as the machine needs. Null while a job is queued or
+ * running, and for a machine that is ready or installed as far as it goes. A failed job's Retry
+ * is drawn under the failure, every other kind at the top of Actions.
+ */
+export function primaryAction(
+  reading: MachineReading,
+  outOfDate: boolean,
+  imageVersion: string | null,
+): PrimaryAction | null {
+  const p = S.machines.detail.primary;
+  if (reading.kind === "queued" || reading.kind === "working") return null;
+  if (reading.kind === "failed") {
+    return { kind: "retry", label: p.retry, glyph: ICONS.rotateCcw, why: p.retryWhy };
+  }
+  if (outOfDate && imageVersion !== null) {
+    return {
+      kind: "update",
+      label: p.update,
+      glyph: ICONS.refresh,
+      why: p.updateWhy(imageVersion),
+    };
+  }
+  switch (reading.kind) {
+    case "ready":
+    case "installedOnly":
+      return null;
+    case "stopped":
+      return { kind: "start", label: p.start, glyph: ICONS.play, why: p.startWhy };
+    case "unreachable":
+      return { kind: "tryAgain", label: p.tryAgain, glyph: ICONS.plug, why: p.tryAgainWhy };
+    default:
+      // Not connected, never checked — and a build with nothing to compare it against, which
+      // reads like a machine nobody is connected to.
+      return { kind: "connect", label: p.connect, glyph: ICONS.plug, why: p.connectWhy };
+  }
+}
 
-/** The order the one sentence tells the reasons in: the first that holds any verb is said. */
-const REASONS: readonly HoldReason[] = ["moving", "unreachable", "stopped", "noImage"];
+/** The single steps and the ways out; `use` and `replaceProgram` are the primary's. */
+export type DialogVerb = Exclude<MachineVerb, "use" | "replaceProgram">;
+
+/** One single step or way out as Actions lists it: its glyph, its word, and what it does. */
+export interface VerbRow {
+  verb: DialogVerb;
+  glyph: string;
+  label: string;
+  /** What the verb does, in one line beside its button. */
+  why: string;
+}
+
+/** A group of Actions: its caption, and its verbs in order. */
+export interface VerbGroup {
+  caption: string;
+  rows: VerbRow[];
+}
 
 /**
- * The toolbar under the dialog's header: every verb the machine takes now, in one row, and the
- * one sentence saying why those that wait do. A machine with nothing installed is enabled (the
- * whole pipeline); one on another build than this server's is updated — the same pipeline,
- * offered only while it would change something; then its server stopped or started (whichever
- * it is not), restarted, its config synced (only while it is connected and on this server's
- * build), its ssh host configured, and the program uninstalled. This server's own entry takes
- * none.
+ * Actions' two groups, in order: the single steps, then the ways out. Reconnect stays out where
+ * the one thing to do already connects — Connect and Try again run the whole pipeline, which
+ * connects and more — so the same act is never offered twice.
  */
-export function machineToolbar(
-  machine: MachineInfo,
-  job: MachineJob | null,
-  imageVersion: string | null,
-  noImage: boolean,
-): { items: ToolbarItem[]; sentence: string | null } {
-  if (machine.local) return { items: [], sentence: null };
-  const t = S.machines.detail.toolbar;
-  const moving = job !== null && (job.queued || job.running);
-  const reconnecting = machine.reconnect !== undefined;
-  const kept = machine.keepConnected === true || machine.connection !== null;
-  const item = (
-    verb: ToolbarVerb,
-    label: string,
-    held: HoldReason | null,
-    primary = false,
-  ): ToolbarItem => ({ verb, label, glyph: GLYPH[verb], primary, held });
-  const pipelineHeld: HoldReason | null = moving ? "moving" : noImage ? "noImage" : null;
-  const items: ToolbarItem[] = [];
-  if (machine.installed === null) {
-    items.push(item("enable", t.enable, pipelineHeld, true));
-    items.push(item("configure", t.configure, null));
-  } else {
-    if (outOfDate(machine, imageVersion)) items.push(item("update", t.update, pipelineHeld, true));
-    const reachHeld: HoldReason | null = moving ? "moving" : reconnecting ? "unreachable" : null;
-    items.push(
-      kept ? item("stop", t.stop, reachHeld) : item("start", t.start, moving ? "moving" : null),
-    );
-    items.push(item("restart", t.restart, reachHeld ?? (kept ? null : "stopped")));
-    if (canSyncConfig(machine, imageVersion)) {
-      items.push(item("syncConfig", t.syncConfig, moving ? "moving" : null));
-    }
-    items.push(item("configure", t.configure, null));
-    items.push(item("uninstall", t.uninstall, reachHeld));
+export function verbGroups(primary: PrimaryKind | null): VerbGroup[] {
+  const m = S.machines;
+  const connects = primary === "connect" || primary === "tryAgain";
+  const maintenance: VerbRow[] = [
+    { verb: "install", glyph: ICONS.download, label: m.verbs.install, why: m.verbs.installWhy },
+    { verb: "connect", glyph: ICONS.chainLink, label: m.verbs.connect, why: m.verbs.connectWhy },
+    { verb: "restart", glyph: ICONS.rotateCw, label: m.verbs.restart, why: m.verbs.restartWhy },
+    {
+      verb: "configure",
+      glyph: ICONS.gear,
+      label: m.detail.configureSsh,
+      why: m.detail.configureSshWhy,
+    },
+  ];
+  const leave: VerbRow[] = [
+    { verb: "stopUsing", glyph: ICONS.plugLifted, label: m.stopUsing, why: m.verbs.stopUsingWhy },
+    {
+      verb: "disconnect",
+      glyph: ICONS.signOut,
+      label: m.verbs.disconnect,
+      why: m.verbs.disconnectWhy,
+    },
+    { verb: "release", glyph: ICONS.boxArrowOut, label: m.verbs.release, why: m.verbs.releaseWhy },
+  ];
+  return [
+    {
+      caption: m.detail.maintenance,
+      rows: maintenance.filter((row) => !(connects && row.verb === "connect")),
+    },
+    { caption: m.detail.leave, rows: leave },
+  ];
+}
+
+/** Why a verb waits on the machine: a job on its way, no build, no connection, no answer. */
+export type HoldReason = "moving" | "noImage" | "noConnection" | "unreachable";
+
+/** Why a verb waits: a request in flight, or a reason of the machine's own. */
+export type Hold = "busy" | HoldReason;
+
+export interface VerbContext {
+  /** A request from the page is in flight. */
+  busy: boolean;
+  /** A job for the machine is queued or running: the single steps would collide with it (409). */
+  moving: boolean;
+  /** This server has no build to push. */
+  noImage: boolean;
+  /** A connection to the machine is held. */
+  connected: boolean;
+  /** The last probe could not reach the machine. */
+  unreachable: boolean;
+}
+
+/** What of the machine's own can hold each verb, in the order the reasons are told. */
+const HOLDS: Record<DialogVerb, readonly HoldReason[]> = {
+  install: ["moving", "noImage"],
+  connect: ["moving"],
+  restart: ["moving", "unreachable"],
+  configure: [],
+  stopUsing: [],
+  disconnect: ["noConnection"],
+  release: [],
+};
+
+const holds = (hold: HoldReason, ctx: VerbContext): boolean => {
+  switch (hold) {
+    case "moving":
+      return ctx.moving;
+    case "noImage":
+      return ctx.noImage;
+    case "noConnection":
+      return !ctx.connected;
+    case "unreachable":
+      return ctx.unreachable;
   }
-  const held = S.machines.detail.held;
-  const reason = REASONS.find((one) => items.some((it) => it.held === one));
-  const sentence = reason === undefined ? null : held[reason];
-  return { items, sentence };
+};
+
+/**
+ * Why a verb waits on the machine, or null when nothing of the machine's holds it; the first
+ * reason wins. A request in flight is not among them: it holds every verb for the moment the
+ * request takes, which is no reason to rewrite what each one says.
+ */
+export function holdReason(verb: DialogVerb, ctx: VerbContext): HoldReason | null {
+  return HOLDS[verb].find((hold) => holds(hold, ctx)) ?? null;
+}
+
+/**
+ * Why a verb is held right now, or null when it may be pressed: a request in flight holds every
+ * verb and is told before any other reason.
+ */
+export function verbHold(verb: DialogVerb, ctx: VerbContext): Hold | null {
+  return ctx.busy ? "busy" : holdReason(verb, ctx);
 }
 
 /** The last config sync, as the line under the toolbar says it, and what it could not carry. */

@@ -35,6 +35,7 @@ describe("the machine sessions across a swap", () => {
     expect(shape).toBe(closedShape(ifaceTable as unknown as IfaceTable, MACHINE_SESSION_IFACE));
     expect(shape).not.toBeNull();
     expect(shape).toContain("run");
+    expect(shape).toContain("memo");
   });
 
   it("adopts a predecessor's sessions when the shape is the same, and closes them when it is not", async () => {

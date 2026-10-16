@@ -19,7 +19,87 @@ import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { machineApi } from "../src/machines/machine-api.js";
 import { machinesProxy } from "../src/machines/proxy.js";
-import { dialThroughSocks } from "../src/machines/transport/socks.js";
+
+/** How long the SOCKS5 handshake itself may take; the request behind it sets its own after. */
+const SOCKS_HANDSHAKE_TIMEOUT_MS = 8_000;
+
+/**
+ * The SOCKS5 client step of this test's stand-in session: a CONNECT to an IPv4 port over
+ * the loopback listener. The machine session machinery lives in the ssh plugin now
+ * (plugins/machine-ssh/src/socks.ts); this copy keeps the rig standalone.
+ */
+function dialThroughSocks(
+  socksPort: number,
+  host: string,
+  port: number,
+  timeoutMs: number = SOCKS_HANDSHAKE_TIMEOUT_MS,
+): Promise<net.Socket> {
+  const parts = host.split(".").map((p) => Number.parseInt(p, 10));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+    return Promise.reject(new Error(`not an IPv4 address: ${host}`));
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return Promise.reject(new Error(`bad port ${port}`));
+  }
+  return new Promise((resolve, reject) => {
+    const socket = net.connect({ host: "127.0.0.1", port: socksPort });
+    // A handshake that stalls — a session half-dead, a far side that never answers the
+    // channel open — must fail rather than hang the request that wanted it; the request's own
+    // timeout only starts once it has a socket.
+    socket.setTimeout(timeoutMs, () => fail("the session's SOCKS handshake timed out"));
+    let buffer = Buffer.alloc(0);
+    let stage: "greet" | "connect" = "greet";
+    let settled = false;
+    const fail = (message: string) => {
+      if (settled) return;
+      settled = true;
+      socket.removeListener("data", onData);
+      socket.removeListener("close", onClose);
+      socket.destroy();
+      reject(new Error(message));
+    };
+    const onData = (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      if (stage === "greet") {
+        if (buffer.length < 2) return;
+        if (buffer[0] !== 5 || buffer[1] !== 0) return fail("the session's SOCKS listener refused");
+        buffer = buffer.subarray(2);
+        stage = "connect";
+        socket.write(Buffer.from([5, 1, 0, 1, ...parts, port >> 8, port & 0xff]));
+      }
+      if (stage === "connect") {
+        if (buffer.length < 4) return;
+        if (buffer[1] !== 0)
+          return fail(`the machine refused ${host}:${port} (SOCKS reply ${buffer[1]})`);
+        const addrLen = buffer[3] === 1 ? 4 : buffer[3] === 4 ? 16 : 1 + (buffer[4] ?? 0);
+        const total = 4 + addrLen + 2;
+        if (buffer.length < total) return;
+        const rest = buffer.subarray(total);
+        settled = true;
+        socket.removeListener("data", onData);
+        socket.removeListener("error", onError);
+        socket.removeListener("close", onClose);
+        socket.setTimeout(0);
+        if (rest.length > 0) socket.unshift(rest);
+        resolve(socket);
+      }
+    };
+    const onError = (err: Error) => fail(`the session's SOCKS port did not answer: ${err.message}`);
+    // Closed before the reply: OpenSSH's -D answers a CONNECT it could not open (nothing
+    // listening on that port over there, or the session going down) by closing the connection,
+    // with no failure reply at all. The timeout above dies with the socket, so without this the
+    // dial would never settle — and neither would the request waiting on it.
+    const onClose = () =>
+      fail(
+        `the session closed the channel to ${host}:${port} before answering — nothing is listening there, or the session is going down`,
+      );
+    socket.once("connect", () => socket.write(Buffer.from([5, 1, 0]))); // no authentication
+    socket.on("data", onData);
+    socket.once("error", onError);
+    socket.once("close", onClose);
+  });
+}
+
 import { buildProxyDispatcher } from "../src/net/proxy.js";
 
 const listen = (server: net.Server): Promise<number> =>

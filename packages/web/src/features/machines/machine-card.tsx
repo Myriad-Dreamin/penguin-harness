@@ -42,7 +42,6 @@ import { toneDot, toneInk } from "../../lib/tone";
 import type { Tone } from "../../lib/tone";
 import {
   canSyncConfig,
-  canUse,
   isPhase,
   outOfDate,
   readMachine,
@@ -202,12 +201,12 @@ export interface MachineCardProps {
   busy: boolean;
   /** Opens the Machine dialog. */
   onOpen: () => void;
-  /** Starts a new conversation in the machine's temporary workspace. */
+  /** Brings the machine up, or onto this server's build: the whole pipeline. */
   onUse: () => void;
+  kindTitle?: string;
+  onConfigure: (() => void) | null;
   /** Hands the machine this Project's config now (a job). */
   onSyncConfig: () => void;
-  /** Asks to take the machine off this Project (the page confirms first). */
-  onDelete: () => void;
   /** Opens this machine's Ports page when it has an addressable id. */
   onPorts?: (() => void) | null;
 }
@@ -250,19 +249,19 @@ export function MachineCard({
   busy,
   onOpen,
   onUse,
+  onConfigure,
+  kindTitle = machine.kind,
   onSyncConfig,
-  onDelete,
   onPorts = null,
 }: MachineCardProps) {
   const reading = machine.local ? null : readMachine(machine, job, imageVersion);
-  const mark = machineMark(reading);
+  const mark: MachineMark = machine.unavailable === undefined ? machineMark(reading) : { label: `${S.machines.kindUnavailable} · ${kindTitle}: ${machine.unavailable}`, tone: "attention", moving: false, glyph: ICONS.alertCircle };
   const moving = !machine.local && jobMoving(job);
   // Another build than this server's: the pill says so and opens the dialog, where the update is.
   // Not while a job is already on its way.
   const behind = !moving && outOfDate(machine, imageVersion);
   const status = machine.status;
   const port = status?.state === "running" ? (status.port ?? null) : null;
-  const usable = canUse(machine, job);
   const waits = useWaitsBecause(machine, job, reading, locale, Date.now());
   const card = S.machines.card;
   return (
@@ -328,66 +327,55 @@ export function MachineCard({
         )}
       </div>
 
-      {/* The Agents card's quick buttons: the primary verb with its word, Settings with its gear
-          and word, Delete as a bare icon in the danger look. */}
-      <div className="flex shrink-0 items-center gap-2">
-        {canSyncConfig(machine, imageVersion) && (
-          <Button
+      {!machine.local && machine.unavailable === undefined && (
+        <div className="flex shrink-0 items-center gap-2">
+          {behind ? (
+            <Button size="sm" variant="primary" disabled={busy} onClick={onUse}>
+              <GlyphIcon d={ICONS.refresh} />
+              {S.machines.card.update}
+            </Button>
+          ) : (
+            reading !== null &&
+            wantsUse(reading) && (
+              <Button size="sm" variant="primary" disabled={busy} onClick={onUse}>
+                <GlyphIcon d={ICONS.plug} />
+                {S.machines.use}
+              </Button>
+            )
+          )}
+          {canSyncConfig(machine, imageVersion) && (
+            <Button
+              size="icon"
+              data-action="sync-config"
+              title={card.syncConfig}
+              aria-label={card.syncConfig}
+              disabled={busy || moving}
+              onClick={onSyncConfig}
+            >
+              <GlyphIcon d={ICONS.upload} size={ICON_SIZE.iconButton} />
+            </Button>
+          )}
+          {onConfigure !== null && <Button
             size="icon"
-            data-action="sync-config"
-            title={card.syncConfig}
-            aria-label={card.syncConfig}
-            disabled={busy || moving}
-            onClick={onSyncConfig}
+            title={S.machines.definition.configure}
+            aria-label={S.machines.definition.configure}
+            disabled={busy}
+            onClick={onConfigure}
           >
-            <GlyphIcon d={ICONS.upload} size={ICON_SIZE.iconButton} />
-          </Button>
-        )}
-        <Button
-          size="sm"
-          variant="primary"
-          data-action="use"
-          disabled={busy || !usable}
-          onClick={onUse}
-        >
-          <GlyphIcon d={ICONS.messagePlus} />
-          {card.use}
-        </Button>
-        <Button size="sm" data-action="settings" onClick={onOpen}>
-          <GlyphIcon d={ICONS.gear} />
-          {card.settings}
-        </Button>
-        {onPorts !== null && (
-          <Button size="sm" variant="secondary" title={S.ports.verbTitle} onClick={onPorts}>
-            <GlyphIcon d={ICONS.arrowsOpposed} size={ICON_SIZE.inlineGlyph} />
-            {S.ports.verb}
-          </Button>
-        )}
-        {machine.local ? (
-          // This server cannot be taken off its own page: a placeholder in the delete button's box,
-          // so every card's buttons line up, saying why on the hint its bare icon can carry.
-          <span
-            role="img"
-            data-tooltip={card.localUndeletable}
-            aria-label={card.localUndeletable}
-            className="inline-flex cursor-not-allowed items-center justify-center rounded-md border border-transparent p-1.5 text-gray-300 dark:text-gray-600"
-          >
-            <GlyphIcon d={ICONS.trash} size={ICON_SIZE.iconButton} />
-          </span>
-        ) : (
-          <Button
-            size="icon"
-            variant="danger"
-            data-action="delete"
-            title={card.delete}
-            aria-label={card.delete}
-            disabled={busy || moving}
-            onClick={onDelete}
-          >
-            <GlyphIcon d={ICONS.trash} size={ICON_SIZE.iconButton} />
-          </Button>
-        )}
-      </div>
+            <GlyphIcon
+              d={ICONS.gear}
+              size={ICON_SIZE.iconButton}
+              className="text-gray-600 dark:text-gray-300"
+            />
+          </Button>}
+          {onPorts !== null && (
+            <Button size="sm" variant="secondary" title={S.ports.verbTitle} onClick={onPorts}>
+              <GlyphIcon d={ICONS.arrowsOpposed} size={ICON_SIZE.inlineGlyph} />
+              {S.ports.verb}
+            </Button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

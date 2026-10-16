@@ -1,43 +1,42 @@
 /**
  * The Machine dialog: everything about one machine that its card leaves out, and every verb it
- * takes.
+ * takes, in four blocks under the alias.
  *
- * - The header: a tile, the state as one chip — a glyph (a spinner while a job runs or the server
- *   brings the machine back) and one plain word, the reason behind it on the glyph's hover — the
- *   installed version, and one line saying how this server reaches the machine.
- * - The toolbar, right under it: every verb in one row of flat buttons, as a file manager lays out
- *   its commands, set apart by spacing alone — Update while the machine carries another build
- *   (Enable when nothing is installed), Stop or Start its server, Restart it, Sync config while it
- *   is connected on this server's build, Configure SSH, Uninstall. A verb that cannot run now
- *   stays in place, greyed, and ONE muted sentence under the row says why and names them.
- * - Under the toolbar, one quiet line on the last config sync — when, or why it failed — and an
- *   attention notice listing what it could not carry: models keyed from this server's
- *   environment, and models the machine would not take.
- * - Reconnecting, while the server brings a machine it keeps connected back: for how long, which
- *   attempt and when the next, the last failure — and what the connection check found, once the
- *   server ran it after failures in a row.
- * - Progress, while a job is queued or running and after one: its own steps one per line, each
- *   marked done, current, failed or still to come; a job that finished well is a single quiet
- *   line. The log is folded underneath, open while the job runs, with a copy button for the whole
- *   of it. A failed job says at which step and why, what the connection check the server ran
- *   afterwards found, and offers Retry — and Force install when the failure offers it.
+ * - The header: a tile, the state as one chip — a glyph (a spinner while a job runs) and one plain
+ *   word, the reason behind it on the glyph's hover — the installed version, and one line saying
+ *   how this server reaches the machine.
  * - Details: the facts, each label led by its glyph — how the machine is reached, the address its
  *   ssh alias names, the data directory; the server over there (with ssh's own words under it
- *   when it is out of reach), the last check, the build it carries — and last, quiet, the
- *   machine's own id with a copy button.
+ *   when it is out of reach), the last check (how long ago, and the time itself), the build it
+ *   carries — and last, quiet, the machine's own id with a copy button.
+ * - Progress, while a job is queued or running and after one: its steps one per line, each marked
+ *   done, current, failed or still to come; a job that finished well is a single quiet line. The
+ *   log is folded underneath, open while the job runs. A failed job says at which step and in the
+ *   far side's own words, with Retry — and Force install when the failure offers it — listed under
+ *   it, each with what it does.
+ * - Actions: the one thing to do next, with what it does beside it; then the single steps and the
+ *   ways out, two groups under small ruled captions, each verb on a line of its own: its button,
+ *   and beside it what it does. A verb that cannot run now stays in place, disabled, and says why
+ *   instead.
  *
- * This server's own entry has the header and Details alone: it runs no jobs and takes no verbs.
+ * The one thing to do has exactly one home: under the failure when the last job failed, else the
+ * first row of Actions. This server's own entry has the header and Details alone: it runs no jobs
+ * and takes no verbs.
  *
  * No hint sits on words already on screen: the tooltip layer opens one only on an element that
- * shows no text of its own. The hints here sit on marks without words — the chip's glyph and the
- * copy buttons — and everything else is said in text.
+ * shows no text of its own, so there it would never open. The hints here sit on marks without
+ * words — the chip's glyph and the id's copy button — and everything else is said in text.
  *
- * `MachineDetailBody` is a pure function of its props. The dialog around it adds the one read the
- * machines list does not carry: the host block (the list is the ssh config's aliases only).
+ * `MachineDetailBody` is a pure function of its props. The dialog around it adds one read, the
+ * host block, which the machines list does not carry: the list is the ssh config's aliases only.
  */
-import { useEffect, useId, useState } from "react";
+import { Fragment, useEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
-import type { MachineInfo, MachineJob, SshHostResponse } from "@prismshadow/penguin-server/api";
+import type {
+  MachineInfo,
+  MachineJob,
+  MachineDefinitionResponse,
+} from "@prismshadow/penguin-server/api";
 import {
   Badge,
   Button,
@@ -56,6 +55,7 @@ import {
   RuledSection,
   Spinner,
 } from "@prismshadow/penguin-ui";
+import type { ButtonVariant } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { formatDateTime, formatRelativeShort } from "../../lib/format";
 import { S } from "../../lib/strings";
@@ -63,11 +63,14 @@ import { toneInk } from "../../lib/tone";
 import { DOT_TONE, jobMoving } from "./machine-card";
 import {
   configSyncView,
+  holdReason,
   jobView,
   machineChip,
   machineFacts,
-  machineToolbar,
+  primaryAction,
   reconnectView,
+  verbGroups,
+  verbHold,
 } from "./machine-detail-view";
 import type {
   CheckLine,
@@ -76,28 +79,22 @@ import type {
   JobStep,
   MachineChip,
   StepState,
-  ToolbarItem,
-  ToolbarVerb,
+  VerbContext,
+  VerbGroup,
 } from "./machine-detail-view";
 import { outOfDate, readMachine, socketReading } from "./machines-view";
 
-/**
- * Everything the dialog can ask its page to do for the machine. `use` is the whole pipeline —
- * what Enable, Update and Retry each run; `replaceProgram` the forced install a failure offers.
- */
-export type MachineVerb = Exclude<ToolbarVerb, "enable" | "update"> | "use" | "replaceProgram";
-
-/** The page verb a toolbar button asks for. */
-const VERB_OF: Record<ToolbarVerb, MachineVerb> = {
-  enable: "use",
-  update: "use",
-  stop: "stop",
-  start: "start",
-  restart: "restart",
-  syncConfig: "syncConfig",
-  configure: "configure",
-  uninstall: "uninstall",
-};
+/** Everything the dialog can ask its page to do for the machine. */
+export type MachineVerb =
+  | "use"
+  | "stopUsing"
+  | "replaceProgram"
+  | "install"
+  | "connect"
+  | "restart"
+  | "disconnect"
+  | "release"
+  | "configure";
 
 export interface MachineDetailBodyProps {
   machine: MachineInfo;
@@ -106,13 +103,14 @@ export interface MachineDetailBodyProps {
   imageVersion: string | null;
   locale: "zh" | "en";
   /** The host block the alias names; null until read, or when the config has none this app can read. */
-  host: SshHostResponse | null;
+  host: MachineDefinitionResponse | null;
   /** The page's last error, repeated here because the dialog covers the notice that says it. */
   error: string | null;
   /** A request from this page is in flight: every verb waits for it. */
   busy: boolean;
   /** This server has no build to push, so an install has nothing to send. */
   noImage: boolean;
+  canConfigure?: boolean;
   /** The clock the reconnecting streak and the last check are measured from. */
   now?: number;
   onAct: (verb: MachineVerb) => void;
@@ -320,22 +318,16 @@ export function LogFold({ job }: { job: MachineJob }) {
   const panelId = useId();
   return (
     <div className="mt-3 border-t border-line pt-2">
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={panelId}
-          onClick={() => setOpen((was) => !was)}
-          className={`flex items-center ${ICON_GAP.tight} rounded-sm text-xs font-semibold text-fg-muted transition-colors duration-150 hover:text-fg`}
-        >
-          <Chevron open={open} size={ICON_SIZE.chevronDense} />
-          {S.machines.detail.showLog}
-        </button>
-        {/* The whole log, as a code block copies its code: the button the code block wears. */}
-        {open && (
-          <CopyButton size="sm" text={job.log.join("\n")} label={S.machines.detail.copyLog} />
-        )}
-      </div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((was) => !was)}
+        className={`flex items-center ${ICON_GAP.tight} rounded-sm text-xs font-semibold text-fg-muted transition-colors duration-150 hover:text-fg`}
+      >
+        <Chevron open={open} size={ICON_SIZE.chevronDense} />
+        {S.machines.detail.showLog}
+      </button>
       <div id={panelId} hidden={!open} className="pt-3">
         <LogView
           lines={job.log}
@@ -349,9 +341,9 @@ export function LogFold({ job }: { job: MachineJob }) {
 }
 
 /**
- * One check's line: its mark in a box of one size — a check, an alert, a cross (only the mark takes
- * the danger ink), or a quiet dot for one not asked — then its sentence, and ssh's own words under
- * it in the muted ink. `data-check` and `data-state` name it for whatever reads the markup.
+ * One verb's button: its glyph before its word, `data-verb` naming the verb for whatever reads
+ * the markup. No hint rides on it — the tooltip layer would never open one on a button that shows
+ * its word — so what it does, or why it waits, stands beside it as text.
  */
 function CheckRow({ line }: { line: CheckLine }) {
   return (
@@ -389,43 +381,6 @@ function CheckList({ lines, alias }: { lines: readonly CheckLine[]; alias: strin
   );
 }
 
-/**
- * The toolbar: the verbs in one row of flat buttons, the primary one first in the primary look,
- * wrapping where the row does not fit; a request in flight greys every one. No rule above or below
- * it: the spacing around the row is what sets it apart. `data-verb` names each for whatever reads
- * the markup.
- */
-export function MachineToolbar({
-  items,
-  busy,
-  onAct,
-}: {
-  items: readonly ToolbarItem[];
-  busy: boolean;
-  onAct: (verb: MachineVerb) => void;
-}) {
-  return (
-    <div
-      role="toolbar"
-      aria-label={S.machines.detail.toolbar.label}
-      className="flex flex-wrap items-center gap-1"
-    >
-      {items.map((item) => (
-        <Button
-          key={item.verb}
-          size="sm"
-          variant={item.primary ? "primary" : "ghost"}
-          data-verb={item.verb}
-          disabled={busy || item.held !== null}
-          onClick={() => onAct(VERB_OF[item.verb])}
-        >
-          <GlyphIcon d={item.glyph} size={ICON_SIZE.inlineGlyph} />
-          {item.label}
-        </Button>
-      ))}
-    </div>
-  );
-}
 
 /**
  * The last config sync: one quiet line — a check, or the danger cross on a failure, beside the
@@ -469,6 +424,149 @@ function ConfigSync({ view }: { view: ConfigSyncView }) {
   );
 }
 
+
+function Verb({
+  verb,
+  glyph,
+  label,
+  held,
+  variant = "ghost",
+  onClick,
+}: {
+  verb: MachineVerb;
+  glyph: string;
+  label: string;
+  /** The verb cannot run now. */
+  held: boolean;
+  variant?: ButtonVariant;
+  onClick: () => void;
+}) {
+  return (
+    <Button size="sm" variant={variant} disabled={held} onClick={onClick} data-verb={verb}>
+      <GlyphIcon d={glyph} size={ICON_SIZE.inlineGlyph} />
+      {label}
+    </Button>
+  );
+}
+
+/** A group's caption: its name, then a hairline to the end of the row — a ruled section in small. */
+function GroupCaption({ caption, first }: { caption: string; first: boolean }) {
+  return (
+    <h4
+      className={`flex items-center gap-3 justify-self-stretch text-xs text-fg-muted sm:col-span-2 ${first ? "" : "mt-3"}`}
+    >
+      {caption}
+      <span aria-hidden className="h-px flex-1 bg-line" />
+    </h4>
+  );
+}
+
+/**
+ * A list of verbs, one per line: every button in a first column as wide as the widest of them,
+ * so every line beside them starts at one edge in either language; one column on a phone.
+ */
+function VerbGrid({ className = "", children }: { className?: string; children: ReactNode }) {
+  return (
+    <div
+      className={`grid justify-items-start gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center sm:gap-x-4 sm:gap-y-1.5 ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * One verb of a list: its button, and beside it what the verb does — or, while something of the
+ * machine's holds it, why, after a mark that says the line is a reason. In the muted ink either
+ * way: a held verb is waiting, not failing. On a phone the line sits under its button, indented by
+ * the button's own padding so it starts under the glyph; from `sm` the pair joins the list's grid.
+ */
+function VerbItem({
+  verb,
+  glyph,
+  label,
+  why,
+  reason = null,
+  held,
+  variant,
+  onClick,
+}: {
+  verb: MachineVerb;
+  glyph: string;
+  label: string;
+  /** What the verb does. */
+  why: string;
+  /** Why the verb waits on the machine; null when nothing of the machine's holds it. */
+  reason?: string | null;
+  held: boolean;
+  variant?: ButtonVariant;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-1 sm:contents">
+      <Verb
+        verb={verb}
+        glyph={glyph}
+        label={label}
+        held={held}
+        variant={variant}
+        onClick={onClick}
+      />
+      <p className="flex items-start gap-1.5 pl-2.5 text-sm text-fg-muted sm:pl-0">
+        {reason !== null && (
+          <GlyphIcon
+            d={ICONS.info}
+            size={ICON_SIZE.inlineGlyph}
+            className="ui-icon-decor mt-1 text-fg-subtle"
+          />
+        )}
+        <span>{reason ?? why}</span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Actions' groups as one list, each group under its caption and each verb on a line of its own;
+ * one grid holds both groups. A request in flight holds every verb without rewriting a line: it
+ * lasts a moment, and every row would flicker.
+ */
+function VerbList({
+  groups,
+  ctx,
+  onAct,
+}: {
+  groups: readonly VerbGroup[];
+  ctx: VerbContext;
+  onAct: (verb: MachineVerb) => void;
+}) {
+  const hold = S.machines.detail.hold;
+  return (
+    <VerbGrid>
+      {groups.map((group, index) => (
+        <Fragment key={group.caption}>
+          <GroupCaption caption={group.caption} first={index === 0} />
+          {group.rows.map((row) => {
+            const reason = holdReason(row.verb, ctx);
+            return (
+              <VerbItem
+                key={row.verb}
+                verb={row.verb}
+                glyph={row.glyph}
+                label={row.label}
+                why={row.why}
+                reason={reason === null ? null : hold[reason]}
+                held={verbHold(row.verb, ctx) !== null}
+                onClick={() => onAct(row.verb)}
+              />
+            );
+          })}
+        </Fragment>
+      ))}
+    </VerbGrid>
+  );
+}
+
 export function MachineDetailBody({
   machine,
   job,
@@ -478,6 +576,7 @@ export function MachineDetailBody({
   error,
   busy,
   noImage,
+  canConfigure = true,
   now = Date.now(),
   onAct,
 }: MachineDetailBodyProps) {
@@ -488,10 +587,20 @@ export function MachineDetailBody({
   const chip = machineChip(reading, imageVersion);
   const facts = machineFacts(machine, host, imageVersion, locale, now);
   const view = !machine.local && job !== null ? jobView(job) : null;
-  const toolbar = machineToolbar(machine, job, imageVersion, noImage);
+  const primary =
+    reading === null || machine.unavailable !== undefined
+      ? null
+      : primaryAction(reading, behind, imageVersion);
   const reconnect = machine.local ? null : reconnectView(machine, locale, now);
   const configSync = machine.local ? null : configSyncView(machine, locale, now);
   const labelWidth = FACT_LABEL_WIDTH[locale];
+  const ctx: VerbContext = {
+    busy,
+    moving: jobMoving(job),
+    noImage,
+    connected: machine.connection !== null,
+    unreachable: machine.status?.state === "unreachable",
+  };
   return (
     <div className="space-y-6">
       {error !== null && (
@@ -500,38 +609,60 @@ export function MachineDetailBody({
         </NoticeStrip>
       )}
 
-      <div className="space-y-3">
-        <div className="flex items-start gap-3">
-          <MachineTile />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <StatusChip chip={chip} />
-              {/* The version on offer is Details' to say, beside the installed one. */}
-              {machine.installed !== null && (
-                <Badge variant="soft" tone={behind ? "attention" : "neutral"}>
-                  v{machine.installed.version}
-                </Badge>
-              )}
-              {machine.local && <Badge variant="outline">{m.localTitle}</Badge>}
-            </div>
-            <p className="mt-1 text-sm text-fg-muted">
-              {machine.local ? d.describeLocal : d.describeRemote(machine.alias)}
-            </p>
-          </div>
-        </div>
-        {toolbar.items.length > 0 && (
-          <div>
-            <MachineToolbar items={toolbar.items} busy={busy} onAct={onAct} />
-            {/* Why the greyed verbs wait, once, in words — never on a hover the reader has to find. */}
-            {toolbar.sentence !== null && (
-              <p data-held="" className="mt-1.5 text-xs text-fg-muted">
-                {toolbar.sentence}
-              </p>
+      {machine.unavailable !== undefined && (
+        <NoticeStrip tone="attention">{machine.unavailable}</NoticeStrip>
+      )}
+      <div className="flex items-start gap-3">
+        <MachineTile />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <StatusChip chip={chip} />
+            {/* The version on offer is Details' to say, beside the installed one. */}
+            {machine.installed !== null && (
+              <Badge variant="soft" tone={behind ? "attention" : "neutral"}>
+                v{machine.installed.version}
+              </Badge>
             )}
-            {configSync !== null && <ConfigSync view={configSync} />}
+            {machine.local && <Badge variant="outline">{m.localTitle}</Badge>}
           </div>
-        )}
+          <p className="mt-1 text-sm text-fg-muted">
+            {machine.local ? d.describeLocal : d.describeRemote(machine.alias)}
+          </p>
+        </div>
       </div>
+
+      <RuledSection level={3} title={d.facts}>
+        {/* Two columns from sm up — where the machine is, and how it stands — the first wider,
+            since paths live there, the second wide enough that a port or a version note stays
+            on one line. One column on a phone. */}
+        <div className="grid items-start gap-x-6 gap-y-1 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
+          <KeyValue size="sm">
+            {facts.left.map((fact) => (
+              <FactRow key={fact.key} fact={fact} labelWidth={labelWidth} />
+            ))}
+          </KeyValue>
+          <KeyValue size="sm">
+            {facts.right.map((fact) => (
+              <FactRow key={fact.key} fact={fact} labelWidth={labelWidth} />
+            ))}
+          </KeyValue>
+        </div>
+        {/* The machine's own id is a detail you go looking for: it closes the section, quiet,
+            with its copy button. */}
+        <MachineSocketDetails machine={machine} locale={locale} />
+
+        {facts.id !== null && (
+          <KeyValue size="sm" className="mt-2">
+            <FactRow
+              fact={facts.id}
+              labelWidth={labelWidth}
+              after={<CopyButton size="sm" text={facts.id.value} label={d.copyMachineId} />}
+            />
+          </KeyValue>
+        )}
+      </RuledSection>
+
+        {configSync !== null && <ConfigSync view={configSync} />}
 
       {reconnect !== null && (
         <RuledSection level={3} title={d.reconnect.title}>
@@ -581,6 +712,7 @@ export function MachineDetailBody({
         </RuledSection>
       )}
 
+
       {view !== null && job !== null && (
         <RuledSection level={3} title={d.progress}>
           {view.kind === "queued" && (
@@ -600,11 +732,8 @@ export function MachineDetailBody({
               {d.lastJobDone}
             </p>
           )}
-          {/* Line by line: an installer's refusal is the program's own error over its own line. */}
           {view.kind === "failed" && (
-            <p className="mt-3 text-sm break-words whitespace-pre-line">
-              {d.failedAtStep(view.stepName, view.message)}
-            </p>
+            <p className="mt-3 text-sm">{d.failedAtStep(view.stepName, view.message)}</p>
           )}
           {view.kind === "failed" && view.detail !== null && (
             <p data-said="ssh" className="mt-1 text-xs break-words text-fg-muted">
@@ -625,67 +754,65 @@ export function MachineDetailBody({
               )}
             </div>
           )}
-          {/* A failed job's way out sits under what went wrong, and only here. */}
-          {view.kind === "failed" && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
+
+          {/* A failed machine's one thing to do is here, under what went wrong — and only here —
+              listed like the verbs of Actions, each with what it does beside it. */}
+          {view.kind === "failed" && primary?.kind === "retry" && (
+            <VerbGrid className="mt-3">
+              <VerbItem
+                verb="use"
                 variant="primary"
-                data-verb="retry"
-                disabled={busy}
+                glyph={primary.glyph}
+                label={primary.label}
+                why={primary.why}
+                held={busy}
                 onClick={() => onAct("use")}
-              >
-                <GlyphIcon d={ICONS.rotateCcw} size={ICON_SIZE.inlineGlyph} />
-                {d.retry}
-              </Button>
+              />
               {view.canReplaceProgram && (
-                // Secondary: the confirmation that follows carries the danger tone.
-                <Button
-                  size="sm"
-                  data-verb="replaceProgram"
-                  disabled={busy}
+                <VerbItem
+                  verb="replaceProgram"
+                  // Secondary: the confirmation that follows carries the danger tone.
+                  variant="secondary"
+                  glyph={ICONS.download}
+                  label={m.replaceProgram}
+                  why={m.replaceProgramWhy}
+                  held={busy}
                   onClick={() => onAct("replaceProgram")}
-                >
-                  <GlyphIcon d={ICONS.download} size={ICON_SIZE.inlineGlyph} />
-                  {m.replaceProgram}
-                </Button>
+                />
               )}
-            </div>
+            </VerbGrid>
           )}
           {job.log.length > 0 && <LogFold job={job} />}
         </RuledSection>
       )}
 
-      <RuledSection level={3} title={d.facts}>
-        {/* Two columns from sm up — where the machine is, and how it stands — the first wider,
-            since paths live there, the second wide enough that a port or a version note stays
-            on one line. One column on a phone. */}
-        <div className="grid items-start gap-x-6 gap-y-1 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
-          <KeyValue size="sm">
-            {facts.left.map((fact) => (
-              <FactRow key={fact.key} fact={fact} labelWidth={labelWidth} />
-            ))}
-          </KeyValue>
-          <KeyValue size="sm">
-            {facts.right.map((fact) => (
-              <FactRow key={fact.key} fact={fact} labelWidth={labelWidth} />
-            ))}
-          </KeyValue>
-        </div>
-        {/* The machine's own id is a detail you go looking for: it closes the section, quiet,
-            with its copy button. */}
-        <MachineSocketDetails machine={machine} locale={locale} />
-
-        {facts.id !== null && (
-          <KeyValue size="sm" className="mt-2">
-            <FactRow
-              fact={facts.id}
-              labelWidth={labelWidth}
-              after={<CopyButton size="sm" text={facts.id.value} label={d.copyMachineId} />}
-            />
-          </KeyValue>
-        )}
-      </RuledSection>
+      {!machine.local && machine.unavailable === undefined && (
+        <RuledSection level={3} title={d.actions}>
+          {primary !== null && primary.kind !== "retry" && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Verb
+                verb="use"
+                variant="primary"
+                glyph={primary.glyph}
+                label={primary.label}
+                held={busy}
+                onClick={() => onAct("use")}
+              />
+              <span className="text-xs text-fg-muted">{primary.why}</span>
+            </div>
+          )}
+          {/* The single steps answer 409 while a job runs for the machine, so they wait for
+              it; letting go of the machine does not. */}
+          <VerbList
+            groups={verbGroups(primary?.kind ?? null).map((group) => ({
+              ...group,
+              rows: group.rows.filter((row) => row.verb !== "configure" || canConfigure),
+            }))}
+            ctx={ctx}
+            onAct={onAct}
+          />
+        </RuledSection>
+      )}
     </div>
   );
 }
@@ -705,13 +832,13 @@ export function MachineDetailDialog({
   hostEpoch: number;
   onClose: () => void;
 }) {
-  const { alias, local } = body.machine;
-  const [host, setHost] = useState<SshHostResponse | null>(null);
+  const { alias, local, kind, unavailable } = body.machine;
+  const [host, setHost] = useState<MachineDefinitionResponse | null>(null);
   useEffect(() => {
     setHost(null);
-    if (local) return;
+    if (local || unavailable !== undefined || body.canConfigure === false) return;
     let cancelled = false;
-    api.getSshHost(projectId, alias).then(
+    api.getMachineDefinition(projectId, kind, alias).then(
       (found) => {
         if (!cancelled) setHost(found);
       },
@@ -721,7 +848,7 @@ export function MachineDetailDialog({
     return () => {
       cancelled = true;
     };
-  }, [projectId, alias, local, hostEpoch]);
+  }, [projectId, alias, local, kind, unavailable, body.canConfigure, hostEpoch]);
   // The reconnecting streak and the last check are said against the clock, read as each render
   // happens — a stamp the server wrote a moment after the dialog opened is not in the future —
   // and the clock moving on its own redraws it now and then.
@@ -730,6 +857,7 @@ export function MachineDetailDialog({
     const timer = setInterval(() => setTick((tick) => tick + 1), 15_000);
     return () => clearInterval(timer);
   }, []);
+
   return (
     <Modal open title={alias} onClose={onClose} widthClass="sm:max-w-3xl">
       <MachineDetailBody {...body} host={host} now={Date.now()} />

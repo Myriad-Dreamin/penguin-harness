@@ -1,0 +1,49 @@
+{
+  "name": "@prismshadow/penguin-plugin-machine-docker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The container machine kind for PenguinHarness: an existing container, or one created from an image, reached through docker exec (or podman, nerdctl).",
+  "license": "Apache-2.0",
+  "author": "Prism Shadow",
+  "categories": [
+    "machine"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Prism-Shadow/penguin-harness.git",
+    "directory": "plugins/machine-docker"
+  },
+  "homepage": "https://github.com/Prism-Shadow/penguin-harness/tree/main/plugins/machine-docker",
+  "keywords": [
+    "penguin-harness-plugin",
+    "docker",
+    "podman",
+    "containers",
+    "machines"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "ifaces.json"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out ifaces.json && vitest run --passWithNoTests",
+    "build": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out ifaces.json && tsup"
+  },
+  "devDependencies": {
+    "@prismshadow/penguin-core": "workspace:*",
+    "@prismshadow/penguin-server": "workspace:*",
+    "tsup": "^8.3.0",
+    "vitest": "^3.2.6"
+  }
+}

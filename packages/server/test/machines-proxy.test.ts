@@ -8,12 +8,12 @@ import net from "node:net";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  FORWARD_ANSWER_TIMEOUT_MS,
   SERVER_PROXY_PREFIX,
   machinesProxy,
   parseProxyPath,
   rewriteLocation,
 } from "../src/machines/proxy.js";
-import { dialThroughSocks } from "../src/machines/transport/socks.js";
 
 /** A machine, by the id it minted. */
 const A = "QS7J4YVgSovi-Z2c";
@@ -196,28 +196,20 @@ describe("the report", () => {
 
   it("answers a read at once, in the transport's words, when the session closes the channel", async () => {
     // OpenSSH's -D answers a CONNECT to a port with nothing listening by closing the
-    // connection. The read must hear that now, not wait for any deadline.
-    const socks = net.createServer((client) => {
-      let greeted = false;
-      client.on("data", (chunk: Buffer) => {
-        if (!greeted) {
-          greeted = true;
-          client.write(Buffer.from([5, 0]));
-          if (chunk.length <= 3) return;
-        }
-        client.end();
-      });
-    });
-    await new Promise<void>((resolve) => socks.listen(0, "127.0.0.1", resolve));
-    const socksPort = (socks.address() as AddressInfo).port;
+    // connection, and the ssh kind's dial fails on that at once (plugins/machine-ssh, whose
+    // test plays the SOCKS side). Here the dial fails the way it does there, and the read must
+    // hear that now, not wait for any deadline.
     const agent = new http.Agent();
     (agent as unknown as { createConnection: unknown }).createConnection = (
       _options: unknown,
       callback: (err: Error | null, socket?: net.Socket) => void,
     ) => {
-      dialThroughSocks(socksPort, "127.0.0.1", 7364).then(
-        (socket) => callback(null, socket),
-        (err: Error) => callback(err),
+      setImmediate(() =>
+        callback(
+          new Error(
+            "the session closed the channel to 127.0.0.1:7364 before answering — nothing is listening there, or the session is going down",
+          ),
+        ),
       );
     };
     const proxy = machinesProxy(async () => ({
@@ -227,7 +219,7 @@ describe("the report", () => {
       session: 1,
     }));
     const started = Date.now();
-    const response = await proxy(request(A)).finally(() => socks.close());
+    const response = await proxy(request(A));
     expect(response?.status).toBe(502);
     const body = (await response!.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("server_unreachable");
@@ -244,6 +236,13 @@ describe("the report", () => {
     const response = await proxy(request(A));
     expect(response?.status).toBe(503);
     expect(seen).toEqual([]);
+  });
+});
+
+describe("the answer deadline", () => {
+  it("sits under the browser's 20 s, so the browser hears the machine's 504 first", () => {
+    // The ssh kind's SOCKS handshake deadline sits under this one; its test pins that side.
+    expect(FORWARD_ANSWER_TIMEOUT_MS).toBeLessThan(20_000);
   });
 });
 

@@ -94,7 +94,7 @@ From top to bottom, the sidebar holds:
 | **Agents** | Create agents and edit their prompt, memory, runtime, tools, Skills, hooks, Vault and scheduled tasks | [Agents](/agents) |
 | **Models** | Configure the Project's models, providers and credentials | [Models](/models) |
 | **Plugins** | Browse plugins, install their Skills and hook packages onto agents, and add server plugins to the Project | [Skills](/skills) |
-| **Machines** | Install this PenguinHarness build on other hosts over ssh and manage the connections to them (admins only) | [Security Model](/security#manage-remote-machines-over-ssh) |
+| **Machines** | Install this PenguinHarness build on other machines and manage the connections to them (admins only). Machines come in kinds, each a plugin: ssh hosts from the server account's `~/.ssh/config` are always available, and WSL distros and containers appear once their plugin is enabled. The **+** in the machine picker defines a new ssh host or container | [Security Model](/security#manage-remote-machines-over-ssh) |
 | **Cost Center** | Token usage, cost and server errors by agent, model and time range | [Cost Center](/usage) |
 | **Evaluation Center** | Benchmarks: evaluate agents and optimize them against a Benchmark | [Evaluation Center](/evaluation-center) |
 

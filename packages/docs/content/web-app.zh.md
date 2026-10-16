@@ -94,7 +94,7 @@ penguin web
 | **智能体** | 创建 Agent，编辑它们的提示词、记忆、运行参数、工具、Skill、钩子、密钥保险柜和定时任务 | [Agent](/agents) |
 | **模型库** | 配置 Project 的模型、供应商和凭证 | [模型](/models) |
 | **插件市场** | 浏览插件，把插件中的 Skill 和钩子包安装到 Agent 上，为 Project 添加服务端插件 | [Skill](/skills) |
-| **机器管理** | 通过 ssh 把当前版本的 PenguinHarness 安装到其他主机上，并管理与它们的连接（仅管理员） | [安全模型](/security#通过-ssh-管理远程机器) |
+| **机器管理** | 把当前版本的 PenguinHarness 安装到其他机器上，并管理与它们的连接（仅管理员）。机器分种类，每个种类是一个插件：服务器账号 `~/.ssh/config` 里的 ssh 主机始终可用，WSL 发行版与容器在其插件启用后出现。机器选择器里的 **+** 用来新定义一台 ssh 主机或容器 | [安全模型](/security#通过-ssh-管理远程机器) |
 | **成本中心** | 按 Agent、模型和时间范围查看 Token 用量、成本和服务器异常 | [成本中心](/usage) |
 | **评估中心** | Benchmark：评估 Agent，并以 Benchmark 为标准优化 Agent | [评估中心](/evaluation-center) |
 

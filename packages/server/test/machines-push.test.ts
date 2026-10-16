@@ -2,11 +2,12 @@
  * installOnRemote's orchestration, driven against a scripted channel: which dialect it probes
  * in and over what, that the release installer rides the session's stdin pinned to the base,
  * that the hmr store rides the same stdin as a tarball, that a Windows host gets its own
- * connection and a copied script, that a machine carrying the release with an empty store gets
- * the store rather than a hand-over, and each outcome the page renders. The channel is what a
- * real MachineConnection speaks (transport/connection.ts); here every verb is recorded and
- * answered as the scenario dictates, so what is exercised is what the install asks of a
- * machine, not the far side.
+ * connection and a copied script, and each outcome the page renders. The channel is what a
+ * real MachineConnection speaks (transport/connection.ts) whatever the machine's kind; here
+ * every verb is recorded and answered as the scenario dictates — the kind's diagnosis
+ * included — so what is exercised is what the install asks of a machine, not the far side.
+ * And one scenario through a real MachineConnection over a test kind: the host, not the kind,
+ * serialises what runs outside the session.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -16,7 +17,9 @@ import * as tar from "tar";
 import { installOnRemote, packHmrState } from "../src/machines/install-server.js";
 import { remoteLayoutFor } from "../src/machines/layout.js";
 import type { PushPlan } from "../src/machines/install-server.js";
-import type { ExecResult, MachineChannel } from "../src/machines/transport/index.js";
+import { connectionTo } from "../src/machines/transport/index.js";
+import type { ExecResult, MachineChannel, RemoteTarget } from "../src/machines/transport/index.js";
+import type { Machine } from "../src/mechanisms/machines.js";
 
 const RELEASE = remoteLayoutFor("release");
 
@@ -101,6 +104,11 @@ function scripted(script: Script): MachineChannel & { calls: Call[] } {
       });
       return ok("");
     },
+    // The scripted machine's kind reads a refused login the way the ssh kind does.
+    diagnose: (result) =>
+      /permission denied/i.test(result.stderr)
+        ? "Connections use BatchMode: set up key or agent authentication for that host first."
+        : null,
   };
 }
 
@@ -133,7 +141,13 @@ describe("installOnRemote", () => {
     fs.rmSync(work, { recursive: true, force: true });
   });
 
-  const target = { alias: "build-box", user: "deploy" };
+  const target: RemoteTarget = {
+    address: "test:build-box",
+    kind: "test",
+    name: "build-box",
+    machine: {} as Machine,
+    node: "node",
+  };
 
   it("probes, installs and replicates over the ONE session, then asks what the machine now has", async () => {
     const channel = scripted({
@@ -603,5 +617,67 @@ describe("installOnRemote", () => {
       channel,
     });
     expect(outcome).toMatchObject({ kind: "failed", step: "resolve the release" });
+  });
+});
+
+describe("what runs outside the session", () => {
+  it("is serialised per machine by the host: the kind's oneShot, copyTo and ready never overlap for one address", async () => {
+    const events: string[] = [];
+    let inFlight = 0;
+    let overlapped = false;
+    const step = (name: string) => async () => {
+      inFlight += 1;
+      if (inFlight > 1) overlapped = true;
+      events.push(`${name}+`);
+      await new Promise((r) => setTimeout(r, 40));
+      events.push(`${name}-`);
+      inFlight -= 1;
+    };
+    const machine: Machine = {
+      launch: async () => ({ program: "true", args: [] }),
+      up: async () => {},
+      ready: async () => {
+        await step("ready")();
+        return { ok: true };
+      },
+      dial: async () => {
+        throw new Error("no dial");
+      },
+      oneShot: async (command) => {
+        await step(`oneShot:${command}`)();
+        return ok("");
+      },
+      copyTo: async () => {
+        await step("copyTo")();
+        return ok("");
+      },
+      diagnose: () => null,
+      forwards: () => null,
+    };
+    const conn = connectionTo({
+      address: "test:lane",
+      kind: "test",
+      name: "lane",
+      machine,
+      node: "node",
+    });
+    // The kind itself does not queue — each call would run at once if the host let it.
+    await Promise.all([
+      conn.oneShot("a"),
+      conn.copyTo(["/x"], "."),
+      conn.ready(),
+      conn.oneShot("b"),
+    ]);
+    expect(overlapped).toBe(false);
+    expect(events).toEqual([
+      "oneShot:a+",
+      "oneShot:a-",
+      "copyTo+",
+      "copyTo-",
+      "ready+",
+      "ready-",
+      "oneShot:b+",
+      "oneShot:b-",
+    ]);
   });
 });

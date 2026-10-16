@@ -220,6 +220,7 @@ describe("dashboardRows", () => {
 describe("dashboardServers", () => {
   const machine = (over: Partial<MachineInfo> & { alias: string }): MachineInfo => ({
     id: `ssh:${over.alias}`,
+    kind: "ssh",
     machineId: null,
     installed: { version: "9.9.9", at: "2026-08-24T12:00:00.000Z" },
     local: false,
@@ -232,6 +233,7 @@ describe("dashboardServers", () => {
   });
   const state = (machines: MachineInfo[]): MachinesResponse => ({
     machines,
+    kinds: [],
     imageVersion: "9.9.9",
     job: null,
     jobs: [],

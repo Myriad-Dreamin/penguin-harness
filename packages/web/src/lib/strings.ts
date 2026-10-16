@@ -64,78 +64,52 @@ export const zh = {
       "本服务端没有可推送的安装镜像。打包安装或 tarball 安装自带镜像，源码检出会在每次安装时自行构建；本服务端两者都不是。",
     /** A source checkout builds the image it installs; the build's own last lines follow this sentence. */
     checkoutImageFailed: "本服务端从源码检出运行，未能构建要装到机器上的安装镜像。构建输出：",
+    empty: "没有可添加的机器。",
+    /** The picker: a kind can offer hundreds of machines, so the panel is a fuzzy search over names. */
+    search: "搜索机器…",
+    noMatch: "没有匹配的机器。",
     /** The tag on this server's own row. */
     localTitle: "本服务端",
-    noneInUse: "还没有在用的机器",
-    sshHint: "用「添加机器」从 ssh 配置里选一台，或手动填写一台新的。",
-    /** The ssh host form — the add dialog's manual tab, and configuring a host this app wrote. */
-    host: {
+    noneInUse: "还没有在用的机器。",
+    sshHint:
+      "能加的机器来自已加载的机器种类：ssh 主机是本服务端账户用密钥就能 ssh 上去的主机（写在 ~/.ssh/config 里）；WSL 与容器由插件页启用对应插件后出现。",
+    now: "刚刚",
+    /** The chevron row at the foot of the picker's list: the matches it has not shown yet. */
+    allHosts: (count: number) => `另有 ${count} 台`,
+    expand: "展开",
+    fewer: "收起",
+    /** Defining a machine by hand, for a kind that takes it (an ssh Host block, a container); the form is the kind's own. */
+    definition: {
+      /** The one-word verbs on the buttons; the titles say what they do in full. */
+      newVerb: "新建",
       configureVerb: "配置",
-      name: "名称",
-      nameHint: "一个词。之后在这里和 `ssh <名称>` 里都用它称呼这台机器。",
-      /**
-       * Each field's placeholder: what applies when it is left empty — what ssh does with the
-       * option the server then leaves out of the host block — or, for a field that must be
-       * filled, what goes in it.
-       */
-      namePlaceholder: "这台机器的名称",
-      hostName: "主机地址",
-      hostNameHint: "IP 或域名。",
-      hostNamePlaceholder: "要连接的机器的地址",
-      user: "用户名",
-      userPlaceholder: "默认：本服务端账户的用户名",
-      port: "端口",
-      portPlaceholder: "默认：22",
-      identityFile: "私钥文件",
-      identityFileHint: "带口令的密钥要先加入 ssh-agent。",
-      identityFilePlaceholder: "默认：ssh 的默认密钥（~/.ssh/id_ed25519 等）",
-      /** How the machine signs in: a key (the default), or a password this server stores. */
-      signIn: "登录方式",
-      signInKey: "密钥",
-      signInPassword: "密码",
-      password: "密码",
-      passwordPlaceholder: "这个用户在那台机器上的密码",
-      /** A password is stored: the field starts empty, and empty keeps it. */
-      passwordSavedPlaceholder: "已保存，留空保持不变",
-      /** Key sign-in chosen for a host that has a stored password: what Save does to it. */
-      passwordDropped: "保存后会删除已保存的密码。",
-      passwordOneLine: "密码只能是一行，最多 1024 个字符。",
-      /** `ssh` is what this server's `ssh -V` said. */
-      passwordUnsupported: (ssh: string) =>
-        `本服务端的 ssh 用不了保存的密码：需要 OpenSSH 8.4 或更新版本，这里的是 ${ssh === "" ? "未知版本" : ssh}。`,
-      oneWord: "必须是一个词：不能有空格或 #。",
-      portRange: "1 到 65535 之间的整数。",
-      exists: "ssh 配置里已有这个名称。",
-      /** Configuring a host this app wrote: the same form, the name fixed. */
-      editTitle: "配置 ssh 主机",
-      saved: (alias: string) => `已保存 ${alias} 的 SSH 设置。`,
+      newTitle: "新建机器",
+      addTitle: (kind: string) => `新建机器：${kind}`,
+      editTitle: (kind: string) => `配置机器：${kind}`,
+      configure: "配置这台机器的定义",
+      kind: "种类",
+      add: "保存",
+      forgetVerb: "移除",
+      forgetWhy: "只从本服务端移除这份定义与机器记录；那边的东西（比如容器）不会被删除。",
+      added: (name: string) => `已新建 ${name}。现在可以从「添加机器…」里启用它。`,
+      saved: (name: string) => `已更新 ${name}。`,
+      forgotten: (name: string) => `已移除 ${name}。`,
       foreign:
-        "这一段不是由 PenguinHarness 写入的，可能带有这里不认识的选项：主机设置请直接编辑 ~/.ssh/config，登录方式仍可在这里修改。",
-    },
-    /** The add dialog (add-machine-dialog.tsx): a host from the ssh config, or a new one by hand. */
-    addDialog: {
-      title: "添加机器",
-      intro: "本服务端会在一台能经 ssh 登录的机器上安装 PenguinHarness，并连上它。",
-      tabs: { config: "从 ssh 配置选择", manual: "手动填写" },
-      search: "搜索主机",
-      /** No host in the config that is not on the page yet: the other tab is the way in. */
-      noHosts: "本服务端的 ssh 配置里没有还没添加的主机。可以在「手动填写」里新建一台。",
-      noMatch: (query: string) => `没有匹配「${query}」的主机。`,
-      /** A host another Project of this server already installed: adding it costs no transfer. */
-      elsewhere: (version: string) => `其他 Project 已安装 v${version}`,
-      installNow: "添加后立即安装并连接",
-      submit: "添加",
-      submitCount: (count: number) => `添加 ${count} 台`,
-      added: (count: number) => (count === 1 ? "已添加 1 台机器。" : `已添加 ${count} 台机器。`),
-      addedInstalling: (count: number) =>
-        count === 1 ? "已添加 1 台机器，正在安装。" : `已添加 ${count} 台机器，正在安装。`,
+        "这份定义不是由 PenguinHarness 写入的，可能带有这里不认识的选项；请到它所在的地方编辑（ssh 主机即 ~/.ssh/config）。",
+      noKinds: "已加载的机器种类都不接受手工新建。",
     },
     /** The verbs. */
-    add: "添加机器",
+    add: "添加机器…",
+    addSelected: (count: number) => `启用这 ${count} 台`,
+    use: "启用",
+    stopUsing: "停用",
     /** One tap brings every machine behind this build forward (and reconnects it). */
     updateAll: (count: number) => `全部更新（${count}）`,
     updateAllConfirm: (count: number) =>
       `把这 ${count} 台机器更新到本服务端的版本？每台都会重装程序、重启服务并重新连接，期间正在用它的人会短暂断开。`,
+    /** Asked before letting a machine go: the connection drops, the install stays. */
+    stopUsingOne: (alias: string) =>
+      `停用 ${alias}？本 Project 会断开与它的连接并不再列出它，正在经它进行的工作会中断。程序仍留在那台机器上，之后可以重新启用。`,
     /**
      * The one word for a machine's state, keyed by its reading; `serving` is this server's. The
      * card's mark and the Machine dialog's status chip both say it.
@@ -152,6 +126,7 @@ export const zh = {
       notConnected: "未连接",
       unreachable: "连不上",
       stopped: "已停止",
+      linkedStopped: "已连接，服务未运行",
       notInstalled: "未安装",
       unknown: "未检查",
       /** The stored password was refused (or the host takes none): nothing retries until it changes. */
@@ -187,11 +162,12 @@ export const zh = {
     failedAt: (step: string) => `失败于「${step}」。`,
     /** The forced install a failed job may offer. */
     replaceProgram: "强制安装",
+    replaceProgramWhy: "即使版本已一致，也重新安装程序",
     replaceProgramConfirm: (alias: string) =>
       `在 ${alias} 上强制安装？无论那台机器上现在是什么，都会装上本服务端的构建并重启它的服务，正在用它的人会被打断。`,
     /** Refusals answered by machine id when a batch is queued. */
     refusedSelf: (alias: string) => `${alias} 就是本服务端所在的机器，无需添加。`,
-    refusedUnknown: (alias: string) => `${alias} 不在本服务端的 ssh 配置里。`,
+    refusedUnknown: (alias: string) => `${alias} 已不在本服务端的机器列表里。`,
     /**
      * The new-chat composer's Agent picker while its workspace is on a machine and that machine's
      * Agents cannot be listed: why, from the machine state the Machines page shows too.
@@ -204,6 +180,20 @@ export const zh = {
       signInRefused: "那台机器拒绝了本服务端的登录——请在「机器管理」页面修改它的 SSH 设置",
       failed: (message: string) => `那台机器没有答复：${message}`,
     },
+    refusedKind: (alias: string) => `${alias} 的机器种类没有加载：先在插件页启用它。`,
+    /** A card whose kind is not loaded here: listed, with its record, and nothing can be done to it. */
+    kindUnavailable: "种类不可用",
+    /** The detail pane. */
+    details: "详情",
+    detailInstalled: "已安装",
+    detailSince: "安装于",
+    /** This server's own card says what build it runs and since when, not what was installed. */
+    detailVersion: "版本",
+    detailStarted: "启动于",
+    detailServer: "对端服务",
+    detailChecked: "上次检查",
+    detailMachineId: "机器 ID",
+    detailRoot: "服务端根目录",
     /** The API socket this server holds to the machine (machines-view's socketReading). */
     detailSocket: "API 套接字",
     socket: {
@@ -223,6 +213,7 @@ export const zh = {
       ssh: "ssh",
       /** The pill beside the version of a machine on another build. */
       updateNeeded: "需要更新",
+      update: "更新",
       /** A new conversation in this machine's temporary workspace. */
       use: "使用",
       settings: "设置",
@@ -248,12 +239,13 @@ export const zh = {
      */
     detail: {
       /** The header's line under the status: how this server reaches the machine. */
-      describeRemote: (alias: string) => `通过 ssh 别名「${alias}」连接的远程机器。`,
+      describeRemote: (alias: string) => `通过已加载的机器类型连接的远程机器「${alias}」。`,
       describeLocal: "本服务端所在的机器，不经 ssh。",
       /** A machine on another build than this server's: the version this server would install. */
       newerAvailable: (version: string) => `有新版本 ${version}`,
       facts: "基本信息",
       progress: "处理进度",
+      actions: "操作",
       /** Details: each fact's label, and the values said in words. */
       fact: {
         connection: "连接方式",
@@ -281,6 +273,19 @@ export const zh = {
       failedAtStep: (step: string, message: string) => `在「${step}」这一步失败：${message}`,
       showLog: "查看日志",
       logLabel: "任务日志",
+      /** The one thing to do for a machine, and what it does, said beside it. */
+      primary: {
+        update: "更新",
+        updateWhy: (version: string) => `更新到 ${version}，会重启服务并重新连接。`,
+        start: "启动服务",
+        startWhy: "启动那台机器上的服务并连接。",
+        connect: "连接",
+        connectWhy: "连接到那台机器上的服务，没在运行就先启动它。",
+        tryAgain: "重试连接",
+        tryAgainWhy: "再次通过 ssh 连接；请先确认那台机器开着、网络通。",
+        retry: "重试",
+        retryWhy: "从头再跑一遍整个流程",
+      },
       copyLog: "复制日志",
       /** A failed job's way out, under the failure. */
       retry: "重试",
@@ -306,15 +311,20 @@ export const zh = {
         skippedTitle: "这些模型没有同步到这台机器：",
         skippedModel: (model: string, reason: string) => `${model}：${reason}`,
       },
+      /** The captions of the two groups of Actions: the single steps, and the ways out. */
+      maintenance: "维护",
+      leave: "退出",
+      configureSsh: "配置机器",
+      configureSshWhy: "修改该机器类型的连接定义",
       /**
        * The one sentence under the toolbar while some of its verbs wait: why, said plainly. The
        * greyed buttons already say which, so the sentence does not list them.
        */
-      held: {
-        moving: "正在执行其他操作，请等它完成。",
-        unreachable: "暂时连不上这台机器。",
-        stopped: "服务已停止。",
-        noImage: "本服务端没有可安装的版本。",
+      hold: {
+        moving: "这台机器正在处理任务，完成后可用",
+        noImage: "本服务端没有可安装的版本",
+        noConnection: "当前没有连接，无需断开",
+        unreachable: "上次检查时连不上这台机器",
       },
       /** The section while the server brings a machine it keeps connected back. */
       reconnect: {
@@ -331,21 +341,23 @@ export const zh = {
       },
     },
     /** The confirmations the page asks before a verb that stops or removes something. */
-    confirm: {
-      deleteTitle: (alias: string) => `删除 ${alias}？`,
-      /** `passwordSaved`: the machine signs in with a password this server stores. */
-      deleteBody: (alias: string, passwordSaved = false) =>
-        `${alias} 会从本 Project 移除，本服务端断开与它的连接。那台机器上的程序和数据都会保留，ssh 配置里的主机也不变；之后可以用「添加机器」把它加回来。` +
-        (passwordSaved ? "本服务端为它保存的密码会删除，除非其他 Project 还在用它。" : ""),
-      stopTitle: (alias: string) => `停止 ${alias} 上的服务？`,
-      stopBody:
-        "正在用它的人会断开，本服务端也不再自动重连这台机器；之后用「启动服务」再启动它。程序与数据都保留。",
-      uninstallTitle: (alias: string) => `卸载 ${alias} 上的 PenguinHarness？`,
-      uninstallBody: (programDir: string) =>
-        `会先停止它的服务，再删除程序目录 ${programDir}。这台机器仍留在列表中，显示「未安装」。`,
-      removeData: "同时删除这台机器上的数据目录",
-      /** Said under the data directory's path. */
-      removeDataWarning: "那台机器上的会话、Agent 与配置都在其中，删除后无法恢复。",
+    /** The single steps and the ways out the dialog offers, each with what it does in one line. */
+    verbs: {
+      install: "安装程序",
+      installWhy: "把本服务端的版本装到这台机器上",
+      connect: "重新连接",
+      connectWhy: "重新连上这台机器，必要时先启动它的服务",
+      restart: "重启服务",
+      restartWhy: "重启这台机器上的服务",
+      stopUsingWhy: "断开连接并移出本 Project，程序仍留在这台机器上",
+      disconnect: "断开",
+      disconnectWhy: "只断开连接，这台机器上的服务继续运行",
+      release: "移出 Project",
+      releaseWhy: "本 Project 不再列出它，连接和程序都不变",
+      disconnectConfirm: (alias: string) =>
+        `断开与 ${alias} 的连接？这条连接由使用它的所有 Project 共用，正在经它进行的工作会中断；那台机器上的服务继续运行，之后可以重新连接。`,
+      releaseConfirm: (alias: string) =>
+        `把 ${alias} 移出本 Project？它不再列在这里，本 Project 的模型配置也不再同步给它；那台机器上的程序与连接保持不变，之后可以从「添加机器…」重新启用。`,
     },
     /** The connection check's results in the Machine dialog, one plain sentence per check. */
     check: {

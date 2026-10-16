@@ -309,6 +309,7 @@ describe("machines-columns → current: browser-extensions", () => {
         "port-forwards-adoption",
         "port-forwards-direction",
         "model-tables-adoption",
+        "machine-definitions",
         "messaging-conversations",
       ]);
       db.exec("PRAGMA foreign_keys = ON");
@@ -428,24 +429,6 @@ describe("messaging-conversations → current: sessions-kept-at and the Agent AP
     }
   });
 });
-
-/**
- * The first form of `port_forwards`: what port-forwards created on the roots that ran it
- * before its DDL was changed in place, and what port-forwards-adoption creates on a root
- * without the table — no direction, one local port per forward.
- */
-const PORT_FORWARDS_V1_DDL = `
-  CREATE TABLE port_forwards (
-    id          TEXT PRIMARY KEY,
-    machine_id  TEXT NOT NULL,
-    workspace   TEXT NOT NULL,
-    remote_port INTEGER NOT NULL,
-    local_port  INTEGER NOT NULL UNIQUE,
-    created_at  TEXT NOT NULL,
-    UNIQUE (machine_id, workspace, remote_port)
-  );
-  CREATE INDEX IF NOT EXISTS idx_port_forwards_machine ON port_forwards(machine_id, workspace);
-`;
 
 describe("the first form of port_forwards → current: port-forwards-direction", () => {
   /** A root that ran port-forwards in its first form and has a forward saved. */
@@ -611,5 +594,60 @@ describe("a numbered root with the first form of port_forwards: port-forwards-le
   it("is declared immediately before port-forwards", () => {
     const names = MIGRATIONS.map((m) => m.name);
     expect(names.indexOf("port-forwards-legacy-shape")).toBe(names.indexOf("port-forwards") - 1);
+  });
+});
+
+describe("model-tables-adoption → current: machine-definitions", () => {
+  /** A root through model-tables-adoption: today's declaration less the table, a machines row as an ssh machine has it. */
+  function openPreDefinitions(): DatabaseSync {
+    const db = openFresh();
+    db.exec("DROP TABLE IF EXISTS machine_definitions;");
+    stampThrough(db, "model-tables-adoption");
+    db.exec(
+      "INSERT INTO machines (address, machine_id, version, installed_at, session_pid, remote_port, platform)" +
+        " VALUES ('ssh:nas', 'tXIvjrl0pgKa5_dD', '0.2.13', '2026-09-01T00:00:00.000Z', 4242, 7364, 'linux')",
+    );
+    return db;
+  }
+  const machines = (db: DatabaseSync) => db.prepare("SELECT * FROM machines").all();
+
+  it("creates the definitions table on the swap path, leaving every machines row as it was", () => {
+    const db = openPreDefinitions();
+    try {
+      const before = machines(db);
+      expect(migrate(db, { swapPath: true }).applied).toEqual(namesAfter("model-tables-adoption"));
+      expect(columns(db, "machine_definitions")).toEqual([
+        "address",
+        "kind",
+        "name",
+        "spec",
+        "created_at",
+      ]);
+      expect(machines(db)).toEqual(before);
+      expect(MIGRATIONS.find((m) => m.name === "machine-definitions")?.swapSafe).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("is repeatable: a table already there is left alone, rows and all", () => {
+    const db = openPreDefinitions();
+    try {
+      db.exec(
+        "CREATE TABLE machine_definitions (address TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, spec TEXT NOT NULL, created_at TEXT NOT NULL)",
+      );
+      db.exec(
+        "INSERT INTO machine_definitions VALUES ('docker:cuda', 'docker', 'cuda', '{}', '2026-09-27T00:00:00.000Z')",
+      );
+      migrate(db);
+      expect(db.prepare("SELECT address FROM machine_definitions").all()).toEqual([
+        { address: "docker:cuda" },
+      ]);
+      rollbackTo(db, "model-tables-adoption");
+      expect(columns(db, "machine_definitions")).toEqual([]);
+      expect(machines(db)).toHaveLength(1);
+    } finally {
+      db.close();
+    }
   });
 });

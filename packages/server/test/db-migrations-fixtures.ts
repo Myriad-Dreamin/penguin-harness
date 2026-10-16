@@ -94,6 +94,8 @@ export function dropPortForwardsAndLater(db: DatabaseSync): void {
   db.exec(
     "DROP INDEX IF EXISTS idx_port_forwards_local_in; DROP INDEX IF EXISTS idx_port_forwards_machine; DROP TABLE IF EXISTS port_forwards;",
   );
+  // And the machine definitions, newer still.
+  db.exec("DROP TABLE IF EXISTS machine_definitions;");
   db.exec("DROP TABLE IF EXISTS messaging_conversations");
   db.exec(
     "DROP INDEX IF EXISTS idx_agent_api_keys_agent; DROP TABLE IF EXISTS agent_api_keys; DROP TABLE IF EXISTS agent_api;",

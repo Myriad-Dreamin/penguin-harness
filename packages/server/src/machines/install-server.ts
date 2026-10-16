@@ -11,7 +11,7 @@
  * same pushed platform, web and CLI this server runs (hmr/host.ts's restore).
  *
  * The remote therefore needs its own route to the release sources (GitHub or the OSS
- *  mirror); the ssh channel carries only the installer script and the store.
+ *  mirror); the machine's one session carries only the installer script and the store.
  *
  * The remote is left with exactly what a local install plus a push leaves: the program
  * directory, the `~/.local/bin/penguin` symlink on POSIX, and the data root's hmr/ state.
@@ -28,8 +28,7 @@ import type { RemoteTarget } from "./commands.js";
 import { parseProbeOutput, posixProbe, windowsProbe } from "./detect.js";
 import type { RemoteIdentity, RemotePlatform } from "./detect.js";
 import type { RemoteLayout } from "./layout.js";
-import { connectionTo } from "./transport/index.js";
-import { sshFailureText, sshRefusal } from "./ssh-failure.js";
+import { connectionTo, runBytes } from "./transport/index.js";
 import { parseReleaseReach, releaseReachCommand } from "./diagnose.js";
 import type { MachineChannel } from "./transport/index.js";
 
@@ -409,8 +408,8 @@ export function installedRelease(
 /**
  * Asks the machine what it is. POSIX first, over the session — the only round trip a POSIX
  * host ever costs. A cmd.exe host has no `sh` to hold a session on, so the session dies
- * unopened and the Windows form is asked on a connection of its own. Two round trips at
- * worst, once per connect.
+ * unopened and the Windows form is asked outside it (oneShot). Two round trips at worst,
+ * once per connect.
  */
 export async function detectRemote(
   target: RemoteTarget,
@@ -421,21 +420,16 @@ export async function detectRemote(
   const posix = await conn.exec(posixProbe(layout));
   const identity = parseProbeOutput(posix.stdout);
   if (identity) return { identity };
-  // The session's output is merged, so ssh's own words arrive as stdout.
+  // The session's output is merged, so the far side's own words arrive as stdout. What they
+  // mean — a key the machine would not take — is its kind's to say.
   const said = posix.stdout.trim();
-  // ssh itself got no session — a host key, a key, a name, a route — so there is no shell to
-  // ask in either dialect, and a second connection would only wait for the same refusal. The
-  // transport leads such words with what they mean (ssh-session.ts); said again here only
-  // when they did not come through it.
-  const signIn = { password: target.password !== undefined };
-  const refused = posix.code !== 0 ? sshRefusal(said, target.alias, signIn) : null;
-  if (refused !== null) return { error: refused };
+  const refused = posix.code !== 0 ? conn.diagnose({ ...posix, stderr: said }) : null;
+  if (refused !== null) return { error: `${said}\n\n${refused}` };
   const windows = await conn.oneShot(windowsProbe(layout), { timeoutMs: 30_000 });
   const identityWin = parseProbeOutput(windows.stdout);
   if (identityWin) return { identity: identityWin };
-  const refusedWin =
-    windows.code !== 0 ? sshFailureText(windows.stderr, target.alias, signIn) : null;
-  if (refusedWin !== null) return { error: refusedWin };
+  const refusedWin = windows.code !== 0 ? conn.diagnose(windows) : null;
+  if (refusedWin !== null) return { error: `${windows.stderr.trim()}\n\n${refusedWin}` };
   const words = said || windows.stderr.trim();
   return {
     error:
@@ -585,7 +579,11 @@ export async function installOnRemote(opts: {
         windowsTmp = { local, remote: `%USERPROFILE%\\${name}` };
         const copy = await conn.copyTo([local], ".");
         if (copy.code !== 0) {
-          return { kind: "failed", step: "copy", detail: copy.stderr.trim() || "scp failed" };
+          return {
+            kind: "failed",
+            step: "copy",
+            detail: copy.stderr.trim() || `the copy exited ${copy.code}`,
+          };
         }
         where = { platform: "win32", scriptPath: windowsTmp.remote };
       } else {
@@ -751,7 +749,7 @@ async function carryOver(
     };
   }
   say(
-    `${target.alias} cannot reach GitHub or the release mirror; fetching release ${version} ` +
+    `${target.name} cannot reach GitHub or the release mirror; fetching release ${version} ` +
       `for ${platform} here to send it over ssh…`,
   );
   const fetched = await carryRelease(version, platform);
@@ -760,7 +758,7 @@ async function carryOver(
       failed: {
         step: "download the release",
         detail:
-          `${target.alias} cannot reach GitHub or the release mirror, and this computer could ` +
+          `${target.name} cannot reach GitHub or the release mirror, and this computer could ` +
           `not fetch release ${version} for it either: ${fetched.detail}`,
       },
     };

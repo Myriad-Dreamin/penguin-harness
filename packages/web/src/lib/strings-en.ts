@@ -56,63 +56,46 @@ export const en: Strings = {
       "This server has no install image to push. A packaged or tarball install carries one, and a source checkout builds one for each install; this server is neither.",
     checkoutImageFailed:
       "This server runs from a source checkout and could not build the install image it puts on machines. The build said:",
+    empty: "No machine left to add.",
+    search: "Search machines…",
+    noMatch: "No machine matches.",
     localTitle: "this server",
-    noneInUse: "No machine in use yet",
-    sshHint: "Add machine picks one from the ssh config, or fills in a new one.",
-    host: {
+    noneInUse: "No machine in use yet.",
+    sshHint:
+      "Machines come from the loaded machine kinds: an ssh host is one this server's account can ssh into by key (declared in ~/.ssh/config); WSL distros and containers appear once their plugin is enabled on the Plugins page.",
+    now: "now",
+    allHosts: (count: number) => `${count} more`,
+    expand: "Expand",
+    fewer: "Collapse",
+    definition: {
+      newVerb: "New",
       configureVerb: "Configure",
-      name: "Name",
-      nameHint: "One word. This page and `ssh <name>` both call the machine by it.",
-      namePlaceholder: "A name for this machine",
-      hostName: "Host",
-      hostNameHint: "An IP or a domain name.",
-      hostNamePlaceholder: "The address of the machine to connect to",
-      user: "User name",
-      userPlaceholder: "Default: this server account's user name",
-      port: "Port",
-      portPlaceholder: "Default: 22",
-      identityFile: "Private key file",
-      identityFileHint: "A key with a passphrase has to be in ssh-agent first.",
-      identityFilePlaceholder: "Default: ssh's default keys (~/.ssh/id_ed25519, …)",
-      signIn: "Sign in with",
-      signInKey: "Key",
-      signInPassword: "Password",
-      password: "Password",
-      passwordPlaceholder: "This user's password on that machine",
-      passwordSavedPlaceholder: "Saved; leave empty to keep it",
-      passwordDropped: "Saving deletes the saved password.",
-      passwordOneLine: "A password is one line of at most 1024 characters.",
-      passwordUnsupported: (ssh: string) =>
-        `This server's ssh cannot use a saved password: it needs OpenSSH 8.4 or later, and this one is ${ssh === "" ? "of an unknown version" : ssh}.`,
-      oneWord: "Must be one word: no space, no #.",
-      portRange: "A whole number from 1 to 65535.",
-      exists: "The ssh config already has this name.",
-      editTitle: "Configure ssh host",
-      saved: (alias: string) => `Saved ${alias}'s SSH settings.`,
+      newTitle: "New machine",
+      addTitle: (kind: string) => `New machine: ${kind}`,
+      editTitle: (kind: string) => `Configure machine: ${kind}`,
+      configure: "Configure this machine's definition",
+      kind: "Kind",
+      add: "Save",
+      forgetVerb: "Remove",
+      forgetWhy:
+        "Removes only this definition and the machine's record from this server; nothing over there (a container, say) is deleted.",
+      added: (name: string) => `Created ${name}. Enable it from Add machines….`,
+      saved: (name: string) => `Updated ${name}.`,
+      forgotten: (name: string) => `Removed ${name}.`,
       foreign:
-        "This block was not written by PenguinHarness and may carry options this form does not know: edit the host in ~/.ssh/config. How it signs in can still be changed here.",
+        "This definition was not written by PenguinHarness and may carry options this form does not know; edit it where it lives (~/.ssh/config for an ssh host).",
+      noKinds: "None of the loaded machine kinds is defined by hand.",
     },
-    addDialog: {
-      title: "Add machine",
-      intro:
-        "This server installs PenguinHarness on a machine it can reach over ssh, and connects to it.",
-      tabs: { config: "From the ssh config", manual: "Fill in by hand" },
-      search: "Search hosts",
-      noHosts:
-        "This server's ssh config has no host that is not added yet. Fill in a new one by hand instead.",
-      noMatch: (query: string) => `No host matches “${query}”.`,
-      elsewhere: (version: string) => `Another Project installed v${version}`,
-      installNow: "Install and connect right after adding",
-      submit: "Add",
-      submitCount: (count: number) => `Add ${count}`,
-      added: (count: number) => (count === 1 ? "Added 1 machine." : `Added ${count} machines.`),
-      addedInstalling: (count: number) =>
-        count === 1 ? "Added 1 machine; installing." : `Added ${count} machines; installing.`,
-    },
-    add: "Add machine",
+    add: "Add machines…",
+    addSelected: (count: number) => `Enable these ${count}`,
+    use: "Enable",
+    stopUsing: "Disable",
     updateAll: (count: number) => `Update all (${count})`,
     updateAllConfirm: (count: number) =>
       `Update ${count === 1 ? "this machine" : `these ${count} machines`} to this server's version? Each one reinstalls the program, restarts its server and reconnects, so anyone using it is briefly cut off.`,
+    /** Asked before letting a machine go: the connection drops, the install stays. */
+    stopUsingOne: (alias: string) =>
+      `Disable ${alias}? This Project disconnects from it and stops listing it; whatever is running through it is cut off. The program stays on that machine, so you can enable it again later.`,
     state: {
       serving: "Running",
       queued: "Queued",
@@ -125,6 +108,7 @@ export const en: Strings = {
       notConnected: "Not connected",
       unreachable: "Unreachable",
       stopped: "Stopped",
+      linkedStopped: "Connected, not running",
       notInstalled: "Not installed",
       unknown: "Not checked",
       signInRefused: "Sign-in refused",
@@ -156,10 +140,11 @@ export const en: Strings = {
     working: "Working…",
     failedAt: (step: string) => `Failed at "${step}".`,
     replaceProgram: "Force install",
+    replaceProgramWhy: "Reinstalls the program even if the version already matches",
     replaceProgramConfirm: (alias: string) =>
       `Force install on ${alias}? Whatever is on that machine now, this server's build is installed and its server restarted; anyone using it will be interrupted.`,
     refusedSelf: (alias: string) => `${alias} is the machine this server runs on; nothing to add.`,
-    refusedUnknown: (alias: string) => `${alias} is not in this server's ssh config.`,
+    refusedUnknown: (alias: string) => `${alias} is no longer listed on this server.`,
     composer: {
       reconnecting: "That machine is reconnecting…",
       stopped: "That machine's server is stopped — start it from the Machines page",
@@ -169,6 +154,18 @@ export const en: Strings = {
         "That machine refused this server's sign-in — change its SSH settings on the Machines page",
       failed: (message: string) => `That machine did not answer: ${message}`,
     },
+    refusedKind: (alias: string) =>
+      `${alias}'s machine kind is not loaded: enable it on the Plugins page first.`,
+    kindUnavailable: "kind unavailable",
+    details: "Details",
+    detailInstalled: "Installed",
+    detailSince: "Since",
+    detailVersion: "Version",
+    detailStarted: "Started",
+    detailServer: "Server",
+    detailChecked: "Checked",
+    detailMachineId: "Machine id",
+    detailRoot: "Server root",
     /** The API socket this server holds to the machine (machines-view's socketReading). */
     detailSocket: "API socket",
     socket: {
@@ -185,6 +182,7 @@ export const en: Strings = {
       local: "local",
       ssh: "ssh",
       updateNeeded: "Update needed",
+      update: "Update",
       use: "Use",
       settings: "Settings",
       syncConfig: "Sync config",
@@ -201,11 +199,13 @@ export const en: Strings = {
       },
     },
     detail: {
-      describeRemote: (alias: string) => `A remote machine, reached over ssh as ${alias}.`,
+      describeRemote: (alias: string) =>
+        `A remote machine, reached by its machine kind as ${alias}.`,
       describeLocal: "The machine this server runs on; no ssh involved.",
       newerAvailable: (version: string) => `${version} is available`,
       facts: "Details",
       progress: "Progress",
+      actions: "Actions",
       fact: {
         connection: "Connection",
         viaSsh: (alias: string) => `ssh · ${alias}`,
@@ -231,6 +231,20 @@ export const en: Strings = {
       failedAtStep: (step: string, message: string) => `Failed at "${step}": ${message}`,
       showLog: "Show log",
       logLabel: "Job log",
+      /** The one thing to do for a machine, and what it does, said beside it. */
+      primary: {
+        update: "Update",
+        updateWhy: (version: string) =>
+          `Updates to ${version}, restarting its server and reconnecting.`,
+        start: "Start server",
+        startWhy: "Starts the server on that machine and connects.",
+        connect: "Connect",
+        connectWhy: "Connects to the server on that machine, starting it first if needed.",
+        tryAgain: "Try again",
+        tryAgainWhy: "Tries ssh again; make sure the machine is on and reachable first.",
+        retry: "Retry",
+        retryWhy: "Runs the whole job again from the start",
+      },
       copyLog: "Copy log",
       retry: "Retry",
       checking: "Checking this machine…",
@@ -253,11 +267,15 @@ export const en: Strings = {
         skippedTitle: "These models were not synced to this machine:",
         skippedModel: (model: string, reason: string) => `${model}: ${reason}`,
       },
-      held: {
-        moving: "Another action is running on this machine.",
-        unreachable: "Can't reach this machine right now.",
-        stopped: "Its server is stopped.",
-        noImage: "This server has no version to install.",
+      maintenance: "Maintenance",
+      leave: "Stop using",
+      configureSsh: "Configure machine",
+      configureSshWhy: "Changes the connection definition for this machine kind",
+      hold: {
+        moving: "The machine is busy with a job; available when it finishes",
+        noImage: "This server has no version to install",
+        noConnection: "Not connected, so there is nothing to disconnect",
+        unreachable: "The machine could not be reached at the last check",
       },
       reconnect: {
         title: "Reconnecting",
@@ -271,22 +289,23 @@ export const en: Strings = {
         stopped: "Stopped retrying",
       },
     },
-    confirm: {
-      deleteTitle: (alias: string) => `Delete ${alias}?`,
-      deleteBody: (alias: string, passwordSaved = false) =>
-        `${alias} is removed from this Project and this server disconnects from it. The program and its data stay on that machine, and its host stays in the ssh config; Add machine can bring it back.` +
-        (passwordSaved
-          ? " The password this server saved for it is deleted, unless another Project still uses it."
-          : ""),
-      stopTitle: (alias: string) => `Stop the server on ${alias}?`,
-      stopBody:
-        "Anyone using it is cut off, and this server stops reconnecting to it; Start server brings it back. The program and its data stay.",
-      uninstallTitle: (alias: string) => `Uninstall PenguinHarness from ${alias}?`,
-      uninstallBody: (programDir: string) =>
-        `Its server is stopped first, then the program directory ${programDir} is removed. The machine stays on the list as not installed.`,
-      removeData: "Also delete the data directory on this machine",
-      removeDataWarning:
-        "The Sessions, Agents and config on that machine live there, and cannot be recovered once deleted.",
+    /** The single steps and the ways out the dialog offers, each with what it does in one line. */
+    verbs: {
+      install: "Install program",
+      installWhy: "Installs this server's version on the machine",
+      connect: "Reconnect",
+      connectWhy: "Connects to the machine again, starting its server if needed",
+      restart: "Restart server",
+      restartWhy: "Restarts the server on the machine",
+      stopUsingWhy: "Disconnects and removes it from this Project; the program stays installed",
+      disconnect: "Disconnect",
+      disconnectWhy: "Drops the connection only; the server on the machine keeps running",
+      release: "Remove from Project",
+      releaseWhy: "This Project stops listing it; the connection and the program stay as they are",
+      disconnectConfirm: (alias: string) =>
+        `Disconnect from ${alias}? Every Project using it shares this connection, and whatever is running through it is cut off; the server over there keeps running, and you can connect again later.`,
+      releaseConfirm: (alias: string) =>
+        `Remove ${alias} from this Project? It is no longer listed here and no longer receives this Project's Model config; the program and the connection over there stay as they are, and you can enable it again from Add machines….`,
     },
     check: {
       title: "Connection check",

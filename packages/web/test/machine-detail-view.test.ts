@@ -7,22 +7,22 @@
  *   name the steps list gives it, ssh's diagnostic, the line a working job is on, the attempt a
  *   reconnect is on, the version a machine on another build would get (none when this server has
  *   no build of its own). This server's own entry is running.
- * - The toolbar: one row, no verb twice. A machine with nothing installed is enabled; one on
- *   another build is updated, and only then — in sync, there is no update to offer, hidden rather
- *   than greyed; then its server is stopped while it is kept connected, started once it is not;
- *   restarted; its config synced, only while it is connected on this server's build; its ssh host
- *   configured; the program uninstalled. This server's own entry has none.
- * - A verb waits for one reason, and one sentence says it, naming every verb it holds: a job on
- *   its way holds all but the ssh form; a machine being brought back holds stopping, restarting
- *   and uninstalling; a stopped server holds restarting; no build to install holds enabling. No
- *   verb waiting, no sentence.
+ * - The one thing to do: nothing while a job is on its way; Retry after a failure, even on another
+ *   build; Update for a machine on another build, connected or not, naming the version; nothing
+ *   for a ready machine or one installed as far as it goes; Start server for a stopped server;
+ *   Connect for a machine not connected or never checked; Try again for one out of reach.
  * - A job's steps are its own: a queued job has every step still to come; a running one is on its
  *   phase with the earlier steps done; one that finished well is a single line; a failed one is
  *   marked failed at its phase, named in words, with the far side's own words — and a step the
- *   server names outside its steps is told as it was named. One that ssh refused before it named a
- *   phase is marked failed at the step its failure names, and says why in the page's language with
- *   ssh's own words under it. What the server's connection check found after a failure comes with
- *   it, check by check, or that it is still checking.
+ *   server names outside its steps is told as it was named. One that ssh refused before it named
+ *   a phase is marked failed at the step its failure names, and says why in the page's language
+ *   with ssh's own words under it. What the server's connection check found after a failure comes
+ *   with it, check by check, or that it is still checking.
+ * - A verb is held for the first reason that applies: a request in flight holds every verb; a job
+ *   on its way holds the single steps but never the ways out or the ssh form; no build holds
+ *   Install; nothing connected holds Disconnect; a machine out of reach holds Restart alone. The
+ *   reason a row tells leaves the request in flight out — it holds every verb for a moment — and
+ *   still tells the machine's own.
  * - A machine being brought back says for how long, which attempt and when the next — or that one
  *   is running — the last failure in the page's language when ssh refused, and what the automatic
  *   check found once it ran.
@@ -49,16 +49,18 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import {
   checkLine,
+  holdReason,
   installedText,
   jobSteps,
   jobView,
   machineChip,
   machineFacts,
-  machineToolbar,
+  primaryAction,
   programDirOf,
   reconnectView,
+  verbHold,
 } from "../src/features/machines/machine-detail-view";
-import type { Fact } from "../src/features/machines/machine-detail-view";
+import type { DialogVerb, Fact, VerbContext } from "../src/features/machines/machine-detail-view";
 import { readingTone } from "../src/features/machines/machines-view";
 import type { MachineReading } from "../src/features/machines/machines-view";
 import { formatDateTime, formatShortDateTime } from "../src/lib/format";
@@ -142,8 +144,46 @@ describe("the status chip", () => {
   });
 });
 
+describe("the one thing to do", () => {
+  const kindOf = (reading: MachineReading, outOfDate = false) =>
+    primaryAction(reading, outOfDate, IMAGE)?.kind ?? null;
+
+  it("is nothing while a job is on its way, even for a machine on another build", () => {
+    expect(kindOf({ kind: "queued" }, true)).toBeNull();
+    expect(kindOf(working, true)).toBeNull();
+  });
+
+  it("is Retry after a failure, even on another build", () => {
+    expect(kindOf(failed, true)).toBe("retry");
+  });
+
+  it("is Update for a machine on another build, connected or not, naming the version it brings", () => {
+    expect(kindOf(ready, true)).toBe("update");
+    expect(kindOf({ kind: "notConnected" }, true)).toBe("update");
+    expect(kindOf({ kind: "behind", version: "0.2.12" }, true)).toBe("update");
+    expect(primaryAction(ready, true, IMAGE)!.why).toContain(IMAGE);
+  });
+
+  it("is nothing for a ready machine, or one installed as far as it goes", () => {
+    expect(kindOf(ready)).toBeNull();
+    expect(kindOf({ kind: "installedOnly" })).toBeNull();
+  });
+
+  it("starts a stopped server", () => {
+    expect(kindOf({ kind: "stopped" })).toBe("start");
+  });
+
+  it("connects a machine not connected or never checked, and tries one out of reach again", () => {
+    expect(kindOf({ kind: "notConnected" })).toBe("connect");
+    expect(kindOf({ kind: "unknown" })).toBe("connect");
+    expect(kindOf(unreachable)).toBe("tryAgain");
+  });
+});
+
 const machine = (over: Partial<MachineInfo> = {}): MachineInfo => ({
   id: "ssh:nas",
+  kind: "ssh",
+  socket: null,
   alias: "nas",
   installed: { version: IMAGE, at: "2026-10-01T08:00:00.000Z" },
   machineId: "NASmachineID0000",
@@ -174,92 +214,6 @@ const lost: MachineReconnect = {
   lastError: "the connection to this machine ended",
   diagnosis: null,
 };
-
-describe("the toolbar", () => {
-  const verbs = (m: MachineInfo, j: MachineJob | null = null, image: string | null = IMAGE) =>
-    machineToolbar(m, j, image, false).items.map((item) => item.verb);
-  const heldOf = (m: MachineInfo, j: MachineJob | null = null) =>
-    machineToolbar(m, j, IMAGE, false)
-      .items.filter((item) => item.held !== null)
-      .map((i) => i.verb);
-
-  it("offers a connected machine its verbs in one row, none of them twice and none of them waiting", () => {
-    expect(verbs(machine())).toEqual(["stop", "restart", "syncConfig", "configure", "uninstall"]);
-    expect(machineToolbar(machine(), null, IMAGE, false).sentence).toBeNull();
-  });
-
-  it("offers Update first, as the primary, only while the machine carries another build", () => {
-    const behind = machine({ installed: { version: "0.2.12", at: "2026-09-20T08:00:00.000Z" } });
-    const bar = machineToolbar(behind, null, IMAGE, false);
-    expect(bar.items.map((item) => item.verb)).toEqual([
-      "update",
-      "stop",
-      "restart",
-      "configure",
-      "uninstall",
-    ]);
-    expect(bar.items[0]).toMatchObject({ primary: true, held: null });
-    // In sync — or with no build of this server's to compare against — there is nothing to update.
-    // Out of sync there is no config sync either: the update hands the config over.
-    expect(verbs(machine())).not.toContain("update");
-    expect(verbs(behind)).not.toContain("syncConfig");
-    expect(verbs(behind, null, null)).not.toContain("update");
-  });
-
-  it("starts a server that was stopped, and holds its restart, saying so once", () => {
-    const stopped = machine({
-      connection: null,
-      keepConnected: undefined,
-      status: { state: "stopped", checkedAt: "2026-10-10T07:59:00.000Z" },
-    });
-    expect(verbs(stopped)).toEqual(["start", "restart", "configure", "uninstall"]);
-    expect(heldOf(stopped)).toEqual(["restart"]);
-    expect(machineToolbar(stopped, null, IMAGE, false).sentence).toBe(
-      S.machines.detail.held.stopped,
-    );
-  });
-
-  it("holds what needs the machine while it is being brought back, and says why in one sentence", () => {
-    const away = machine({ reconnect: lost });
-    expect(heldOf(away)).toEqual(["stop", "restart", "uninstall"]);
-    expect(machineToolbar(away, null, IMAGE, false).sentence).toBe(
-      S.machines.detail.held.unreachable,
-    );
-  });
-
-  it("holds every verb but the ssh form while a job is on its way", () => {
-    const running = job({ running: true, phase: "install" });
-    expect(heldOf(machine(), running)).toEqual(["stop", "restart", "syncConfig", "uninstall"]);
-    const behind = machine({ installed: { version: "0.2.12", at: "2026-09-20T08:00:00.000Z" } });
-    expect(heldOf(behind, running)).toEqual(["update", "stop", "restart", "uninstall"]);
-    expect(machineToolbar(behind, running, IMAGE, false).sentence).toBe(
-      S.machines.detail.held.moving,
-    );
-  });
-
-  it("enables a machine with nothing installed, beside its ssh form and nothing else", () => {
-    const added = machine({
-      installed: null,
-      connection: null,
-      keepConnected: undefined,
-      status: null,
-    });
-    const bar = machineToolbar(added, null, IMAGE, false);
-    expect(bar.items.map((item) => item.verb)).toEqual(["enable", "configure"]);
-    expect(bar.items[0]!.primary).toBe(true);
-    // With nothing to install, Enable waits, and says why.
-    const none = machineToolbar(added, null, null, true);
-    expect(none.items[0]!.held).toBe("noImage");
-    expect(none.sentence).toBe(S.machines.detail.held.noImage);
-  });
-
-  it("is empty for this server's own entry", () => {
-    expect(machineToolbar(machine({ id: "local", local: true }), null, IMAGE, false)).toEqual({
-      items: [],
-      sentence: null,
-    });
-  });
-});
 
 describe("a job's steps", () => {
   const states = (of: MachineJob) => jobSteps(of).map((step) => step.state);
@@ -319,9 +273,7 @@ describe("a job's steps", () => {
       kind: "failed",
       stepName: S.machines.step.restart,
       message: failed.message,
-      detail: null,
       canReplaceProgram: true,
-      check: null,
     });
     expect(states(stopped)).toEqual(["done", "done", "done", "failed", "pending", "pending"]);
   });
@@ -386,6 +338,73 @@ describe("a job's steps", () => {
       stepName: "ssh",
       canReplaceProgram: false,
     });
+  });
+});
+
+describe("a held verb", () => {
+  const idle: VerbContext = {
+    busy: false,
+    moving: false,
+    noImage: false,
+    connected: true,
+    unreachable: false,
+  };
+  const VERBS: DialogVerb[] = [
+    "install",
+    "connect",
+    "restart",
+    "configure",
+    "stopUsing",
+    "disconnect",
+    "release",
+  ];
+  const held = (ctx: VerbContext) => VERBS.filter((verb) => verbHold(verb, ctx) !== null);
+
+  it("is none on an idle, connected machine", () => {
+    expect(held(idle)).toEqual([]);
+  });
+
+  it("is every verb while a request is in flight, which is the reason given before any other", () => {
+    const everything = {
+      busy: true,
+      moving: true,
+      noImage: true,
+      connected: false,
+      unreachable: true,
+    };
+    for (const verb of VERBS) expect(verbHold(verb, everything), verb).toBe("busy");
+  });
+
+  it("is each single step while a job is on its way, never a way out or the ssh form", () => {
+    const moving = { ...idle, moving: true, noImage: true, unreachable: true };
+    expect(held(moving)).toEqual(["install", "connect", "restart"]);
+    for (const verb of ["install", "connect", "restart"] as const) {
+      expect(verbHold(verb, moving), verb).toBe("moving");
+    }
+  });
+
+  it("is Install with no build to push, Disconnect with nothing connected, and Restart alone for a machine out of reach", () => {
+    expect(held({ ...idle, noImage: true })).toEqual(["install"]);
+    expect(verbHold("install", { ...idle, noImage: true })).toBe("noImage");
+    expect(held({ ...idle, connected: false })).toEqual(["disconnect"]);
+    expect(verbHold("disconnect", { ...idle, connected: false })).toBe("noConnection");
+    expect(held({ ...idle, unreachable: true })).toEqual(["restart"]);
+    expect(verbHold("restart", { ...idle, unreachable: true })).toBe("unreachable");
+  });
+
+  it("tells in its row the machine's own reason, never the request in flight, which holds every verb for a moment", () => {
+    const busy = { ...idle, busy: true };
+    for (const verb of VERBS) expect(holdReason(verb, busy), verb).toBeNull();
+    const waiting = { ...busy, moving: true, connected: false };
+    expect(VERBS.map((verb) => holdReason(verb, waiting))).toEqual([
+      "moving",
+      "moving",
+      "moving",
+      null,
+      null,
+      "noConnection",
+      null,
+    ]);
   });
 });
 
@@ -477,12 +496,13 @@ describe("the facts", () => {
   const NOW = Date.parse("2026-10-10T08:00:00.000Z");
   const edge: MachineInfo = {
     id: "ssh:edge-1",
+    kind: "ssh",
+    socket: null,
     alias: "edge-1",
     installed: { version: "0.2.12", at: "2026-10-01T08:00:00.000Z" },
     machineId: "Ed5tN1qRz8Kc3VwY",
     local: false,
     connection: null,
-    socket: null,
     api: null,
     status: {
       state: "unreachable",
@@ -492,11 +512,10 @@ describe("the facts", () => {
     root: "/home/ubuntu/.penguin/data",
   };
   const block = {
-    alias: "edge-1",
-    hostName: "10.0.0.12",
-    user: "ubuntu",
-    port: 2222,
+    name: "edge-1",
+    values: { hostName: "10.0.0.12", user: "ubuntu", port: 2222 },
     editable: true,
+    forgettable: false,
   };
   const byKey = (facts: { left: Fact[]; right: Fact[] }) =>
     new Map([...facts.left, ...facts.right].map((fact) => [fact.key, fact]));
@@ -512,7 +531,7 @@ describe("the facts", () => {
     ]);
     const fact = byKey(facts);
     expect(fact.get("connection")!.value).toContain(edge.alias);
-    expect(fact.get("host")!.value).toBe("ubuntu@10.0.0.12:2222");
+    expect(fact.get("host")!.value).toBe("hostName: 10.0.0.12 · user: ubuntu · port: 2222");
     expect(fact.get("root")!.value).toBe(edge.root);
     // A plain word, with ssh's own words under it.
     expect(fact.get("service")).toMatchObject({

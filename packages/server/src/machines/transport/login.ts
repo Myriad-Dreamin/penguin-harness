@@ -19,7 +19,7 @@
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import type { RemoteTarget } from "../commands.js";
+import type { LoginTarget } from "../commands.js";
 import { explainSshFailure, sshFailureText } from "../ssh-failure.js";
 
 /** The variable the helper prints: set on the ssh child that needs it, and on nothing else. */
@@ -122,7 +122,7 @@ const hashOf = (secret: string) => createHash("sha256").update(secret, "utf8").d
  * ssh's own would, led by the same sentence, so a caller tells them apart from nothing else.
  */
 export async function signInFor(
-  target: RemoteTarget,
+  target: LoginTarget,
 ): Promise<{ ok: true; signIn: SignIn } | { ok: false; detail: string }> {
   const password = target.password;
   if (password === undefined) return { ok: true, signIn: { detached: false, secret: null } };
@@ -157,7 +157,7 @@ export async function signInFor(
  * takes none) is remembered, so nothing dials that alias with it again. True when it was one.
  * Only words from before a session came up count — a session's later stderr is not ssh's verdict.
  */
-export function noteSignIn(target: RemoteTarget, signIn: SignIn, said: string): boolean {
+export function noteSignIn(target: LoginTarget, signIn: SignIn, said: string): boolean {
   if (signIn.secret === null) return false;
   const reason = explainSshFailure(said, target.alias, { password: true })?.reason;
   if (reason !== "password-rejected" && reason !== "password-not-offered") return false;
