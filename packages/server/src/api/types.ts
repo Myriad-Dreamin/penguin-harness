@@ -28,6 +28,11 @@ import type {
 import type { HarnessInfo, VersionReport, HarnessHistory } from "@prismshadow/penguin-core";
 import type { IfacesDiff } from "@prismshadow/penguin-hmr";
 import type { WorkflowInfo } from "../mechanisms/workflows.js";
+import type {
+  PackageManifest as PackageManifestType,
+  PublishedGist as PublishedGistType,
+  PublishMethod as PublishMethodType,
+} from "../mechanisms/packages.js";
 
 // ---------------------------------------------------------------------------
 // General
@@ -282,6 +287,11 @@ export interface ServerSettings {
    * Agent's API switch, approval mode and keys are kept, so turning it on again restores them.
    */
   agentApiEnabled: boolean;
+  /**
+   * Whether a GitHub token is stored for publishing Agent packages as gists. The token
+   * itself never leaves the server: this flag is all any client is told.
+   */
+  githubTokenSet: boolean;
 }
 
 export interface ServerSettingsResponse {
@@ -298,6 +308,8 @@ export interface ServerSettingsUpdateRequest {
   browserExtensionsEnabled?: boolean;
   /** Agent API switch; see `ServerSettings.agentApiEnabled`. */
   agentApiEnabled?: boolean;
+  /** GitHub token with the `gist` scope, used to publish Agent packages; "" clears it. */
+  githubToken?: string;
   /**
    * New proxy address. Accepted forms: any proxy URL undici's dispatcher takes —
    * `http://`, `https://`, `socks5://` / `socks://`, credentials allowed — or bare
@@ -3271,6 +3283,15 @@ export type ServerEvent =
   | { type: "credentials_updated" }
   /** Placeholder handshake on the user channel (reserved for automated task notifications). */
   | { type: "hello" }
+  /**
+   * The stream's own beat, written by the endpoint's SSE writer every 20 seconds (http/sse.ts)
+   * on `/api/events`, and by the hub on a machine's aggregate stream. The socket's ping and the
+   * `: ping` comment line are invisible to a stream's consumer, so without this a stream that
+   * stopped while its socket stayed healthy would look alive forever: the hub
+   * (machines/event-hub.ts) and the browser (web api/socket.ts) each end a stream that misses
+   * two beats and re-issue it with its last event id.
+   */
+  | { type: "heartbeat" }
   /** The served web assets were hot-swapped by a platform upgrade: clients reload to pick them up. */
   | { type: "web_updated"; rev: string }
   /**
@@ -4778,6 +4799,14 @@ export type VersionResponse = VersionReport;
 
 export type { HarnessHistoryEntry, IfacesSummary } from "@prismshadow/penguin-core";
 export type {
+  AgentPackage,
+  PackageFile,
+  PackageManifest,
+  PackagePreview,
+  PublishedGist,
+  PublishMethod,
+} from "../mechanisms/packages.js";
+export type {
   WorkflowInfo,
   WorkflowVersion,
   WorkflowRequest,
@@ -4950,6 +4979,35 @@ export interface DesktopTrayCommandMessage {
   locale?: DesktopTrayLocale;
 }
 
+/**
+ * The API socket (PRFC-0011): one WebSocket per tab, every frame a call to an existing
+ * endpoint. It is opened on the terminal-stream upgrade path under a reserved id naming the
+ * signed-in user — `api-socket@<userId>` — which the server's terminal lookup answers with a
+ * reference the socket protocol is served for (server: socket/ref.ts). Shared here so the
+ * Web App and the machine relay spell the address the same way.
+ */
+export const API_SOCKET_ID_PREFIX = "api-socket@";
+
+/**
+ * Paths whose answer depends on the KIND of session behind the request — the desktop shell's
+ * own window (`sessionVia === "desktop"`: its update, tray and privacy relays, folder access,
+ * revealing a file) or a first-login link (a password change without the old password). The
+ * socket's handshake does not say how the cookie behind it was minted, so these are made over
+ * HTTP: the socket answers them 421 `not_on_socket` and the Web App never sends them there.
+ */
+export function sessionKindPath(pathname: string): boolean {
+  return (
+    pathname === "/api/me/password" ||
+    pathname === "/api/desktop" ||
+    pathname.startsWith("/api/desktop/") ||
+    /^\/api\/projects\/[^/]+\/dirs\/access$/.test(pathname) ||
+    (pathname.startsWith("/api/") && pathname.endsWith("/reveal"))
+  );
+}
+export function apiSocketPath(userId: string): string {
+  return `/api/terminals/${encodeURIComponent(`${API_SOCKET_ID_PREFIX}${userId}`)}/stream`;
+}
+
 // Desktop folder access (desktop mode, macOS)
 //
 // macOS privacy protection (TCC) guards Desktop, Documents, Downloads and removable and network
@@ -5062,6 +5120,36 @@ export interface RestartResponse {
   reason?: "no_supervisor";
 }
 
+/**
+ * What the API socket this server holds to one machine is doing (machines/machine-sockets.ts) —
+ * the fact behind `MachineInfo.socket`. `since` is the instant the state was entered, so the
+ * Machines page can say how long a machine has been dialling, failing or connected instead of
+ * sending someone to the browser console for it.
+ */
+export interface MachineSocketFact {
+  /**
+   * `connected` once the handshake completed, `dialling` while a dial is outstanding, `refused`
+   * when the machine answered the handshake with a status (a program predating the socket), and
+   * `failed` when the dial did not complete or a socket that was up closed.
+   */
+  state: "connected" | "dialling" | "refused" | "failed";
+  /** When that state was entered (ISO). */
+  since: string;
+  /** The transport's own words where there are any: a refusal's status, a dial's error. */
+  detail?: string;
+}
+
+/**
+ * One machine's event, as the machines aggregate stream carries it
+ * (`GET /api/projects/:projectId/machines/events`): the machine's own `ServerEvent`, with the
+ * machine it came from — one stream carries many machines, and the tag is what keeps their
+ * events apart (docs: /docs/server-api § "One event stream per machine").
+ */
+export interface MachineEvent {
+  machineId: string;
+  event: ServerEvent;
+}
+
 /** One `Host` entry of the server's `~/.ssh/config`, as the Machines page lists it. */
 export interface MachineInfo {
   /** `ssh:<alias>` — the id the install route is asked for. */
@@ -5127,6 +5215,7 @@ export interface MachineInfo {
    */
   connection: { pid: number } | null;
   /**
+  /**
    * Present while this server is bringing a machine it keeps connected back — the connection
    * dropped, its server stopped or restarted, or this server itself just started — and absent
    * otherwise. A machine is kept connected from the moment it is enabled until it is stopped
@@ -5139,6 +5228,15 @@ export interface MachineInfo {
    * here, one that never got as far as a connection.
    */
   keepConnected?: true;
+  /**
+   * The API socket this server holds to that machine — connected, dialling, refused or failed,
+   * and since when (machines/machine-sockets.ts). Null for `local`, and until a stream has
+   * asked for a socket at all. A fact about one process on THIS side, like `connection` and
+   * for the same reason: it says the socket exists and what it is doing, never that the far
+   * side is answering. The Machines page reads it so a stuck stream does not have to be found
+   * in the browser console.
+   */
+  socket: MachineSocketFact | null;
   /**
    * The machine's API as last seen by this server's proxy — stamped by traffic passing
    * through, never by a probe of its own. `answeredAt` when the last forwarded request got
@@ -6356,6 +6454,44 @@ export interface ContributionsResponse {
   pages: WebContribution[];
   agentTabs: WebContribution[];
   sessionTabs: WebContribution[];
+  /** Module demos, named by the contributing module. */
+  quickStarts: Array<QuickStartItem & { id: string; from: string }>;
+}
+
+/** GET /api/projects/:p/agents/:a/package — what publishing would send. */
+export interface AgentPackageResponse {
+  manifest: PackageManifestType;
+  bytes: number;
+  /** Whether the server has any GitHub identity; false = the publish button explains why not. */
+  canPublish: boolean;
+  /** Which identity it would publish with: the server machine's `gh` login, or a stored token. */
+  publishVia: PublishMethodType;
+  /** The gist this Agent was published to before — a republish updates it. */
+  publishedGist: PublishedGistType | null;
+}
+
+/** POST …/package/publish — the gist it landed in. */
+export interface AgentPackagePublishResponse {
+  gistId: string;
+  url: string;
+  files: number;
+  bytes: number;
+  /** The gist already held exactly this: nothing was written, and no API call was spent. */
+  unchanged: boolean;
+}
+
+/** How an Agent package source is read (see the server's packages/sources.ts). */
+export type AgentPackageSourceKind = "gist" | "npm" | "github-release" | "github" | "git" | "url";
+
+/** POST /api/agent-packages/preview — a source read and validated, nothing written. */
+export interface AgentPackagePreviewResponse {
+  manifest: PackageManifestType;
+  bytes: number;
+  /** The resolved origin, for display: `npm:<name>@<version>`, `github:o/r#ref`, a gist URL, … */
+  source: string;
+  kind: AgentPackageSourceKind;
+  /** The manifest's Agent id, or the source's name when the source carries no manifest. */
+  suggestedId: string;
 }
 
 /**
