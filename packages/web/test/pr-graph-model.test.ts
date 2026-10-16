@@ -1,20 +1,19 @@
 /**
  * features/proposals/pr-graph-model.ts unit tests: the stacks on the base are counted, a branch
  * node is named by its branch and deploys through its proposal, the `?proposal=` focus finds its
- * node, a deploy's arguments split, and a merged proposal folds. The layout itself is the
+ * node, and a merged proposal folds. The layout itself is the
  * server's (company-proposals smartlog.ts, tested there).
  */
 import { describe, expect, it } from "vitest";
 import type { ProposalGraphNode } from "@prismshadow/penguin-server/api";
 import {
   baseStacks,
-  deployTarget,
   focusedProposal,
   foldedAsMerged,
   nodeOfProposal,
   nodeRef,
-  splitArgs,
 } from "../src/features/proposals/pr-graph-model";
+import { nodeSubject } from "../src/features/proposals/pr-graph-deploy";
 
 /** A PR's node key in these tests (its head branch), `""` for the base branch (0). */
 const k = (n: number): string => (n === 0 ? "" : `b${n}`);
@@ -72,9 +71,9 @@ describe("branch nodes", () => {
     const b = branchNode("impl/a", "", 40);
     expect(nodeRef(b)).toBe("impl/a");
     expect(nodeRef(node(7, 0))).toBe("#7");
-    expect(deployTarget(b)).toEqual({ proposal: 40 });
-    expect(deployTarget(node(7, 0))).toEqual({ pr: 7 });
-    expect(deployTarget({ number: null, proposal: null })).toBeNull();
+    expect(nodeSubject("acme/app", b)).toBe("proposal:40");
+    expect(nodeSubject("acme/app", node(7, 0))).toBe("pr:acme/app#7");
+    expect(nodeSubject("acme/app", { number: null, proposal: null })).toBeNull();
   });
 
   it("finds a branch node by its proposal", () => {
@@ -98,13 +97,6 @@ describe("the proposal focus", () => {
     expect(focusedProposal(new URLSearchParams("proposal=0"))).toBeNull();
     expect(focusedProposal(new URLSearchParams("proposal=x"))).toBeNull();
     expect(focusedProposal(new URLSearchParams(""))).toBeNull();
-  });
-});
-
-describe("splitArgs", () => {
-  it("splits a deploy's extra arguments at whitespace and drops the empty ones", () => {
-    expect(splitArgs("  --extra-args   x\ty \n")).toEqual(["--extra-args", "x", "y"]);
-    expect(splitArgs("")).toEqual([]);
   });
 });
 
