@@ -4,7 +4,7 @@
  *   GET    /                      this Project's list, joined with what the process runs,
  *                                 plus which plugins the build ships (any member)
  *   POST   / { specifier,         npm-install the package if this server runs it and the build
- *            machineId? }         does not ship it, add it to this Project's shared table — or
+ *            integrity?, machineId? }         does not ship it, add it to this Project's shared table — or
  *                                 to that machine's own table — and apply (admin). The specifier
  *                                 is a registry name, or an https link to a git repository or a
  *                                 tarball (plugin/source.ts), which installs here only
@@ -42,7 +42,8 @@
  * asked for it" joined with "the process has it", which are two different facts.
  *
  * APPLYING. A write asks the App to re-assemble itself (the platform's own `Reassembly`,
- * hmr/platform.ts): the new create() reads the closure and imports what it names — no
+ * hmr/platform.ts): the new create() reads the closure, activates the generation it resolves
+ * to (plugin/activation.ts) and imports what it names — no
  * process restart, ptys and connections delivered across it exactly as a push delivers
  * them. What a push does not deliver, this does not either: agent runs in flight are
  * stopped and pending approvals denied, in EVERY Project, because there is one tree. The
@@ -60,6 +61,7 @@ import type {
   InstalledPlugin,
   InstalledPluginsResponse,
   PluginInstallOutcome,
+  PluginIndexEntry,
   UnsatisfiedPlugin,
 } from "../../api/types.js";
 import { HttpError } from "../errors.js";
@@ -74,13 +76,13 @@ import {
 } from "@prismshadow/penguin-core";
 import type { Config, Db, Hmr, Reassembly, ReassemblyChange } from "../../hmr/capabilities.js";
 import {
-  discoverBuiltinPlugins,
   PACKAGE_NAME,
-  loadPlugins,
   PLUGINS_FILE,
   pluginBases,
-  readPluginClosure,
   readPluginDeclaration,
+  readPluginClosure,
+  shippedBases,
+  shippedPlugins,
 } from "../../plugin/loader.js";
 import type { PluginPackages } from "../../mechanisms/plugins.js";
 import {
@@ -92,6 +94,10 @@ import {
 } from "../../plugin/install.js";
 import { parsePluginSource, type PluginSource } from "../../plugin/source.js";
 import { parsePluginArchive } from "../../services/plugin-archive.js";
+import { PluginIntegrityMismatch, PluginStoreError, readStore } from "../../plugin/store.js";
+import { pickIndexEntry, satisfies } from "../../api/plugin-pick.js";
+import { INTEGRITY, mergeIndexes } from "../../plugin/registry.js";
+import { resolveRegistries } from "./plugins.js";
 import { PluginHost, pluginHostFrom, PLUGINS_RESOURCE_ID } from "../../plugin/host.js";
 import { Access, ProjectConfigStore } from "../../mechanisms/projects.js";
 import type { Machines } from "../../machines/service.js";
@@ -103,6 +109,8 @@ export interface InstalledPluginsDeps {
   machineId: string;
   /** The current version's assets, where the builtin plugins a push carried live. */
   assetsDir: () => string | null;
+  /** The merged plugin index (plugin/registry.ts mergeIndexes): what a download is chosen from. */
+  index: () => Promise<PluginIndexEntry[]>;
   /** What the process's plugin host holds, by specifier, and what it could not load, with why. */
   running: () => {
     loaded: ReadonlySet<string>;
@@ -163,7 +171,8 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       ]),
     ];
     const { loaded, skipped, unsatisfied } = deps.running();
-    const bases = pluginBases(deps.root, deps.assetsDir());
+    const bases = pluginBases(deps.root);
+    const shipped = await shippedPlugins(deps.assetsDir());
     // `builtin` on a row is where the package CAME FROM, a tag, not a second way of being
     // asked for. What the package declares is read from its files; whether the process holds
     // it, and why not, is the host's — a load that failed says so, rather than passing as a
@@ -180,13 +189,16 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       };
       const declared = await readPluginDeclaration(specifier, bases);
       if ("error" in declared) {
+        // The loader's own reason first: a name activation could not place (a pin no stored
+        // entry has) is not in the generation either, and "not installed" would hide why.
+        const reason = skipped.get(specifier) ?? declared.error;
         plugins.push({
           specifier,
           active: false,
           builtin: false,
           modules: [],
           replaces: [],
-          ...(where.here ? { error: declared.error } : {}),
+          ...(where.here ? { error: reason } : {}),
           ...where,
         });
         continue;
@@ -199,7 +211,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       plugins.push({
         specifier,
         active,
-        builtin: declared.builtin,
+        builtin: shipped.includes(specifier),
         modules: declared.modules,
         replaces: declared.replaces,
         ...(!active && failure !== undefined ? { error: failure } : {}),
@@ -211,9 +223,9 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     }
     return {
       plugins,
-      // What the build ships, asked for or not: the catalogue marks these rows "built in",
+      // What the build ships, asked for or not: the Plugins page marks these rows "built in",
       // and asking for one is a list edit rather than a download.
-      shipped: await discoverBuiltinPlugins(bases),
+      shipped,
       file: PLUGINS_FILE,
       machineId: deps.machineId,
       // A plugin this server is asked to run that neither runs nor failed is waiting for a
@@ -259,6 +271,12 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       if (err instanceof PluginInstallError) {
         throw new HttpError(400, "plugin_install_failed", `npm: ${err.message}`);
       }
+      if (err instanceof PluginIntegrityMismatch) {
+        throw new HttpError(400, "plugin_integrity_mismatch", err.message);
+      }
+      if (err instanceof PluginStoreError) {
+        throw new HttpError(400, "plugin_store_failed", err.message);
+      }
       throw err;
     }
   };
@@ -267,6 +285,19 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
   const kindsOf = (name: string): { library: boolean; modules: boolean } => {
     const dir = installedPackageDir(pluginsPrefix(deps.root), name);
     return { library: isLibraryPackage(dir), modules: existsSync(path.join(dir, "ifaces.json")) };
+  };
+
+  /** A pinned content, npm's `sha512-<base64>`, or undefined when none is asked. */
+  const integrityOf = (value: unknown): string | undefined => {
+    if (value === undefined || value === null || value === "") return undefined;
+    if (typeof value !== "string" || !INTEGRITY.test(value)) {
+      throw new HttpError(
+        400,
+        "bad_request",
+        "integrity must be npm's: sha512- and 88 base64 characters.",
+      );
+    }
+    return value;
   };
 
   /** The machine a verb is scoped to — its own table — or null for the shared table. */
@@ -280,16 +311,18 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
 
   /**
    * A name a list REWRITE adds must already be on this machine — shipped with the build or
-   * installed under the data root by POST, which is the verb that runs npm. Otherwise PUT
+   * fetched into the plugin store by POST, which is the verb that runs npm. Otherwise PUT
    * would be the way to list a package that is not on disk, exactly the state these routes
    * exist to avoid.
    */
   const requireOnMachine = async (names: readonly string[]) => {
     if (names.length === 0) return;
-    const bases = pluginBases(deps.root, deps.assetsDir());
+    const onMachine = new Set([
+      ...(await shippedPlugins(deps.assetsDir())),
+      ...(await readStore(deps.root)).map((e) => e.name),
+    ]);
     for (const name of names) {
-      const declared = await readPluginDeclaration(name, bases);
-      if ("error" in declared) {
+      if (!onMachine.has(name)) {
         throw new HttpError(
           400,
           "plugin_not_installed",
@@ -347,7 +380,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     );
 
   /** The names of the server modules this build ships: a package under one of them would shadow it. */
-  const shippedNames = () => discoverBuiltinPlugins(pluginBases(deps.root, deps.assetsDir()));
+  const shippedNames = () => shippedPlugins(deps.assetsDir());
 
   /**
    * Takes back a package an install just put in the prefix and refuses the install: one under the
@@ -433,11 +466,31 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
     // a listed plugin that is not on disk is exactly the state this route exists to avoid,
     // and npm failing must leave the deployment unchanged. A plugin asked of another machine
     // only is downloaded THERE, by that machine, when the list reaches it.
+    const integrity = integrityOf(body.integrity);
     const shipped = await shippedNames();
-    const installed =
-      runsHere && !shipped.includes(source.name)
-        ? await viaNpm(() => deps.packages.install(deps.root, source.spec))
-        : null;
+    const onMachine =
+      shipped.includes(source.name) ||
+      (await readStore(deps.root)).some(
+        (e) =>
+          e.name === source.name &&
+          satisfies(e.version, source.version) &&
+          (integrity === undefined || e.integrity === integrity),
+      );
+    let installed: InstalledPackage | null = null;
+    if (runsHere && !onMachine) {
+      const pick = pickIndexEntry(await deps.index(), source.name, {
+        version: source.version,
+        integrity,
+      });
+      if ("refused" in pick) throw new HttpError(400, "plugin_not_installable", pick.refused);
+      const expected = pick.integrity;
+      if (expected === undefined) {
+        throw new HttpError(400, "plugin_not_installable", `'${source.name}' names no integrity`);
+      }
+      installed = await viaNpm(() =>
+        deps.packages.install(deps.root, `${pick.name}@${pick.version}`, expected),
+      );
+    }
     // A package of Skills, hooks or MCP servers alone is the library's from here on: no table
     // loads it.
     const kinds = installed !== null ? await vetInstalled(installed) : null;
@@ -447,7 +500,10 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
       await list(
         projectId,
         source.name,
-        source.version === undefined ? {} : { version: source.version },
+        {
+          ...(source.version !== undefined ? { version: source.version } : {}),
+          ...(integrity !== undefined ? { integrity } : {}),
+        },
         machineId,
       );
       deps.syncFleet(projectId);
@@ -519,7 +575,8 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
           },
     );
     // The package goes too — but only once no Project asks THIS server for it. The prefix is
-    // the harness's to keep tidy; removing it while another Project still lists it would
+    // the harness's to keep tidy; store entries and active generations are not removed here.
+    // Removing the library prefix while another Project still lists it would
     // break that Project at the next load.
     if (!(await readPluginClosure(deps.root, deps.machineId)).includes(specifier)) {
       try {
@@ -577,7 +634,7 @@ export function installedPluginRoutes(deps: InstalledPluginsDeps): Hono<AppEnv> 
         id: "InstalledPluginRoutes.routes",
         prefix: "/api/projects/:projectId/plugins/installed",
         auth: "user",
-        // Ahead of the catalogue group, whose "/" would otherwise answer here.
+        // Ahead of the registry group, whose "/" would otherwise answer here.
         order: 60,
       },
     ],
@@ -595,10 +652,19 @@ export class InstalledPluginRoutes {
   @Bind("InstalledPluginRoutes.routes") routes!: Hono<AppEnv>;
   setup() {
     const hmr = this.hmr;
+    const root = this.config.root;
+    // Its own cache of the published index: read only when a download is chosen.
+    const registries = resolveRegistries({
+      indexUrl: this.config.pluginIndexUrl,
+      root,
+      assetsDir: () => hmr.assetsDir(),
+      bases: () => [...pluginBases(root), ...shippedBases(hmr.assetsDir())],
+    });
     this.routes = installedPluginRoutes({
-      root: this.config.root,
+      root,
       machineId: new MachinesRepo(this.db as unknown as DatabaseSync).ownId(),
       assetsDir: () => hmr.assetsDir(),
+      index: () => mergeIndexes(registries),
       // Claimed per call rather than captured: the host belongs to the process, and a hot
       // swap hands the same one to the next platform.
       running: () => {

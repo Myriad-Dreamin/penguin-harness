@@ -8,6 +8,7 @@
  *   GET    /api/plugins/registry                          # the merged plugin index: the builtin entries, the published ones, and the server modules an admin installed from a link or a zip
  *   GET    /api/plugins/registry/readme?name=…            # one listed entry's long-form readme
  *   GET    /api/plugins/registry/archive?name=…           # one listed package on this server, as a zip
+ *   GET    /api/plugins/registry/contents?name=…          # every content listed under one name, for its detail page
  *   POST   /api/projects/:p/agents/:a/plugins             # install plugins from the library (any member)
  *   GET    /api/projects/:p/agents/:a/mcp-servers         # the Agent's MCP servers: target, provenance, what keeps each from connecting (any member)
  *   DELETE /api/projects/:p/agents/:a/mcp-servers/:name   # remove one MCP server entry, whoever added it (any member)
@@ -25,11 +26,10 @@
  * hooks. The library is what this build carries; the registry is what the deployment can
  * fetch. Both are deployment-global (no Project check); only installing touches an Agent.
  *
- * The registry merges two sources: the index embedded in this package (the sandbox backends
- * the workspace ships) and the one published by the index repository. The published document
- * is cached, a failure to reach it is reported alongside the entries rather than emptying the
- * page, and a listing waits for it only briefly before answering without it — see
- * plugin/registry.ts for the three rules.
+ * The registry merges three sources into one flat array of index entries: the index the
+ * running build carries, this machine's plugin store, and the one published by the index
+ * repository — one entry per content. The published document is cached, and a source that
+ * cannot be read shortens the listing rather than emptying it — see plugin/registry.ts.
  */
 import { Hono } from "hono";
 import { existsSync } from "node:fs";
@@ -54,8 +54,8 @@ import type {
   AgentMcpServersResponse,
   AgentPluginsInstallResponse,
   PluginFilesResponse,
+  PluginContentsResponse,
   PluginIndexEntry,
-  PluginIndexResponse,
   PluginLibraryResponse,
   PluginReadmeResponse,
 } from "../../api/types.js";
@@ -69,7 +69,6 @@ import { Bind, Component, Use } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, Json } from "@prismshadow/penguin-core/kernel";
 import { agentHooksRoutes } from "./hooks.js";
 import {
-  BUILTIN_REGISTRY_SOURCE,
   builtinPluginRegistry,
   cachedRegistry,
   httpPluginRegistry,
@@ -77,10 +76,18 @@ import {
   mergeIndexes,
   withoutIcon,
   NIGHTLY_INDEX_URL,
-  SOURCE_WAIT_MS,
+  storePluginRegistry,
 } from "../../plugin/registry.js";
 import type { CachedRegistry, IndexSnapshot, PluginRegistry } from "../../plugin/registry.js";
-import { PACKAGE_NAME, pluginBases, resolvePluginPackage } from "../../plugin/loader.js";
+import {
+  PACKAGE_NAME,
+  pluginBases,
+  shippedBases,
+  resolvePluginPackage,
+} from "../../plugin/loader.js";
+import { currentGeneration, readGeneration } from "../../plugin/activation.js";
+import { readStore } from "../../plugin/store.js";
+import { compareVersions } from "../../api/plugin-pick.js";
 import type { PluginBase } from "../../plugin/loader.js";
 import { installedPackageDir, pluginsPrefix, prefixDependencies } from "../../plugin/install.js";
 import {
@@ -303,6 +310,10 @@ export interface PluginRoutesOptions {
   indexUrl?: string | null;
   /** Where packages are on this machine (plugin/loader.ts's pluginBases): for the builtin readmes, and for every listed package's own display fields (localPluginDisplay). */
   bases?: () => readonly PluginBase[];
+  /** The data root, whose plugin store is a source; absent lists no store. */
+  root?: string;
+  /** The running build's assets, whose prefix carries the build's index; read per request. */
+  assetsDir?: () => string | null;
   /** Overrides the resolved source list entirely; tests pass registries directly. */
   registries?: readonly PluginRegistry[];
   fetchImpl?: typeof fetch;
@@ -359,21 +370,15 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
   const bases = options.bases ?? (() => []);
   const prefix = options.prefix ?? (() => null);
 
-  /**
-   * Every entry this deployment lists: the indexes' and the prefix's own server modules. A source
-   * still being read is not waited for past SOURCE_WAIT_MS — the shipped entries list without it,
-   * and its own join on a later read, once the cache has them.
-   */
+  /** Every entry this deployment lists: the indexes' and the prefix's own server modules. */
   const listing = async () => {
-    const { entries, failures, pending } = await mergeIndexes(registries, {
-      waitMs: SOURCE_WAIT_MS,
-    });
+    const entries = await mergeIndexes(registries);
     const own = await prefixEntries(prefix(), new Set(entries.map((e) => e.name)));
-    return { entries: [...entries, ...own], failures, pending };
+    return [...entries, ...own];
   };
 
   app.get("/", async (c) => {
-    const { entries, failures, pending } = await listing();
+    const entries = await listing();
     // A package on this machine describes itself: its own package.json `penguin` block and icon
     // win over what an index row says, so an installed package's card shows its icon and both
     // languages even where its index row carries neither.
@@ -381,7 +386,7 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
     const plugins = await Promise.all(
       entries.map(async (entry) => ({ ...entry, ...(await localPluginDisplay(entry.name, here)) })),
     );
-    const body: PluginIndexResponse = { plugins, failures, pending };
+    const body: PluginIndexEntry[] = plugins;
     return c.json(body);
   });
   app.get("/readme", async (c) => {
@@ -392,7 +397,7 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
     // Only entries this deployment actually lists, by a package name (an index row's name is
     // not trusted to be one): answering for anything else would make the endpoint a probe of
     // what exists, or of what a path above a prefix holds.
-    const { entries } = await listing();
+    const entries = await listing();
     if (!PACKAGE_NAME.test(name) || !entries.some((e) => e.name === name)) {
       return c.json({ error: { code: "not_found", message: "no such plugin" } }, 404);
     }
@@ -415,7 +420,7 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
     if (name === undefined || name === "") {
       throw new HttpError(400, "bad_request", "name is required");
     }
-    const { entries } = await listing();
+    const entries = await listing();
     if (!PACKAGE_NAME.test(name) || !entries.some((e) => e.name === name)) {
       throw new HttpError(404, "not_found", "no such plugin");
     }
@@ -437,15 +442,59 @@ export function pluginRegistryRoutes(options: PluginRoutesOptions = {}): Hono<Ap
     const zip = await zipPluginPackage(found.dir, unscopedName(name));
     return pluginArchiveResponse(zip, name, version);
   });
+
+  app.get("/contents", async (c) => {
+    const name = c.req.query("name");
+    if (name === undefined || name === "") {
+      return c.json({ error: { code: "bad_request", message: "name is required" } }, 400);
+    }
+    // Only a name this deployment lists, like the readme: not a probe of what exists.
+    const listed = (await listing()).filter((e) => e.name === name);
+    if (!PACKAGE_NAME.test(name) || listed.length === 0) {
+      return c.json({ error: { code: "not_found", message: "no such plugin" } }, 404);
+    }
+    const { stored, linked } = await onThisMachine(options.root);
+    const contents = listed
+      .map((e) => ({
+        version: e.version,
+        ...(e.integrity !== undefined ? { integrity: e.integrity } : {}),
+        stored: e.integrity !== undefined && stored.has(e.integrity),
+        linked: e.integrity !== undefined && linked.has(e.integrity),
+      }))
+      // Stable: among equal versions the merged index's order (the build's first) stays.
+      .sort((a, b) => compareVersions(b.version, a.version));
+    const body: PluginContentsResponse = { name, contents };
+    return c.json(body);
+  });
   return app;
 }
 
-function resolveRegistries(options: PluginRoutesOptions): PluginRegistry[] {
-  const builtin = builtinPluginRegistry(options.bases);
+/** The integrities this machine's store holds and its current generation links. */
+async function onThisMachine(
+  root: string | undefined,
+): Promise<{ stored: Set<string>; linked: Set<string> }> {
+  if (root === undefined) return { stored: new Set(), linked: new Set() };
+  const gen = currentGeneration(root);
+  const [inStore, inGeneration] = await Promise.all([
+    readStore(root),
+    gen === null ? Promise.resolve(null) : readGeneration(root, gen),
+  ]);
+  return {
+    stored: new Set(inStore.map((e) => e.integrity)),
+    linked: new Set((inGeneration ?? []).map((e) => e.integrity)),
+  };
+}
+
+/** The index's sources, in precedence order: the build, the store, the published index. */
+export function resolveRegistries(options: PluginRoutesOptions): PluginRegistry[] {
+  const local = [
+    builtinPluginRegistry(options.bases, options.assetsDir),
+    ...(options.root !== undefined ? [storePluginRegistry(options.root, options.bases)] : []),
+  ];
   // Undefined and null part ways here: a runtime that predates the setting publishes nothing
-  // and gets the default index, while `off` resolves to null and means builtin entries only.
+  // and gets the default index, while `off` resolves to null and means this machine only.
   const url = options.indexUrl === undefined ? NIGHTLY_INDEX_URL : options.indexUrl;
-  if (url === null) return [builtin];
+  if (url === null) return local;
   // The parked document goes through the remote rule too: it was fetched by a previous App,
   // which may not have dropped the icons.
   const seed = options.seed ?? null;
@@ -453,7 +502,7 @@ function resolveRegistries(options: PluginRoutesOptions): PluginRegistry[] {
     seed: seed === null ? null : { at: seed.at, entries: seed.entries.map(withoutIcon) },
   });
   options.onCache?.(cache);
-  return [builtin, cache];
+  return [...local, cache];
 }
 
 /**
@@ -487,9 +536,12 @@ export class PluginRegistryRoutes {
     const parked = (context as { index?: IndexSnapshot } | null)?.index;
     this.routes = pluginRegistryRoutes({
       indexUrl: this.config.pluginIndexUrl,
-      // Read per request: a push moves the shipped prefix to a new assets directory.
-      bases: () => pluginBases(this.config.root, this.hmr.assetsDir()),
+      // Read per request: a push moves the shipped prefix to a new assets directory, and an
+      // activation moves the current generation. The generation first: it is what runs.
+      bases: () => [...pluginBases(this.config.root), ...shippedBases(this.hmr.assetsDir())],
       prefix: () => pluginsPrefix(this.config.root),
+      root: this.config.root,
+      assetsDir: () => this.hmr.assetsDir(),
       seed: parked ?? null,
       onCache: (cache) => {
         this.cache = cache;

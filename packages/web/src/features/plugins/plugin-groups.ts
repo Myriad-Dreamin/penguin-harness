@@ -17,6 +17,7 @@ import type {
   PluginIndexEntry,
   PluginItem,
 } from "@prismshadow/penguin-server/api";
+import { pickIndexEntry } from "@prismshadow/penguin-server/api";
 import { S } from "../../lib/strings";
 import { localizedText } from "../chat/skill-use";
 import { PLUGIN_STATUSES, type ModuleState, type PluginStatus } from "./plugin-status";
@@ -107,6 +108,14 @@ function stateIn(
  * registry's entries it does not list, and what the build ships that no index knows (offered
  * without a description: the build has it, so it installs without a download).
  */
+export function indexEntryOf(
+  index: readonly PluginIndexEntry[],
+  name: string,
+): PluginIndexEntry | undefined {
+  const pick = pickIndexEntry(index, name, {});
+  return "refused" in pick ? index.find((e) => e.name === name) : pick;
+}
+
 export function moduleParts(
   deployment: InstalledPluginsResponse | null,
   index: readonly PluginIndexEntry[],
@@ -119,7 +128,7 @@ export function moduleParts(
     const shared = listed.everywhere !== false;
     parts.push({
       specifier: listed.specifier,
-      entry: index.find((e) => e.name === listed.specifier),
+      entry: indexEntryOf(index, listed.specifier),
       ...stateIn(listed, view, deployment?.machineId),
       shipped:
         listed.builtin || (view?.remote ?? deployment)?.shipped.includes(listed.specifier) === true,
@@ -132,9 +141,10 @@ export function moduleParts(
   );
   const shippedList = (view?.remote ?? deployment)?.shipped ?? [];
   const seen = new Set(parts.map((p) => p.specifier));
-  for (const entry of index) {
-    if (listed.has(entry.name) || seen.has(entry.name)) continue;
-    seen.add(entry.name);
+  for (const { name } of index) {
+    if (listed.has(name) || seen.has(name)) continue;
+    seen.add(name);
+    const entry = indexEntryOf(index, name)!;
     parts.push({
       specifier: entry.name,
       entry,

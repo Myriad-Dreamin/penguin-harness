@@ -2792,6 +2792,9 @@ export const en: Strings = {
     builtin: "built in",
     builtinHint:
       "Ships with this build: installing it downloads nothing, and it loads only once you install it.",
+    /** An index entry this machine cannot install, and why: the channels it is missing from. */
+    cannotInstallHere:
+      "Can't be installed here: it is not in this build or this machine's plugin store, and its index entry names no integrity to check a download against.",
     installedRestart: "restart to load",
     stateFailed: "failed to load",
     /** A module plugin the running build cannot run at all: it needs a module or interface this build lacks. */
@@ -3119,17 +3122,18 @@ export const en: Strings = {
   pluginRegistry: {
     empty: "No plugins yet",
     specifierHint: "Package name, as a Project's plugin list names it",
-    /** Shown above the list when a source answered with nothing, so a short list is not read as a complete one. */
-    sourceUnavailable: (count: number): string =>
-      count === 1
-        ? "One plugin source could not be reached, so this list may be incomplete."
-        : `${count} plugin sources could not be reached, so this list may be incomplete.`,
-    /** Shown while the server is still reading a source: the list holds what has answered so far. */
-    sourcePending: (count: number): string =>
-      count === 1
-        ? "One plugin source is still loading. Its plugins will appear here when it answers."
-        : `${count} plugin sources are still loading. Their plugins will appear here when they answer.`,
     copySpecifier: "Copy specifier",
+    installHint:
+      "Install from the Plugins page: the row's Install button asks the current Project for it.",
+    contents: "All contents",
+    contentsHint:
+      "Every content listed under this name. The Plugins page shows one row: the one an install takes.",
+    contentVersion: "Version",
+    contentIntegrity: "Integrity (first 16)",
+    contentStored: "In this machine's store",
+    contentLinked: "Linked by the current generation",
+    contentNoIntegrity: "none",
+    yes: "Yes",
   },
 
   skills: {
