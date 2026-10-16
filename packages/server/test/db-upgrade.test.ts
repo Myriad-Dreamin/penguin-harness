@@ -37,6 +37,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "../src/db/database.js";
 import { SCHEMA_SQL } from "../src/db/schema.js";
+import { seedAgentStateHandover } from "./db-migrations-fixtures.js";
 import { MessagingBindingsRepo } from "../src/db/repos/messaging-bindings.js";
 import { SessionsRepo } from "../src/db/repos/sessions.js";
 import type { SessionRow } from "../src/db/repos/sessions.js";
@@ -730,6 +731,34 @@ describe("openDatabase table and index upgrades", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("openDatabase on a numbered root with the first form of port_forwards", () => {
+  it("a cold start rebuilds the table before SCHEMA_SQL's index on direction, keeping the forward as `in`", () => {
+    const dbPath = path.join(dir, "web.db");
+    seedDatabase(dbPath, (db) => {
+      db.exec(SCHEMA_SQL);
+      seedAgentStateHandover(db);
+    });
+    const db = openDatabase(dbPath);
+    try {
+      expect(db.prepare("SELECT id, direction, local_port FROM port_forwards").all()).toEqual([
+        { id: "f1", direction: "in", local_port: 3000 },
+      ]);
+      const idx = (
+        db
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'port_forwards' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          )
+          .all() as { name: string }[]
+      ).map((r) => r.name);
+      expect(idx).toEqual(["idx_port_forwards_local_in", "idx_port_forwards_machine"]);
+    } finally {
+      db.close();
+    }
+    // And again: the reopen finds nothing to do.
+    openDatabase(dbPath).close();
   });
 });
 
