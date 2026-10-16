@@ -82,6 +82,7 @@ import type { DiscordTransport } from "../src/runtime/messaging/discord-api.js";
 import { WeChatScanTransportProvider } from "../src/runtime/messaging/wechat-scan.js";
 import type { WeChatScanTransport } from "../src/runtime/messaging/wechat-scan.js";
 import { MachinesModule, machinesServerProxyRoutes } from "../src/machines/service.js";
+import { machinesOAuthCallbackRoutes } from "../src/machines/oauth-callback-route.js";
 import { OrganizationModule } from "../src/runtime/organization/service.js";
 import { machinesRoutes } from "../src/http/routes/machines.js";
 import { MachineEventHub } from "../src/machines/event-hub.js";
@@ -454,6 +455,7 @@ export function replacementsFor(o: TestAppOptions): Replacements {
         machines,
         routes: machinesRoutes({ machines, access: accessDouble(), events }),
         serverProxyRoutes: machinesServerProxyRoutes(machines, { sockets, events }),
+        oauthCallbackRoutes: machinesOAuthCallbackRoutes(machines, { sockets, events }),
       },
     ]);
   }
@@ -551,6 +553,15 @@ export async function loginUser(
 /** Logs in as the seeded admin (every test app seeds with TEST_ADMIN_PASSWORD). */
 export function loginAdmin(app: Hono<AppEnv>): Promise<{ cookie: string; user: UserInfo }> {
   return loginUser(app, ADMIN_USER_ID, TEST_ADMIN_PASSWORD);
+}
+
+/**
+ * The admin's sign-in token, for `Authorization: Bearer`: what `penguin auth token` hands a
+ * command line, and the credential under which the routes honour a body's identity claims.
+ */
+export async function adminBearerToken(app: Hono<AppEnv>): Promise<string> {
+  const { cookie } = await loginAdmin(app);
+  return cookie.slice(cookie.indexOf("=") + 1);
 }
 
 /** The `name=value` cookie pair from a response's Set-Cookie (the shape apiClient wants). */

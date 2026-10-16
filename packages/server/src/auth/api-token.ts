@@ -1,16 +1,24 @@
 /**
- * Local API token (`<root>/api-token`): the machine-local credential behind
- * `Authorization: Bearer`.
+ * Local API token (`<root>/api-token`): the boot's admin credential on disk.
  *
- * Minted fresh at every server boot (same recipe as auth-session tokens) and written to
- * the data root with owner-only permissions, so anything that can read the file can call
- * the API as the admin. That equivalence is the authorization model, not an accident:
- * local filesystem access to the data root already IS admin authority — the same rule
- * `penguin server reset-admin-password` stands on (whoever can run it owns web.db
- * anyway) — and agents driving their own harness through the CLI is the product feature
- * this token exists for (server-driven Sessions hand it to tool subprocesses as
- * PENGUIN_API_TOKEN). Rotation per boot bounds the life of any leaked copy to the
- * process that minted it.
+ * Minted fresh at every server boot (same recipe as auth-session tokens) and held on the
+ * runtime auth state (auth/runtime-state.ts), so it outlives the Apps a push replaces and dies
+ * at a restart. It does two jobs:
+ *
+ * - It is written to the data root with owner-only permissions and accepted as
+ *   `Authorization: Bearer` for the built-in admin. Local filesystem access to the data root
+ *   already IS admin authority — the rule `penguin server reset-admin-password` stands on —
+ *   and the CLI outside a Session, scripts doing `$(cat <root>/api-token)` and existing
+ *   automation still depend on it.
+ * - It signs the session credentials a server-driven Session's tool subprocesses get as
+ *   PENGUIN_API_TOKEN (session-token.ts). The boot token itself is never handed to a Session.
+ *
+ * Every App writes the file when it starts (AuthService.setup), not only the boot: a root whose
+ * file was removed — by an earlier build that deleted it, or by hand — gets it back from the
+ * next hot push instead of waiting for a restart.
+ *
+ * The file is to be removed once sign-ins and session credentials have taken over all of its
+ * uses (the CLI, scripts, deploy automation) and the server sees no caller presenting it.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
@@ -26,24 +34,30 @@ export function mintApiToken(): string {
 }
 
 /**
- * Persists the boot token (owner-only file, tmp + rename so a concurrent reader never
- * sees a partial write). Best-effort like the initial-password file: an exotic read-only
- * root must not stop the server — local CLI callers then fall back to
+ * Persists the boot token (owner-only file, tmp + rename so a concurrent reader never sees a
+ * partial write). Idempotent: a file already holding this token, owner-only, is left alone, so
+ * every App start may call it. Best-effort like the initial-password file: an exotic read-only
+ * root must not stop the server — local CLI callers then fall back to a stored sign-in or
  * PENGUIN_API_TOKEN.
  */
 export function storeApiToken(root: string, token: string): void {
   try {
-    fs.mkdirSync(root, { recursive: true });
     const target = apiTokenPath(root);
+    if (readApiToken(root) === token && ownerOnly(target)) return;
+    fs.mkdirSync(root, { recursive: true });
     const tmp = `${target}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, `${token}\n`, { mode: 0o600 });
     fs.renameSync(tmp, target);
   } catch {
-    // Best-effort: Bearer auth still works for callers holding the token some other way.
+    // Best-effort: Bearer auth still works for callers holding a credential some other way.
   }
 }
 
-/** The stored token, or null when absent/unreadable/empty (shared with the CLI's file fallback). */
+function ownerOnly(file: string): boolean {
+  return process.platform === "win32" || (fs.statSync(file).mode & 0o077) === 0;
+}
+
+/** The stored token, or null when absent/unreadable/empty. */
 export function readApiToken(root: string): string | null {
   try {
     const value = fs.readFileSync(apiTokenPath(root), "utf8").trim();
