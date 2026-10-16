@@ -430,6 +430,7 @@ export const zh = {
       "terminal.new": "新建终端",
       "terminal.close": "关闭当前终端",
       "editor.save": "保存",
+      "graph.search": "在 PR 关系图中搜索",
     },
     groups: {
       general: "通用",
@@ -6533,12 +6534,22 @@ Benchmark：
         open: "关系图",
         openTitle: "打开 PR 关系图",
         openForProposal: "在关系图里看这份提案",
-        info: "交付仓库上每张 open PR 的 head 是一个节点，按提交祖系从底座分支一层层叠上去，最新的在上。节点标出它是哪份提案的 impl PR、比下一层多几个提交，以及各 origin 上同名分支的 PR 与它的关系。链按手册的 stack 规则读：穿过已合并、已关闭的层，分叉点落在下一层内部的层仍在链上、标为待重排，分叉处取继续往上走的那一支。底座上可以并排起几个 stack，各自画成一条线，各自的最后一层标为链顶。要靠路线图位次才能决定的分叉，图只标出来、不给链顶。",
+        info: "交付仓库上每张 open PR 的 head 是一个节点，按提交祖系从底座分支一层层叠上去，最新的在上。节点标出它是哪份提案的 impl PR、比下一层多几个提交，以及各 origin 上同名分支的 PR 与它的关系。链按手册的 stack 规则读：穿过已合并、已关闭的层，分叉点落在下一层内部的层仍在链上、标为待重排（底座分支前进之后，最底一层同样如此），分叉处取继续往上走的那一支。底座上可以并排起几个 stack，各自画成一条线，各自的最后一层标为链顶。要靠路线图位次才能决定的分叉，图只标出来、不给链顶。",
         refresh: "刷新",
         loadFailed: "关系图读取失败",
         partial: "关系图不完整，以下各项没读到：",
         base: "底座",
-        baseForked: "底座上分叉",
+        baseBehind: (n: number): string => `落后 ${n}`,
+        showOthers: "显示其他 PR",
+        showOthersHint: "画出交付仓库上全部 open PR，而不只是本组织的提案及其所叠在的 PR",
+        connector: "不是本组织的提案：因为有提案的 PR 叠在它上面才画出",
+        search: {
+          label: "在 PR 关系图中搜索",
+          placeholder: "#PR、proposal 194、分支名或标题",
+          count: (at: number, of: number): string => `${at}/${of}`,
+          none: "无匹配",
+          close: "关闭搜索",
+        },
         baseStacks: (n: number): string => `底座上 ${n} 个 stack`,
         top: "链顶",
         fork: "分叉",
@@ -6560,6 +6571,10 @@ Benchmark：
         stale: "待重排",
         staleTitle: (behind: number): string =>
           `下一层在这一层分出之后又前进了 ${behind} 个提交，分叉点在它自己那一层里：仍在链上，等重排。`,
+        staleBase: (base: string, behind: number): string =>
+          `落后 ${base} ${behind} 个提交，待重排`,
+        staleBaseTitle: (base: string, behind: number): string =>
+          `${base} 在这一串分出之后又前进了 ${behind} 个提交，分叉点在 ${base} 自己的历史上：整串仍在链上，等重排到 ${base} 的最新提交上。`,
         noProposal: "无提案",
         proposalRef: (n: number): string => `提案 #${n}`,
         ahead: (n: number): string => `+${n}`,
@@ -6601,7 +6616,7 @@ Benchmark：
           `部署 ${id} 跑在 ${describe ?? commit}${ahead !== null && ahead > 0 ? `，比这一层多 ${ahead} 个提交` : ""}`,
         deploymentUnread: "读不到 commit",
         unplacedHint:
-          "登记了实现，但它不是交付仓库上的 open PR；每行写明原因：已合并、已在底座分支里、已关闭、开在别的仓库、这里有一张 open PR 带着它的分支（登记的是另一张），或者 impl branch 上还没有开出 open PR。",
+          "登记了实现，但它不在图上的任何节点；每行写明原因：已合并、已在底座分支里、已关闭、开在别的仓库、这里有一张 open PR 带着它的分支（登记的是另一张），或者没读到（impl branch 的 head 不在交付仓库上，或 PR 读不到）。",
         unplacedReason: (reason: string, at: string, into: string, base: string): string =>
           ({
             counterpart: `${at} 带着它的分支`,
@@ -6610,7 +6625,6 @@ Benchmark：
             closed: "已关闭",
             "open-elsewhere": "开在别的仓库",
             unread: "没读到",
-            "no-pr": "head 分支上还没有 PR",
           })[reason] ?? reason,
         empty: "交付仓库上没有 open PR，图上只有底座。",
         focusMissing: (n: number): string =>
@@ -6618,6 +6632,8 @@ Benchmark：
         checkedAt: (when: string): string => `读取于 ${when}`,
         summary: (nodes: number, onChain: number): string => `${nodes} 张 PR，${onChain} 张在链上`,
         openPr: "在 GitHub 上打开",
+        branchNode: "分支",
+        branchNodeTitle: "impl 分支，尚未开 PR",
         deploy: {
           menu: "部署",
           menuTitle: "部署这张 PR 的 head",

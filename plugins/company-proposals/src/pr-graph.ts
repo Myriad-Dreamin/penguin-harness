@@ -1,14 +1,17 @@
 /**
- * The PR graph's GitHub side: the delivery repository's open PRs, the base branch's tip, the
- * merged or closed PRs a declared base leads through, the impl PRs that are not open there, and
- * the comparisons between heads (a registered deployment's commit among them) — read through
- * the machine's `gh`, like the PR status (pr-status.ts), and handed to buildGraph (pr-chain.ts),
- * which lays them out. The server fetches nothing and writes no git ref.
+ * The PR graph's facts and their layout. The facts are the delivery repository's base tip and
+ * open change requests, the tips of the impl branches no PR is open on, the merged or closed
+ * ones a declared base walks through, the impl PRs that are not open there, each origin's open
+ * ones, which heads contain which (graph-lineage.ts), and the comparisons between commits. A
+ * refresh (graph-reader.ts) reads them; a read lays them out from the stored copy (storedFacts)
+ * with the same pure functions.
  *
- * A PR list, a branch tip, a branch's closed PRs or one PR is kept for a minute; a comparison of
- * two commits never changes, so it is kept for as long as the reader lives (up to a bound). A
- * lookup that fails leaves its part of the graph `unknown` and is listed in `errors`.
+ * `inputKey` hashes everything the layout reads except the comparisons, which never change for
+ * a pair of commits, together with the identity of the code that lays it out (layout-code.ts):
+ * a snapshot is keyed by it, so a build with other layout rules does not answer an older
+ * build's snapshot.
  */
+import { createHash } from "node:crypto";
 import type { ProposalGraphResponse } from "@prismshadow/penguin-server/api";
 import {
   buildGraph,
@@ -20,424 +23,228 @@ import {
   type OpenPull,
   type ShutPull,
 } from "./pr-chain.js";
-import { ghRunner, parsePullUrl, STATUS_TTL_MS, type RunGh } from "./pr-status.js";
-import type { DeploymentReading } from "./deployments.js";
+import { headsOf, implBranchesOn } from "./graph-heads.js";
+import type { Lineage } from "./graph-lineage.js";
+import type { GraphStore } from "./ports.js";
 
-const TIMEOUT_MS = 10_000;
-const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
-/** Enough for the open PRs of one repository: ten pages of a hundred. */
-const MAX_PAGES = 10;
-const CONCURRENCY = 8;
-/** Comparisons kept; past this the oldest are dropped. */
-const MAX_COMPARISONS = 5000;
-
-const PULLS_JQ =
-  "[.[] | {number, title, draft, url: .html_url, branch: .head.ref, head: .head.sha, base: .base.ref}]";
-const COMPARE_JQ =
-  "{status, ahead_by, behind_by, merge_base: .merge_base_commit.sha, empty: (.merge_base_commit.commit.tree.sha == .base_commit.commit.tree.sha)}";
-const SHUT_JQ =
-  '[.[] | {number, merged: (.merged_at != null), at: (.merged_at // .closed_at // ""), base: .base.ref}]';
-const PULL_JQ =
-  "{merged: (.merged_at != null), state, branch: .head.ref, head: .head.sha, base: .base.ref}";
 /** Rounds of looking up the merged or closed PRs a walk from a declared base passes through. */
-const MAX_WALK_ROUNDS = 20;
-const GITHUB_REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const SHA = /^[0-9a-f]{7,64}$/i;
+export const MAX_WALK_ROUNDS = 20;
 
-interface Timed<T> {
-  value: T;
-  at: number;
+/** Where the graph reads from: the delivery repository, its base branch, the origins. */
+export interface GraphProject {
+  repo: string;
+  base: string;
+  origins: Array<{ name: string; repo: string }>;
 }
 
-export interface PrGraphDeps {
-  gh?: RunGh;
-  now?: () => number;
+/** A source of facts: the stored copy, or what a refresh has just read. */
+export interface GraphFacts {
+  baseHead: string | null;
+  /** A branch's tip on the delivery repository; null when it has none (or it was not read). */
+  tip(branch: string): string | null;
+  openPulls(repo: string): OpenPull[] | null;
+  shutOn(branch: string): ShutPull | null;
+  pull(repo: string, number: number): ImplPull | null;
+  compare(from: string, to: string): Comparison | undefined;
+  /** Which heads contain which, as the last walk read them (graph-lineage.ts). */
+  lineage(): Lineage;
 }
 
-/** The GitHub side of the graph, with its caches; one per service. */
-export class PrGraphReader {
-  private readonly lists = new Map<string, Timed<OpenPull[]>>();
-  private readonly tips = new Map<string, Timed<string>>();
-  private readonly defaults = new Map<string, Timed<string>>();
-  private readonly shut = new Map<string, Timed<ShutPull | null>>();
-  private readonly pulls = new Map<string, Timed<ImplPull>>();
-  private readonly comparisons = new Map<string, Comparison>();
-  private readonly run: RunGh;
-
-  constructor(private readonly deps: PrGraphDeps = {}) {
-    this.run = deps.gh ?? ghRunner();
-  }
-
-  private now(): number {
-    return this.deps.now?.() ?? Date.now();
-  }
-
-  /**
-   * Reads what the graph needs from GitHub and lays it out. With no repository (`""`) the
-   * graph is the base branch alone, unread, and `errors` says why.
-   */
-  async read(config: {
-    repo: string;
-    base: string;
-    origins: Array<{ name: string; repo: string }>;
-    proposals: GraphProposal[];
-    deployments?: DeploymentReading[];
-    errors?: string[];
-  }): Promise<ProposalGraphResponse> {
-    const deployments = config.deployments ?? [];
-    const errors: string[] = [...(config.errors ?? [])];
-    if (config.repo === "") {
-      return buildGraph({
-        repo: "",
-        base: { branch: config.base, head: null },
-        pulls: [],
-        origins: config.origins.map((o) => ({ ...o, pulls: null })),
-        compare: () => undefined,
-        proposals: config.proposals,
-        deployments,
-        errors,
-        checkedAt: new Date(this.now()).toISOString(),
-      });
-    }
-    const [pulls, head, ...originPulls] = await Promise.all([
-      this.openPulls(config.repo, errors),
-      this.branchTip(config.repo, config.base, errors),
-      ...config.origins.map((o) =>
-        o.repo.toLowerCase() === config.repo.toLowerCase()
-          ? Promise.resolve(null)
-          : this.openPulls(o.repo, errors),
-      ),
-    ]);
-    const list = pulls ?? [];
-    const origins = config.origins.map((o, i) => ({ ...o, pulls: originPulls[i] ?? null }));
-
-    // The branches the declared bases lead to that no open PR has: each round looks up the
-    // merged or closed PR on them and walks on from its base (rules 1 and 1a).
-    const shut = new Map<string, ShutPull | null>();
-    for (let round = 0; round < MAX_WALK_ROUNDS; round++) {
-      const missing = new Set<string>();
-      for (const p of parentsOf(list, shut, config.base).values()) {
-        if (p.missing !== null) missing.add(p.missing);
-      }
-      if (missing.size === 0) break;
-      await this.shutOnBranches(config.repo, [...missing], shut, errors);
-    }
-
-    // Each impl PR that is not an open PR here, as GitHub answers it — unless the open PRs
-    // themselves could not be read: then every impl PR would look off the graph, and none is asked.
-    const open = new Set(list.map((p) => `${config.repo.toLowerCase()}#${p.number}`));
-    const offGraph = config.proposals
-      .filter((p) => p.status !== "rejected" && p.implPr !== null)
-      .map((p) => p.implPr!)
-      .filter((url) => !open.has(pullKey(url) ?? ""));
-    const implPulls =
-      pulls === null ? new Map<string, ImplPull | null>() : await this.implPulls(offGraph, errors);
-    const implHeads = new Set([...implPulls.values()].flatMap((p) => (p === null ? [] : [p.head])));
-
-    // buildGraph asks for the comparisons it needs — each edge, an edge that fails alone against
-    // the grandparent's head (rule 2a), each origin's twin, each off-graph impl PR against the
-    // base branch, each deployment's commit against every layer's head unless it is one of them —
-    // and the graph is laid out again once they are read. Within one read a pair is asked once.
-    // An impl PR's head may not be in this repository at all, so those failures are summed up in
-    // one line instead of one per PR; a deployment's commit GitHub does not have fails every
-    // comparison the same way, so one line per deployment says so instead of one per layer.
-    const asked = new Set<string>();
-    const implFailures: string[] = [];
-    const deploymentCommits = new Set(
-      deployments.flatMap((s) => (s.commit === null ? [] : [s.commit.toLowerCase()])),
-    );
-    const deploymentFailures = new Map<string, string[]>();
-    let pending: Array<[string, string]> = [];
-    const layout = (): ProposalGraphResponse =>
-      buildGraph({
-        repo: config.repo,
-        base: { branch: config.base, head },
-        pulls: list,
-        origins,
-        shut,
-        compare: (from, to) => {
-          const key = `${from}...${to}`;
-          const found = this.comparisons.get(key);
-          if (found === undefined && !asked.has(key)) {
-            asked.add(key);
-            pending.push([from, to]);
-          }
-          return found;
-        },
-        proposals: config.proposals,
-        implPulls,
-        deployments,
-        errors,
-        checkedAt: new Date(this.now()).toISOString(),
-      });
-    let graph = layout();
-    while (pending.length > 0) {
-      const batch = pending.filter(([, to]) => !deploymentCommits.has(to));
-      const ofDeployment = pending.filter(([, to]) => deploymentCommits.has(to));
-      pending = [];
-      const ofImpl = batch.filter(([, to]) => implHeads.has(to));
-      await this.compareAll(
-        config.repo,
-        batch.filter(([, to]) => !implHeads.has(to)),
-        errors,
-      );
-      await this.compareAll(config.repo, ofImpl, implFailures);
-      for (const commit of new Set(ofDeployment.map(([, to]) => to))) {
-        const failed = deploymentFailures.get(commit) ?? [];
-        deploymentFailures.set(commit, failed);
-        await this.compareAll(
-          config.repo,
-          ofDeployment.filter(([, to]) => to === commit),
-          failed,
-        );
-      }
-      graph = layout();
-    }
-    const heads = [head, ...list.map((p) => p.head)].filter((h): h is string => h !== null);
-    for (const deployment of deployments) {
-      const commit = deployment.commit?.toLowerCase();
-      const failed = commit === undefined ? [] : (deploymentFailures.get(commit) ?? []);
-      if (heads.length > 0 && failed.length === heads.length) {
-        errors.push(
-          `deployment ${deployment.id}: commit ${commit} not compared with any layer: ${failed[0]!.split(" not compared: ")[1] ?? failed[0]}`,
-        );
-      }
-    }
-    if (implFailures.length > 0) {
-      errors.push(
-        `${config.repo}: ${implFailures.length} impl PR heads not compared with ${config.base}: ${implFailures[0]!.split(" not compared: ")[1] ?? implFailures[0]}`,
-      );
-    }
-    return graph;
-  }
-
-  /** The merged or closed PR on each branch, the latest merge before the latest close; null for none or a failed lookup. */
-  private async shutOnBranches(
-    repo: string,
-    branches: string[],
-    into: Map<string, ShutPull | null>,
-    errors: string[],
-  ): Promise<void> {
-    const owner = repo.split("/")[0]!;
-    await eachAtMost(CONCURRENCY, branches, async (branch) => {
-      const key = `${repo}@${branch}`;
-      const cached = this.shut.get(key);
-      if (cached !== undefined && this.now() - cached.at < STATUS_TTL_MS) {
-        into.set(branch, cached.value);
-        return;
-      }
-      try {
-        const found = await this.gh<
-          Array<{ number: number; merged: boolean; at: string; base: string }>
-        >([
-          "api",
-          `repos/${repo}/pulls?state=closed&per_page=100&head=${encodeURIComponent(`${owner}:${branch}`)}`,
-          "--jq",
-          SHUT_JQ,
-        ]);
-        const latest = (merged: boolean) =>
-          found.filter((p) => p.merged === merged).sort((a, b) => b.at.localeCompare(a.at))[0];
-        const pick = latest(true) ?? latest(false);
-        const value: ShutPull | null =
-          pick === undefined
-            ? null
-            : { number: pick.number, state: pick.merged ? "merged" : "closed", base: pick.base };
-        this.shut.set(key, { value, at: this.now() });
-        into.set(branch, value);
-      } catch (err) {
-        errors.push(`${repo}: closed PRs on ${branch} not read: ${reason(err)}`);
-        into.set(branch, null);
-      }
-    });
-  }
-
-  /** Each impl PR URL's PR, by pullKey; null when it is not a GitHub PR or could not be read. */
-  private async implPulls(urls: string[], errors: string[]): Promise<Map<string, ImplPull | null>> {
-    const out = new Map<string, ImplPull | null>();
-    const refs = new Map(
-      urls.flatMap((url) => {
-        const ref = parsePullUrl(url);
-        const key = pullKey(url);
-        return ref === null || key === null ? [] : [[key, ref] as const];
-      }),
-    );
-    const failures: string[] = [];
-    await eachAtMost(CONCURRENCY, [...refs], async ([key, ref]) => {
-      const cached = this.pulls.get(key);
-      if (cached !== undefined && this.now() - cached.at < STATUS_TTL_MS) {
-        out.set(key, cached.value);
-        return;
-      }
-      const repo = `${ref.owner}/${ref.repo}`;
-      if (!GITHUB_REPO.test(repo)) {
-        out.set(key, null);
-        return;
-      }
-      try {
-        const body = await this.gh<{
-          merged: boolean;
-          state: string;
-          branch: string;
-          head: string;
-          base: string;
-        }>(["api", `repos/${repo}/pulls/${ref.number}`, "--jq", PULL_JQ]);
-        const value: ImplPull = {
-          state: body.merged ? "merged" : body.state === "closed" ? "closed" : "open",
-          branch: body.branch,
-          head: body.head,
-          base: body.base,
-        };
-        this.pulls.set(key, { value, at: this.now() });
-        out.set(key, value);
-      } catch (err) {
-        failures.push(`${key}: ${reason(err)}`);
-        out.set(key, null);
-      }
-    });
-    if (failures.length > 0) {
-      errors.push(`${failures.length} impl PRs not read: ${failures.sort()[0]}`);
-    }
-    return out;
-  }
-
-  private async gh<T>(args: string[]): Promise<T> {
-    const stdout = await this.run(args, { timeoutMs: TIMEOUT_MS, maxBytes: MAX_OUTPUT_BYTES });
-    return JSON.parse(stdout) as T;
-  }
-
-  private async openPulls(repo: string, errors: string[]): Promise<OpenPull[] | null> {
-    const cached = this.lists.get(repo);
-    if (cached !== undefined && this.now() - cached.at < STATUS_TTL_MS) return cached.value;
-    if (!GITHUB_REPO.test(repo)) {
-      errors.push(`${repo}: not a GitHub repository name`);
-      return null;
-    }
-    const all: OpenPull[] = [];
-    try {
-      for (let page = 1; page <= MAX_PAGES; page++) {
-        const batch = await this.gh<OpenPull[]>([
-          "api",
-          `repos/${repo}/pulls?state=open&per_page=100&page=${page}`,
-          "--jq",
-          PULLS_JQ,
-        ]);
-        all.push(...batch.map((p) => ({ ...p, draft: p.draft === true })));
-        if (batch.length < 100) break;
-      }
-    } catch (err) {
-      errors.push(`${repo}: open PRs not read: ${reason(err)}`);
-      return null;
-    }
-    this.lists.set(repo, { value: all, at: this.now() });
-    return all;
-  }
-
-  /** The repository's default branch, kept like a branch tip; null when it cannot be read. */
-  async defaultBranch(repo: string, errors: string[]): Promise<string | null> {
-    const cached = this.defaults.get(repo);
-    if (cached !== undefined && this.now() - cached.at < STATUS_TTL_MS) return cached.value;
-    if (!GITHUB_REPO.test(repo)) return null;
-    try {
-      const branch = await this.gh<string>([
-        "api",
-        `repos/${repo}`,
-        "--jq",
-        ".default_branch | tojson",
-      ]);
-      this.defaults.set(repo, { value: branch, at: this.now() });
-      return branch;
-    } catch (err) {
-      errors.push(`${repo}: default branch not read: ${reason(err)}`);
-      return null;
-    }
-  }
-
-  private async branchTip(repo: string, branch: string, errors: string[]): Promise<string | null> {
-    const key = `${repo}@${branch}`;
-    const cached = this.tips.get(key);
-    if (cached !== undefined && this.now() - cached.at < STATUS_TTL_MS) return cached.value;
-    if (!GITHUB_REPO.test(repo)) return null;
-    try {
-      const sha = await this.gh<string>([
-        "api",
-        `repos/${repo}/branches/${branch.split("/").map(encodeURIComponent).join("/")}`,
-        "--jq",
-        ".commit.sha | tojson",
-      ]);
-      this.tips.set(key, { value: sha, at: this.now() });
-      return sha;
-    } catch (err) {
-      errors.push(`${repo}: branch ${branch} not read: ${reason(err)}`);
-      return null;
-    }
-  }
-
-  /** Compares every pair not compared yet, a few at a time. */
-  private async compareAll(
-    repo: string,
-    pairs: Array<[string, string]>,
-    errors: string[],
-  ): Promise<void> {
-    const todo = [
-      ...new Map(
-        pairs
-          .filter(([a, b]) => SHA.test(a) && SHA.test(b))
-          .map(([a, b]) => [`${a}...${b}`, [a, b] as const]),
-      ).values(),
-    ].filter(([a, b]) => !this.comparisons.has(`${a}...${b}`));
-    let next = 0;
-    const worker = async (): Promise<void> => {
-      while (next < todo.length) {
-        const [from, to] = todo[next++]!;
-        try {
-          const body = await this.gh<{
-            status?: string;
-            ahead_by?: number;
-            behind_by?: number;
-            merge_base?: string | null;
-            empty?: boolean;
-          }>(["api", `repos/${repo}/compare/${from}...${to}`, "--jq", COMPARE_JQ]);
-          const relation =
-            body.status === "identical"
-              ? "same"
-              : body.status === "ahead" || body.status === "behind" || body.status === "diverged"
-                ? body.status
-                : null;
-          if (relation === null) throw new Error(`unexpected status ${String(body.status)}`);
-          if (this.comparisons.size >= MAX_COMPARISONS) {
-            this.comparisons.delete(this.comparisons.keys().next().value!);
-          }
-          this.comparisons.set(`${from}...${to}`, {
-            relation,
-            ahead: body.ahead_by ?? 0,
-            behind: body.behind_by ?? 0,
-            mergeBase: body.merge_base ?? null,
-            empty: body.empty === true,
-          });
-        } catch (err) {
-          errors.push(
-            `${repo}: ${from.slice(0, 9)}...${to.slice(0, 9)} not compared: ${reason(err)}`,
-          );
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
-  }
-}
-
-/** Runs `task` over `items`, at most `limit` at a time. */
-async function eachAtMost<T>(
-  limit: number,
-  items: readonly T[],
-  task: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < items.length) await task(items[next++]!);
+/** The stored facts of a repository (GraphStore). */
+export function storedFacts(store: GraphStore, project: GraphProject): GraphFacts {
+  const refs = store.refs(project.repo);
+  return {
+    baseHead: refs.get(`refs/heads/${project.base}`) ?? null,
+    tip: (branch) => refs.get(`refs/heads/${branch}`) ?? null,
+    openPulls: (repo) => store.openPulls(repo),
+    shutOn: (branch) => store.shutOn(project.repo, branch),
+    pull: (repo, number) => store.pull(repo, number),
+    compare: (from, to) => store.comparisons(project.repo, [[from, to]]).get(`${from}...${to}`),
+    lineage: () => store.lineage(project.repo),
   };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
-function reason(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+/** The inputs of one layout, read from a fact source; the comparisons are asked during it. */
+export interface GraphInputs {
+  project: GraphProject;
+  baseHead: string | null;
+  pulls: OpenPull[];
+  /** The tips of the live impl branches with no PR, by branch (those the repository has). */
+  tips: Map<string, string>;
+  shut: Map<string, ShutPull | null>;
+  implPulls: Map<string, ImplPull | null>;
+  origins: Array<{ name: string; repo: string; pulls: OpenPull[] | null }>;
+  proposals: GraphProposal[];
+  /** The lineage of the heads laid out, among themselves (in the key: it decides parents). */
+  lineage: Map<string, Map<string, number>>;
+  inputKey: string;
+}
+
+/** The impl PRs of live proposals that are not open on the delivery repository. */
+export function offGraphImplPrs(
+  project: GraphProject,
+  pulls: readonly OpenPull[],
+  proposals: readonly GraphProposal[],
+): Array<{ key: string; repo: string; number: number }> {
+  const open = new Set(pulls.map((p) => `${project.repo.toLowerCase()}#${p.number}`));
+  const out = new Map<string, { key: string; repo: string; number: number }>();
+  for (const p of proposals) {
+    if (p.status === "rejected" || p.implPr === null) continue;
+    const key = pullKey(p.implPr);
+    if (key === null || open.has(key)) continue;
+    const [repo, n] = key.split("#") as [string, string];
+    out.set(key, { key, repo, number: Number(n) });
+  }
+  return [...out.values()];
+}
+
+/** The tips of the live impl branches with no PR, as a fact source has them. */
+export function tipsOf(
+  facts: Pick<GraphFacts, "tip">,
+  repo: string,
+  proposals: readonly GraphProposal[],
+): Map<string, string> {
+  const tips = new Map<string, string>();
+  for (const branch of implBranchesOn(repo, proposals)) {
+    const tip = facts.tip(branch);
+    if (tip !== null) tips.set(branch, tip);
+  }
+  return tips;
+}
+
+/** The branches the declared bases walk to that no node has, looked up round by round. */
+export function walkShut(
+  heads: ReadonlyArray<{ key: string; branch: string; base: string }>,
+  base: string,
+  lookup: (branch: string) => ShutPull | null,
+): Map<string, ShutPull | null> {
+  const shut = new Map<string, ShutPull | null>();
+  for (let round = 0; round < MAX_WALK_ROUNDS; round++) {
+    const missing = new Set<string>();
+    for (const p of parentsOf(heads, shut, base).values()) {
+      if (p.missing !== null) missing.add(p.missing);
+    }
+    if (missing.size === 0) break;
+    for (const branch of missing) shut.set(branch, lookup(branch));
+  }
+  return shut;
+}
+
+/** Everything a layout reads except the comparisons, with its key; `code` is the layout code's identity. */
+export function inputsOf(
+  facts: GraphFacts,
+  project: GraphProject,
+  proposals: GraphProposal[],
+  code: string,
+): GraphInputs {
+  const pulls = facts.openPulls(project.repo) ?? [];
+  const tips = tipsOf(facts, project.repo, proposals);
+  const { heads } = headsOf({
+    repo: project.repo,
+    baseBranch: project.base,
+    pulls,
+    proposals,
+    tips,
+  });
+  const shut = walkShut(heads, project.base, (b) => facts.shutOn(b));
+  const implPulls = new Map<string, ImplPull | null>();
+  for (const pr of offGraphImplPrs(project, pulls, proposals)) {
+    implPulls.set(pr.key, facts.pull(pr.repo, pr.number));
+  }
+  // The ancestry of the heads drawn, among those heads alone: a stored head no node has any more
+  // moves no parent, so it stays out of the key.
+  const drawn = new Set(heads.map((h) => h.head));
+  const walked = facts.lineage();
+  const lineage = new Map<string, Map<string, number>>();
+  for (const head of [...drawn].sort()) {
+    const ancestors = walked.get(head);
+    if (ancestors === undefined) continue;
+    lineage.set(
+      head,
+      new Map([...ancestors].filter(([a]) => drawn.has(a)).sort(([a], [b]) => a.localeCompare(b))),
+    );
+  }
+  const origins = project.origins.map((o) => ({
+    ...o,
+    pulls: o.repo.toLowerCase() === project.repo.toLowerCase() ? null : facts.openPulls(o.repo),
+  }));
+  const keyed = {
+    code,
+    repo: project.repo,
+    base: project.base,
+    baseHead: facts.baseHead,
+    pulls: [...pulls].sort((a, b) => a.number - b.number),
+    tips: [...tips].sort(([a], [b]) => a.localeCompare(b)),
+    shut: [...shut].sort(([a], [b]) => a.localeCompare(b)),
+    implPulls: [...implPulls].sort(([a], [b]) => a.localeCompare(b)),
+    origins,
+    proposals: [...proposals].sort((a, b) => a.number - b.number),
+    lineage: [...lineage].map(([head, ancestors]) => [head, [...ancestors]]),
+  };
+  const inputKey = createHash("sha256").update(JSON.stringify(keyed)).digest("hex");
+  return {
+    project,
+    baseHead: facts.baseHead,
+    pulls,
+    tips,
+    shut,
+    implPulls,
+    origins,
+    proposals,
+    lineage,
+    inputKey,
+  };
+}
+
+/** A layout with the comparisons it used and the ones it found missing. */
+export interface Layout {
+  graph: ProposalGraphResponse;
+  used: Array<[string, string]>;
+  missing: Array<[string, string]>;
+}
+
+/**
+ * Lays the inputs out (buildGraph), the deployments left out — they are placed on every read
+ * from the stored comparisons, never part of a snapshot.
+ */
+export function layout(
+  inputs: GraphInputs,
+  compare: (from: string, to: string) => Comparison | undefined,
+  checkedAt: string,
+): Layout {
+  const used: Array<[string, string]> = [];
+  const missing: Array<[string, string]> = [];
+  const seen = new Set<string>();
+  const graph = buildGraph({
+    repo: inputs.project.repo,
+    base: { branch: inputs.project.base, head: inputs.baseHead },
+    pulls: inputs.pulls,
+    origins: inputs.origins,
+    shut: inputs.shut,
+    tips: inputs.tips,
+    lineage: inputs.lineage,
+    compare: (from, to) => {
+      const found = compare(from, to);
+      const key = `${from}...${to}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        (found === undefined ? missing : used).push([from, to]);
+      }
+      return found;
+    },
+    proposals: inputs.proposals,
+    implPulls: inputs.implPulls,
+    deployments: [],
+    errors: [],
+    checkedAt,
+  });
+  return { graph, used, missing };
+}
+
+/** Whether a snapshot's layout lacked a comparison: a refresh can complete it. */
+export function incomplete(graph: ProposalGraphResponse): boolean {
+  return (
+    graph.nodes.some((n) => n.off?.reason === "unread") ||
+    graph.unplaced.some((u) => u.reason === "unread" && u.implPr !== null)
+  );
 }

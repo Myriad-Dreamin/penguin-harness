@@ -373,6 +373,7 @@ export const en: Strings = {
       "terminal.new": "New terminal",
       "terminal.close": "Close the focused terminal",
       "editor.save": "Save",
+      "graph.search": "Search the PR graph",
     },
     groups: {
       general: "General",
@@ -6350,12 +6351,24 @@ Scenarios:
         open: "Graph",
         openTitle: "Open the PR graph",
         openForProposal: "See this proposal in the PR graph",
-        info: "Each open PR on the delivery repository is a node at its head, stacked layer by layer on the base branch by commit ancestry, newest on top. A node shows which proposal it is the impl PR of, how many commits it adds to the layer below, and the PRs the other origins have on the same branch. The chain is read by the handbook's stack rules: it passes through merged and closed layers, keeps a layer that forked inside the one below as stale, and at a fork takes the branch that keeps going. Several stacks may start on the base branch side by side; each is drawn as its own line and its last layer is marked top. Where a fork would need the roadmap's order to decide, the graph marks it and names no top.",
+        info: "Each open PR on the delivery repository is a node at its head, stacked layer by layer on the base branch by commit ancestry, newest on top. A node shows which proposal it is the impl PR of, how many commits it adds to the layer below, and the PRs the other origins have on the same branch. The chain is read by the handbook's stack rules: it passes through merged and closed layers, keeps a layer that forked inside the one below as stale (and the bottom layer, once the base branch moves on), and at a fork takes the branch that keeps going. Several stacks may start on the base branch side by side; each is drawn as its own line and its last layer is marked top. Where a fork would need the roadmap's order to decide, the graph marks it and names no top.",
         refresh: "Refresh",
         loadFailed: "Could not read the PR graph",
         partial: "The graph is partial; these could not be read:",
         base: "base",
-        baseForked: "forks on the base",
+        baseBehind: (n: number): string => `behind ${n}`,
+        showOthers: "Show other PRs",
+        showOthersHint:
+          "Draw every open PR on the delivery repository, not only the organization's proposals and the PRs they are stacked on",
+        connector:
+          "Not a proposal of this organization: drawn because a proposal's PR is stacked on it",
+        search: {
+          label: "Search the PR graph",
+          placeholder: "#PR, proposal 194, branch or title",
+          count: (at: number, of: number): string => `${at}/${of}`,
+          none: "No match",
+          close: "Close the search",
+        },
         baseStacks: (n: number): string => `${n} stacks on the base`,
         top: "top",
         fork: "fork",
@@ -6376,6 +6389,10 @@ Scenarios:
         stale: "stale",
         staleTitle: (behind: number): string =>
           `The layer below moved on ${behind} commits after this one forked inside it: still on the chain, waiting for a restack.`,
+        staleBase: (base: string, behind: number): string =>
+          `behind ${base} by ${behind} — needs restack`,
+        staleBaseTitle: (base: string, behind: number): string =>
+          `${base} moved on ${behind} commit${behind === 1 ? "" : "s"} after this stack forked from its history: the whole stack is still on the chain, waiting for a restack onto ${base}'s tip.`,
         noProposal: "no proposal",
         proposalRef: (n: number): string => `proposal #${n}`,
         ahead: (n: number): string => `+${n}`,
@@ -6420,7 +6437,7 @@ Scenarios:
           `Deployment ${id} runs ${describe ?? commit}${ahead !== null && ahead > 0 ? `, ${ahead} commits past this layer` : ""}`,
         deploymentUnread: "commit not read",
         unplacedHint:
-          "The impl is registered but is not an open PR on the delivery repository; each line says why — merged, already in the base branch, closed, open on another repository, an open PR here carries its branch (the registration names the other one), or an impl branch no open PR is opened from yet.",
+          "The impl is registered but is on no node of the graph; each line says why — merged, already in the base branch, closed, open on another repository, an open PR here carries its branch (the registration names the other one), or not read (an impl branch whose head is not on the delivery repository, or a PR that could not be read).",
         unplacedReason: (reason: string, at: string, into: string, base: string): string =>
           ({
             counterpart: `${at} carries its branch`,
@@ -6429,7 +6446,6 @@ Scenarios:
             closed: "closed",
             "open-elsewhere": "open on another repository",
             unread: "not read",
-            "no-pr": "no PR on its head branch",
           })[reason] ?? reason,
         empty: "No open PRs on the delivery repository; the graph is the base alone.",
         focusMissing: (n: number): string =>
@@ -6438,6 +6454,8 @@ Scenarios:
         summary: (nodes: number, onChain: number): string =>
           `${nodes} PRs, ${onChain} on the chain`,
         openPr: "Open on GitHub",
+        branchNode: "branch",
+        branchNodeTitle: "An impl branch with no PR opened yet",
         deploy: {
           menu: "Deploy",
           menuTitle: "Deploy this PR's head",

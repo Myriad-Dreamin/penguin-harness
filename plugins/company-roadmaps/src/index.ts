@@ -32,27 +32,29 @@ import { ProposalCreator } from "./proposals.js";
 import { ROUTES_ID, roadmapRoutes } from "./routes.js";
 import { PAGE_ROUTES_ID, pageRoutes } from "./page.js";
 import { claimListeners, roomClaim, type ClaimListener } from "./claim.js";
+import {
+  retireListeners,
+  retireRegistered,
+  type OrgRef,
+  type RetireListener,
+} from "./org-retire.js";
 
-export {
-  Ledger,
-  LEDGER_FILE,
-  applyLine,
-  foldLedger,
-  ledgerPath,
-  orgDirOf,
-  parseLedger,
-} from "./ledger.js";
+export { RoadmapError, orgDirOf } from "./domain.js";
 export type {
   Clone,
   Delegation,
   DraftItem,
-  LedgerEntry,
-  LedgerLine,
   ProposalItem,
   Roadmap,
   RoadmapItem,
   RoadmapStatus,
-} from "./ledger.js";
+  RoadmapWrite,
+} from "./domain.js";
+export { COMPANY_DB, ROADMAP_SCHEMA, companyDbPath, openCompanyDb } from "./schema.js";
+export { SqliteRoadmapStore, briefSha } from "./store.js";
+export type { RoadmapStore } from "./ports.js";
+export { defaultRules, moderatorOf } from "./guards.js";
+export type { Caller, RoadmapRules } from "./guards.js";
 export {
   CHANNEL_ID,
   agentMembers,
@@ -69,11 +71,9 @@ export {
   PLUGIN_NAME,
   RECENT_CONTEXT,
   RELAY_FILE,
-  RoadmapError,
   RoadmapService,
   basesOf,
   headingsOf,
-  moderatorOf,
   parseItems,
   unknownCites,
 } from "./service.js";
@@ -93,6 +93,8 @@ export {
 } from "./page.js";
 export { claimListeners, discussingRoomOf, roomClaim } from "./claim.js";
 export { ProposalCreator };
+export { RetiredOrgs, retireListeners, retireRegistered } from "./org-retire.js";
+export type { OrgRef, RetireListener } from "./org-retire.js";
 export type { ChannelRef, ClaimListener } from "./claim.js";
 
 /** The channel claim's contribution id, as the manifest names it. */
@@ -219,13 +221,19 @@ export class CompanyRoadmapsPlugin {
     effect(() => {
       claimListeners.delete(listener);
     });
+    // An organization being deleted: its writes awaited, its connection closed (org-retire.ts).
+    const retire: RetireListener = (org) => service.retire(org.projectId, org.orgId);
+    retireListeners.add(retire);
+    effect(() => {
+      retireListeners.delete(retire);
+    });
   }
 }
 
 /**
  * The channel claim, as a node of its own: it contributes to the organization module, so it
  * must not require the organization gateway that module provides (a cycle) — it answers from
- * the ledger file under the data root and hands what it claims to the service (claim.ts).
+ * the organization's store under the data root and hands what it claims to the service (claim.ts).
  */
 @Component({
   contributes: {
@@ -249,6 +257,34 @@ export class RoadmapRoomClaim {
   }
 }
 
-const plugin: Plugin = { modules: [CompanyRoadmapsPlugin, RoadmapRoomClaim] };
+/** The retirement's contribution id, as the manifest names it. */
+export const RETIRE_ID = "company-roadmaps.retirement";
+
+/**
+ * The retirement, as a node of its own for the claim's reason: it contributes to the
+ * organization module, so it must not require the gateway that module provides. It hands the
+ * organization to the retirement the service registered (org-retire.ts).
+ */
+@Component({
+  contributes: {
+    "OrganizationModule.retirements": [
+      {
+        id: "company-roadmaps.retirement",
+        description: "Closes the organization's roadmaps database once its writes in flight land.",
+      },
+    ],
+  },
+})
+export class RoadmapsRetirement {
+  @Bind(RETIRE_ID) retire!: (org: OrgRef) => Promise<void>;
+
+  setup() {
+    this.retire = retireRegistered;
+  }
+}
+
+const plugin: Plugin = {
+  modules: [CompanyRoadmapsPlugin, RoadmapRoomClaim, RoadmapsRetirement],
+};
 
 export default plugin;
