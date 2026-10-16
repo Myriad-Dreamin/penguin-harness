@@ -825,19 +825,6 @@ export const en: Strings = {
     /** One line of a row's "?" that lists its values: a choice column's value, and what it does. */
     pluginTableRowValue: (column: string, value: string, does: string | undefined) =>
       does === undefined ? `${column}: ${value}` : `${column}: ${value}. ${does}`,
-    /** Asked when the Sandbox switch is turned on and the machine has no sandbox backend. */
-    sandboxBackendPrompt: {
-      title: "Install an Agent Sandbox backend",
-      body: (machine: string, pkgs: readonly string[]) =>
-        `${machine} has no Agent Sandbox backend for its operating system, so new sessions cannot be confined yet. Install ${pkgs.join(" and ")} on the whole server, shared by every Project?` +
-        (pkgs.length > 1 ? " Where both work, the one that confines more is used." : ""),
-      cost: "Installing reloads the server's plugins, which stops the agent runs in progress in every Project. The switch stays on either way.",
-      install: "Install",
-      installing: "Installing…",
-      later: "Not now",
-      dontAsk: "Don't ask again for this machine",
-      noProject: "Open a Project first: the backend is installed into the current Project.",
-    },
     theme: "Theme",
     background: {
       title: "Background",

@@ -938,19 +938,6 @@ export const zh = {
     /** One line of a row's "?" that lists its values: a choice column's value, and what it does. */
     pluginTableRowValue: (column: string, value: string, does: string | undefined) =>
       does === undefined ? `${column}：${value}` : `${column}：${value}。${does}`,
-    /** Asked when the Sandbox switch is turned on and the machine has no sandbox backend. */
-    sandboxBackendPrompt: {
-      title: "安装 Agent 运行沙箱后端",
-      body: (machine: string, pkgs: readonly string[]) =>
-        `${machine} 没有适用于其操作系统的 Agent 运行沙箱后端，新会话暂时无法被封禁。是否把 ${pkgs.join(" 和 ")} 安装到整个服务端、供所有 Project 共用？` +
-        (pkgs.length > 1 ? "两者都可用时，使用封禁范围更大的那个。" : ""),
-      cost: "安装会重新装载服务器插件，所有 Project 中正在进行的 Agent 运行都会被中止。无论是否安装，开关都保持打开。",
-      install: "安装",
-      installing: "正在安装…",
-      later: "暂不",
-      dontAsk: "此机器不再询问",
-      noProject: "请先打开一个项目：后端会安装到当前项目。",
-    },
     theme: "主题",
     background: {
       title: "背景图片",

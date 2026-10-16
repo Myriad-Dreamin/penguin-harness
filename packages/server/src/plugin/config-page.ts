@@ -1,20 +1,14 @@
 /**
  * The Plugins page's view of the settings groups: the stored entries (`PluginConfigEntries`,
  * config.ts) with what each group's status contributor reports live — notices, actions, enum
- * options this machine cannot honour, values derived for a document saved before a field
- * existed, and whether a backend the group needs is installed. A separate node from the store
- * for the ordering reason config.ts gives: a status contributor (the sandbox's, which reads the
- * sandbox service) is created before this page, and a sandbox backend reading its own group is
- * created after the provider.
+ * options this machine cannot honour, and values derived for a document saved before a field
+ * existed. A separate node from the store for the ordering reason config.ts gives: a status
+ * contributor (the sandbox's, which reads the sandbox service) is created before this page, and
+ * a sandbox backend reading its own group is created after the provider.
  */
 import { Interface, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
 import type { ClassCtx, Slot } from "@prismshadow/penguin-core/kernel";
-import type {
-  PluginConfigBackend,
-  PluginConfigEntry,
-  PluginConfigNotice,
-  PluginConfiguration,
-} from "../api/types.js";
+import type { PluginConfigEntry, PluginConfigNotice, PluginConfiguration } from "../api/types.js";
 import {
   PluginConfig,
   PluginConfigEntries,
@@ -70,8 +64,6 @@ export interface SettingsGroupStatus {
     stored: Record<string, unknown>,
     configuration: PluginConfiguration,
   ): Record<string, unknown>;
-  /** For a group a backend plugin enforces: whether one for this OS is installed, and the default. */
-  backend?(): PluginConfigBackend;
   /**
    * Completes a save of this group before it is validated and stored: what every save must
    * write besides the fields the page changed. `current` is the group's values as the page
@@ -154,7 +146,6 @@ export class PluginConfigPage {
       const notices = group?.notices(stored, entry.configuration) ?? [];
       const actions = group?.actions?.() ?? [];
       const unavailable = group?.unavailable?.() ?? [];
-      const backend = group?.backend?.();
       return {
         ...entry,
         ...(group?.derive !== undefined
@@ -163,7 +154,6 @@ export class PluginConfigPage {
         ...(notices.length > 0 ? { notices } : {}),
         ...(actions.length > 0 ? { actions } : {}),
         ...(unavailable.length > 0 ? { unavailable } : {}),
-        ...(backend !== undefined ? { backend } : {}),
       };
     };
     /** A group's values as the page reads them: stored onto defaults, then derived. */

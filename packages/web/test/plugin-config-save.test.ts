@@ -5,8 +5,8 @@
  * behind the fetch fake.
  *
  * - A boolean field writes the moment it is flipped, alone, to its own entry; the text typed
- *   beside it stays typed and unsaved.
- * - Turning the card's switch on is reported once the write has landed (the backend offer).
+ *   beside it stays typed and unsaved. A switch is a setting like any other — storing it is the
+ *   whole of what it does.
  * - A refused switch write puts the switch back and says why in a toast.
  * - Save and Reset are held while the card is as stored; a cleared number box is a change, sent
  *   as no value.
@@ -81,7 +81,7 @@ const puts = (fetch: FakeFetch) =>
 /** The page around one card: its entries and busy flag, and a way to hand it a reload. */
 const page: { reload: (entries: PluginConfigEntry[]) => void } = { reload: () => {} };
 
-function Page({ onSwitchedOn = () => {} }: { onSwitchedOn?: (e: PluginConfigEntry) => void }) {
+function Page() {
   const [entries, setEntries] = useState<PluginConfigEntry[]>([ENTRY]);
   const [busy, setBusy] = useState<string | null>(null);
   page.reload = setEntries;
@@ -95,7 +95,6 @@ function Page({ onSwitchedOn = () => {} }: { onSwitchedOn?: (e: PluginConfigEntr
       setEntries((prev) => prev.map((e) => (e.name === stored.name ? stored : e))),
     onStoredAll: setEntries,
     onAction: () => {},
-    onSwitchedOn,
   });
 }
 
@@ -123,15 +122,6 @@ describe("a plugin settings card", () => {
     expect(checked(TEMP)).toBe("true");
     expect(field("Note").value).toBe("typed");
     expect(button("Save").disabled).toBe(false);
-  });
-
-  it("reports the card's switch turned on once the write has landed", async () => {
-    pluginServer();
-    const onSwitchedOn = vi.fn();
-    await mount(h(Page, { onSwitchedOn }));
-    await click(switchNamed("Enable"));
-    expect(onSwitchedOn).toHaveBeenCalledTimes(1);
-    expect(onSwitchedOn.mock.calls[0]![0].values.enabled).toBe(true);
   });
 
   it("puts a refused switch back and says why", async () => {

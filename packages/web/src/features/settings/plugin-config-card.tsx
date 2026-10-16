@@ -6,17 +6,17 @@
  *   own value alone, to their own entry, the moment they move; the switch shows the new position
  *   at once and settles on the server's answer, and a refused write puts it back with a toast.
  *   They are never part of the card's draft, so flipping one neither dirties the card nor
- *   touches what is typed beside it. Turning the `switch` on offers the backend install once the
- *   write has landed.
+ *   touches what is typed beside it. A switch is a setting like any other: storing it is the
+ *   whole of what it does, and installing a plugin is the Plugins page's business.
  * - **Everything typed waits for Save** — text, secrets (with the clear box, an instruction to
  *   the next Save), numbers, choices, lists and tables, a table's boolean cells included (its
  *   added rows exist only in the draft). Save is live only while the card differs from what is
  *   stored and every number parses (a box that does not is marked inline); it sends each
  *   changed entry in its own PUT, only the fields that changed. Reset puts the stored values
  *   back. A rejected field renders under that field; a save that fails keeps the draft.
- * - **A reload keeps the typing.** When the page re-reads the entries (a group action, a
- *   finished install), a clean card follows the new values and a dirty one keeps its draft
- *   against the new baseline (`useFormDraft`).
+ * - **A reload keeps the typing.** When the page re-reads the entries (a group action), a clean
+ *   card follows the new values and a dirty one keeps its draft against the new baseline
+ *   (`useFormDraft`).
  *
  * The draft registers under the Settings dialog's scope, so switching pages, closing the dialog
  * or picking another machine with a dirty card asks first; while the card's Save is in flight
@@ -147,8 +147,6 @@ export interface PluginCardProps {
   onStoredAll: (entries: PluginConfigEntry[]) => void;
   /** A group action's button: the page asks before it runs. */
   onAction: (entry: PluginConfigEntry, action: string) => void;
-  /** An entry's `switch` was turned on (and stored). */
-  onSwitchedOn: (entry: PluginConfigEntry) => void;
 }
 
 export function PluginCard({
@@ -160,7 +158,6 @@ export function PluginCard({
   onStored,
   onStoredAll,
   onAction,
-  onSwitchedOn,
 }: PluginCardProps) {
   const card = members[0]!;
   const form = useFormDraft(cardDraftOf(members), {
@@ -224,7 +221,6 @@ export function PluginCard({
       if (stored !== undefined) onStored(stored);
       else onStoredAll(res.plugins);
       dispatchPluginConfigSaved({ group: entry.name, card: card.name });
-      if (next && name === entry.configuration.switch) onSwitchedOn(stored ?? entry);
     } catch (e) {
       toastError(apiErrorText(e));
     } finally {

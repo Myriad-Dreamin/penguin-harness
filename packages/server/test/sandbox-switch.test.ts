@@ -1,8 +1,7 @@
 /**
  * The Sandbox card's switch (whether new Sessions start confined) and its default preset:
  * settings saved before either existed keep their start, a new Session starts from the default
- * preset while the switch is on and unconfined while it is off, and the card reports whether
- * this OS has a sandbox backend.
+ * preset while the switch is on and unconfined while it is off.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -15,15 +14,6 @@ import { PluginHost } from "../src/plugin/host.js";
 import type { SandboxService } from "../src/sandbox/service.js";
 import { apiClient, createTestApp, loginAdmin, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
-
-/** What the server defaults to on this OS; Linux offers sandbox-dsh (Landlock) beside bubblewrap. */
-const recommended = (
-  {
-    linux: ["@penguinharness/sandbox-bwrap", "@penguinharness/sandbox-dsh"],
-    darwin: ["@penguinharness/sandbox-seatbelt"],
-    win32: ["@penguinharness/sandbox-wsl"],
-  } as Partial<Record<NodeJS.Platform, string[]>>
-)[process.platform];
 
 /** A backend plugin whose providers resolve as given: a provider, null (declined), or a failure. */
 function backendPlugin(bind: Record<string, unknown>): PluginHost {
@@ -292,9 +282,8 @@ describe("the sandbox switch", () => {
     expect(((await picked.json()) as Created).session).toMatchObject(pick);
   });
 
-  it("reports no backend for this OS, the OS's default packages, and names its switch", async () => {
+  it("reports no backend for this OS, and names its switch", async () => {
     const entry = await (await boot()).card();
-    expect(entry.backend).toEqual({ installed: false, ...(recommended ? { recommended } : {}) });
     expect(
       entry.notices?.find((n) => n.text.startsWith("This deployment has no usable")),
     ).toMatchObject({ tone: "attention" });
@@ -308,22 +297,5 @@ describe("the sandbox switch", () => {
     for (const column of presets.columns!.filter((c) => c.type === "enum"))
       for (const option of column.options!)
         expect(option, `${column.name}.${option.value}`).toMatchObject(described);
-  });
-
-  it.each([
-    ["declined only", { "elsewhere.provider": Promise.resolve(null) }, false],
-    [
-      "installed and failing",
-      {
-        "elsewhere.provider": Promise.resolve(null),
-        // A loader, so the failure is not an unhandled rejection before the service asks.
-        "broken.provider": () => Promise.reject(new Error("'bwrap' is missing")),
-      },
-      true,
-    ],
-    ["in use", { "fake.provider": PROVIDER }, true],
-  ])("counts a backend %s as installed: %s", async (_, bind, installed) => {
-    const { card } = await boot({ plugins: backendPlugin(bind) });
-    expect((await card()).backend?.installed).toBe(installed);
   });
 });

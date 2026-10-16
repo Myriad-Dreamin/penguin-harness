@@ -6622,25 +6622,6 @@ export interface PluginConfigEntry {
   actions?: PluginConfigActionDecl[];
   /** Enum options this machine cannot honour now: drawn greyed out with the reason; a save choosing one is refused. */
   unavailable?: PluginConfigUnavailableDecl[];
-  /**
-   * For a group whose settings a backend plugin enforces (the sandbox): whether one that
-   * applies to this machine's OS is installed, and which packages this OS defaults to. The card
-   * offers to install `recommended` when the group's switch is turned on and none is installed.
-   * Asked per read, like the notices; the client never guesses the OS.
-   */
-  backend?: PluginConfigBackend;
-}
-
-/** Whether a backend that applies to this machine is installed, and this OS's default ones. */
-export interface PluginConfigBackend {
-  /** A backend for this OS is installed: loaded, or installed and failing its check. */
-  installed: boolean;
-  /**
-   * The npm packages this OS defaults to, installed together; absent on an OS with no default
-   * backend. Linux names two: bubblewrap, and sandbox-dsh, which confines files through
-   * Landlock where bubblewrap is refused.
-   */
-  recommended?: string[];
 }
 
 /** One enum option (or boolean position) a settings group cannot honour on this machine, and why. */

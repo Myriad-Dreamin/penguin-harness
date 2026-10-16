@@ -146,8 +146,6 @@ describe("the sandbox card on the Linux floor", () => {
         detailsZh: `penguin-bwrap 已安装但未启用：${REFUSED}\n保存此卡片会重新检查这些后端。`,
       }),
     ]);
-    // A backend for this OS is installed: nothing is offered.
-    expect(entry.backend?.installed).toBe(true);
     const defaults = (await (
       await admin.get("/api/projects/default_project/chat-defaults")
     ).json()) as { sandbox: { backendsInUse?: string[] } };

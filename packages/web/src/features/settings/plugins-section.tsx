@@ -9,8 +9,9 @@
  * a table (a row per preset, say; plugin-config-table.tsx) per field, so the page knows nothing
  * about any particular entry. Fields a group marks `advanced` sit in a fold under the others,
  * collapsed by default (advanced-fold.tsx). A group with a `switch` draws that field alone while
- * it is off, and one that reports a `backend` it lacks offers to install it when the switch is
- * turned on (sandbox-backend-prompt.tsx). An entry naming a
+ * it is off. Installing a plugin is never this page's to ask or do — that is the Plugins
+ * page's card, the one flow every plugin shares — so a switch here just stores, and the card's
+ * notices say what the machine still lacks and where to install it. An entry naming a
  * `parent` is drawn inside that card (a sandbox backend's own options inside the sandbox's) and
  * saved with it; notices the entry reports sit under its title. How a card commits — switches
  * when flipped, everything typed on the card's own Save — is plugin-config-card.tsx. A secret
@@ -36,13 +37,6 @@ import { useLocale } from "../../state/locale";
 import { localizedText } from "../chat";
 import { apiErrorText } from "../../lib/api-error";
 import { useSessions } from "../../state/sessions";
-import { useProject } from "../../state/project";
-import {
-  THIS_SERVER_KEY,
-  backendToOffer,
-  dismissBackendPrompt,
-  installInOrder,
-} from "../../lib/sandbox-backend-prompt";
 import { SETTINGS_SCOPE } from "../../lib/unsaved/scopes";
 import { MachinePicker } from "../machines";
 import {
@@ -50,8 +44,6 @@ import {
   writePluginsIncompatibleOnly,
 } from "../../lib/plugins-incompatible-only";
 import { PluginCard } from "./plugin-config-card";
-import { withLiveParts } from "./plugin-config-live";
-import { SandboxBackendPrompt } from "./sandbox-backend-prompt";
 import {
   ConfirmModal,
   NoticeStrip,
@@ -122,6 +114,13 @@ export function ConfigMachinePicker({
 /** The server's part of the page: the machine picker and the cards, under a rule. */
 const SERVER_PART = "space-y-4 border-t border-line-muted pt-4";
 
+/**
+ * The key for the server this page is served from, which has no machine id: the picker's value
+ * for it (a machine id is never this short). The settings page only names machines to pick whose
+ * configuration to show — installing plugins is the Plugins page's card, never this page's.
+ */
+export const THIS_SERVER_KEY = "*";
+
 export function PluginsSection({ focus }: { focus?: string } = {}) {
   const { locale } = useLocale();
   const localized = (en: string | undefined, zhText: string | undefined) =>
@@ -144,10 +143,6 @@ export function PluginsSection({ focus }: { focus?: string } = {}) {
   /** Why the picked machine's settings could not be read, when they could not. */
   const [loadError, setLoadError] = useState<string | null>(null);
   const nameOf = (id: string) => machineLabels.get(id) ?? id;
-  const projectId = useProject().currentProject?.projectId ?? null;
-  /** The backend package the install prompt offers, while it is open. */
-  const [offered, setOffered] = useState<string[] | null>(null);
-  const [installing, setInstalling] = useState(false);
   const incompatibleOnly = usePluginsIncompatibleOnly();
 
   /** The machine's answer becomes what every card shows; a card with unsaved edits keeps them. */
@@ -256,58 +251,6 @@ export function PluginsSection({ focus }: { focus?: string } = {}) {
     }
   };
 
-  /**
-   * The switch was turned on (and stored): if the machine reports no sandbox backend for its
-   * OS, ask whether to install its default ones. The switch stays on whatever the answer.
-   */
-  const offerBackend = (entry: PluginConfigEntry) => {
-    const pkgs = backendToOffer(entry, machine ?? THIS_SERVER_KEY);
-    if (pkgs !== null) setOffered(pkgs);
-  };
-  const closePrompt = (dontAskAgain: boolean) => {
-    if (dontAskAgain) dismissBackendPrompt(machine ?? THIS_SERVER_KEY);
-    setOffered(null);
-  };
-
-  /**
-   * Installs the offered backends the way the Plugins page does, one after another: into this
-   * Project's table for the machine on screen only — this server's own machine id when the card
-   * shows this server, so no other machine is asked to run it. A request that fails stops the
-   * run and is reported; either way the prompt closes and the card's live parts (notices, the
-   * backend report) are read again, so what did install shows; drafts being edited are kept.
-   */
-  const installOffered = async (dontAskAgain: boolean) => {
-    if (offered === null || installing) return;
-    if (projectId === null) {
-      toastError(S.settings.sandboxBackendPrompt.noProject);
-      return;
-    }
-    setInstalling(true);
-    let target = machine;
-    await installInOrder(
-      offered,
-      async (pkg) => {
-        const to = (target ??= (await api.getInstalledPlugins(projectId)).machineId);
-        const res = await api.installPlugin(projectId, pkg, to);
-        return res.plugins.find((p) => p.specifier === pkg)?.error;
-      },
-      {
-        installed: (pkg) => toastSuccess(S.plugins.deploymentInstalledToast(pkg)),
-        failed: (pkg, error) => toastError(S.plugins.deploymentFailedToast(pkg, error)),
-        threw: (e) => toastError(apiErrorText(e)),
-      },
-    );
-    closePrompt(dontAskAgain);
-    try {
-      const config = await api.adminGetPluginConfig(machine);
-      setEntries((prev) => withLiveParts(prev ?? [], config.plugins));
-    } catch (e) {
-      toastError(apiErrorText(e));
-    } finally {
-      setInstalling(false);
-    }
-  };
-
   // Only when there is another machine to pick: a single server has nothing to switch to.
   const picker =
     machineIds.length > 0 ? (
@@ -367,7 +310,6 @@ export function PluginsSection({ focus }: { focus?: string } = {}) {
               onStored={adoptOne}
               onStoredAll={adopt}
               onAction={askAction}
-              onSwitchedOn={offerBackend}
             />
           ))}
         </div>
@@ -393,15 +335,6 @@ export function PluginsSection({ focus }: { focus?: string } = {}) {
             : ""}
         </p>
       </ConfirmModal>
-      <SandboxBackendPrompt
-        pkgs={offered}
-        machineName={machine === null ? S.plugins.thisServer : nameOf(machine)}
-        busy={installing}
-        onInstall={(dontAskAgain) => void installOffered(dontAskAgain)}
-        onLater={(dontAskAgain) => {
-          if (!installing) closePrompt(dontAskAgain);
-        }}
-      />
     </SettingsSection>
   );
 }
