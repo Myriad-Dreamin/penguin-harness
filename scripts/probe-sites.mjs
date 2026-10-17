@@ -20,6 +20,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { git } from "../packages/core/src/internal/git-facts.ts";
 import { checkoutFacts, originUrl } from "./build-git-stamp.mjs";
 
@@ -27,7 +28,7 @@ import { checkoutFacts, originUrl } from "./build-git-stamp.mjs";
 export const PROBE_SITES_DEFINE = "__PENGUIN_PROBE_SITES__";
 
 /** Repository root (this file sits in `scripts/`). */
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Where a link goes when the checkout's origin is not a GitHub repository. */
 const CANONICAL_REPO = "https://github.com/Prism-Shadow/penguin-harness";
