@@ -33,13 +33,6 @@ import { buildInfo } from "@prismshadow/penguin-core";
 import { registerAuthCommand } from "./commands/auth.js";
 import { registerExecCommand, shellQuote } from "./commands/exec.js";
 import { registerPluginCommand } from "./commands/plugin.js";
-import { registerProjectCommand } from "./commands/project.js";
-import { registerCostCommand } from "./commands/cost.js";
-import { registerTelemetryCommand } from "./commands/telemetry.js";
-import { registerScheduleCommand } from "./commands/schedule.js";
-import { registerOrgCommand } from "./commands/org.js";
-import { registerBrowserCommand } from "./commands/browser.js";
-import { registerServeCommands } from "./commands/serve.js";
 import { registerUpdateCommand } from "./commands/update.js";
 import { registerVersionCommand } from "./commands/version.js";
 import { reportCommanderError } from "./usage-error.js";
@@ -142,19 +135,6 @@ export async function cli(argv: string[]): Promise<number> {
 
   registerExecCommand(program, t, { language });
   registerPluginCommand(program, t, { language });
-  registerConfigCommand(program, t);
-  registerRunCommand(program, t);
-  registerChatCommand(program, t);
-  registerSessionCommand(program, t);
-  registerAgentCommand(program, t);
-  registerProjectCommand(program, t);
-  registerPluginCommand(program, t);
-  registerCostCommand(program, t);
-  registerTelemetryCommand(program, t);
-  registerScheduleCommand(program, t);
-  registerOrgCommand(program, t);
-  registerBrowserCommand(program, t);
-  registerServeCommands(program, t);
   registerUpdateCommand(program, t);
   registerVersionCommand(program, t);
 

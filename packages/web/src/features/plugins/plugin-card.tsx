@@ -300,7 +300,7 @@ export function PluginCard(props: PluginCardProps) {
         const cannotInstall =
           install && !mod.shipped && mod.entry !== undefined && mod.entry.integrity === undefined
             ? S.plugins.cannotInstallHere
-          install && mod.otherPlatform !== undefined
+          : install && mod.otherPlatform !== undefined
             ? S.plugins.otherPlatformHint(mod.otherPlatform.map(platformName).join(" / "))
             : null;
         const label = install
