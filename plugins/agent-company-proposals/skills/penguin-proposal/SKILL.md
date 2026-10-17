@@ -1,6 +1,7 @@
 ---
 name: penguin-proposal
 description: Work with PenguinHarness company proposals and roadmaps, by role — the author who writes and revises a short, abstract proposal a person comments on passage by passage; the implementer who builds it on a proposal branch at the same time and reports back; the tester who runs the dev branch in batches; and the roadmap member and moderator who turn a room's discussion into proposal items. Ready-to-run penguin org commands, the traps, and what each refusal means.
+version: 2026.10.17.1
 ---
 
 # Penguin Proposal
