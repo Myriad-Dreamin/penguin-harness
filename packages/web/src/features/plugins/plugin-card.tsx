@@ -319,7 +319,6 @@ export function PluginCard(props: PluginCardProps) {
             data-tooltip-extra={
               (!install && mod.removeBlocked !== undefined) || cannotInstall !== null
             }
-            data-tooltip-extra={!install && mod.removeBlocked !== undefined}
             aria-describedby={
               !install && mod.shared === true ? `${sharedId}-tag ${sharedId}-hint` : undefined
             }

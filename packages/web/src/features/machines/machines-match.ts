@@ -15,6 +15,13 @@ export interface MachineLike {
   alias: string;
 }
 
+/**
+ * How many rows the picker shows at once. The search box reaches everything past this, and
+ * a counter names how many the current view leaves out — a silent truncation would read as
+ * "that host is not in my config".
+ */
+export const MAX_VISIBLE_MACHINES = 6;
+
 /** One machine that survived the query, with the character positions the query hit. */
 export interface MachineMatch<T extends MachineLike = MachineLike> {
   machine: T;
