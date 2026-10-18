@@ -37,7 +37,7 @@ import type {
   SandboxProvider,
   SandboxProviderSource,
 } from "@prismshadow/penguin-core/plugin";
-import { readHost, readState } from "./host.js";
+import { readHost, readState, runWsl } from "./host.js";
 import {
   BASE_TITLES,
   Tasks,
@@ -46,6 +46,7 @@ import {
   initialize,
   installWsl,
   launchJob,
+  provisionScript,
   remove,
   wslSettingsOf,
 } from "./tasks.js";
@@ -112,12 +113,69 @@ export async function loadWslProvider(
   return createWslProvider(settings, internals);
 }
 
+/** The distro's nodejs: what runs the harness's own helper and hook scripts inside it. */
+const DISTRO_NODE = "/usr/bin/node";
+
+/**
+ * The distro's nodejs, ensured before the provider serves: the harness's own helper and hook
+ * scripts are spawned as this host's executable, which has no spelling inside the distro —
+ * there they run on its nodejs, which a distro provisioned by an older package list may not
+ * have. Already present, one probe says so; missing, this is the card's own provisioning
+ * scoped to nodejs, which is idempotent on a distro that already has it.
+ */
+async function ensureDistroNode(settings: () => WslSettings): Promise<boolean> {
+  const state = readState();
+  if (state === null) return false;
+  const probe = await runWsl(
+    [
+      "-d",
+      state.distro,
+      "-u",
+      "root",
+      "--cd",
+      "/",
+      "--exec",
+      "/bin/sh",
+      "-c",
+      `test -x ${DISTRO_NODE}`,
+    ],
+    { timeoutMs: 60_000 },
+  );
+  if (probe.code === 0) return true;
+  const provisioned = await runWsl(
+    ["-d", state.distro, "-u", "root", "--cd", "/", "--exec", "/bin/sh", "-s"],
+    {
+      timeoutMs: 20 * 60_000,
+      input: provisionScript(
+        state.base === "alpine" ? "alpine" : "ubuntu",
+        settings().mirror,
+        ["nodejs"],
+      ),
+    },
+  );
+  return provisioned.code === 0 && provisioned.stdout.includes("PENGUIN-PROVISIONED");
+}
+
 export function createWslProvider(
   settings: () => WslSettings,
   internals: WslInternals = {},
 ): SandboxProvider {
   const node = internals.node ?? process.execPath;
   const launcher = internals.launcher ?? launcherPath();
+  // One ensure per provider; one that failed is armed again by the next confine that needs it.
+  let nodeEnsuring: Promise<void> | null = null;
+  let nodeReady = false;
+  const ensureNode = (): void => {
+    if (nodeEnsuring === null) {
+      nodeEnsuring = ensureDistroNode(settings)
+        .catch(() => false)
+        .then((ready) => {
+          nodeReady = ready;
+          if (!ready) nodeEnsuring = null;
+        });
+    }
+  };
+  ensureNode();
   return {
     dimensions: ["fs-write", "network", "mask-paths", "closed-temp"],
     confine(argv, policy: SandboxPolicy): ConfinedArgv {
@@ -125,7 +183,20 @@ export function createWslProvider(
       if (state === null) {
         throw new Error("penguin-wsl cannot confine: the sandbox distro is not initialized");
       }
-      const job = launchJob(argv, policy, settings(), state);
+      let job = launchJob(argv, policy, settings(), state);
+      if (argv[0] === node) {
+        if (!nodeReady) {
+          ensureNode();
+          throw new Error(
+            "penguin-wsl cannot confine the harness's own helper yet: the sandbox distro has no "
+              + "nodejs for it to run on. It is being installed — run the command again, or "
+              + "initialize the distro again from the Sandbox card.",
+          );
+        }
+        // The helper and the hook scripts name this host's own executable, which does not exist
+        // inside the distro; the arguments they carry are for the distro's node as they are.
+        job = { ...job, command: [DISTRO_NODE, ...argv.slice(1)] };
+      }
       return {
         argv: [node, launcher, Buffer.from(JSON.stringify(job), "utf8").toString("base64")],
         // In the desktop app `node` is the app's own binary, which runs a script only with this.

@@ -337,28 +337,6 @@ export function PluginsPage() {
         if (!cancelled) setIndex([]);
       },
     );
-    let recheck: ReturnType<typeof setTimeout> | undefined;
-    const read = () =>
-      api.getPluginIndex().then(
-        (res) => {
-          if (cancelled) return;
-          setIndex(res.plugins);
-          setIndexFailures(res.failures ?? []);
-          const pending = res.pending?.length ?? 0;
-          setIndexPending(pending);
-          if (pending > 0) recheck = setTimeout(() => void read(), INDEX_RECHECK_MS);
-        },
-        () => {
-          if (cancelled) return;
-          // A re-read that fails keeps what the last one listed.
-          // An empty answer is an answer; a failed request is not, and the rows with no entry
-          // must not read as though the registry had said "not listed".
-          setIndex((prev) => prev ?? []);
-          setIndexFailures([]);
-          setIndexPending(0);
-        },
-      );
-    void read();
     return () => {
       cancelled = true;
     };
@@ -403,7 +381,7 @@ export function PluginsPage() {
         ? await api.installPlugin(target.projectId, specifier, target.machineId)
         : await api.uninstallPlugin(target.projectId, specifier, target.machineId);
       // A later read owns the snapshot; an old write cannot invalidate it.
-      if (!isCurrentVisit() || request !== deploymentRequest.current) return;
+      if (!isCurrentVisit() || request !== deploymentRequest.current) return null;
       setDeployment(next);
       const row = next.plugins.find((p) => p.specifier === specifier);
       if (install && row?.error !== undefined) {
@@ -813,14 +791,14 @@ export function PluginsPage() {
       moduleQuickStart={
         row.module === undefined
           ? undefined
-          : row.module.state === "active" && viewIncludesHere
+          : row.module.state === "active" && viewingHere
             ? {
                 onStart: () =>
                   openQuickStart(
                     moduleQuickStart(row.module!.specifier, modulesOf(row.module!.specifier)),
                   ),
               }
-            : row.module.state === "none" && isAdmin && viewIncludesHere
+            : row.module.state === "none" && isAdmin && viewingHere
               ? {
                   onStart: () => {
                     if (projectId !== null && viewMachine !== undefined) {

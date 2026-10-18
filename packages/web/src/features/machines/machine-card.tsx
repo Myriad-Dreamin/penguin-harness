@@ -48,6 +48,7 @@ import {
   readingTone,
   stepLabel,
   useWaitsBecause,
+  wantsUse,
 } from "./machines-view";
 import type { MachineReading } from "./machines-view";
 
