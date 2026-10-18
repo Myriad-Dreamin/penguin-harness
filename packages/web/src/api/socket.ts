@@ -658,7 +658,7 @@ export class ApiSocket {
           stream.handlers.onServerEvent(data as ServerEvent, eventId);
         } else if (name === "message") {
           stream.handlers.onOmniMessage(data as OmniMessage, eventId);
-        } else if (name === "heartbeat") {
+        } else if (name === "heartbeat" || name === "ping") {
           // Liveness only, and it has already been banked above: the beat is never an
           // application event, so it reaches no handler.
         } else if (stream.handlers.onEvent !== undefined) {

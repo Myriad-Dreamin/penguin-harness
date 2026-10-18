@@ -53,9 +53,8 @@ if (!container) throw new Error("#root mount point not found");
 function mount(Root?: ComponentType<{ initialPath?: string }>): void {
   createRoot(container!).render(
     <StrictMode>
-      <App {...(Root === undefined ? {} : { Root })} />
       <ErrorBoundary>
-        <App />
+        <App {...(Root === undefined ? {} : { Root })} />
       </ErrorBoundary>
     </StrictMode>,
   );
