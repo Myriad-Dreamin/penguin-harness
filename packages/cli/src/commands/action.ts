@@ -25,6 +25,9 @@ import { renderTable } from "../table.js";
 import { parseParams, startRun, type ActionTarget } from "./action-client.js";
 import { followToEnd, type DeployKit } from "./proposal-deploy.js";
 
+/** A run/exec registration's target half: the first positional, turned into its ActionTarget. */
+type ActionTargetOf = (first: string) => ActionTarget;
+
 /** `?a=b&…` from the caller's identity query and more entries; "" for none. */
 function withQuery(actorQuery: string, entries: Array<[string, string | undefined]>): string {
   const extra = entries
@@ -99,11 +102,11 @@ export function registerOrgAction(org: Command, t: Messages, kit: DeployKit): vo
       );
     });
 
-  const runCommand = (name: string, toTarget: (first: string) => ActionTarget, desc: string) =>
+  const runCommand = (name: string, firstArg: string, toTarget: ActionTargetOf, desc: string) => {
     kit
       .scoped(
         action
-          .command(`${name} <${name === "run" ? "key" : "contribution"}> <subject>`)
+          .command(`${name} <${firstArg}> <subject>`)
           .description(desc)
           .option("--param <name=value>", t.org.actionParam, (v: string, prev: string[] = []) => [
             ...prev,
@@ -141,9 +144,10 @@ export function registerOrgAction(org: Command, t: Messages, kit: DeployKit): vo
           else kit.fail(line);
         });
       });
+  };
 
-  runCommand("run", (key) => ({ key }), t.org.actionRunDesc);
-  runCommand("exec", (contribution) => ({ contribution }), t.org.actionExecDesc);
+  runCommand("run", "key", (key) => ({ key }), t.org.actionRunDesc);
+  runCommand("exec", "contribution", (contribution) => ({ contribution }), t.org.actionExecDesc);
 
   kit
     .scoped(
