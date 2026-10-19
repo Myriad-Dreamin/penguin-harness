@@ -294,6 +294,8 @@ export function PluginsPage() {
     machineChoices.map((c) => c.value),
     selfId,
   );
+  /** Whether the machine in view is this server itself, or every machine including it. */
+  const viewIncludesHere = viewMachine === null || viewMachine === selfId;
   /** What the viewed machine answered itself — or why it could not — when it is not this server. */
   const [remote, setRemote] = useState<
     | { projectId: string; machineId: string; res: InstalledPluginsResponse }
@@ -398,7 +400,7 @@ export function PluginsPage() {
         ? await api.installPlugin(target.projectId, specifier, target.machineId)
         : await api.uninstallPlugin(target.projectId, specifier, target.machineId);
       // A later read owns the snapshot; an old write cannot invalidate it.
-      if (!isCurrentVisit() || request !== deploymentRequest.current) return;
+      if (!isCurrentVisit() || request !== deploymentRequest.current) return null;
       setDeployment(next);
       const row = next.plugins.find((p) => p.specifier === specifier);
       if (install && row?.error !== undefined) {

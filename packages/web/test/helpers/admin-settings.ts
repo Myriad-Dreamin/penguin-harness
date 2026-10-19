@@ -39,6 +39,7 @@ export const STORED_SETTINGS: ServerSettings = {
   companyMode: true,
   browserExtensionsEnabled: true,
   agentApiEnabled: true,
+  githubTokenSet: false,
 };
 
 export interface AdminSettingsServer {
