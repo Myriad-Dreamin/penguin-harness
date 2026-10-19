@@ -555,7 +555,7 @@ describe("messaging-conversations on a named-migration root", () => {
       migrate(db);
       db.exec("DROP TABLE messaging_conversations");
       db.exec("DELETE FROM schema_migrations WHERE name = 'messaging-conversations'");
-      const previous = namesThrough("messaging-conversations").at(-2)!.name;
+      const previous = namesThrough("messaging-conversations").at(-2)!;
       const before = shape(db);
       expect(migrate(db, { swapPath: true }).applied).toEqual(["messaging-conversations"]);
       const put = () =>
