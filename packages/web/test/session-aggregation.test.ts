@@ -238,14 +238,14 @@ describe("the list across machines", () => {
     await store.getState().reload();
 
     asked.length = 0;
-    await store.getState().loadMoreFor(["a1"], "active", `M1\u0000/w`);
+    await store.getState().loadMoreFor(["a1"], `M1\u0000/w`);
     // `/w` exists on this server too: asking it would page another directory's rows into
     // this group, and leave the group's "load more" waiting on a machine it is not on. The
     // machine half never travels in the query — the request already goes to that machine.
     expect(asked).toEqual([{ machineId: "M1", workspaceGroup: "/w" }]);
 
     asked.length = 0;
-    await store.getState().loadMoreFor(["a1"], "active", "/w");
+    await store.getState().loadMoreFor(["a1"], "/w");
     expect(asked).toEqual([{ machineId: null, workspaceGroup: "/w" }]);
   });
 
@@ -274,7 +274,13 @@ describe("events arriving from a machine", () => {
   // The merged list reloads for a person's Session only (`source: "user"`): what a program
   // opens is archived until kept, and a child is in no list — nothing to fetch for either.
   const created = (projectId: string): ServerEvent =>
-    ({ type: "session_created", projectId, agentId: "a1", sessionId: "s1", source: "user" }) as ServerEvent;
+    ({
+      type: "session_created",
+      projectId,
+      agentId: "a1",
+      sessionId: "s1",
+      source: "user",
+    }) as ServerEvent;
 
   const countingStore = () => {
     const store = createSessionsStore();
