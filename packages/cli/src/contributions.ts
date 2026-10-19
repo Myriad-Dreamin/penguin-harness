@@ -287,9 +287,15 @@ export async function discoverCliCommands(opts: { root: string }): Promise<CliDi
   }
 
   try {
-    const { pluginBases, committedAssetsDir, readPluginClosure, resolvePlugin, readPackageTable } =
-      await import("@prismshadow/penguin-server/plugin/loader");
-    const bases = pluginBases(opts.root, await committedAssetsDir(opts.root));
+    const {
+      pluginBases,
+      shippedBases,
+      committedAssetsDir,
+      readPluginClosure,
+      resolvePlugin,
+      readPackageTable,
+    } = await import("@prismshadow/penguin-server/plugin/loader");
+    const bases = [...pluginBases(opts.root), ...shippedBases(await committedAssetsDir(opts.root))];
     for (const specifier of await readPluginClosure(opts.root)) {
       const resolved = resolvePlugin(specifier, bases);
       if (resolved === null) continue; // unresolvable here: the server's own load reports it
