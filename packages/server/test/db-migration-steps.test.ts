@@ -364,7 +364,13 @@ describe("numbered roots other lines stamped: adopted whole", () => {
 function openPreSessionsKeptAt(): DatabaseSync {
   const db = openFresh();
   db.exec("ALTER TABLE sessions DROP COLUMN kept_at");
-  for (const column of ["provider", "model_id", "thinking_level", "workspace", "max_concurrent_runs"]) {
+  for (const column of [
+    "provider",
+    "model_id",
+    "thinking_level",
+    "workspace",
+    "max_concurrent_runs",
+  ]) {
     db.exec(`ALTER TABLE agent_api DROP COLUMN ${column}`);
   }
   record(db, namesThrough("messaging-conversations"));

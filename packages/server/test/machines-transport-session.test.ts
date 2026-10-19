@@ -524,6 +524,7 @@ exec /bin/sh
       expect(await conn.exec("echo back")).toMatchObject({ code: 0, stdout: "back\n" });
       expect(spawns()).toHaveLength(3);
     } finally {
-      vi.useRealTimers();    }
+      vi.useRealTimers();
+    }
   });
 });

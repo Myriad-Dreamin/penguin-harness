@@ -33,12 +33,7 @@ export {
   sessionOf,
   useControlSockets,
 } from "./ssh-session.js";
-export type {
-  ForwardFact,
-  HeldSession,
-  SessionListener,
-  ShellSession,
-} from "./ssh-session.js";
+export type { ForwardFact, HeldSession, SessionListener, ShellSession } from "./ssh-session.js";
 export { PASSWORD_ENV, forgetRefusal, passwordSignIn } from "./login.js";
 export type { AskpassPlan } from "./login.js";
 export { execFailureText } from "./exec.js";

@@ -401,11 +401,9 @@ class MachineShell implements MachineSession {
   /** One `-O forward` / `-O cancel` at the master. Never throws; ssh's own words are the detail. */
   async #control(op: "forward" | "cancel", spec: ForwardSpec): Promise<ForwardFact> {
     if (this.#controlPath === null) return { ok: false, detail: "ssh here has no control socket" };
-    const result = await run(
-      "ssh",
-      forwardControlArgs(this.#target, this.#controlPath, op, spec),
-      { timeoutMs: CONTROL_TIMEOUT_MS },
-    );
+    const result = await run("ssh", forwardControlArgs(this.#target, this.#controlPath, op, spec), {
+      timeoutMs: CONTROL_TIMEOUT_MS,
+    });
     if (result.code === 0) return { ok: true };
     const said = (result.stderr + result.stdout).trim().split("\n").pop() ?? "";
     return { ok: false, detail: said === "" ? `ssh -O ${op} exited ${result.code}` : said };

@@ -155,8 +155,8 @@ export function authMiddleware(
     }
     // Classify a refused cookie without renewing its session or setting a response cookie.
     if (options.apiTokenOnly) {
-      const live = sessionCookies(getCookie(c), c.req.header("host")).find(
-        (cookie) => auth.sessionIsLive(cookie.token),
+      const live = sessionCookies(getCookie(c), c.req.header("host")).find((cookie) =>
+        auth.sessionIsLive(cookie.token),
       );
       if (live) {
         throw new HttpError(

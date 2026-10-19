@@ -5,7 +5,12 @@ import type { AppEnv } from "../auth/middleware.js";
 import { Config, Log } from "../hmr/capabilities.js";
 import type { MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { authMiddleware, bearerToken, jsonOnlyWrites, sameOriginWrites } from "../auth/middleware.js";
+import {
+  authMiddleware,
+  bearerToken,
+  jsonOnlyWrites,
+  sameOriginWrites,
+} from "../auth/middleware.js";
 import { AMSP_PREFIX, amspAllowOrigin } from "../amsp/cors.js";
 import { HttpError, handleError } from "./errors.js";
 import { attributedProjectId } from "./attribution.js";
