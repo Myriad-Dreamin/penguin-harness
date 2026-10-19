@@ -60,21 +60,12 @@ const mgr = new CommandSessionManager({
   workspaceDir: ws,
 });
 
-/** Runs `cmd` through the manager the caller owns, in this file's Workspace. */
-async function runIn(
-  manager: CommandSessionManager,
-  cmd: string,
-): Promise<{ code: number | null; out: string }> {
-  const session = manager.spawn({ cmd, cwd: ws });
+async function run(cmd: string): Promise<{ code: number | null; out: string }> {
+  const session = mgr.spawn({ cmd, cwd: ws });
   let out = "";
   for await (const chunk of session.collect(15000)) out += chunk;
   if (session.running) session.kill();
   return { code: session.exit?.code ?? null, out };
-}
-
-/** A command through this file's own manager, under the module-level `mode` above. */
-async function run(cmd: string): Promise<{ code: number | null; out: string }> {
-  return runIn(mgr, cmd);
 }
 
 /** A PowerShell single-quoted literal. */
@@ -147,7 +138,11 @@ const stateMgr = new CommandSessionManager({
 
 /** A command through the state manager, under the module-level `statePolicy` above. */
 async function runState(cmd: string): Promise<{ code: number | null; out: string }> {
-  return runIn(stateMgr, cmd);
+  const session = stateMgr.spawn({ cmd, cwd: ws });
+  let out = "";
+  for await (const chunk of session.collect(15000)) out += chunk;
+  if (session.running) session.kill();
+  return { code: session.exit?.code ?? null, out };
 }
 
 afterAll(() => {

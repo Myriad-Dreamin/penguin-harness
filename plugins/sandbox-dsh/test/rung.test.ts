@@ -1,8 +1,7 @@
 /**
  * The rung the settings card names for the DSH adaptor, the limits each rung discloses,
  * and the pure half of the Landlock extension: the dimensions a rung declares, the grants
- * it splices in, and the corner the allow-list cannot express. Preset-shaped behaviors are
- * rows — one more rung, grant corner or wrapper shape is one more row, not a new case block.
+ * it splices in, and the corner the allow-list cannot express.
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
@@ -99,22 +98,13 @@ describe("splicing further grants into a Landlock wrapper", () => {
     ...(grants.readOnly ?? []).map((root) => ["--ro", root]).flat(),
     ...(grants.readWrite ?? []).map((root) => ["--rw", root]).flat(),
   ];
+  const callerArgv = ["bash", "-lc", "echo hi"];
   const wrapped = [
     "/bin/landlock-run",
-    "--ro",
-    "/",
-    "--rw",
-    "/dev/null",
-    "--rw",
-    "/tmp",
-    "--rw",
-    "/work/project",
+    ...fakeGrantArgs({ readOnly: ["/"], readWrite: ["/dev/null", "/tmp", "/work/project"] }),
     "--",
-    "bash",
-    "-lc",
-    "echo hi",
+    ...callerArgv,
   ];
-  const callerArgv = ["bash", "-lc", "echo hi"];
 
   it("adds the extra roots in front of the separator, command untouched behind it", () => {
     const spliced = spliceLandlockGrants(

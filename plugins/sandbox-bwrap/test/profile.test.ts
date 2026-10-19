@@ -164,13 +164,11 @@ describe("penguin-bwrap profile", () => {
     }
   });
 
-  // skipIf(win32): the profile echoes host path resolution, which turns the POSIX
-  // workspace literal into a drive path — and bwrap never runs there anyway.
+  // skipIf(win32): the profile echoes host path resolution, and bwrap never runs there.
   it.skipIf(process.platform === "win32")(
     "readonly-roots: every path mount in one order — deeper later, read-only winning ties",
     () => {
-      // writableTemp grants the host's temp dir beside the /tmp tmpfs; pin it, or a
-      // TMPDIR elsewhere slots in by its own depth and moves the asserted order.
+      // writableTemp grants TMPDIR's own depth; pin it so the asserted order is fixed.
       const was = process.env.TMPDIR;
       process.env.TMPDIR = "/tmp";
       try {
@@ -181,13 +179,14 @@ describe("penguin-bwrap profile", () => {
           readonlyRoots: ["/work/project/state", "/etc"],
           writableTemp: true,
         });
+        // Deeper later; at the same depth the read-only mount follows the writable one.
         expect(mounts.map((mount) => mount.path)).toEqual([
-          "/tmp", // depth 1, writable: the private temp tmpfs first at its depth
-          "/etc", // depth 1, read-only: after the tmpfs at the same depth
-          "/work/project", // depth 2: the workspace bind
-          "/work/project/scratch", // depth 3, writable
-          "/work/project/state", // depth 3, read-only: after the writable one at the same depth
-          "/data/agent/scratchpad/s", // depth 4
+          "/tmp",
+          "/etc",
+          "/work/project",
+          "/work/project/scratch",
+          "/work/project/state",
+          "/data/agent/scratchpad/s",
         ]);
       } finally {
         if (was === undefined) delete process.env.TMPDIR;
@@ -196,11 +195,6 @@ describe("penguin-bwrap profile", () => {
     },
   );
 
-  /**
-   * Order rows: each row's mounts must appear in the profile in the listed order — a later
-   * mount shadows an earlier one on every path beneath it, which is what holds a read-only
-   * root over a writable bind that covers it. One more shadowing corner is one more row.
-   */
   /** A workspace-write policy over the test Workspace, with these further roots. */
   const ws = (readonlyRoots?: readonly string[], writableRoots?: readonly string[]) => ({
     mode: "workspace-write" as const,
@@ -212,6 +206,7 @@ describe("penguin-bwrap profile", () => {
   /** An order row's mounts — flag before path — in the order the profile must show them. */
   const chain = (...pairs: [string, string][]) => pairs;
 
+  // Order rows: a later mount shadows an earlier one beneath it, so the order must hold.
   it.skipIf(process.platform === "win32").each([
     {
       name: "a state root inside the workspace shadows the writable bind that covers it",

@@ -36,9 +36,7 @@ const { SandboxService } = (await import(
   ) => ServiceUnderTest;
 };
 
-// Under the home directory, not the temp area: every policy here grants the host's temp
-// dir (writableTemp), so a workspace inside it could not prove that read-only denies the
-// workspace — or the outside-write cases anything — on a host whose TMPDIR is not /tmp.
+// Under the home directory, not the temp area: every policy here grants the host's temp dir.
 const ws = mkdtempSync(path.join(homedir(), "penguin-bwrap-live-"));
 const outsideProbe = path.join(homedir(), `penguin-bwrap-live-${process.pid}.txt`);
 const provider = createPenguinBwrapProvider();
@@ -65,6 +63,14 @@ const mgr = new CommandSessionManager({
   workspaceDir: ws,
 });
 
+async function run(cmd: string): Promise<{ code: number | null; out: string }> {
+  const session = mgr.spawn({ cmd, cwd: ws });
+  let out = "";
+  for await (const chunk of session.collect(15000)) out += chunk;
+  if (session.running) session.kill();
+  return { code: session.exit?.code ?? null, out };
+}
+
 /** The same, through a manager the caller owns (the service-driven cases below). */
 async function runIn(
   manager: CommandSessionManager,
@@ -75,11 +81,6 @@ async function runIn(
   for await (const chunk of session.collect(15000)) out += chunk;
   if (session.running) session.kill();
   return { code: session.exit?.code ?? null, out };
-}
-
-/** A command through this file's own manager, under the module-level `policy` above. */
-async function run(cmd: string): Promise<{ code: number | null; out: string }> {
-  return runIn(mgr, cmd);
 }
 
 /**
@@ -96,11 +97,11 @@ const interfaces = (procNetDev: string): string[] =>
     .filter(Boolean);
 
 /** The managers the state-root cases build; disposed with the rest in afterAll. */
-const served: CommandSessionManager[] = [];
+const stateManagers: CommandSessionManager[] = [];
 
 afterAll(() => {
   mgr.dispose();
-  for (const manager of served) manager.dispose();
+  for (const manager of stateManagers) manager.dispose();
   rmSync(ws, { recursive: true, force: true });
   rmSync(outsideProbe, { force: true });
   rmSync(agentState, { recursive: true, force: true });
@@ -109,10 +110,8 @@ afterAll(() => {
 
 /**
  * The read-only state root, service-driven: the service adds `readonlyRoots` from the
- * spawn's `stateRoot`, refuses a root missing on disk, and bwrap enforces. Presets are
- * rows — the legs below are what any preset holding the agent state read-only owes, so
- * one more preset is one more row in `STATE_PRESETS` — and layouts are rows for the same
- * reason: the whole point of the one mount order is that the layout cannot break it.
+ * spawn's `stateRoot`, refuses a root missing on disk, and bwrap enforces. Presets and
+ * layouts are rows below: the one mount order is what a layout must not be able to break.
  */
 const stateRoot = path.join(
   mkdtempSync(path.join(homedir(), "penguin-bwrap-live-state-")),
@@ -246,7 +245,7 @@ describe.skipIf(!usable)("penguin-bwrap behind the sandbox service: the Session 
     const svc = new SandboxService([["penguin-bwrap", provider]]);
     await svc.whenReady();
     const confiner = svc.confinerFor(() => ({ mode: "workspace-write" }));
-    const scratchServed = new CommandSessionManager({
+    const served = new CommandSessionManager({
       confineSpawn: () => confiner,
       workspaceDir: ws,
       scratchpadDir: scratchpad,
@@ -255,16 +254,18 @@ describe.skipIf(!usable)("penguin-bwrap behind the sandbox service: the Session 
       for (const file of ["a.txt", "b.txt"]) {
         // Without the service creating it, bwrap exits first: "Can't find source path".
         expect(existsSync(scratchpad)).toBe(false);
-        const r = await runIn(
-          scratchServed,
-          `echo ${file} > ${JSON.stringify(path.join(scratchpad, file))}`,
-        );
-        expect(r.code, r.out).toBe(0);
+        const session = served.spawn({
+          cmd: `echo ${file} > ${JSON.stringify(path.join(scratchpad, file))}`,
+          cwd: ws,
+        });
+        let out = "";
+        for await (const chunk of session.collect(15000)) out += chunk;
+        expect(session.exit?.code, out).toBe(0);
         expect(readFileSync(path.join(scratchpad, file), "utf8")).toBe(`${file}\n`);
         rmSync(scratchpad, { recursive: true, force: true });
       }
     } finally {
-      scratchServed.dispose();
+      served.dispose();
       rmSync(agentScratchpad, { recursive: true, force: true });
     }
   });
@@ -284,7 +285,7 @@ describe.skipIf(!usable)(
         ...(layout.scratchpad ? { scratchpadDir: layout.scratchpad } : {}),
         stateRoot: layout.root,
       });
-      served.push(manager);
+      stateManagers.push(manager);
       return manager;
     }
 

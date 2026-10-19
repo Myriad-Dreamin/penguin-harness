@@ -33,10 +33,7 @@ const ST_L = "/mnt/c/Users/k/.penguin/data/p/agents/a";
 const PAD = `${ST}\\scratchpad\\session-1`;
 const PAD_L = `${ST_L}/scratchpad/session-1`;
 
-/**
- * A workspace-write policy over the test Workspace, with the further fields a row names —
- * the shape every order and refusal row builds on, so each row stays one line.
- */
+/** A workspace-write policy over the test Workspace, with the further fields a row names. */
 const ws = (
   readonlyRoots?: readonly string[],
   writableRoots?: readonly string[],
@@ -49,10 +46,7 @@ const ws = (
   ...(writableTemp !== undefined ? { writableTemp } : {}),
 });
 
-/**
- * An order row's mounts — flag before path — in the order the profile must show them. A
- * tuple per pair, so a row stays one line while the destructure stays definite.
- */
+/** An order row's mounts — flag before path — in the order the profile must show them. */
 const chain = (...pairs: [string, string][]) => pairs;
 
 /** Where some rows' mounts sit: after the covering /mnt tmpfs, before it is sealed read-only. */
@@ -138,18 +132,18 @@ describe("bwrapArgs", () => {
     ).toThrow(/local network/);
   });
 
-  /**
-   * Refusal rows: a path with no spelling inside the distro is refused — dropping it would
-   * confine nothing (the Workspace) or widen the sandbox (a read-only root), and widening
-   * is the one direction the field exists to forbid. One more untranslatable path is one
-   * more row.
-   */
+  it("full access binds the distro writable and leaves /mnt alone, still cutting the network", () => {
+    const args = bwrapArgs(
+      { mode: "danger-full-access", workspaceRoot: WS, network: "none" },
+      HOST,
+    );
+    expect(args.join(" ")).toContain("--bind / /");
+    expect(args).not.toContain("/mnt");
+    expect(args).not.toContain("--share-net");
+  });
+
+  /** Refusal rows: a path with no spelling inside the distro is refused, never dropped. */
   it.each([
-    {
-      name: "a Workspace with no path in the distro, rather than confining nothing",
-      policy: { mode: "workspace-write" as const, workspaceRoot: "\\\\server\\share\\ws" },
-      message: /penguin-wsl: .*no path inside the WSL distro/,
-    },
     {
       name: "a read-only root from another distro's UNC path, rather than dropping it",
       policy: ws(["\\\\wsl.localhost\\Ubuntu\\home\\x"]),
@@ -165,12 +159,8 @@ describe("bwrapArgs", () => {
   });
 
   /**
-   * Order rows: each row's mounts must appear with these flags in this order — deeper
-   * later, a read-only mount after the writable one at the same depth — and, when
-   * `bounds` names the covering tmpfs and the sealing remount, between those two markers.
-   * The order is the whole point: the state root stays read-only wherever the layout put
-   * it, and the scratchpad carved out of it stays writable. One more layout or tie corner
-   * is one more row.
+   * Order rows: mounts in the order the profile must show them — deeper later, read-only
+   * after writable — and between the `bounds` markers where a covering tmpfs seals /mnt.
    */
   it.each([
     {
@@ -260,14 +250,10 @@ describe("bwrapArgs", () => {
     expect(args).toContain("--ro-bind-try /mnt/wsl/resolv.conf /mnt/wsl/resolv.conf --remount-ro");
   });
 
-  it("full access binds the distro writable and leaves /mnt alone, still cutting the network", () => {
-    const args = bwrapArgs(
-      { mode: "danger-full-access", workspaceRoot: WS, network: "none" },
-      HOST,
-    );
-    expect(args.join(" ")).toContain("--bind / /");
-    expect(args).not.toContain("/mnt");
-    expect(args).not.toContain("--share-net");
+  it("refuses a Workspace with no path in the distro rather than confining nothing", () => {
+    expect(() =>
+      bwrapArgs({ mode: "workspace-write", workspaceRoot: "\\\\server\\share\\ws" }, HOST),
+    ).toThrow(/penguin-wsl: .*no path inside the WSL distro/);
   });
 });
 

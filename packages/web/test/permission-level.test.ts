@@ -300,9 +300,8 @@ describe("the composer's presets", () => {
   });
 
   it("stays in step with the server's own table: every built-in row is declared there too", () => {
-    // The server's rows live inside its settings declaration (not an exported value), so this
-    // reads that file and checks each row this copy carries is declared with the same identity.
-    // It is the drift check for the hand-kept copy an older server falls back to.
+    // The server's rows live inside its settings declaration, not an exported value: this is
+    // the drift check for the hand-kept copy an older server falls back to.
     const declared = readFileSync(
       fileURLToPath(new URL("../../server/src/sandbox/settings-store.ts", import.meta.url)),
       "utf8",
