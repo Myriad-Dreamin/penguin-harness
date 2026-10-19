@@ -26,6 +26,37 @@ const HOST = {
     p.endsWith("secret") ? ("dir" as const) : p.endsWith(".env") ? ("file" as const) : null,
 };
 const WS = "C:\\Users\\k\\ws";
+/** The distro spellings the order rows assert: the Workspace, a state root and its scratchpad. */
+const WS_L = "/mnt/c/Users/k/ws";
+const ST = "C:\\Users\\k\\.penguin\\data\\p\\agents\\a";
+const ST_L = "/mnt/c/Users/k/.penguin/data/p/agents/a";
+const PAD = `${ST}\\scratchpad\\session-1`;
+const PAD_L = `${ST_L}/scratchpad/session-1`;
+
+/**
+ * A workspace-write policy over the test Workspace, with the further fields a row names —
+ * the shape every order and refusal row builds on, so each row stays one line.
+ */
+const ws = (
+  readonlyRoots?: readonly string[],
+  writableRoots?: readonly string[],
+  writableTemp?: boolean,
+) => ({
+  mode: "workspace-write" as const,
+  workspaceRoot: WS,
+  ...(readonlyRoots ? { readonlyRoots } : {}),
+  ...(writableRoots ? { writableRoots } : {}),
+  ...(writableTemp !== undefined ? { writableTemp } : {}),
+});
+
+/**
+ * An order row's mounts — flag before path — in the order the profile must show them. A
+ * tuple per pair, so a row stays one line while the destructure stays definite.
+ */
+const chain = (...pairs: [string, string][]) => pairs;
+
+/** Where some rows' mounts sit: after the covering /mnt tmpfs, before it is sealed read-only. */
+const UNDER_MNT = ["/mnt", "--remount-ro"] as const;
 
 describe("toLinuxPath", () => {
   it("maps a drive path under /mnt, lowercasing the drive", () => {
@@ -107,14 +138,85 @@ describe("bwrapArgs", () => {
     ).toThrow(/local network/);
   });
 
-  it("full access binds the distro writable and leaves /mnt alone, still cutting the network", () => {
-    const args = bwrapArgs(
-      { mode: "danger-full-access", workspaceRoot: WS, network: "none" },
-      HOST,
-    );
-    expect(args.join(" ")).toContain("--bind / /");
-    expect(args).not.toContain("/mnt");
-    expect(args).not.toContain("--share-net");
+  /**
+   * Refusal rows: a path with no spelling inside the distro is refused — dropping it would
+   * confine nothing (the Workspace) or widen the sandbox (a read-only root), and widening
+   * is the one direction the field exists to forbid. One more untranslatable path is one
+   * more row.
+   */
+  it.each([
+    {
+      name: "a Workspace with no path in the distro, rather than confining nothing",
+      policy: { mode: "workspace-write" as const, workspaceRoot: "\\\\server\\share\\ws" },
+      message: /penguin-wsl: .*no path inside the WSL distro/,
+    },
+    {
+      name: "a read-only root from another distro's UNC path, rather than dropping it",
+      policy: ws(["\\\\wsl.localhost\\Ubuntu\\home\\x"]),
+      message: /penguin-wsl: the read-only root .*no path inside the WSL distro/,
+    },
+    {
+      name: "a read-only root from a network share, rather than dropping it",
+      policy: ws(["\\\\server\\share\\state"]),
+      message: /penguin-wsl: .*no path inside the WSL distro/,
+    },
+  ])("refuses %s", ({ policy, message }) => {
+    expect(() => bwrapArgs(policy, HOST)).toThrow(message);
+  });
+
+  /**
+   * Order rows: each row's mounts must appear with these flags in this order — deeper
+   * later, a read-only mount after the writable one at the same depth — and, when
+   * `bounds` names the covering tmpfs and the sealing remount, between those two markers.
+   * The order is the whole point: the state root stays read-only wherever the layout put
+   * it, and the scratchpad carved out of it stays writable. One more layout or tie corner
+   * is one more row.
+   */
+  it.each([
+    {
+      name: "sorts the Workspace, writable and read-only mounts by depth: deeper later, read-only after writable",
+      policy: ws([ST], [PAD]),
+      order: chain(["--bind", WS_L], ["--ro-bind", ST_L], ["--bind", PAD_L]),
+      bounds: UNDER_MNT,
+    },
+    {
+      name: "at equal depth a read-only mount goes after the writable one, so it wins the tie",
+      policy: ws(["C:\\Users\\k\\st"]),
+      order: chain(["--bind", WS_L], ["--ro-bind", "/mnt/c/Users/k/st"]),
+      bounds: undefined,
+    },
+    {
+      name: "a state root the layout placed inside the Workspace still mounts read-only over it",
+      policy: ws(["C:\\Users\\k\\ws\\.penguin\\agents\\a"]),
+      order: chain(["--bind", WS_L], ["--ro-bind", `${WS_L}/.penguin/agents/a`]),
+      bounds: UNDER_MNT,
+    },
+    {
+      name: "a read-only root inside the temp area mounts after the tmpfs covering it",
+      policy: ws(["/tmp/state-root"], [], true),
+      order: chain(["--tmpfs", "/tmp"], ["--ro-bind", "/tmp/state-root"]),
+      bounds: undefined,
+    },
+    {
+      name: "full access still mounts the read-only roots, shadowing the writable bind of /",
+      policy: { mode: "danger-full-access" as const, workspaceRoot: WS, readonlyRoots: [ST] },
+      order: chain(["--bind", "/"], ["--ro-bind", ST_L]),
+      bounds: undefined,
+    },
+  ])("%s", ({ policy, order, bounds }) => {
+    const args = bwrapArgs(policy, HOST);
+    let prev = -1;
+    for (const [flag, mount] of order) {
+      const at = args.indexOf(mount);
+      expect(at, `${flag} ${mount}`).toBeGreaterThan(prev);
+      expect(args[at - 1]).toBe(flag);
+      prev = at;
+    }
+    if (bounds !== undefined)
+      for (const [, mount] of order) {
+        expect(args.indexOf(mount)).toBeGreaterThan(args.indexOf(bounds[0]));
+        expect(args.indexOf(mount)).toBeLessThan(args.indexOf(bounds[1]));
+      }
   });
 
   it("masks come last: a tmpfs over a directory, /dev/null over a file, nothing for a missing path", () => {
@@ -158,107 +260,14 @@ describe("bwrapArgs", () => {
     expect(args).toContain("--ro-bind-try /mnt/wsl/resolv.conf /mnt/wsl/resolv.conf --remount-ro");
   });
 
-  it("refuses a Workspace with no path in the distro rather than confining nothing", () => {
-    expect(() =>
-      bwrapArgs({ mode: "workspace-write", workspaceRoot: "\\\\server\\share\\ws" }, HOST),
-    ).toThrow(/penguin-wsl: .*no path inside the WSL distro/);
-  });
-
-  it("refuses a read-only root with no path in the distro rather than dropping it", () => {
-    // Another distro's files and a network share: dropping the root would widen the sandbox,
-    // which is the one direction the field exists to forbid.
-    expect(() =>
-      bwrapArgs(
-        {
-          mode: "workspace-write",
-          workspaceRoot: WS,
-          readonlyRoots: ["\\\\wsl.localhost\\Ubuntu\\home\\x"],
-        },
-        HOST,
-      ),
-    ).toThrow(/penguin-wsl: the read-only root .*no path inside the WSL distro/);
-    expect(() =>
-      bwrapArgs(
-        { mode: "workspace-write", workspaceRoot: WS, readonlyRoots: ["\\\\server\\share\\state"] },
-        HOST,
-      ),
-    ).toThrow(/penguin-wsl: .*no path inside the WSL distro/);
-  });
-
-  it("sorts the Workspace, writable and read-only mounts by depth: deeper later, read-only after writable", () => {
-    const state = "C:\\Users\\k\\.penguin\\data\\p\\agents\\a";
-    const scratchpad = `${state}\\scratchpad\\session-1`;
-    const linux = "/mnt/c/Users/k/.penguin/data/p/agents/a";
+  it("full access binds the distro writable and leaves /mnt alone, still cutting the network", () => {
     const args = bwrapArgs(
-      {
-        mode: "workspace-write",
-        workspaceRoot: WS,
-        writableRoots: [scratchpad],
-        readonlyRoots: [state],
-      },
-      HOST,
-    );
-    const wsAt = args.indexOf("/mnt/c/Users/k/ws");
-    const stateAt = args.indexOf(linux);
-    const padAt = args.indexOf(`${linux}/scratchpad/session-1`);
-    expect(args[wsAt - 1]).toBe("--bind");
-    expect(args[stateAt - 1]).toBe("--ro-bind");
-    expect(args[padAt - 1]).toBe("--bind");
-    // Deeper mounts later: the workspace, then the state root, then the scratchpad carved
-    // out of it — all under the covering tmpfs, and before it is sealed read-only.
-    expect(stateAt).toBeGreaterThan(wsAt);
-    expect(padAt).toBeGreaterThan(stateAt);
-    for (const at of [wsAt, stateAt, padAt]) {
-      expect(at).toBeGreaterThan(args.indexOf("/mnt"));
-      expect(at).toBeLessThan(args.indexOf("--remount-ro"));
-    }
-  });
-
-  it("at equal depth a read-only mount goes after the writable one, so it wins the tie", () => {
-    const sibling = "C:\\Users\\k\\st"; // the same depth as the Workspace, disjoint
-    const args = bwrapArgs(
-      { mode: "workspace-write", workspaceRoot: WS, readonlyRoots: [sibling] },
-      HOST,
-    );
-    expect(args.indexOf("/mnt/c/Users/k/st")).toBeGreaterThan(args.indexOf("/mnt/c/Users/k/ws"));
-  });
-
-  it("a state root the layout placed inside the Workspace still mounts read-only over it", () => {
-    const inWs = `${WS}\\.penguin\\agents\\a`;
-    const args = bwrapArgs(
-      { mode: "workspace-write", workspaceRoot: WS, readonlyRoots: [inWs] },
-      HOST,
-    );
-    const stateAt = args.indexOf("/mnt/c/Users/k/ws/.penguin/agents/a");
-    expect(args[stateAt - 1]).toBe("--ro-bind");
-    expect(stateAt).toBeGreaterThan(args.indexOf("/mnt/c/Users/k/ws"));
-    expect(stateAt).toBeLessThan(args.indexOf("--remount-ro"));
-  });
-
-  it("a read-only root inside the temp area mounts after the tmpfs covering it", () => {
-    const args = bwrapArgs(
-      {
-        mode: "workspace-write",
-        workspaceRoot: WS,
-        writableTemp: true,
-        readonlyRoots: ["/tmp/state-root"],
-      },
-      HOST,
-    );
-    const stateAt = args.indexOf("/tmp/state-root");
-    expect(args[stateAt - 1]).toBe("--ro-bind");
-    expect(stateAt).toBeGreaterThan(args.indexOf("/tmp"));
-  });
-
-  it("full access still mounts the read-only roots, shadowing the writable bind of /", () => {
-    const state = "C:\\Users\\k\\.penguin\\data\\p\\agents\\a";
-    const linux = "/mnt/c/Users/k/.penguin/data/p/agents/a";
-    const args = bwrapArgs(
-      { mode: "danger-full-access", workspaceRoot: WS, readonlyRoots: [state] },
+      { mode: "danger-full-access", workspaceRoot: WS, network: "none" },
       HOST,
     );
     expect(args.join(" ")).toContain("--bind / /");
-    expect(args.join(" ")).toContain(`--ro-bind ${linux} ${linux}`);
+    expect(args).not.toContain("/mnt");
+    expect(args).not.toContain("--share-net");
   });
 });
 

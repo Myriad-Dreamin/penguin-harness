@@ -65,14 +65,6 @@ const mgr = new CommandSessionManager({
   workspaceDir: ws,
 });
 
-async function run(cmd: string): Promise<{ code: number | null; out: string }> {
-  const session = mgr.spawn({ cmd, cwd: ws });
-  let out = "";
-  for await (const chunk of session.collect(15000)) out += chunk;
-  if (session.running) session.kill();
-  return { code: session.exit?.code ?? null, out };
-}
-
 /** The same, through a manager the caller owns (the service-driven cases below). */
 async function runIn(
   manager: CommandSessionManager,
@@ -83,6 +75,11 @@ async function runIn(
   for await (const chunk of session.collect(15000)) out += chunk;
   if (session.running) session.kill();
   return { code: session.exit?.code ?? null, out };
+}
+
+/** A command through this file's own manager, under the module-level `policy` above. */
+async function run(cmd: string): Promise<{ code: number | null; out: string }> {
+  return runIn(mgr, cmd);
 }
 
 /**
@@ -98,11 +95,12 @@ const interfaces = (procNetDev: string): string[] =>
     .map((line) => line.split(":")[0]!.trim())
     .filter(Boolean);
 
+/** The managers the state-root cases build; disposed with the rest in afterAll. */
+const served: CommandSessionManager[] = [];
+
 afterAll(() => {
   mgr.dispose();
-  stateServed.dispose();
-  inWsServed.dispose();
-  inTmpServed.dispose();
+  for (const manager of served) manager.dispose();
   rmSync(ws, { recursive: true, force: true });
   rmSync(outsideProbe, { force: true });
   rmSync(agentState, { recursive: true, force: true });
@@ -111,10 +109,10 @@ afterAll(() => {
 
 /**
  * The read-only state root, service-driven: the service adds `readonlyRoots` from the
- * spawn's `stateRoot`, refuses a root missing on disk, and bwrap enforces. Three layouts,
- * because the whole point of the one mount order is that the layout cannot break it:
- * the state root in the read-only home (with the scratchpad carved out of it), inside
- * the Workspace, and inside the temp area the private tmpfs covers.
+ * spawn's `stateRoot`, refuses a root missing on disk, and bwrap enforces. Presets are
+ * rows — the legs below are what any preset holding the agent state read-only owes, so
+ * one more preset is one more row in `STATE_PRESETS` — and layouts are rows for the same
+ * reason: the whole point of the one mount order is that the layout cannot break it.
  */
 const stateRoot = path.join(
   mkdtempSync(path.join(homedir(), "penguin-bwrap-live-state-")),
@@ -131,26 +129,41 @@ const agentState = path.dirname(stateRoot);
 
 const stateService = new SandboxService([["penguin-bwrap", provider]]);
 await stateService.whenReady();
-const stateConfiner = stateService.confinerFor(() => ({
-  mode: "workspace-write",
-  stateReadonly: true,
-}));
-const stateServed = new CommandSessionManager({
-  confineSpawn: () => stateConfiner,
-  workspaceDir: ws,
-  scratchpadDir: stateScratchpad,
-  stateRoot,
-});
-const inWsServed = new CommandSessionManager({
-  confineSpawn: () => stateConfiner,
-  workspaceDir: ws,
-  stateRoot: stateInWs,
-});
-const inTmpServed = new CommandSessionManager({
-  confineSpawn: () => stateConfiner,
-  workspaceDir: ws,
-  stateRoot: stateInTmp,
-});
+
+/** The kernel's dialect under these mounts: EROFS on the read-only binds, EACCES/EPERM beside them. */
+const DENIED_BY_KERNEL = /read-only file system|permission denied|operation not permitted/i;
+
+/** A confined `echo` that must succeed and reach the host file with this content. */
+async function writes(mgr: CommandSessionManager, file: string, text: string) {
+  const r = await runIn(mgr, `echo ${text.trim()} > ${JSON.stringify(file)}`);
+  expect(r.code, r.out).toBe(0);
+  expect(readFileSync(file, "utf8")).toBe(text);
+}
+
+/** A confined write that the kernel must deny, leaving nothing on the host. */
+async function denied(mgr: CommandSessionManager, target: string) {
+  const r = await runIn(mgr, `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`);
+  expect(r.out).toMatch(DENIED_BY_KERNEL);
+  expect(existsSync(target)).toBe(false);
+}
+
+/** A confined read of a file inside the state root. */
+async function reads(mgr: CommandSessionManager, file: string, marker: string) {
+  const r = await runIn(mgr, `cat ${JSON.stringify(file)}`);
+  expect(r.code, r.out).toBe(0);
+  expect(r.out).toContain(marker);
+}
+
+/** The presets holding the agent state read-only: a row is the pick the service takes. */
+const STATE_PRESETS = [
+  { id: "workspace-write-state-readonly", pick: { mode: "workspace-write", stateReadonly: true } },
+] as const;
+
+/** The layouts a deployment can put the state root in, beyond the home the preset legs run in. */
+const STATE_LAYOUTS = [
+  { name: "inside the workspace", root: stateInWs, marker: undefined },
+  { name: "inside the temp area", root: stateInTmp, marker: "tmp-state-marker" },
+] as const;
 
 describe.skipIf(!usable)("penguin-bwrap live enforcement (host-gated)", () => {
   it("fs-write: the workspace is writable, the world outside it is not", async () => {
@@ -233,7 +246,7 @@ describe.skipIf(!usable)("penguin-bwrap behind the sandbox service: the Session 
     const svc = new SandboxService([["penguin-bwrap", provider]]);
     await svc.whenReady();
     const confiner = svc.confinerFor(() => ({ mode: "workspace-write" }));
-    const served = new CommandSessionManager({
+    const scratchServed = new CommandSessionManager({
       confineSpawn: () => confiner,
       workspaceDir: ws,
       scratchpadDir: scratchpad,
@@ -242,18 +255,16 @@ describe.skipIf(!usable)("penguin-bwrap behind the sandbox service: the Session 
       for (const file of ["a.txt", "b.txt"]) {
         // Without the service creating it, bwrap exits first: "Can't find source path".
         expect(existsSync(scratchpad)).toBe(false);
-        const session = served.spawn({
-          cmd: `echo ${file} > ${JSON.stringify(path.join(scratchpad, file))}`,
-          cwd: ws,
-        });
-        let out = "";
-        for await (const chunk of session.collect(15000)) out += chunk;
-        expect(session.exit?.code, out).toBe(0);
+        const r = await runIn(
+          scratchServed,
+          `echo ${file} > ${JSON.stringify(path.join(scratchpad, file))}`,
+        );
+        expect(r.code, r.out).toBe(0);
         expect(readFileSync(path.join(scratchpad, file), "utf8")).toBe(`${file}\n`);
         rmSync(scratchpad, { recursive: true, force: true });
       }
     } finally {
-      served.dispose();
+      scratchServed.dispose();
       rmSync(agentScratchpad, { recursive: true, force: true });
     }
   });
@@ -262,84 +273,55 @@ describe.skipIf(!usable)("penguin-bwrap behind the sandbox service: the Session 
 describe.skipIf(!usable)(
   "penguin-bwrap behind the sandbox service: the read-only state root",
   () => {
-    it("the workspace stays writable under the state-read-only policy, host-side", async () => {
-      const r = await runIn(stateServed, "echo state-ws-ok > state-ws.txt && cat state-ws.txt");
-      expect(r.code).toBe(0);
-      expect(r.out).toContain("state-ws-ok");
-      expect(existsSync(path.join(ws, "state-ws.txt"))).toBe(true);
-    });
-
-    it("the scratchpad inside the state root is writable, host-side", async () => {
-      const target = path.join(stateScratchpad, "pad.txt");
-      const r = await runIn(stateServed, `echo pad > ${JSON.stringify(target)}`);
-      expect(r.code).toBe(0);
-      expect(readFileSync(target, "utf8")).toBe("pad\n");
-    });
-
-    it("a write into the state root itself is denied and leaves nothing on the host", async () => {
-      const target = path.join(stateRoot, "written-by-command.txt");
-      const r = await runIn(
-        stateServed,
-        `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`,
-      );
-      expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
-      expect(existsSync(target)).toBe(false);
-    });
-
-    it("the state root stays readable: its files list and cat", async () => {
-      const r = await runIn(
-        stateServed,
-        `cat ${JSON.stringify(path.join(stateRoot, "marker.txt"))}`,
-      );
-      expect(r.code).toBe(0);
-      expect(r.out).toContain("state-marker");
-    });
-
-    it("after the denial, the scratchpad deeper inside the state root still writes", async () => {
-      const target = path.join(stateScratchpad, "still.txt");
-      const r = await runIn(stateServed, `echo still > ${JSON.stringify(target)}`);
-      expect(r.code).toBe(0);
-      expect(readFileSync(target, "utf8")).toBe("still\n");
-    });
-
-    it("a state root the layout placed inside the workspace still reads read-only", async () => {
-      const target = path.join(stateInWs, "leak.txt");
-      const r = await runIn(inWsServed, `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`);
-      expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
-      expect(existsSync(target)).toBe(false);
-    });
-
-    it("a state root the layout placed inside the temp area stays read-only under the tmpfs", async () => {
-      const target = path.join(stateInTmp, "leak.txt");
-      const r = await runIn(
-        inTmpServed,
-        `echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`,
-      );
-      expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
-      expect(existsSync(target)).toBe(false);
-      const read = await runIn(
-        inTmpServed,
-        `cat ${JSON.stringify(path.join(stateInTmp, "marker.txt"))}`,
-      );
-      expect(read.out).toContain("tmp-state-marker");
-    });
-
-    it("a state root missing on disk refuses the spawn, and the service does not create it", async () => {
-      const absent = path.join(agentState, "never-made");
-      const refused = new CommandSessionManager({
-        confineSpawn: () => stateConfiner,
+    /** Serves one preset over one layout: the confiner its pick names, on that layout's roots. */
+    function stateServe(
+      pick: { mode: "workspace-write"; stateReadonly?: boolean },
+      layout: { root: string; scratchpad?: string },
+    ): CommandSessionManager {
+      const manager = new CommandSessionManager({
+        confineSpawn: () => stateService.confinerFor(() => pick),
         workspaceDir: ws,
-        scratchpadDir: stateScratchpad,
-        stateRoot: absent,
+        ...(layout.scratchpad ? { scratchpadDir: layout.scratchpad } : {}),
+        stateRoot: layout.root,
       });
-      try {
-        expect(() => refused.spawn({ cmd: "true", cwd: ws })).toThrow(
-          /does not exist as a directory/,
-        );
-        expect(existsSync(absent)).toBe(false);
-      } finally {
-        refused.dispose();
-      }
+      served.push(manager);
+      return manager;
+    }
+
+    it.each(STATE_PRESETS)(
+      "$id: the workspace and the scratchpad write, the state root does not, and it stays readable",
+      async ({ pick }) => {
+        // Under the read-only home, not /tmp: a file reaching the host came through the bind itself.
+        const home = stateServe(pick, { root: stateRoot, scratchpad: stateScratchpad });
+        await writes(home, path.join(ws, "state-ws.txt"), "state-ws-ok\n");
+        await writes(home, path.join(stateScratchpad, "pad.txt"), "pad\n");
+        await denied(home, path.join(stateRoot, "written-by-command.txt"));
+        // After the denial, the scratchpad deeper inside the state root still writes.
+        await writes(home, path.join(stateScratchpad, "still.txt"), "still\n");
+        await reads(home, path.join(stateRoot, "marker.txt"), "state-marker");
+      },
+    );
+
+    // Every preset re-proves the denial on each corner layout.
+    it.each(STATE_PRESETS.flatMap(({ pick }) => STATE_LAYOUTS.map((l) => ({ pick, ...l }))))(
+      "a state root placed $name still reads read-only",
+      async ({ pick, root, marker }) => {
+        const corner = stateServe(pick, { root });
+        await denied(corner, path.join(root, "leak.txt"));
+        if (marker !== undefined) await reads(corner, path.join(root, "marker.txt"), marker);
+      },
+    );
+
+    it("a state root missing on disk refuses the spawn, and the service does not create it", () => {
+      const absent = path.join(agentState, "never-made");
+      const refused = stateServe(STATE_PRESETS[0]!.pick, {
+        root: absent,
+        scratchpad: stateScratchpad,
+      });
+      expect(() => refused.spawn({ cmd: "true", cwd: ws })).toThrow(
+        /does not exist as a directory/,
+      );
+      expect(existsSync(absent)).toBe(false);
     });
   },
 );

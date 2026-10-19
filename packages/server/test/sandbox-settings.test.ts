@@ -10,7 +10,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parseManifest } from "@prismshadow/penguin-core/kernel";
 import type { ModuleDef } from "@prismshadow/penguin-core/kernel";
-import type { SandboxPolicy } from "@prismshadow/penguin-core/plugin";
+import type { SandboxDimension, SandboxPolicy } from "@prismshadow/penguin-core/plugin";
 import type { PluginConfigResponse } from "../src/api/types.js";
 import type { PluginConfig } from "../src/plugin/config.js";
 import { PluginHost } from "../src/plugin/host.js";
@@ -24,8 +24,20 @@ interface Seen {
   runner: unknown;
 }
 
-/** A backend declaring a group inside the sandbox's and reading it at each confine. */
-function backend(seen: Seen[]): ModuleDef {
+/**
+ * A backend declaring a group inside the sandbox's and reading it at each confine. The knobs
+ * are the dimensions it declares (all but localhost-only network by default), the name it
+ * confines under, and what it records — one more backend shape is one more call.
+ */
+function backend({
+  seen = [],
+  label = "test-backend",
+  dimensions = ["fs-write", "network", "mask-paths", "closed-temp", "readonly-roots"],
+}: {
+  seen?: Seen[];
+  label?: string;
+  dimensions?: readonly SandboxDimension[];
+} = {}): ModuleDef {
   return {
     manifest: parseManifest({
       name: "TestBackend",
@@ -35,11 +47,7 @@ function backend(seen: Seen[]): ModuleDef {
       provides: {},
       contributes: {
         "SandboxModule.providers": [
-          {
-            id: "test.provider",
-            name: "test-backend",
-            dimensions: ["fs-write", "network", "mask-paths", "closed-temp", "readonly-roots"],
-          },
+          { id: "test.provider", name: label, dimensions: [...dimensions] },
           // Installed for another platform: it declines here, and says nothing on the card.
           { id: "elsewhere.provider", name: "other-platform", dimensions: ["fs-write"] },
         ],
@@ -61,7 +69,7 @@ function backend(seen: Seen[]): ModuleDef {
         bind: {
           "elsewhere.provider": Promise.resolve(null),
           "test.provider": {
-            dimensions: ["fs-write", "network", "mask-paths", "closed-temp", "readonly-roots"],
+            dimensions: [...dimensions],
             confine(argv: readonly string[], policy: SandboxPolicy) {
               seen.push({ policy, runner: config.get("sandbox-test").runner });
               return {
@@ -78,17 +86,30 @@ function backend(seen: Seen[]): ModuleDef {
   };
 }
 
-async function appWith(seen: Seen[], dbPath?: string) {
+/**
+ * An app with the given backend modules mounted as plugins: the admin client, the sandbox
+ * card (and every entry, for the groups nested inside it), a save into a settings group, and
+ * a spawn through the sandbox's confiner.
+ */
+async function appWith(modules: ModuleDef[], dbPath?: string) {
   const host = new PluginHost();
-  host.use({ specifier: "test-backend", modules: [backend(seen)], replaces: [] });
+  host.use({ specifier: "test-backend", modules, replaces: [] });
   const t = await createTestApp({ plugins: host, ...(dbPath ? { config: { dbPath } } : {}) });
   const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
   const sandbox = t.deps.tree.api<SandboxService>("SandboxModule", "sandbox");
   await sandbox.whenReady();
-  const spawn = () => sandbox.confiner()(["true"], { workspaceDir: "/w" } as never);
   const list = async () =>
     ((await (await admin.get("/api/admin/plugin-config")).json()) as PluginConfigResponse).plugins;
-  return { t, admin, sandbox, spawn, list };
+  return {
+    t,
+    admin,
+    sandbox,
+    list,
+    card: async () => (await list()).find((e) => e.name === "sandbox")!,
+    save: (name: string, values: Record<string, unknown>) =>
+      admin.put("/api/admin/plugin-config", { name, values }),
+    spawn: () => sandbox.confiner()(["true"], { workspaceDir: "/w" } as never),
+  };
 }
 
 describe("sandbox settings group", () => {
@@ -98,7 +119,7 @@ describe("sandbox settings group", () => {
   });
 
   it("lists the sandbox with its backends' notice (a backend for another platform is not a notice), and a backend's group inside it", async () => {
-    const { t, list } = await appWith([]);
+    const { t, list } = await appWith([backend()]);
     apps.push(t);
     const entries = await list();
     const sandbox = entries.find((e) => e.name === "sandbox")!;
@@ -121,159 +142,127 @@ describe("sandbox settings group", () => {
     expect(child.values).toEqual({ runner: "runner-a" });
   });
 
-  it("lists the local network level as unavailable where no backend supports it, and refuses saving it", async () => {
-    const { t, admin, list, sandbox } = await appWith([]);
-    apps.push(t);
-    const entry = (await list()).find((e) => e.name === "sandbox")!;
-    expect(entry.unavailable).toEqual([
-      // The presets' network column, in every row.
-      expect.objectContaining({ field: "presets", column: "network", value: "local" }),
-    ]);
-    const refusedCell = await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: { presets: { "read-only": { network: "local" } } },
-    });
-    expect(refusedCell.status).toBe(400);
-    expect(await refusedCell.text()).toContain("presets.read-only.network");
-    // Nothing was stored: the service still runs the defaults.
-    expect(sandbox.currentSettings()).toEqual({ mode: "danger-full-access" });
-    expect((await list()).find((e) => e.name === "sandbox")!.values.presets).toBeUndefined();
-  });
-
-  it("the state-read-only preset is a default like any other, and its row cell saves and un-saves", async () => {
-    const { t, admin, sandbox, list } = await appWith([]);
-    apps.push(t);
-    const save = (values: Record<string, unknown>) =>
-      admin.put("/api/admin/plugin-config", { name: "sandbox", values });
-    expect(
-      (await save({ enabled: true, defaultPreset: "workspace-write-state-readonly" })).status,
-    ).toBe(200);
-    // New Sessions start from Workspace Write with the agent state held read-only.
-    expect(sandbox.currentSettings()).toEqual({ mode: "workspace-write", stateReadonly: true });
-    // The row's cell persists: turning it off makes the same start plain Workspace Write.
-    expect(
-      (await save({ presets: { "workspace-write-state-readonly": { stateReadonly: false } } }))
-        .status,
-    ).toBe(200);
-    expect(sandbox.currentSettings()).toEqual({ mode: "workspace-write" });
-    expect((await list()).find((e) => e.name === "sandbox")!.values.presets).toEqual({
-      "workspace-write-state-readonly": { stateReadonly: false },
-    });
-    // And back on again.
-    expect(
-      (await save({ presets: { "workspace-write-state-readonly": { stateReadonly: true } } }))
-        .status,
-    ).toBe(200);
-    expect(sandbox.currentSettings()).toEqual({ mode: "workspace-write", stateReadonly: true });
-  });
-
-  it("greys the state-read-only cells out and refuses saving them where no backend declares the dimension", async () => {
-    // A backend that confines files only — the DSH adaptor's shape on its non-Landlock rung.
-    const host = new PluginHost();
-    host.use({
-      specifier: "fs-only-backend",
-      modules: [
-        {
-          manifest: parseManifest({
-            name: "FsOnlyBackend",
-            requires: {},
-            provides: {},
-            contributes: {
-              "SandboxModule.providers": [
-                { id: "fs.provider", name: "fs-only", dimensions: ["fs-write"] },
-              ],
-            },
-            children: [],
-          }),
-          create: () => ({
-            api: {},
-            bind: {
-              "fs.provider": {
-                dimensions: ["fs-write"],
-                confine: (argv: readonly string[]) => ({
-                  argv: ["fs-only", ...argv],
-                  enforcement: "full" as const,
-                  denialSignatures: [],
-                  runnerFailureRules: [],
-                }),
-              },
-            },
-          }),
-        },
+  /**
+   * Greyed-out cells: a column no mounted backend serves is unavailable on the card, and
+   * saving that cell is refused with nothing stored. One more unsupported column is one
+   * more row.
+   */
+  it.each([
+    {
+      name: "the local network level is unavailable where no backend supports it, and saving it is refused",
+      modules: [backend()],
+      unavailable: [
+        expect.objectContaining({ field: "presets", column: "network", value: "local" }),
       ],
-      replaces: [],
-    });
-    const t = await createTestApp({ plugins: host });
-    apps.push(t);
-    const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
-    await t.deps.tree.api<SandboxService>("SandboxModule", "sandbox").whenReady();
-    const entry = (
-      (await (await admin.get("/api/admin/plugin-config")).json()) as PluginConfigResponse
-    ).plugins.find((e) => e.name === "sandbox")!;
-    expect(entry.unavailable).toEqual(
-      expect.arrayContaining([
+      cell: { presets: { "read-only": { network: "local" } } },
+      refused: "presets.read-only.network",
+    },
+    {
+      name: "the state-read-only cells are greyed out where no backend declares the dimension, and saving them is refused",
+      modules: [backend({ label: "fs-only", dimensions: ["fs-write"] })],
+      unavailable: expect.arrayContaining([
         expect.objectContaining({ field: "presets", column: "stateReadonly", value: "true" }),
       ]),
-    );
-    const refusedCell = await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: { presets: { "workspace-write": { stateReadonly: true } } },
-    });
+      cell: { presets: { "workspace-write": { stateReadonly: true } } },
+      refused: "presets.workspace-write.stateReadonly",
+    },
+  ])("$name", async ({ modules, unavailable, cell, refused }) => {
+    const { t, sandbox, card, save } = await appWith(modules);
+    apps.push(t);
+    expect((await card()).unavailable).toEqual(unavailable);
+    const refusedCell = await save("sandbox", cell);
     expect(refusedCell.status).toBe(400);
-    expect(await refusedCell.text()).toContain("presets.workspace-write.stateReadonly");
+    expect(await refusedCell.text()).toContain(refused);
+    // Nothing was stored: the service still runs the defaults, and the card shows no cell value.
+    expect(sandbox.currentSettings()).toEqual({ mode: "danger-full-access" });
+    expect((await card()).values.presets).toBeUndefined();
   });
 
-  it("starts new Sessions from the default preset, with the card's temp and masked paths beside it", async () => {
-    const { t, admin, sandbox } = await appWith([]);
+  /** Each shipped default preset: what a new Session starts from when it is the default. */
+  it.each([
+    ["read-only", { mode: "read-only" }],
+    ["workspace-write-state-readonly", { mode: "workspace-write", stateReadonly: true }],
+    ["full-access", { mode: "danger-full-access" }],
+  ] as const)("starts new Sessions from the %s preset", async (defaultPreset, starts) => {
+    const { t, sandbox, save } = await appWith([backend()]);
     apps.push(t);
-    const save = (values: Record<string, unknown>) =>
-      admin.put("/api/admin/plugin-config", { name: "sandbox", values });
+    expect((await save("sandbox", { enabled: true, defaultPreset })).status).toBe(200);
+    expect(sandbox.currentSettings()).toEqual(starts);
+  });
+
+  it("a remapped default row is what new Sessions get, with the card's masked paths beside it", async () => {
+    const { t, sandbox, save } = await appWith([backend()]);
+    apps.push(t);
     expect(
-      (await save({ enabled: true, defaultPreset: "read-only", maskPaths: ["/secret"] })).status,
+      (await save("sandbox", { enabled: true, defaultPreset: "read-only", maskPaths: ["/secret"] }))
+        .status,
     ).toBe(200);
     expect(sandbox.currentSettings()).toEqual({ mode: "read-only", maskPaths: ["/secret"] });
-    // A remapped default row is what new Sessions get.
     expect(
-      (await save({ presets: { "read-only": { mode: "workspace-write", network: "none" } } }))
-        .status,
+      (
+        await save("sandbox", {
+          presets: { "read-only": { mode: "workspace-write", network: "none" } },
+        })
+      ).status,
     ).toBe(200);
     expect(sandbox.currentSettings()).toEqual({
       mode: "workspace-write",
       network: "none",
       maskPaths: ["/secret"],
     });
-    // A default that confines nothing (Full Access) starts Sessions unconfined.
-    expect((await save({ defaultPreset: "full-access" })).status).toBe(200);
-    expect(sandbox.currentSettings()).toEqual({ mode: "danger-full-access" });
+  });
+
+  it("the state-read-only row's cell saves and un-saves", async () => {
+    const { t, sandbox, save, card } = await appWith([backend()]);
+    apps.push(t);
+    expect(
+      (await save("sandbox", { enabled: true, defaultPreset: "workspace-write-state-readonly" }))
+        .status,
+    ).toBe(200);
+    // New Sessions start from Workspace Write with the agent state held read-only; turning
+    // the row's cell off makes the same start plain Workspace Write.
+    expect(
+      (
+        await save("sandbox", {
+          presets: { "workspace-write-state-readonly": { stateReadonly: false } },
+        })
+      ).status,
+    ).toBe(200);
+    expect(sandbox.currentSettings()).toEqual({ mode: "workspace-write" });
+    expect((await card()).values.presets).toEqual({
+      "workspace-write-state-readonly": { stateReadonly: false },
+    });
+    // And back on again.
+    expect(
+      (
+        await save("sandbox", {
+          presets: { "workspace-write-state-readonly": { stateReadonly: true } },
+        })
+      ).status,
+    ).toBe(200);
+    expect(sandbox.currentSettings()).toEqual({ mode: "workspace-write", stateReadonly: true });
   });
 
   it("applies a saved policy to the next spawn; the backend reads its own saved group", async () => {
     const seen: Seen[] = [];
-    const { t, admin, spawn, sandbox } = await appWith(seen);
+    const { t, sandbox, spawn, save } = await appWith([backend({ seen })]);
     apps.push(t);
-    const saved = await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: {
-        enabled: true,
-        defaultPreset: "workspace-write",
-        presets: { "workspace-write": { network: "none" } },
-        maskPaths: [" /etc/x ", "/etc/x", ""],
-      },
-    });
-    expect(saved.status).toBe(200);
+    expect(
+      (
+        await save("sandbox", {
+          enabled: true,
+          defaultPreset: "workspace-write",
+          presets: { "workspace-write": { network: "none" } },
+          maskPaths: [" /etc/x ", "/etc/x", ""],
+        })
+      ).status,
+    ).toBe(200);
     expect(sandbox.currentSettings()).toEqual({
       mode: "workspace-write",
       network: "none",
       maskPaths: ["/etc/x"],
     });
-    expect(
-      (
-        await admin.put("/api/admin/plugin-config", {
-          name: "sandbox-test",
-          values: { runner: "runner-b" },
-        })
-      ).status,
-    ).toBe(200);
+    expect((await save("sandbox-test", { runner: "runner-b" })).status).toBe(200);
     expect(spawn()).toEqual({ argv: ["confined", "true"] });
     expect(seen.at(-1)).toEqual({
       policy: {
@@ -286,74 +275,47 @@ describe("sandbox settings group", () => {
       runner: "runner-b",
     });
 
-    await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: { defaultPreset: "read-only", maskPaths: [], writableTemp: false },
-    });
+    await save("sandbox", { defaultPreset: "read-only", maskPaths: [], writableTemp: false });
     expect(sandbox.currentSettings()).toEqual({ mode: "read-only", writableTemp: false });
     spawn();
     expect(seen.at(-1)?.policy).toEqual({ mode: "read-only", workspaceRoot: "/w" });
     expect(sandbox.parkedSettings()).toEqual({ mode: "read-only", writableTemp: false });
 
-    const refused = await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: { defaultPreset: "wide-open" },
-    });
-    expect(refused.status).toBe(400);
+    // A preset that is not one of the shipped ones never saves.
+    expect((await save("sandbox", { defaultPreset: "wide-open" })).status).toBe(400);
     // A relative masked path would resolve against the server's working directory.
-    const relative = await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: { maskPaths: ["/etc/x", ".ssh"] },
-    });
-    expect(relative.status).toBe(400);
+    expect((await save("sandbox", { maskPaths: ["/etc/x", ".ssh"] })).status).toBe(400);
     expect(sandbox.currentSettings().maskPaths).toBeUndefined();
     expect(sandbox.currentSettings().mode).toBe("read-only");
   });
 
   it("names a failed backend with its reason and the ones meant for another platform, and warns when the saved mode cannot be enforced", async () => {
-    const host = new PluginHost();
-    host.use({
-      specifier: "wrong-platform",
-      modules: [
-        {
-          manifest: parseManifest({
-            name: "WrongPlatformBackend",
-            requires: {},
-            provides: {},
-            contributes: {
-              "SandboxModule.providers": [
-                { id: "wrong.provider", name: "wrong-backend", dimensions: ["fs-write"] },
-                { id: "elsewhere.provider", name: "other-platform", dimensions: ["fs-write"] },
-              ],
-            },
-            children: [],
-          }),
-          create: () => ({
-            api: {},
-            bind: {
-              "wrong.provider": Promise.reject(new Error("'bwrap' is missing")),
-              // A backend for another platform declines: not a failure, and not named on its own.
-              "elsewhere.provider": Promise.resolve(null),
-            },
-          }),
+    const failing: ModuleDef = {
+      manifest: parseManifest({
+        name: "WrongPlatformBackend",
+        requires: {},
+        provides: {},
+        contributes: {
+          "SandboxModule.providers": [
+            { id: "wrong.provider", name: "wrong-backend", dimensions: ["fs-write"] },
+            { id: "elsewhere.provider", name: "other-platform", dimensions: ["fs-write"] },
+          ],
         },
-      ],
-      replaces: [],
-    });
-    const t = await createTestApp({ plugins: host });
+        children: [],
+      }),
+      create: () => ({
+        api: {},
+        bind: {
+          "wrong.provider": Promise.reject(new Error("'bwrap' is missing")),
+          // A backend for another platform declines: not a failure, and not named on its own.
+          "elsewhere.provider": Promise.resolve(null),
+        },
+      }),
+    };
+    const { t, card, save } = await appWith([failing]);
     apps.push(t);
-    const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
-    await t.deps.tree.api<SandboxService>("SandboxModule", "sandbox").whenReady();
-    await admin.put("/api/admin/plugin-config", {
-      name: "sandbox",
-      values: { enabled: true },
-    });
-    const entries = (
-      (await (await admin.get("/api/admin/plugin-config")).json()) as PluginConfigResponse
-    ).plugins;
-    const notices = entries
-      .find((e) => e.name === "sandbox")!
-      .notices!.map((n) => [n.tone, n.text]);
+    await save("sandbox", { enabled: true });
+    const notices = (await card()).notices!.map((n) => [n.tone, n.text]);
     expect(notices).toEqual([
       [
         "attention",
@@ -368,74 +330,60 @@ describe("sandbox settings group", () => {
   });
 
   it("loads a backend that failed its check again when its group is saved, and answers with the outcome", async () => {
-    const host = new PluginHost();
-    host.use({
-      specifier: "probed-backend",
-      modules: [
-        {
-          manifest: parseManifest({
-            name: "ProbedBackend",
-            requires: {
-              config: {
-                iface: "@prismshadow/penguin-server#PluginConfig",
-                from: "PluginConfigModule",
-              },
-            },
-            provides: {},
-            contributes: {
-              "SandboxModule.providers": [
-                { id: "probed.provider", name: "probed", dimensions: ["fs-write"] },
-              ],
-              "PluginConfigProvider.groups": [
-                {
-                  id: "sandbox-probed",
-                  parent: "sandbox",
-                  title: "Probed backend",
-                  properties: {
-                    runner: { type: "string", title: "Runner", default: "/opt/bwarp" },
-                  },
-                },
-              ],
-            },
-            children: [],
-          }),
-          create({ use }) {
-            const config = use.config as PluginConfig;
-            return {
-              api: {},
-              bind: {
-                // A loader, the way bwrap binds one: it checks the runner its group names.
-                "probed.provider": async () => {
-                  const runner = config.get("sandbox-probed").runner;
-                  if (runner !== "/usr/bin/bwrap")
-                    throw new Error(`'${String(runner)}' is missing`);
-                  return {
-                    confine: (argv: readonly string[]) => ({
-                      argv: ["probed", ...argv],
-                      enforcement: "full" as const,
-                      denialSignatures: [],
-                      runnerFailureRules: [],
-                    }),
-                  };
-                },
-              },
-            };
+    const probed: ModuleDef = {
+      manifest: parseManifest({
+        name: "ProbedBackend",
+        requires: {
+          config: {
+            iface: "@prismshadow/penguin-server#PluginConfig",
+            from: "PluginConfigModule",
           },
         },
-      ],
-      replaces: [],
-    });
-    const t = await createTestApp({ plugins: host });
+        provides: {},
+        contributes: {
+          "SandboxModule.providers": [
+            { id: "probed.provider", name: "probed", dimensions: ["fs-write"] },
+          ],
+          "PluginConfigProvider.groups": [
+            {
+              id: "sandbox-probed",
+              parent: "sandbox",
+              title: "Probed backend",
+              properties: {
+                runner: { type: "string", title: "Runner", default: "/opt/bwarp" },
+              },
+            },
+          ],
+        },
+        children: [],
+      }),
+      create({ use }) {
+        const config = use.config as PluginConfig;
+        return {
+          api: {},
+          bind: {
+            // A loader, the way bwrap binds one: it checks the runner its group names.
+            "probed.provider": async () => {
+              const runner = config.get("sandbox-probed").runner;
+              if (runner !== "/usr/bin/bwrap") throw new Error(`'${String(runner)}' is missing`);
+              return {
+                confine: (argv: readonly string[]) => ({
+                  argv: ["probed", ...argv],
+                  enforcement: "full" as const,
+                  denialSignatures: [],
+                  runnerFailureRules: [],
+                }),
+              };
+            },
+          },
+        };
+      },
+    };
+    const { t, sandbox, save } = await appWith([probed]);
     apps.push(t);
-    const admin = apiClient(t.app, (await loginAdmin(t.app)).cookie);
-    const sandbox = t.deps.tree.api<SandboxService>("SandboxModule", "sandbox");
-    await sandbox.whenReady();
     expect(sandbox.failures()).toEqual([{ name: "probed", reason: "'/opt/bwarp' is missing" }]);
 
-    const saved = await admin.put("/api/admin/plugin-config", {
-      name: "sandbox-probed",
-      values: { runner: "/usr/bin/bwrap" },
-    });
+    const saved = await save("sandbox-probed", { runner: "/usr/bin/bwrap" });
     expect(saved.status).toBe(200);
     const card = ((await saved.json()) as PluginConfigResponse).plugins.find(
       (e) => e.name === "sandbox",
@@ -458,19 +406,13 @@ describe("sandbox settings group", () => {
     const dbPath = path.join(dir, "web.db");
     let second: Awaited<ReturnType<typeof appWith>> | undefined;
     try {
-      const first = await appWith([], dbPath);
-      await first.admin.put("/api/admin/plugin-config", {
-        name: "sandbox",
-        values: { enabled: true, defaultPreset: "read-only" },
-      });
-      await first.admin.put("/api/admin/plugin-config", {
-        name: "sandbox-test",
-        values: { runner: "runner-c" },
-      });
+      const first = await appWith([backend()], dbPath);
+      await first.save("sandbox", { enabled: true, defaultPreset: "read-only" });
+      await first.save("sandbox-test", { runner: "runner-c" });
       await first.t.cleanup();
 
       const seen: Seen[] = [];
-      second = await appWith(seen, dbPath);
+      second = await appWith([backend({ seen })], dbPath);
       expect(second.sandbox.currentSettings()).toEqual({ mode: "read-only" });
       second.spawn();
       expect(seen.at(-1)?.runner).toBe("runner-c");

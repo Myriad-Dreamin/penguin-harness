@@ -164,7 +164,8 @@ describe("penguin-bwrap profile", () => {
     }
   });
 
-  // skipIf(win32): host path resolution would rewrite the POSIX literals.
+  // skipIf(win32): the profile echoes host path resolution, which turns the POSIX
+  // workspace literal into a drive path — and bwrap never runs there anyway.
   it.skipIf(process.platform === "win32")(
     "readonly-roots: every path mount in one order — deeper later, read-only winning ties",
     () => {
@@ -195,41 +196,57 @@ describe("penguin-bwrap profile", () => {
     },
   );
 
-  // skipIf(win32): as above, host path resolution would rewrite the POSIX literals.
-  it.skipIf(process.platform === "win32")(
-    "readonly-roots: a state root inside the workspace mounts after the writable bind and shadows it",
-    () => {
-      const state = "/work/project/state";
-      const args = bwrapProfileArgs({
-        mode: "workspace-write",
-        workspaceRoot: WS,
-        readonlyRoots: [state],
-      });
-      // Not skipped for falling inside a writable root: the ro-bind must be there, later.
-      expect(mountAt(args, "--ro-bind", state)).toBeGreaterThan(mountAt(args, "--bind", WS));
-    },
-  );
+  /**
+   * Order rows: each row's mounts must appear in the profile in the listed order — a later
+   * mount shadows an earlier one on every path beneath it, which is what holds a read-only
+   * root over a writable bind that covers it. One more shadowing corner is one more row.
+   */
+  /** A workspace-write policy over the test Workspace, with these further roots. */
+  const ws = (readonlyRoots?: readonly string[], writableRoots?: readonly string[]) => ({
+    mode: "workspace-write" as const,
+    workspaceRoot: WS,
+    ...(readonlyRoots ? { readonlyRoots } : {}),
+    ...(writableRoots ? { writableRoots } : {}),
+  });
 
-  // skipIf(win32): as above, host path resolution would rewrite the POSIX literals.
-  it.skipIf(process.platform === "win32")(
-    "readonly-roots: the scratchpad inside the state root mounts later still and stays writable",
-    () => {
-      const state = "/work/project/state";
-      const scratchpad = "/work/project/state/scratchpad";
-      const args = bwrapProfileArgs({
-        mode: "workspace-write",
-        workspaceRoot: WS,
-        readonlyRoots: [state],
-        writableRoots: [scratchpad],
-      });
-      expect(mountAt(args, "--ro-bind", state)).toBeGreaterThan(mountAt(args, "--bind", WS));
-      expect(mountAt(args, "--bind", scratchpad)).toBeGreaterThan(
-        mountAt(args, "--ro-bind", state),
-      );
-    },
-  );
+  /** An order row's mounts — flag before path — in the order the profile must show them. */
+  const chain = (...pairs: [string, string][]) => pairs;
 
-  // skipIf(win32): as above, host path resolution would rewrite the POSIX literals.
+  it.skipIf(process.platform === "win32").each([
+    {
+      name: "a state root inside the workspace shadows the writable bind that covers it",
+      policy: ws(["/work/project/state"]),
+      order: chain(["--bind", WS], ["--ro-bind", "/work/project/state"]),
+    },
+    {
+      name: "the scratchpad inside the state root mounts later still and stays writable",
+      policy: ws(["/work/project/state"], ["/work/project/state/scratchpad"]),
+      order: chain(
+        ["--bind", WS],
+        ["--ro-bind", "/work/project/state"],
+        ["--bind", "/work/project/state/scratchpad"],
+      ),
+    },
+    {
+      name: "full access still mounts the read-only root, shadowing the writable bind of /",
+      policy: {
+        mode: "danger-full-access" as const,
+        workspaceRoot: WS,
+        readonlyRoots: ["/data/agent-state"],
+      },
+      order: chain(["--bind", "/"], ["--ro-bind", "/data/agent-state"]),
+    },
+  ])("$name", ({ policy, order }) => {
+    // Not skipped for falling inside a writable root: the ro-bind must be there, later.
+    const args = bwrapProfileArgs(policy);
+    let prev = -1;
+    for (const [flag, mount] of order) {
+      const at = mountAt(args, flag, mount);
+      expect(at, `${flag} ${mount}`).toBeGreaterThan(prev);
+      prev = at;
+    }
+  });
+
   it.skipIf(process.platform === "win32")(
     "readonly-roots: deduplicated, and the temp tmpfs stays private when /tmp is a root",
     () => {
@@ -251,16 +268,6 @@ describe("penguin-bwrap profile", () => {
       ).not.toContain("--bind /tmp /tmp");
     },
   );
-
-  it("readonly-roots: a root under full access still mounts, shadowing the writable bind of /", () => {
-    const args = bwrapProfileArgs({
-      mode: "danger-full-access",
-      workspaceRoot: WS,
-      readonlyRoots: ["/data/agent-state"],
-    });
-    expect(args.slice(0, 3)).toEqual(["--bind", "/", "/"]);
-    expect(args.join(" ")).toContain("--ro-bind /data/agent-state /data/agent-state");
-  });
 });
 
 describe("penguin-bwrap provider", () => {

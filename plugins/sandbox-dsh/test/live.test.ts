@@ -60,12 +60,21 @@ const mgr = new CommandSessionManager({
   workspaceDir: ws,
 });
 
-async function run(cmd: string): Promise<{ code: number | null; out: string }> {
-  const session = mgr.spawn({ cmd, cwd: ws });
+/** Runs `cmd` through the manager the caller owns, in this file's Workspace. */
+async function runIn(
+  manager: CommandSessionManager,
+  cmd: string,
+): Promise<{ code: number | null; out: string }> {
+  const session = manager.spawn({ cmd, cwd: ws });
   let out = "";
   for await (const chunk of session.collect(15000)) out += chunk;
   if (session.running) session.kill();
   return { code: session.exit?.code ?? null, out };
+}
+
+/** A command through this file's own manager, under the module-level `mode` above. */
+async function run(cmd: string): Promise<{ code: number | null; out: string }> {
+  return runIn(mgr, cmd);
 }
 
 /** A PowerShell single-quoted literal. */
@@ -136,12 +145,9 @@ const stateMgr = new CommandSessionManager({
   workspaceDir: ws,
 });
 
+/** A command through the state manager, under the module-level `statePolicy` above. */
 async function runState(cmd: string): Promise<{ code: number | null; out: string }> {
-  const session = stateMgr.spawn({ cmd, cwd: ws });
-  let out = "";
-  for await (const chunk of session.collect(15000)) out += chunk;
-  if (session.running) session.kill();
-  return { code: session.exit?.code ?? null, out };
+  return runIn(stateMgr, cmd);
 }
 
 afterAll(() => {
@@ -203,7 +209,28 @@ describe.skipIf(!usable)("DSH adaptor live enforcement (host-gated)", () => {
 describe.skipIf(!landlock)(
   "DSH adaptor under Landlock: the read-only state root (rung-gated)",
   () => {
-    it("the workspace stays writable under the state-read-only policy, host-side", async () => {
+    /** A confined `echo` that must reach the host file with this content. */
+    async function writes(file: string, text: string) {
+      const r = await runState(`echo ${text.trim()} > ${JSON.stringify(file)}`);
+      expect(r.code, r.out).toBe(0);
+      expect(readFileSync(file, "utf8")).toBe(text);
+    }
+
+    /** A confined write that the rung must deny, leaving nothing on the host. */
+    async function denied(target: string) {
+      const r = await runState(`echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`);
+      expect(r.out).toMatch(DENIED);
+      expect(existsSync(target)).toBe(false);
+    }
+
+    /** A confined read of a file inside the state root. */
+    async function reads(file: string, marker: string) {
+      const r = await runState(`cat ${JSON.stringify(file)}`);
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain(marker);
+    }
+
+    it("holds the agent state read-only: the workspace and the scratchpad write — the capability this file splices in — the state root does not, and it stays readable", async () => {
       statePolicy = {
         mode: "workspace-write",
         workspaceRoot: ws,
@@ -211,29 +238,12 @@ describe.skipIf(!landlock)(
         writableRoots: [stateScratchpad],
       };
       const r = await runState("echo dsh-ws-ok > dsh-ws.txt && cat dsh-ws.txt");
-      expect(r.code).toBe(0);
+      expect(r.code, r.out).toBe(0);
       expect(r.out).toContain("dsh-ws-ok");
       expect(existsSync(path.join(ws, "dsh-ws.txt"))).toBe(true);
-    });
-
-    it("the scratchpad inside the state root is writable — the capability this file splices in", async () => {
-      const target = path.join(stateScratchpad, "pad.txt");
-      const r = await runState(`echo pad > ${JSON.stringify(target)}`);
-      expect(r.code).toBe(0);
-      expect(readFileSync(target, "utf8")).toBe("pad\n");
-    });
-
-    it("a write into the state root itself is denied and leaves nothing on the host", async () => {
-      const target = path.join(stateRoot, "leak.txt");
-      const r = await runState(`echo leak > ${JSON.stringify(target)} 2>&1; echo exit=$?`);
-      expect(r.out).toMatch(DENIED);
-      expect(existsSync(target)).toBe(false);
-    });
-
-    it("the state root stays readable: its files list and cat", async () => {
-      const r = await runState(`cat ${JSON.stringify(path.join(stateRoot, "marker.txt"))}`);
-      expect(r.code).toBe(0);
-      expect(r.out).toContain("dsh-state-marker");
+      await writes(path.join(stateScratchpad, "pad.txt"), "pad\n");
+      await denied(path.join(stateRoot, "leak.txt"));
+      await reads(path.join(stateRoot, "marker.txt"), "dsh-state-marker");
     });
 
     it("a state root inside the workspace cannot be expressed: the confine throws, nothing runs", () => {

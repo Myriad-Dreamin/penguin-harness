@@ -150,6 +150,7 @@ describe("the composer's presets", () => {
     ["deny-all", {}, "denied-all"],
     ["allow-all", { network: "none" }, undefined],
     ["read-only", {}, undefined],
+    ["allow-all", { mode: "workspace-write" }, "workspace-write"],
     [
       "allow-all",
       { mode: "workspace-write", stateReadonly: true },
@@ -159,35 +160,16 @@ describe("the composer's presets", () => {
     expect(matchPreset(BUILTIN_PRESETS, approval, { ...FULL, ...over })?.id).toBe(id);
   });
 
-  it("names the state-read-only row and plain Workspace Write apart, by all four values", () => {
-    // The fourth value is what separates them: same mode, same network, same ask mode.
-    const plain = matchPreset(BUILTIN_PRESETS, "allow-all", { ...FULL, mode: "workspace-write" });
-    const held = matchPreset(BUILTIN_PRESETS, "allow-all", {
-      ...FULL,
-      mode: "workspace-write",
-      stateReadonly: true,
-    });
-    expect(plain?.id).toBe("workspace-write");
-    expect(held?.id).toBe("workspace-write-state-readonly");
-    expect(plain).not.toBe(held);
-  });
-
-  it("a preset's pick says all four values, stateReadonly as an explicit boolean", () => {
-    // An absent field would keep a held value: a preset without the flag must be able to clear it.
-    expect(presetPick(byId("workspace-write")).sandbox).toEqual({
-      mode: "workspace-write",
+  // An absent field would keep a held value: a preset without the flag must be able to clear it.
+  it.each([
+    ["workspace-write", false],
+    ["workspace-write-state-readonly", true],
+    ["read-only", false],
+  ] as const)("a preset's pick says all four values: %s", (id, stateReadonly) => {
+    expect(presetPick(byId(id)).sandbox).toEqual({
+      mode: byId(id).mode,
       network: "open",
-      stateReadonly: false,
-    });
-    expect(presetPick(byId("workspace-write-state-readonly")).sandbox).toEqual({
-      mode: "workspace-write",
-      network: "open",
-      stateReadonly: true,
-    });
-    expect(presetPick(byId("read-only")).sandbox).toEqual({
-      mode: "read-only",
-      network: "open",
-      stateReadonly: false,
+      stateReadonly,
     });
   });
 

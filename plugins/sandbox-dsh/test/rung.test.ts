@@ -1,7 +1,8 @@
 /**
  * The rung the settings card names for the DSH adaptor, the limits each rung discloses,
  * and the pure half of the Landlock extension: the dimensions a rung declares, the grants
- * it splices in, and the corner the allow-list cannot express.
+ * it splices in, and the corner the allow-list cannot express. Preset-shaped behaviors are
+ * rows — one more rung, grant corner or wrapper shape is one more row, not a new case block.
  */
 import { describe, expect, it } from "vitest";
 import path from "node:path";
@@ -41,67 +42,54 @@ describe("the DSH rung", () => {
 });
 
 describe("the dimensions a rung declares", () => {
-  it("readonly-roots rides only on the Landlock rung", () => {
-    expect(declaredDimensions("Landlock")).toEqual(["fs-write", "readonly-roots"]);
-    expect(declaredDimensions("bubblewrap")).toEqual(["fs-write"]);
-    expect(declaredDimensions("Seatbelt")).toEqual(["fs-write"]);
-    expect(declaredDimensions("the Windows ACL runner")).toEqual(["fs-write"]);
+  it.each([
+    ["Landlock", ["fs-write", "readonly-roots"]],
+    ["bubblewrap", ["fs-write"]],
+    ["Seatbelt", ["fs-write"]],
+    ["the Windows ACL runner", ["fs-write"]],
+  ] as const)("the %s rung declares %j", (rung, dimensions) => {
+    // readonly-roots rides only on the Landlock rung: the service routes by this.
+    expect(declaredDimensions(rung)).toEqual(dimensions);
   });
 });
 
 describe("the writable roots the Landlock rung splices in", () => {
   // Resolved in the expectations as in the implementation, so the literals hold on every
   // platform the package tests on (win32 path resolution prefixes a drive).
-  it("workspace-write: the policy's further roots plus the real temp, minus what the chain grants", () => {
-    expect(
-      grantableWritableRoots(
-        {
-          mode: "workspace-write",
-          workspaceRoot: "/work/project",
-          writableRoots: ["/data/agent/scratchpad/s", "/data/agent/scratchpad/s"],
-          writableTemp: true,
-        },
-        "/tmp",
-      ),
-    ).toEqual([path.resolve("/data/agent/scratchpad/s")]);
-    // A TMPDIR elsewhere must not lose its temp; the literal /tmp the chain already grants.
-    expect(
-      grantableWritableRoots(
-        {
-          mode: "workspace-write",
-          workspaceRoot: "/work/project",
-          writableRoots: [],
-          writableTemp: true,
-        },
-        "/home/deploy/tmp-verify",
-      ),
-    ).toEqual([path.resolve("/home/deploy/tmp-verify")]);
-    // Temp turned off adds nothing; the workspace itself is already granted.
-    expect(
-      grantableWritableRoots(
-        {
-          mode: "workspace-write",
-          workspaceRoot: "/work/project",
-          writableRoots: ["/work/project", "/work/project/deeper"],
-          writableTemp: false,
-        },
-        "/tmp",
-      ),
-    ).toEqual([path.resolve("/work/project/deeper")]);
-  });
+  /** Rows share the Workspace root and always say the temp flag: a row is the rest. */
+  const policy = (
+    mode: "workspace-write" | "read-only",
+    writableRoots: readonly string[],
+    writableTemp: boolean,
+  ) => ({ mode, workspaceRoot: "/work/project", writableRoots, writableTemp });
 
-  it("read-only keeps the chain's own profile: nothing to splice", () => {
-    expect(
-      grantableWritableRoots(
-        {
-          mode: "read-only",
-          workspaceRoot: "/work/project",
-          writableRoots: ["/data/s"],
-          writableTemp: true,
-        },
-        "/tmp",
-      ),
-    ).toEqual([]);
+  it.each([
+    [
+      "the policy's further roots plus the real temp, minus what the chain grants",
+      policy("workspace-write", ["/data/agent/scratchpad/s", "/data/agent/scratchpad/s"], true),
+      "/tmp",
+      ["/data/agent/scratchpad/s"],
+    ],
+    [
+      "a TMPDIR elsewhere must not lose its temp; the literal /tmp the chain already grants",
+      policy("workspace-write", [], true),
+      "/home/deploy/tmp-verify",
+      ["/home/deploy/tmp-verify"],
+    ],
+    [
+      "temp turned off adds nothing; the workspace itself is already granted",
+      policy("workspace-write", ["/work/project", "/work/project/deeper"], false),
+      "/tmp",
+      ["/work/project/deeper"],
+    ],
+    [
+      "read-only keeps the chain's own profile: nothing to splice",
+      policy("read-only", ["/data/s"], true),
+      "/tmp",
+      [],
+    ],
+  ] as const)("%s", (_, shaped, tmp, expected) => {
+    expect(grantableWritableRoots(shaped, tmp)).toEqual(expected.map((p) => path.resolve(p)));
   });
 });
 
@@ -129,25 +117,17 @@ describe("splicing further grants into a Landlock wrapper", () => {
   const callerArgv = ["bash", "-lc", "echo hi"];
 
   it("adds the extra roots in front of the separator, command untouched behind it", () => {
-    expect(
-      spliceLandlockGrants(wrapped, callerArgv, ["/data/agent/scratchpad/s"], fakeGrantArgs),
-    ).toEqual([
-      "/bin/landlock-run",
-      "--ro",
-      "/",
-      "--rw",
-      "/dev/null",
-      "--rw",
-      "/tmp",
-      "--rw",
-      "/work/project",
-      "--rw",
-      "/data/agent/scratchpad/s",
-      "--",
-      "bash",
-      "-lc",
-      "echo hi",
-    ]);
+    const spliced = spliceLandlockGrants(
+      wrapped,
+      callerArgv,
+      ["/data/agent/scratchpad/s"],
+      fakeGrantArgs,
+    );
+    const at = spliced.lastIndexOf("--");
+    // The grants go in front of the separator; the head they follow is the wrapper's own.
+    expect(spliced.slice(at)).toEqual(["--", ...callerArgv]);
+    expect(spliced.slice(at - 2, at)).toEqual(["--rw", "/data/agent/scratchpad/s"]);
+    expect(spliced.slice(0, at - 2)).toEqual(wrapped.slice(0, wrapped.indexOf("--")));
   });
 
   it("only ever asks for read-write grants: read-only comes from the chain's own profile", () => {
@@ -167,56 +147,68 @@ describe("splicing further grants into a Landlock wrapper", () => {
 
   it("matches the tail even when the caller's own arguments contain a -- separator", () => {
     const tricky = ["/bin/landlock-run", "--ro", "/", "--", "bash", "-c", "echo -- x"];
-    expect(
-      spliceLandlockGrants(tricky, ["bash", "-c", "echo -- x"], ["/data/s"], fakeGrantArgs),
-    ).toEqual([
-      "/bin/landlock-run",
-      "--ro",
-      "/",
-      "--rw",
-      "/data/s",
-      "--",
-      "bash",
-      "-c",
-      "echo -- x",
-    ]);
+    const spliced = spliceLandlockGrants(
+      tricky,
+      ["bash", "-c", "echo -- x"],
+      ["/data/s"],
+      fakeGrantArgs,
+    );
+    const at = spliced.lastIndexOf("--");
+    expect(spliced.slice(at)).toEqual(["--", "bash", "-c", "echo -- x"]);
+    expect(spliced.slice(at - 2, at)).toEqual(["--rw", "/data/s"]);
+    expect(spliced.slice(0, at - 2)).toEqual(["/bin/landlock-run", "--ro", "/"]);
   });
 
-  it("refuses a wrapper that does not end with the separator and the caller's command", () => {
-    expect(() =>
-      spliceLandlockGrants(["/bin/landlock-run", "--ro", "/"], [], [], fakeGrantArgs),
-    ).toThrow(/no longer ends with/);
-    expect(() =>
-      spliceLandlockGrants(
-        ["/bin/landlock-run", "--ro", "/", "--", "bash", "-c", "other"],
-        ["bash", "-c", "echo hi"],
-        [],
-        fakeGrantArgs,
-      ),
-    ).toThrow(/no longer ends with/);
+  it.each([
+    ["a wrapper with no separator at all", ["/bin/landlock-run", "--ro", "/"], []],
+    [
+      "a wrapper ending with a different command",
+      ["/bin/landlock-run", "--ro", "/", "--", "bash", "-c", "other"],
+      ["bash", "-c", "echo hi"],
+    ],
+  ] as const)("refuses %s", (_, bad, caller) => {
+    expect(() => spliceLandlockGrants(bad, caller, [], fakeGrantArgs)).toThrow(
+      /no longer ends with/,
+    );
   });
 });
 
 describe("the corner Landlock cannot express", () => {
-  it("refuses a read-only root inside a writable grant, or equal to one", () => {
-    expect(() =>
-      assertLandlockCanExpress(["/tmp/state-root"], ["/dev/null", "/tmp", "/work/project"]),
-    ).toThrow(/cannot hold .* read-only under Landlock/);
-    expect(() => assertLandlockCanExpress(["/work/project/state"], ["/work/project"])).toThrow(
+  it.each([
+    [
+      "refuses a read-only root inside a writable grant",
+      ["/tmp/state-root"],
+      ["/dev/null", "/tmp", "/work/project"],
+      /cannot hold .* read-only under Landlock/,
+    ],
+    [
+      "refuses a read-only root inside the workspace grant",
+      ["/work/project/state"],
+      ["/work/project"],
       /writable grant/,
-    );
-    expect(() => assertLandlockCanExpress(["/work/project"], ["/work/project"])).toThrow(
+    ],
+    [
+      "refuses a read-only root equal to a grant",
+      ["/work/project"],
+      ["/work/project"],
       /writable grant/,
-    );
-    expect(() => assertLandlockCanExpress(["/data/agents/a"], ["/"])).toThrow(/writable grant/);
-  });
-
-  it("allows the carve-out: a writable root deeper inside the read-only one is how the scratchpad works", () => {
-    expect(() =>
-      assertLandlockCanExpress(["/data/agents/a"], ["/data/agents/a/scratchpad"]),
-    ).not.toThrow();
-    expect(() =>
-      assertLandlockCanExpress(["/data/agents/a"], ["/dev/null", "/tmp", "/work/project"]),
-    ).not.toThrow();
+    ],
+    ["refuses a read-only root under a writable /", ["/data/agents/a"], ["/"], /writable grant/],
+    [
+      "allows the carve-out: a writable root deeper inside the read-only one is how the scratchpad works",
+      ["/data/agents/a"],
+      ["/data/agents/a/scratchpad"],
+      undefined,
+    ],
+    [
+      "allows a read-only root beside the grants",
+      ["/data/agents/a"],
+      ["/dev/null", "/tmp", "/work/project"],
+      undefined,
+    ],
+  ] as const)("%s", (_, roots, grants, message) => {
+    const tryIt = () => assertLandlockCanExpress(roots, grants);
+    if (message === undefined) expect(tryIt).not.toThrow();
+    else expect(tryIt).toThrow(message);
   });
 });

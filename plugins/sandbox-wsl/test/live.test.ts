@@ -45,7 +45,7 @@ let stateInWs = "";
 let mgr: CommandSessionManager | null = null;
 
 /** null = spawn unconfined; otherwise confine under this policy (workspaceRoot per spawn). */
-let policy: Omit<SandboxPolicy, "workspaceRoot"> | null = null;
+let held: Omit<SandboxPolicy, "workspaceRoot"> | null = null;
 
 /** The distro's spelling of a Windows path, for the command string the test writes. */
 function inDistro(windowsPath: string): string {
@@ -77,9 +77,9 @@ describe.skipIf(!usable)("penguin-wsl live enforcement (Windows-host-gated)", ()
     mkdirSync(stateInWs);
     mgr = new CommandSessionManager({
       confineSpawn: () => (argv, opts) =>
-        policy === null
+        held === null
           ? { argv }
-          : provider.confine(argv, { ...policy, workspaceRoot: opts.workspaceDir }),
+          : provider.confine(argv, { ...held, workspaceRoot: opts.workspaceDir }),
       workspaceDir: ws,
     });
   });
@@ -90,43 +90,36 @@ describe.skipIf(!usable)("penguin-wsl live enforcement (Windows-host-gated)", ()
     rmSync(stateRoot, { recursive: true, force: true });
   });
 
-  it("the workspace stays writable under the read-only state root, host-side", async () => {
-    policy = { mode: "workspace-write", readonlyRoots: [stateRoot], writableRoots: [scratchpad] };
-    const r = await run("echo wsl-ws-ok > wsl-ws.txt && cat wsl-ws.txt");
-    expect(r.code).toBe(0);
-    expect(r.out).toContain("wsl-ws-ok");
-    expect(existsSync(path.join(ws, "wsl-ws.txt"))).toBe(true);
-  });
+  /** A confined `echo` that must succeed and reach the Windows host file with this content. */
+  async function writes(file: string, text: string) {
+    const r = await run(`echo ${text.trim()} > ${JSON.stringify(inDistro(file))}`);
+    expect(r.code, r.out).toBe(0);
+    expect(readFileSync(file, "utf8")).toBe(text);
+  }
 
-  it("the scratchpad inside the state root is writable, host-side", async () => {
-    policy = { mode: "workspace-write", readonlyRoots: [stateRoot], writableRoots: [scratchpad] };
-    const target = path.join(scratchpad, "pad.txt");
-    const r = await run(`echo pad > ${JSON.stringify(inDistro(target))}`);
-    expect(r.code).toBe(0);
-    expect(readFileSync(target, "utf8")).toBe("pad\n");
-  });
-
-  it("a write into the state root itself is denied and leaves nothing on the host", async () => {
-    policy = { mode: "workspace-write", readonlyRoots: [stateRoot], writableRoots: [scratchpad] };
-    const target = path.join(stateRoot, "leak.txt");
+  /** A confined write that the kernel must deny, leaving nothing on the host. */
+  async function denied(target: string) {
     const r = await run(`echo leak > ${JSON.stringify(inDistro(target))} 2>&1; echo exit=$?`);
     expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
     expect(existsSync(target)).toBe(false);
-  });
+  }
 
-  it("the state root stays readable: its files list and cat", async () => {
-    policy = { mode: "workspace-write", readonlyRoots: [stateRoot], writableRoots: [scratchpad] };
-    const r = await run(`cat ${JSON.stringify(inDistro(path.join(stateRoot, "marker.txt")))}`);
-    expect(r.code).toBe(0);
-    expect(r.out).toContain("wsl-state-marker");
-  });
+  /** A confined read of a file inside the state root. */
+  async function reads(file: string, marker: string) {
+    const r = await run(`cat ${JSON.stringify(inDistro(file))}`);
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain(marker);
+  }
 
-  it("a state root the layout placed inside the workspace still reads read-only", async () => {
-    policy = { mode: "workspace-write", readonlyRoots: [stateInWs], writableRoots: [scratchpad] };
-    const target = path.join(stateInWs, "leak.txt");
-    const r = await run(`echo leak > ${JSON.stringify(inDistro(target))} 2>&1; echo exit=$?`);
-    expect(r.out).toMatch(/read-only file system|permission denied|operation not permitted/i);
-    expect(existsSync(target)).toBe(false);
+  it("holds the agent state read-only: the workspace and the scratchpad write, the state root does not, and it stays readable", async () => {
+    held = { mode: "workspace-write", readonlyRoots: [stateRoot], writableRoots: [scratchpad] };
+    await writes(path.join(ws, "wsl-ws.txt"), "wsl-ws-ok\n");
+    await writes(path.join(scratchpad, "pad.txt"), "pad\n");
+    await denied(path.join(stateRoot, "leak.txt"));
+    await reads(path.join(stateRoot, "marker.txt"), "wsl-state-marker");
+    // The corner layout: the mount order, not the layout, holds the state root read-only.
+    held = { ...held, readonlyRoots: [stateInWs] };
+    await denied(path.join(stateInWs, "leak.txt"));
   });
 
   it("a read-only root with no path in the distro refuses the confine rather than dropping it", () => {
