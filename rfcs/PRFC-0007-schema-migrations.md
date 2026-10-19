@@ -1,7 +1,7 @@
-# PRFC-0007 schema 的改动是有序、带戳、只跑一次的迁移
+# PRFC-0007: Schema changes are ordered, stamped, run-once migrations
 
-> **来源**：设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) 的 `rfcs/PRFC-0007-schema-migrations.md`——已落地（默认分支 `main`，提交 [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)）。
-> **Rev**：v1.0.0（迁入主仓）；本面约定见 [README.zh.md](README.zh.md)，逐版改动记于文末 `## Changes`。
+> **Source**: `rfcs/PRFC-0007-schema-migrations.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — landed (default branch `main`, commit [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)).
+> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are in [README.zh.md](README.zh.md), and per-version changes are recorded in the `## Changes` section at the end.
 
 - Feature Name: `schema-migrations`
 - Start Date: 2026-09-02
@@ -11,121 +11,121 @@
 ## Summary
 [summary]: #summary
 
-`web.db` 的 schema 改动写成有序、带版本戳、只跑一次的迁移。其中一条轴是热更新逼出来的：一条迁移必须声明自己在**可被回滚的启动路径**上跑是否安全，不安全的那些在碰数据库之前整批拒绝。
+Schema changes to `web.db` are written as ordered, version-stamped, run-once migrations. One axis of this was forced by hot updates: a migration must declare whether it is safe to run on a **rollback-able startup path**, and the unsafe ones are rejected as a whole batch before touching the database.
 
 ## Motivation
 [motivation]: #motivation
 
-### 「每次改动都保持增量」从来不是谁选的策略
+### "Keep every change incremental" was never a strategy anyone chose
 
-`schema.ts` 声明的是一个**全新**数据库被创建成什么样。它表达不了一次**改动**：反复执行 `CREATE TABLE IF NOT EXISTS` 只会把数据库朝当前声明收敛，既不知道、也不记录它从哪个状态来。
+`schema.ts` declares what a **brand-new** database gets created as. It cannot express a **change**: repeatedly running `CREATE TABLE IF NOT EXISTS` only converges the database toward the current declaration, neither knowing nor recording what state it came from.
 
-于是没有任何一个构建分得出一个 0.2.4 的库和一个 0.2.7 的库。「每次改动都保持增量」听上去像一条纪律，实际上是当时**唯一够得着**的安全性质——因为任何非增量的改动都无从判断该不该做。
+So no build can tell a 0.2.4 database apart from a 0.2.7 database. "Keep every change incremental" sounds like a discipline, but it was in fact the **only reachable** safety property at the time — because there was no way to judge whether any non-incremental change should be made.
 
-### 一次真实的失败
+### A real failure
 
-一台跑着 0.2.4 的服务器，两次拒绝了推送过来的新平台，报 `no such table: messaging_bindings`，两次都回滚了。
+A server running 0.2.4 rejected the pushed new platform twice, reporting `no such table: messaging_bindings`, and rolled back both times.
 
-原因是：那张表是新平台的业务需要的，而它只存在于新版本的 `schema.ts` 里。那台服务器的 runtime 永远不会因为重启而长出这张表——它自己的声明里从来没有。推送带来的是平台代码，不是数据库形状。
+The reason: that table is needed by the new platform's business logic, and it exists only in the newer version's `schema.ts`. That server's runtime will never grow this table from a restart — it was never in its own declaration. The push brought platform code, not database shape.
 
-这台服务器要么升级 runtime（一次重装），要么永远收不到这次推送。而热更新的全部价值就在于不必这样。
+That server either upgrades its runtime (a reinstall), or never receives this push. And the entire value of hot updates lies in not having to do that.
 
 ## Guide-level explanation
 [guide-level-explanation]: #guide-level-explanation
 
-写一次 schema 改动，就是加一条迁移：一个版本号、一段 `up`、一段 `down`（没有就显式写 `null`），以及一个 `swapSafe` 标志。
+Writing a schema change means adding a migration: a version number, an `up`, a `down` (explicitly `null` if there is none), and a `swapSafe` flag.
 
-`swapSafe` 问的是一个具体的问题：**如果这条迁移跑完之后，接管数据库的是比它更旧的那一版平台，那一版会不会出事？** 加一张表、加一列，旧平台根本不知道它们存在，也就从不碰它们——安全。删一列、加一个 NOT NULL 约束、改一个类型，旧平台会撞上——不安全。
+`swapSafe` asks one concrete question: **after this migration has run, if the platform version taking over the database is older than it, will that version break?** Adding a table, adding a column — the old platform does not know they exist and so never touches them — safe. Dropping a column, adding a NOT NULL constraint, changing a type — the old platform will run into them — unsafe.
 
-这个问题之所以要问，是因为推送来的平台在活的数据库上启动，**启动失败就回滚到它的前一版**，而前一版要面对迁移已经做完的事。
+The reason this question must be asked: a pushed platform starts up on a live database, and **if startup fails it rolls back to its previous version** — and that previous version then has to face what the migration has already done.
 
-于是两条路径分开：
+So the two paths are separated:
 
-| 谁在跑 | 能跑什么 |
+| Who is running | What may run |
 | --- | --- |
-| `openDatabase`——拥有这个进程 | 什么都能跑 |
-| 热推送的启动路径——可能被回滚 | 只跑 `swapSafe` 的，其余在碰数据库之前**整批拒绝**并报 `RestartRequiredError` |
+| `openDatabase` — owns this process | Anything |
+| The hot-push startup path — may be rolled back | Only `swapSafe` ones; the rest are **rejected as a whole batch** before touching the database, raising a `RestartRequiredError` |
 
-原本要靠评审记着的纪律，就此变成机械的。
+A discipline that previously had to be remembered through review thereby becomes mechanical.
 
 ## Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
 
-### DDL 冻结
+### DDL freezing
 
-一条迁移写死自己的 SQL，从不 import `SCHEMA_SQL`。引用活的声明会让一条旧迁移在每次 schema 变动之后**悄悄改变含义**——而「这条迁移当年到底做了什么」可查，正是迁移之所以可审计的全部性质。
+A migration hard-codes its own SQL and never imports `SCHEMA_SQL`. Referencing a living declaration would let an old migration **silently change meaning** after every schema change — and "what this migration actually did at the time" being checkable is the entire property that makes migrations auditable.
 
-### 单向、有序、不改写
+### One-directional, ordered, never rewritten
 
-版本自 1 起连续，发布之后不重编号、不改写。一个已经盖过版本 N 的数据库永远不会再跑 N，所以编辑 N 只改变新库拿到的东西，并把新旧两者悄悄分叉。
+Versions are consecutive from 1 onward, and once released they are never renumbered or rewritten. A database that has already stamped version N never runs N again, so editing N only changes what new databases get, and silently forks old and new.
 
-这条规则在评审期间真的咬了一次：0.2.8 在评审途中落地，新增的字段成了**第 2 条迁移**，而不是去改第 1 条——因为线上那台服务器已经盖过 1，永远不会再跑它。规则自己做了决定，不是谁的偏好。
+This rule actually bit once during review: 0.2.8 landed while review was in progress, and the added fields became **migration #2** instead of an edit to migration #1 — because the production server had already stamped 1 and would never run it again. The rule made the decision itself; it was nobody's preference.
 
-### 迁移由热推送路径应用
+### Migrations are applied by the hot-push path
 
-因为它是唯一够得到比迁移更**旧**的 runtime 的路径。推送来的平台自带迁移，表因此随推送一起走，那台 0.2.4 的服务器现在跑着当前的业务，而它的 runtime 一次都没有重装。
+Because it is the only path that reaches a runtime **older** than the migrations. The pushed platform carries its own migrations, so the tables travel with the push; that 0.2.4 server now runs the current business logic, and its runtime has not been reinstalled even once.
 
-### `down` 不是热更新的回滚
+### `down` is not a hot-update rollback
 
-推送的平台启动失败时，runtime 回到前一版，**schema 停在迁移留下的地方**。
+When a pushed platform fails to start, the runtime goes back to the previous version, and **the schema stays where the migrations left it**.
 
-在一个刚刚启动失败的进程里撤销 DDL，等于对一个半知半解的状态跑破坏性语句。而 `swapSafe` 存在的意义正是让「不撤销」是安全的：前一版根本不知道那张新表或新列，也就从不碰它。
+Undoing DDL inside a process that just failed to start amounts to running destructive statements against a half-understood state. And the whole point of `swapSafe` is to make "not undoing" safe: the previous version does not know that new table or column at all, so it never touches them.
 
-`down` 是运维手动调用的工具，按版本从新到旧执行，每条连同它的版本戳在一个事务里；范围内只要有一条不可逆，就在碰数据库之前**整批拒绝**——否则数据库会停在一个没人写下过其含义的版本上。它天然有损，每条 `down` 都要说清自己丢掉的是哪些行。
+`down` is a tool invoked manually by operators, run from newest to oldest by version, each migration together with its version stamp inside one transaction; if even one migration in the range is irreversible, the whole batch is **rejected before touching the database** — otherwise the database would be left at a version whose meaning nobody ever wrote down. It is inherently lossy; every `down` must state clearly which rows it discards.
 
-### 迁移必须幂等
+### Migrations must be idempotent
 
-迁移出现之前形成的数据库一律读作版本 0，而它们的实际形状各不相同，所以一条迁移必须容忍发现自己的活已经被干过。
+Databases formed before migrations existed are all read as version 0, and their actual shapes differ, so a migration must tolerate finding its own work already done.
 
-这不只是第一条迁移的事：`SCHEMA_SQL` 仍然完整声明当前形状，打开数据库时那份 `ensureColumn` 清单仍然在跑，因此**任何**一条迁移都可能遇到声明式那条轨道已经替它做完的情况。等到声明被冻结到一个基线，一条会大声失败的裸 `CREATE TABLE` 才成为要点。
+This is not only a matter for the first migration: `SCHEMA_SQL` still fully declares the current shape, and the `ensureColumn` list still runs when a database is opened, so **any** migration may find that the declarative track has already done its work for it. Only once the declaration is frozen into a baseline does a bare `CREATE TABLE` that fails loudly become the point.
 
 ## Drawbacks
 [drawbacks]: #drawbacks
 
-**两条轨道并存。** 声明式那条（`SCHEMA_SQL` 加上它那份 `ensureColumn` 清单与几处索引退役）与迁移这条同时活着，读代码的人要知道一张表可能由任一条产生。冻结声明为基线要牵动全部既有的表，只能另开一次改动。
+**Two tracks coexist.** The declarative track (`SCHEMA_SQL` plus its `ensureColumn` list and a few index retirements) lives alongside the migration track, and a reader of the code needs to know that a table may be produced by either one. Freezing the declaration into a baseline would touch every existing table and so has to be a separate change.
 
-**幂等是一项长期负担**，而且它只在中间态里必要——但中间态要持续到基线冻结为止，期间每条新迁移都要带着它写。
+**Idempotency is a long-term burden**, and it is necessary only in the intermediate state — but that intermediate state lasts until the baseline freeze, and until then every new migration has to be written with it.
 
-**列的顺序永久不对齐。** `ALTER TABLE ADD COLUMN` 追加在末尾，全新库把列放在声明里的位置。对齐意味着重建表，那不是增量的，会把回滚的保证一并带走。所以「同一版本的两个库，schema 等价但列序不同」是要接受的事实（索引内的列顺序则必须一致——对复合索引而言那个顺序就是索引本身）。
+**Column order never aligns.** `ALTER TABLE ADD COLUMN` appends at the end, while a brand-new database places columns where the declaration puts them. Aligning would mean rebuilding tables, which is not incremental and would take the rollback guarantee away with it. So "two databases of the same version, schema-equivalent but with different column orders" is a fact to accept (the column order inside an index, however, must be identical — for a composite index that order is the index itself).
 
-**`swapSafe` 要靠作者判断。** 没有任何机械手段能验证一条迁移标错了；标错的后果是回滚之后旧平台撞上它不认识的形状。
+**`swapSafe` rests on the author's judgment.** No mechanical means can verify that a migration is mislabeled; the consequence of a mislabel is that after a rollback the old platform runs into a shape it does not recognize.
 
 ## Rationale and alternatives
 [rationale-and-alternatives]: #rationale-and-alternatives
 
-**继续只用声明式**（现状）。它表达不了改动，因此每一次非增量的想法都只能放弃——而放弃的理由不是「不该做」，是「没办法安全地做」。那台 0.2.4 服务器的两次回滚就是这条路的终点。
+**Keep only the declarative approach** (the status quo). It cannot express changes, so every non-incremental idea has to be dropped — and the reason for dropping it is not "it should not be done" but "there is no way to do it safely". The two rollbacks of that 0.2.4 server are where this road ends.
 
-**用一个现成的迁移库**（Knex、Drizzle、Prisma migrate 一类）。它们都提供有序带戳的迁移，但没有一个有 `swapSafe` 这根轴——它们假定跑迁移的那个进程就是接下来要服务的进程。这里的前提不同：跑迁移的平台可能在几秒后被回滚掉，而接管的是一个更旧的版本。这根轴是本设计的核心，不是可以外包的部分。
+**Use an off-the-shelf migration library** (Knex, Drizzle, Prisma migrate, and the like). They all provide ordered, stamped migrations, but none has the `swapSafe` axis — they assume the process that runs the migrations is the same process that will serve next. The premise here is different: the platform that runs the migrations may be rolled back within seconds, and what takes over is an older version. That axis is the core of this design, not a part that can be outsourced.
 
-**取消 `swapSafe`，一切改动都要求重启。** 简单，但它等于宣布「凡涉及数据库的功能都不能热推」，而这套 harness 的大半功能都涉及数据库。
+**Drop `swapSafe` and require a restart for every change.** Simple, but it amounts to declaring that "no feature touching the database can be hot-pushed", and most of this harness's features touch the database.
 
-**启动失败时自动跑 `down`。** 听上去对称，实际上是在一个刚刚失败的进程里对半知半解的状态跑破坏性语句。`swapSafe` 让不撤销成为安全的选项，这比让撤销变得可靠要容易得多，也诚实得多。
+**Automatically run `down` on startup failure.** It sounds symmetric; in practice it is running destructive statements against a half-understood state inside a process that just failed. `swapSafe` makes not undoing the safe option, which is far easier — and more honest — than making undoing reliable.
 
 ## Prior art
 [prior-art]: #prior-art
 
-**Rails 的 ActiveRecord migrations** 立下了这个形状：有序、带版本戳、只跑一次、有 up 与 down。本设计的骨架直接来自它。
+**Rails' ActiveRecord migrations** established this shape: ordered, version-stamped, run-once, with up and down. The skeleton of this design comes directly from it.
 
-**Flyway** 有一条与「不改写已发布的迁移」完全相同的铁律：一条已经应用过的迁移不可编辑，Flyway 用校验和实测这一点。我们靠的是「已盖过 N 的库永不再跑 N」这个事实，效果一致——编辑它只会让新旧两条路分叉。
+**Flyway** has an iron rule identical to "never rewrite a released migration": an already-applied migration is not editable, and Flyway enforces this with checksums. We rely on the fact that "a database that has stamped N never runs N again" — the effect is the same, and editing one only forks old and new paths.
 
-**expand / contract（并行变更）模式**是 `swapSafe` 的正统前身。滚动发布里，新旧两版代码会同时对着同一个数据库跑，因此 schema 改动要拆成两步：expand 阶段只做增量，与旧代码兼容；contract 阶段做收窄，必须等到旧代码全部下线之后。我们的 `swapSafe` 就是 expand 阶段，只是触发条件不同——不是「等旧代码下线」，而是「这一次启动可能会回滚到旧代码」。
+**The expand / contract (parallel change) pattern** is `swapSafe`'s legitimate ancestor. In a rolling release, old and new code run against the same database at the same time, so a schema change is split into two steps: the expand phase does only additions, compatible with old code; the contract phase does the narrowing and must wait until the old code is fully taken offline. Our `swapSafe` is the expand phase, only with a different trigger — not "wait until the old code goes away", but "this startup may roll back to old code".
 
-**Django 的迁移**多一层依赖图与自动生成，适合多个应用各自演进 schema 的场景。这里只有一个数据库、一条线性历史，那层复杂度买不到什么。
+**Django's migrations** add a dependency graph and autogeneration, suited to scenarios where multiple applications each evolve their own schemas. Here there is one database and one linear history, and that layer of complexity buys nothing.
 
 ## Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
-**什么时候把 `SCHEMA_SQL` 冻结成基线**——它牵动全部既有的表——以及冻结时怎么处理那些形状各异的存量库——这一步做完，幂等的负担才能卸下。
+**When to freeze `SCHEMA_SQL` into a baseline** — it touches every existing table — and how to handle the variously-shaped legacy databases at freeze time — only once this step is done can the idempotency burden be unloaded.
 
-**要不要给运维一个显式的「我知道会重启，跑吧」的开关**，让非 `swapSafe` 的迁移能在推送路径上被有意放行。今天是无条件拒绝，这更安全，但也意味着某些改动必须走重装。
+**Whether to give operators an explicit "I know it will restart, go ahead" switch**, so that non-`swapSafe` migrations can be deliberately let through on the push path. Today the answer is unconditional rejection, which is safer, but it also means some changes must go through a reinstall.
 
 ## Future possibilities
 [future-possibilities]: #future-possibilities
 
-Machine 让这件事多一个维度：每台机器各有自己的数据根与数据库，一次推送因此会同时面对若干个处在不同版本的库。今天每台各自迁移、互不知情；「这一批机器的数据库分别在哪个版本」是一个还没有人回答、但迟早要回答的问题。
+Machine adds a dimension to this: each machine has its own data root and database, so one push may simultaneously face several databases at different versions. Today each migrates on its own, unaware of the others; "which version is each database in this fleet at" is a question nobody has answered yet, but one that will have to be answered sooner or later.
 
 ## Changes
 
 ### v1.0.0
 
-- Added: 迁入主仓；正文取设计仓库默认分支的已落地版本，与来源文件一致。
+- Added: migrated into the main repository; the body takes the landed version from the design repository's default branch, identical to the source file.

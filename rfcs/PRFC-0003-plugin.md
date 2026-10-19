@@ -1,185 +1,185 @@
-# PRFC-0003 插件
+# PRFC-0003 Plugin
 
-> **来源**：设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) 的 `rfcs/PRFC-0003-plugin.md`——已落地（默认分支 `main`，提交 [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)）。
-> **未合并修订**：open 设计 PR [#279](https://github.com/Prism-Shadow/penguin-harness-design/pull/279) 对本篇带一处未合并修订（经 link 启用本地插件目录的段落；基于设计仓较旧基底），未并入本版本；其并入或驳回后按约定提升 rev 并记入 `## Changes`。
-> **Rev**：v1.0.0（迁入主仓）；本面约定见 [README.zh.md](README.zh.md)，逐版改动记于文末 `## Changes`。
+> **Source**: `rfcs/PRFC-0003-plugin.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — landed (default branch `main`, commit [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)).
+> **Unmerged revision**: the open design PR [#279](https://github.com/Prism-Shadow/penguin-harness-design/pull/279) carries one unmerged revision against this document (the passage on enabling a local plugin directory via link; based on an older base of the design repository), not folded into this version; once it is merged or rejected, the rev is raised per the conventions and recorded in `## Changes`.
+> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are in [README.zh.md](README.zh.md), and per-version changes are recorded in `## Changes` at the end.
 
 - Feature Name: `plugin`
 - Start Date: 2026-09-02
 - PRFC PR: [Prism-Shadow/penguin-harness-design#107](https://github.com/Prism-Shadow/penguin-harness-design/pull/107)
-- Implementation PR: 已合并 [#383](https://github.com/Prism-Shadow/penguin-harness/pull/383)（插件平台）；在途 [#672](https://github.com/Prism-Shadow/penguin-harness/pull/672)（从 npm 安装）、[#727](https://github.com/Prism-Shadow/penguin-harness/pull/727)（内置插件打包）、[#614](https://github.com/Prism-Shadow/penguin-harness/pull/614)（Project 的插件表由平台加载）、[#450](https://github.com/Prism-Shadow/penguin-harness/pull/450)（插件表同步到机器、按机器的插件表）
-- 相关: PRFC-0001「Module」、PRFC-0002「HMR v1」、PRFC-0004「插件的作用域」、PRFC-0005「插件的版本」、PRFC-0010「插件的机器一致性与热加载」
+- Implementation PR: merged [#383](https://github.com/Prism-Shadow/penguin-harness/pull/383) (the plugin platform); in flight [#672](https://github.com/Prism-Shadow/penguin-harness/pull/672) (installing from npm), [#727](https://github.com/Prism-Shadow/penguin-harness/pull/727) (packaging built-in plugins), [#614](https://github.com/Prism-Shadow/penguin-harness/pull/614) (a Project's plugin table loaded by the platform), [#450](https://github.com/Prism-Shadow/penguin-harness/pull/450) (the plugin table synced to machines, per-machine plugin tables)
+- Related: PRFC-0001 "Module", PRFC-0002 "HMR v1", PRFC-0004 "Plugin Scope", PRFC-0005 "Plugin Versioning", PRFC-0010 "Fleet parity and hot loading"
 
 ## Summary
 [summary]: #summary
 
-平台维护一个核心框架，其余的功能以插件接入。插件是一个 npm 包，内容是一组 Module，与平台自己的节点同一种写法。每次 App 创建时，平台读取所有 Project 插件表的并集，按签名检查这些 Module，再把它们作为模块树的子节点启动；它们经平台的槽贡献功能，只活一代 App；插件升级也靠 App 重新创建生效，状态可以 park 进新的一代。插件表随 Project 同步到它用到的每台机器，每台机器自己安装、自己重新装配，不重启进程。插件的影响范围由配置决定：激活的是插件的功能，而不是插件本身。
+The platform maintains a core framework; everything else plugs in as plugins. A plugin is an npm package whose contents are a set of Modules, written the same way as the platform's own nodes. Each time an App is created, the platform reads the union of all Project plugin tables, checks these Modules against their signatures, and starts them as child nodes of the module tree; through the platform's slots they contribute functionality and live for exactly one App generation. Plugin upgrades also take effect by re-creating the App, and state can be parked into the new generation. The plugin table syncs with a Project to every machine the Project uses; each machine installs and re-assembles on its own, without restarting the process. A plugin's scope of effect is decided by configuration: what is activated is the plugin's functionality, not the plugin itself.
 
 ## Motivation
 [motivation]: #motivation
 
-平台只维护核心框架：模块树、HMR 层、会话与 Agent 的运行时，以及让功能接进来的槽与接口。沙盒后端、会话表面、消息机器人、语法高亮这些功能以插件提供，可以单独发布、按需装上或拿掉，不必改动或重新发布平台。
+The platform maintains only the core framework: the module tree, the HMR layer, the runtimes of sessions and Agents, and the slots and interfaces that let features plug in. Features such as sandbox backends, session surfaces, message bots, and syntax highlighting are provided as plugins; they can be released on their own and installed or removed as needed, without modifying or re-releasing the platform.
 
-要让这件事成立，有三个问题必须有确定的答案：
+For this to hold, three questions must have definite answers:
 
-- **插件的代码怎么接进一个正在运行的服务端**，又怎么保证它拿到的是它要的东西。
-- **什么时候加载。** 插件列表会在进程运行时改变，平台自己也会被热推送替换；插件的代码必须在这两件事之后都是对的那一份，且不能靠重启进程。
-- **热更新。** 插件自己也会发新版本，升级不能靠重启进程，旧版本的状态要能带进新版本。
-- **多台机器上的一生。** 一个 Project 的会话可以跑在几台机器上，插件必须在每台会用到它的机器上都在，而且是同一份列表。
-- **影响范围。** 只有一棵模块树，插件的功能却常常只该对部分用户、Agent 或 Project 生效。
+- **How a plugin's code enters a running server**, and how to guarantee that what it gets is what it asked for.
+- **When to load.** The plugin list changes while the process is running, and the platform itself is replaced by hot pushes; after both of these events the plugin's code must still be the correct copy, without relying on a process restart.
+- **Hot updates.** Plugins themselves release new versions too; an upgrade must not rely on restarting the process, and the old version's state must be able to carry into the new version.
+- **A lifetime across multiple machines.** A Project's sessions can run on several machines; the plugin must be present on every machine that will use it, and the list must be the same one.
+- **Scope of effect.** There is only one module tree, yet a plugin's functionality often should take effect only for some users, Agents, or Projects.
 
 ## Guide-level explanation
 [guide-level-explanation]: #guide-level-explanation
 
-一个插件从发布到生效，经过这样几步：
+From publication to taking effect, a plugin goes through these steps:
 
-1. **发现。** 插件页列出注册表里的插件：内置索引，加上发布的索引。注册表只给出名字与说明，不导入任何代码。
-2. **列入。** 管理员把插件加进一个 Project 的插件表，也就是 `.project_config.toml` 的 `[plugins]`；只给某台机器用的写进 `[plugins.<machineId>]`。本构建没带的包先由 `npm install` 装进数据根。
-3. **应用。** 写入插件表会让 App 重新装配：新的一代读取插件表、导入插件、启动模块树，终端与连接交接过去，进程不重启。
-4. **同步。** 这个 Project 用到的每台机器都收到它的插件表，在那台机器上重复第 2、3 步。
-5. **更新。** 以新版本重新列入，App 重新装配时导入新代码，插件的 Module 可以把状态带进新的一代。
-6. **拿掉。** 从插件表删掉，下一代 App 里就没有它的 Module 了。
+1. **Discovery.** The plugin page lists the plugins in the registries: the built-in index, plus published indexes. A registry provides only names and descriptions, and imports no code.
+2. **Listing.** An admin adds the plugin to a Project's plugin table, that is, the `[plugins]` of `.project_config.toml`; entries meant for one machine only are written into `[plugins.<machineId>]`. Packages this build does not carry are first installed into the data root by `npm install`.
+3. **Applying.** Writing the plugin table re-assembles the App: the new generation reads the plugin table, imports the plugins, and starts the module tree; terminals and connections are handed over; the process is not restarted.
+4. **Syncing.** Every machine this Project uses receives its plugin table, and steps 2 and 3 repeat on that machine.
+5. **Updating.** The plugin is re-listed at the new version; when the App re-assembles, the new code is imported, and the plugin's Modules can carry state into the new generation.
+6. **Removal.** Deleted from the plugin table, its Modules are gone from the next App generation.
 
-整个过程里，插件的代码只在一个时刻进入进程：App 创建的时候。
+Throughout all of this, a plugin's code enters the process at exactly one moment: when the App is created.
 
 ## Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
 
-### 原理
+### Principles
 
-插件包以装饰器类写出它的 Module：`@Component` 或 `@Module` 类，`@Use`、`@Provide`、`@Bind` 字段是它的依赖、供给与贡献的代码半。默认导出列出要启动的类，也可以列出它要替换的平台节点。构建时对包自己的 tsconfig 运行 `gen-ifaces`，把每个类的清单与它提到的每个接口的签名写进 `ifaces.json`，随包发布。没有 `ifaces.json` 的包不带 Module。
+A plugin package writes its Modules as decorated classes: `@Component` or `@Module` classes, with `@Use`, `@Provide`, and `@Bind` fields as the code halves of its dependencies, provisions, and contributions. The default export lists the classes to start, and may also list the platform nodes it intends to replace. At build time, `gen-ifaces` runs against the package's own tsconfig, writing each class's manifest, together with the signature of every interface it mentions, into `ifaces.json`, which is published with the package. A package without `ifaces.json` carries no Modules.
 
-平台读 `ifaces.json` 就知道插件要什么、给什么、往哪些槽里投稿，不必执行插件代码。插件的 Module 与平台的节点进同一棵树，在任何节点创建之前整树按签名级结构校验（PRFC-0001）：它能 `@Use` 的只有平台以接口发布的东西，签名不符就具名拒绝。通过校验之后，它作为平台模块树的子节点创建，往槽里投稿：沙盒后端投给 `SandboxModule.providers`，Web 界面的页面与标签、设置分组各有自己的槽。
+By reading `ifaces.json`, the platform knows what the plugin wants, what it provides, and which slots it contributes to, without executing any plugin code. The plugin's Modules enter the same tree as the platform's nodes, and before any node is created the whole tree is checked structurally at the signature level (PRFC-0001): what it can `@Use` is only what the platform publishes as interfaces, and a signature mismatch is rejected by name. After passing the check, it is created as a child node of the platform's module tree and contributes to the slots: a sandbox backend contributes to `SandboxModule.providers`, and the web UI's pages and tabs, and the settings groups, each have their own slots.
 
-插件与平台同进程。隔离止于接口：签名检查保证它拿到约定的东西，不限制它拿到之后做什么。
+A plugin runs in the same process as the platform. Isolation stops at the interfaces: the signature checks guarantee that it gets what was agreed, and place no limit on what it does with it afterwards.
 
-### 何时加载
+### When loading happens
 
-插件由**平台**加载，在 App 创建的过程中，而不是由 runtime 在启动时交给平台。读插件表的规则因此是平台代码，随热推送更新。
+Plugins are loaded by the **platform**, during App creation — not handed to the platform by the runtime at startup. The rules for reading the plugin table are therefore platform code, updated by hot pushes.
 
-App 在以下时刻创建，每次都重新加载插件：
+An App is created at the following moments, re-loading the plugins every time:
 
-- **进程启动。**
-- **热推送。** 新版本的平台接替旧版本（PRFC-0002）。
-- **插件表变更。** 平台在同一个进程里用 kernel 的 `upgrade` 把自己再启动一遍，与热推送走同一条路，只是 bundle 不变。
-- **启动失败后的恢复。** 新一代启动失败时，改动撤销，上一份 parked 文档再启动一次。
+- **Process startup.**
+- **Hot push.** A new version of the platform takes over from the old one (PRFC-0002).
+- **Plugin table change.** In the same process, the platform starts itself up once more using the kernel's `upgrade`, taking the same path as a hot push — only the bundle stays unchanged.
+- **Recovery after a failed start.** When the new generation fails to start, the change is rolled back, and the previous parked documents are started once more.
 
-每次创建依次做这几件事：
+Each creation does these things in order:
 
-1. **读并集。** 从文件读出数据根下每个 Project 的 `.project_config.toml`，取 `[plugins]` 与本机那张 `[plugins.<machineId>]`（本机的 id 由本机服务端铸造）的并集。只有一棵模块树，加载是按进程的；插件的功能对谁生效由配置决定，见「作用范围」。
-2. **解析。** 每个包名按顺序在这些位置找：数据根的 `<root>/plugins/`（管理员从 npm 装的）、当前热推送带来的内置插件、安装目录自带的内置插件、程序旁全局安装的包。
-3. **导入。** 上一代导入过、且背后仍是同一个文件同一个修改时间的，直接复用；否则带上文件的修改时间重新导入。热推送把内置插件放进新的资源目录，npm 升级会原地改写文件，两种情况都因此导入新代码。
-4. **配对。** 把 `ifaces.json` 里的清单与默认导出的类配成模块定义。一个包解析不了、导入失败或名字冲突，只跳过它自己，原因留在插件页那一行，不影响启动。
-5. **启动。** 插件的 Module 随整棵树校验、创建。这一代提交之后，导入好的插件交给下一代复用。
+1. **Read the union.** The `.project_config.toml` of every Project under the data root is read from file, taking the union of `[plugins]` and this machine's own `[plugins.<machineId>]` (this machine's id is generated by its own server). There is only one module tree, and loading is per-process; for whom a plugin's functionality takes effect is decided by configuration — see "Scope of effect".
+2. **Resolve.** Each package name is looked for in these places, in order: the data root's `<root>/plugins/` (installed from npm by an admin), the built-in plugins brought by the current hot push, the built-in plugins shipped with the installation directory, and the packages installed globally alongside the program.
+3. **Import.** What the previous generation already imported, with the same file and the same modification time behind it, is reused as-is; everything else is re-imported, carrying the file's modification time. A hot push places the built-in plugins in a new asset directory, and an npm upgrade rewrites files in place; in both cases new code is therefore imported.
+4. **Pair.** The manifests in `ifaces.json` are paired with the default-exported classes into module definitions. A package that cannot be resolved, fails to import, or collides on a name is skipped alone, the reason left in its row on the plugin page, without affecting startup.
+5. **Start.** The plugin's Modules are checked and created along with the whole tree. Once this generation commits, the imported plugins are handed to the next generation for reuse.
 
-所以一个 Module 只活一代 App：它投进槽里的贡献不会带进下一代，每一代重新投稿。要跨代保留的状态走 park，见「热更新」。
+So a Module lives for exactly one App generation: its contributions to the slots are not carried into the next generation — every generation contributes anew. State that must be kept across generations goes through park; see "Hot updates".
 
-**变更的代价。** 重新装配交接的东西与热推送相同：终端、连接、parked 状态。交接不了的也相同：所有 Project 里正在运行的 Agent 被停下，待审批的调用被拒绝。插件页在应用之前就这么说。两个管理员的改动在队列里依次写入，每次重新装配只读为它写下的那一份。
+**The cost of a change.** A re-assembly hands over the same things a hot push does: terminals, connections, parked state. What cannot be handed over is the same too: the Agents currently running in all Projects are stopped, and calls awaiting approval are rejected. The plugin page says as much before applying. Two admins' changes are written one after another through a queue, and each re-assembly reads only the one written for it.
 
-### 热更新
+### Hot updates
 
-插件的代码在进程运行时可以换掉，不重启进程。三种变化都靠同一件事生效：App 重新创建一次。
+A plugin's code can be swapped while the process is running, without restarting the process. All three kinds of change take effect through one and the same thing: the App is created once more.
 
-- **插件升级。** 管理员以 `包名@版本` 重新列入（不带版本取最新）：`npm install` 原地改写 `<root>/plugins/` 里的文件，插件表记下这个版本要求，然后重新装配。新的一代发现文件的修改时间变了，带上新的时间戳重新导入。插件表同步到机器时带着版本要求，每台机器装同一个版本。
-- **平台热推送。** 新构建把内置插件放进新的资源目录，内置插件因此重新导入；从 npm 装的插件背后的文件没变，直接复用上一代导入好的对象。
-- **插件表变更。** 列入、拿掉，都是一次重新装配。
+- **Plugin upgrade.** An admin re-lists the plugin as `package@version` (without a version, the latest is taken): `npm install` rewrites the files in `<root>/plugins/` in place, the plugin table records this version requirement, and then the App re-assembles. The new generation sees that the files' modification time has changed and re-imports them with the new timestamps. When the plugin table is synced to machines it carries the version requirement, so every machine installs the same version.
+- **Platform hot push.** A new build places the built-in plugins in a new asset directory, so the built-ins are re-imported; the files behind the npm-installed plugins are unchanged, so the objects the previous generation imported are reused as-is.
+- **Plugin table change.** Listing or removing — each is one re-assembly.
 
-**状态跨代。** 插件的 Module 与平台节点一样，可以声明带版本的上下文并实现 `park()`。旧一代 park 的文档按模块名存下，新一代启动时交给同名模块：新版本用自己的 `migrations` 把旧文档升上来，遇到比自己新的版本（一次回滚）就具名拒收，而不是读错。投进槽里的贡献不跨代，每一代重新投稿，所以换掉的代码不会留下指向旧代码的注册。
+**State across generations.** Like a platform node, a plugin's Modules may declare a versioned context and implement `park()`. The documents the old generation parked are stored by module name and handed to the same-named module as the new generation starts: the new version migrates the old documents up through its own `migrations`, and when it meets a version newer than itself (a rollback), it refuses them by name instead of misreading them. Contributions to the slots do not cross generations; every generation contributes anew, so replaced code leaves behind no registrations pointing at old code.
 
-**失败。** 新版本在校验或创建时失败，这次变更撤销，上一代在原来的列表上恢复，插件页得到「没有生效」的回答。
+**Failure.** If the new version fails at validation or creation, the change is rolled back, the previous generation is restored on the original list, and the plugin page gets the answer "did not take effect".
 
 
-### 从哪里来
+### Where plugins come from
 
-- **随构建发货。** 内置插件随平台构建与每次热推送一起发出。每个插件把运行所需的代码打进包内，只有原生模块仍是运行时依赖；推送把每个包打成一个确定性的压缩包，平台在加载插件之前解压一次。
-- **从 npm 安装。** `<root>/plugins/` 是一个普通的 npm 前缀。列入本构建没带的包时由 `npm install` 装进这里；依赖、镜像、私有 scope 都按这台机器上 npm 自己的配置处理。
-- **注册表。** 内置索引与发布的索引只负责发现。
+- **Shipped with the build.** Built-in plugins are sent out together with the platform build and with every hot push. Each plugin packs the code it needs at runtime into its own package; only native modules remain runtime dependencies. A push packs each package into a deterministic archive, which the platform unpacks once before loading the plugin.
+- **Installed from npm.** `<root>/plugins/` is an ordinary npm prefix. Listing a package this build does not carry installs it here via `npm install`; dependencies, mirrors, and private scopes are all handled per npm's own configuration on that machine.
+- **Registries.** The built-in index and the published indexes are responsible only for discovery.
 
-同一个包在一个安装里只有一份，版本属于安装（PRFC-0005）。
+A given package exists only once in an installation; the version belongs to the installation (PRFC-0005).
 
-### 多台机器
+### Multiple machines
 
-一个 Project 被借给哪些机器，它的插件就必须在那些机器上加载：会话在哪台机器上跑，它要的沙盒后端等服务端能力就得由那台机器提供。
+Whichever machines a Project borrows, its plugins must load on those machines: whichever machine a session runs on must provide the server-side capabilities it needs, such as the sandbox backend.
 
-- **何时同步。** 连上一台机器时，以及这台机器用到的 Project 的配置每次变更之后。同一台机器上的同步合并执行：同步期间来的改动，结束后再同步一次，读的是最新的配置。
-- **同步什么。** 每个 Project 发它要这台机器加载的那一份：共享的 `[plugins]` 加上这台机器自己的 `[plugins.<machineId>]`，后者优先，到那边落成那个 Project 的共享表。**严格一致**：这台机器上多出来的会被移除（PRFC-0010）。只在某个平台上能用的插件，写进对应机器自己的表。
-- **怎么生效。** 经隧道调用那台机器自己的 `PUT /api/projects/:p/plugins/installed`：它校验、写入配置、装上缺的包（本构建没带的走 npm），再在它自己的进程里重新装配。构建较旧、不会热加载的机器只记下列表，报告需要重启；解析不了的包逐个报出，不静默丢弃。
-- **内置插件随构建走。** 把本机的构建交给另一台机器时，交过去的是压缩包，由那台机器自己解压。
-- **不同步的。** 插件的设置按服务端各自保存（PRFC-0004），每台机器的版本属于它自己的安装。
+- **When to sync.** When a machine is connected, and after every change to the configuration of any Project that machine uses. Syncs targeting the same machine are merged: a change arriving during a sync triggers one more sync afterwards, which reads the latest configuration.
+- **What is synced.** Each Project sends the portion it wants this machine to load: the shared `[plugins]` plus this machine's own `[plugins.<machineId>]`, the latter taking precedence, which lands there as that Project's shared table. **Strict parity**: whatever is extra on this machine gets removed (PRFC-0010). Plugins usable only on a particular platform are written into the corresponding machine's own table.
+- **How it takes effect.** Through the tunnel, that machine's own `PUT /api/projects/:p/plugins/installed` is called: it validates, writes the configuration, installs the missing packages (those not carried by this build go through npm), and then re-assembles in its own process. A machine on an older build that cannot hot-load only records the list and reports that a restart is needed; packages that cannot be resolved are reported one by one, not silently dropped.
+- **Built-in plugins travel with the build.** When this machine's build is handed to another machine, what is handed over is the archive; that machine unpacks it itself.
+- **What is not synced.** Plugin settings are saved per server (PRFC-0004), and each machine's versions belong to its own installation.
 
-### 拿掉与失败
+### Removal and failure
 
-从插件表删掉，它就离开下一代 App；这台服务端上没有 Project 再列它时，`npm uninstall` 把包从 `<root>/plugins/` 里移除。一个插件加载失败只影响它自己，原因显示在插件页那一行。
+Deleted from the plugin table, a plugin leaves the next App generation; when no Project on this server lists it anymore, `npm uninstall` removes the package from `<root>/plugins/`. A plugin that fails to load affects only itself, with the reason shown in its row on the plugin page.
 
-### 作用范围：加载与激活
+### Scope of effect: loading and activation
 
-加载是按进程的：只有一棵模块树，一个 Project 列了某个插件，它的 Module 就在树上。但插件的**影响范围**不由它在不在树上决定，而由配置动态决定：激活的是插件的某项功能，而不是插件本身。
+Loading is per-process: there is only one module tree, and if any Project lists a plugin, its Modules are on the tree. But a plugin's **scope of effect** is not decided by whether it is on the tree — it is decided dynamically by configuration: what is activated is some functionality of the plugin, not the plugin itself.
 
-今天已经是这样：
+This is already so today:
 
-- 沙盒后端在树上，并不意味着命令被约束。一条命令是否受约束、受到什么程度的约束，由它所在 Session 的策略决定；同一个进程里，一个 Session 只读，另一个 Session 完全访问。
-- 插件库的快速开始只把演示写进当前 Agent 的草稿；这是库元数据与界面的行为，不是平台模块树的 contribution 槽。
+- A sandbox backend being on the tree does not mean commands are constrained. Whether a command is constrained, and how strictly, is decided by the policy of the Session it runs in; in one and the same process, one Session can be read-only while another has full access.
+- The plugin library's quick start only writes a demo into the current Agent's draft; that is behavior of the library's metadata and the UI, not a contribution slot of the platform's module tree.
 
-这条路可以走得更细：只为某些用户、某些 Agent 或某些 Project 打开一个插件的功能，其余的照常不受影响。机器级配置已经落地；PRFC-0004 的 Project 级配置仍是提案。平台自己的策略（例如沙盒）还可细到 Session。
+This road can go finer: enable a plugin's functionality for only some users, some Agents, or some Projects, with everyone else unaffected as before. Machine-level configuration has already landed; PRFC-0004's project-level configuration is still a proposal. The platform's own policies (the sandbox, for example) can go as fine as the Session.
 
-为什么不按作用域加载插件，例如每个 Project 一棵树：
+Why plugins are not loaded per scope, one tree per Project for example:
 
-- 整树校验的前提是一棵树；按 Project 裁剪，那次校验就作废了。
-- 激活是读配置，改了立即生效；加载是一次重新装配，运行状态按 [PRFC-0015](PRFC-0015-agent-state.md) 交接：兼容时不中断，不兼容时停止旧运行并从 Trace 续跑。
-- 用户、Agent、Session 这样的粒度，插件表表达不了，也不应该由它表达。
+- Whole-tree checking presupposes one tree; trimmed per Project, that check is void.
+- Activation is a configuration read — change it and it takes effect at once; loading is a re-assembly, in which running state is handed over per [PRFC-0015](PRFC-0015-agent-state.md): no interruption when compatible; when not, the old run is stopped and resumed from the Trace.
+- Granularity such as user, Agent, or Session is beyond what a plugin table can express, and should not be expressed by it.
 
-代价是纪律：插件要在读配置时带上调用方的上下文，由自己决定这项功能对谁打开。平台自己消费的那些面——命令约束、HTTP 路由、工具——作用域由平台带着解析，不指望插件配合。
+The price is discipline: a plugin must carry the caller's context when reading configuration and decide for itself for whom this functionality is on. For the surfaces the platform itself consumes — command constraints, HTTP routes, tools — the scope is parsed by the platform; plugins are not expected to help.
 
 
 ## Drawbacks
 [drawbacks]: #drawbacks
 
-一次插件表变更会重建所有 Project 共用的平台树；状态兼容时运行中的 Task 接着使用旧代码，直到本次 Task 结束。不兼容时会经历停止与续跑（PRFC-0015）。
+One plugin table change rebuilds the platform tree shared by all Projects; while state is compatible, running Tasks keep using the old code until the current Task ends. When it is not, they go through a stop and a resume (PRFC-0015).
 
-插件与平台同进程，装它等于信任它的代码。
+A plugin runs in the same process as the platform; installing it means trusting its code.
 
-按功能激活靠插件自己遵守：一个插件不读配置、对谁都生效，平台拦不住，只能保证自己消费的那些面带着作用域。
+Per-functionality activation rests on the plugin's own compliance: a plugin that does not read configuration and applies to everyone cannot be stopped by the platform, which can only guarantee that the surfaces it consumes itself carry scope.
 
-每次热更新重新导入的代码是一份新的模块记录；Node 不会从内存里移除旧的那份，直到进程重启。
+Code re-imported at each hot update is a fresh module record; Node does not remove the old one from memory until the process restarts.
 
-严格一致会拿掉一台机器上多出来的插件；平台专属的插件必须写进各台机器自己的表，否则会在别的机器上被移除。
+Strict parity removes the plugins that are extra on a machine; plugins specific to a platform must be written into each machine's own table, or they will be removed on the other machines.
 
 ## Rationale and alternatives
 [rationale-and-alternatives]: #rationale-and-alternatives
 
-**由平台而不是 runtime 加载。** runtime 只能靠重装更新，平台可以热推送。读哪些插件、从哪里解析、怎么复用都是会变的规则，放在平台里，一台早已装好的机器也能从推送学到新规则，而不必等人去重启或重装。
+**Loaded by the platform, not the runtime.** The runtime can only be updated by reinstalling; the platform can be hot-pushed. Which plugins to read, where to resolve them from, and how to reuse them are rules that change — kept in the platform, a machine installed long ago can learn the new rules from a push, with no one having to go restart or reinstall it.
 
-**重新装配而不是重启进程。** 热推送已经有一条交接终端、连接与 parked 状态的路；插件表变更走同一条路，只是 bundle 不变。重启进程会断开终端与每台机器的连接。
+**Re-assembly, not a process restart.** Hot push already has a path that hands over terminals, connections, and parked state; a plugin table change takes the same path, with only the bundle unchanged. Restarting the process would break the terminals and the connections to every machine.
 
-**进程内而不是子进程或 worker。** 插件要往槽里投稿、用平台发布的接口，并随模块树一起替换。放到进程外，每个槽与接口都要变成一套跨进程协议，热推送还得另管一份状态。
+**In-process, not a subprocess or worker.** A plugin contributes to slots, uses the interfaces the platform publishes, and is replaced together with the module tree. Placed outside the process, every slot and interface would have to become a cross-process protocol, and hot push would have one more copy of state to manage.
 
-**严格一致而不是各台机器各自选。** 「整个机队用同一份插件」是运维要的承诺；各台机器各自选，就没有人能说清某台机器上跑的是什么。按机器的差异由 `[plugins.<machineId>]` 显式写出，而不是任由各台机器漂移。
+**Strict parity, not per-machine choice.** "The whole fleet uses the same plugins" is the promise operators want; with every machine choosing on its own, no one can say for sure what is running on a given machine. Per-machine differences are written out explicitly in `[plugins.<machineId>]`, rather than left to the machines to drift.
 
-**npm。** 依赖解析、镜像、代理、私有 scope 在每台机器上都已经按 npm 的方式配好。
+**npm.** Dependency resolution, mirrors, proxies, and private scopes are already configured the npm way on every machine.
 
 ## Prior art
 [prior-art]: #prior-art
 
-**VS Code 扩展**：清单里的 contribution points 让宿主不执行扩展就知道它带了什么，`ifaces.json` 起同样的作用。扩展在独立的扩展宿主进程里跑，装卸扩展要重启那个进程；这里没有独立的宿主进程，重新装配的是 App 这一层。
+**VS Code extensions**: the contribution points in the manifest let the host know what an extension carries without executing it, and `ifaces.json` plays the same role. Extensions run in a separate extension-host process, and installing or removing one restarts that process; here there is no separate host process — what gets re-assembled is the App layer.
 
-**声明式配置**（Kubernetes、Ansible）：写下想要的状态，由系统把实际状态收敛过去，多出来的删掉。插件表同步到机器取的是这种形状。
+**Declarative configuration** (Kubernetes, Ansible): write down the desired state, and the system converges the actual state onto it, deleting what is extra. The plugin table's sync to machines takes this shape.
 
 ## Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
-自带插件库里的 Skill、hook 与 MCP Server 仍以 `package.json` 清单的形态按 Agent 安装；Workbench 同样经插件分发，但安装后由 Agent 应用自己的模块树加载（05「插件库」、[PRFC-0020](PRFC-0020-agent-workbench.md)）。按本提案，插件的内容只有 Module，它们应当是向 Agent 贡献的 Module；怎么迁过去、迁的时候已经装进各个 Agent 的副本怎么办，还没定。
+Skills, hooks, and MCP Servers from the bundled plugin library are still installed per Agent in the form of `package.json` manifests; Workbench is likewise distributed through a plugin, but after installation it is loaded by the Agent applying its own module tree (05 "Plugin library", [PRFC-0020](PRFC-0020-agent-workbench.md)). Under this proposal, a plugin's contents are Modules only, so these ought to be Modules contributed to Agents; how to migrate them over, and what to do with the copies already installed into each Agent when migrating, is not yet decided.
 
-插件升级失败时怎么回退：`npm install` 在重新装配之前就改写了 `<root>/plugins/` 里的文件，重新装配失败后插件表回退到旧的版本要求，但磁盘上已经是新版本，恢复启动会再导入一次新代码。回退是否也要把包装回旧版本，还没定。
+How to roll back a failed plugin upgrade: `npm install` rewrites the files in `<root>/plugins/` before the re-assembly; when the re-assembly fails, the plugin table rolls back to the old version requirement, but what is on disk is already the new version, so the recovery start imports the new code once more. Whether a rollback should also put the package back to the old version is not yet decided.
 
 ## Future possibilities
 [future-possibilities]: #future-possibilities
 
-更多激活维度：按用户、按 Agent 打开插件的功能。PRFC-0004 目前只有 machine 与 project 两级，agent 一级留待具体需求。
+More activation dimensions: enable a plugin's functionality per user, per Agent. PRFC-0004 currently has only the machine and project levels; the agent level waits for specific demand.
 
-只重建受影响的子树，减少一次插件变更需要重新装配的范围。
+Rebuild only the affected subtree, reducing what one plugin change must re-assemble.
 
 ## Changes
 
 ### v1.0.0
 
-- Added: 迁入主仓；正文取设计仓库默认分支的已落地版本，与来源文件一致。
+- Added: migrated into the main repository; the body takes the landed version from the design repository's default branch, identical to the source file.

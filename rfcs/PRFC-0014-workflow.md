@@ -1,69 +1,69 @@
-# PRFC-0014 Workflow：Agent 目录里的一棵模块树
+# PRFC-0014 Workflow: A Module Tree in the Agent's Directory
 
-> **来源**：设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) 的 `rfcs/PRFC-0014-workflow.md`——已落地（默认分支 `main`，提交 [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)）。
-> **Rev**：v1.0.0（迁入主仓）；本面约定见 [README.zh.md](README.zh.md)，逐版改动记于文末 `## Changes`。
+> **Source**: `rfcs/PRFC-0014-workflow.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — already landed (default branch `main`, commit [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)).
+> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are covered in [README.zh.md](README.zh.md), and per-version changes are recorded in `## Changes` at the end of this document.
 
 - Feature Name: `workflow`
 - Start Date: 2026-09-18
 - PRFC PR: [Prism-Shadow/penguin-harness-design#194](https://github.com/Prism-Shadow/penguin-harness-design/pull/194)
 - Implementation PR: [Prism-Shadow/penguin-harness#718](https://github.com/Prism-Shadow/penguin-harness/pull/718)
 
-2026-10-14：本提案的 Workflow 已在实现 [#1133](https://github.com/Prism-Shadow/penguin-harness/pull/1133) 中更名为 Workbench，目录、接口与路由同步更名。下文保留最初决策的 Workflow 命名；现行名称以 specs 为准。
+2026-10-14: The Workflow of this proposal was renamed to Workbench in implementation [#1133](https://github.com/Prism-Shadow/penguin-harness/pull/1133), with the directory, interfaces, and routes renamed in step. The text below keeps the Workflow naming of the original decision; the names currently in force follow the specs.
 
 ## Summary
 [summary]: #summary
 
-**Workflow** 是 Agent 保存在自己目录里的一段服务端代码，连同它向界面贡献的页面。`<agentDir>/workflows/<id>/` 是一个 plugin package：`package.json#penguin.modules` 里的清单、按名与清单配对的 `index.ts` 默认导出（Workflow 的代码是 TypeScript，不接受 JavaScript）、静态文件的根 `ui/`、由服务端保管的 `state.json`。服务端把它作为一棵**独立的模块树**启动，用的是 PRFC-0001 的同一套机制。
+**Workflow** is a piece of server-side code an Agent keeps in its own directory, together with the pages it contributes to the UI. `<agentDir>/workflows/<id>/` is a plugin package: a manifest in `package.json#penguin.modules`, an `index.ts` default export paired with the manifest by name (Workflow code is TypeScript; JavaScript is not accepted), `ui/` as the root of static files, and a `state.json` kept by the server. The server boots it as an **independent module tree**, using the same machinery as PRFC-0001.
 
-1. **越过边界的只有两个接口。** 宿主向每棵 Workflow 树发布 `WorkflowHost`（运行本 Agent、一份状态文档、一行日志）；Workflow 提供 `WorkflowMain`（一个 JSON 请求处理器）。
-2. **先校验，后运行；类型来自运行它的 harness，判定交给 tsc。** 一台机器上可以有多个 harness——发行版、某个检出、别人推送的带着自己接口的平台——它们都不是 npm 上的某个版本，所以 Workflow 不安装任何东西：第一次加载时，平台把**它自己这一代**的接口表渲染成 `.d.ts` 写进 Workflow 目录（`.harness/`），此后不再动它。两道检查都在任何代码运行之前：其一，Workflow 的源码是 TypeScript，以 `strict` 对着这份 `.d.ts` 做类型检查——它**实现**的接口对不对、它调用的成员存不存在，在这里查出；其二，把 `.harness/` 里留下的那一份表与平台这一代的表各生成 `.d.ts`，在两个方向上判定可赋值性——它**依赖**的接口与接入的平台是否兼容。我们不自己写类型检查。不通过的 Workflow 带着具名的问题加载失败，**上一个实例继续服务**。
-3. **按内容加载，按内容留版本。** 目录内容的哈希即修订（revision）：它进入 import URL，改过的代码一定被重新导入；每次成功加载记录为一个版本，任一版本可恢复，`state.json` 不随之回退。
-4. **界面由贡献声明，不由目录约定。** Workflow 在清单的 `contributes` 里向宿主开放的槽投稿：今天开放的是 Chat 旁的标签页（`WebModule.sessionTabs`，一个 Workflow 可以投多张），写法与 plugin 向平台投稿完全相同。以后要让 Workflow 出现在别的位置，是宿主多开放一个槽，而不是再立一条目录约定。标签页可以占满整个应用，页面跟随应用的主题。
+1. **Only two interfaces cross the boundary.** The host publishes `WorkflowHost` to each Workflow tree (run this Agent, one state document, one line of logging); the Workflow provides `WorkflowMain` (a JSON request handler).
+2. **Validate first, run later; the types come from the harness that runs it, and the verdict is left to tsc.** One machine can host several harnesses — a release, some checkout, a platform pushed by someone else carrying its own interfaces — none of them a version on npm, so a Workflow installs nothing: on first load, the platform renders **its own generation's** interface table into a `.d.ts` written into the Workflow directory (`.harness/`), and never touches it again. Both checks run before any code does: first, the Workflow's source is TypeScript and is type-checked against that `.d.ts` under `strict` — whether it **implements** its interfaces correctly, and whether the members it calls exist, are caught here; second, the copy of the table left in `.harness/` and the platform's current-generation table are each rendered into a `.d.ts`, and assignability is decided in both directions — whether the interfaces it **depends on** are compatible with the platform it plugs into. We do not write our own type checker. A Workflow that does not pass fails to load with a named problem, and **the previous instance keeps serving**.
+3. **Load by content, keep versions by content.** The hash of the directory's content is the revision: it enters the import URL, so changed code is always re-imported; every successful load is recorded as a version, any version can be restored, and `state.json` does not roll back with it.
+4. **The UI is declared by contribution, not by directory convention.** A Workflow submits to the slots the host has opened via the manifest's `contributes`: what is open today is tabs beside Chat (`WebModule.sessionTabs`; one Workflow can submit several), written exactly the way a plugin submits to the platform. Making Workflows appear elsewhere later means the host opens one more slot, not another directory convention. A tab can fill the whole app, and pages follow the app's theme.
 
 ## Motivation
 [motivation]: #motivation
 
-Agent 与用户之间只有一种界面：对话。凡是有结构、会反复出现的工作——一张待办板、一条审阅队列、一块随任务推进而更新的面板——都只能一次次用文字重述，状态留在对话历史里，换一个 Session 就丢了。
+Between an Agent and the user there is only one interface: the conversation. Any work that has structure and recurs — a to-do board, a review queue, a panel that updates as the task progresses — can only be restated in words, over and over; the state stays in the conversation history and is lost the moment the Session changes.
 
-另一端是 plugin：它能给平台加页面与服务端代码，但作用域是整个安装，由管理员安装，面向所有 Project 与所有 Agent。某个 Agent 为某一件事需要的一张页面，不该是一次平台级安装；而且这张页面最合适的作者就是 Agent 自己，它要能随手写、随手改。
+At the other end is the plugin: it can add pages and server-side code to the platform, but its scope is the entire installation, installed by an administrator, facing all Projects and all Agents. A page that one Agent needs for one particular thing should not require a platform-level install; and the most fitting author of that page is the Agent itself — it should be able to write it offhand and change it offhand.
 
-让 Agent 写会被服务端执行的代码，有三个问题必须先有答案：
+Letting Agents write code that the server will execute raises three questions that must be answered first:
 
-- **写错了怎么办。** Agent 的一次编辑可能语法不通、清单对不上、处理器形状不对。错误必须在运行之前被点名，而且不能让原来能用的页面跟着挂掉。
-- **改坏了怎么回去。** Agent 会连续改自己的 Workflow；用户与 Agent 都需要一条退路，且退路不能带走已经积累的数据。
-- **它能碰什么。** Workflow 不应拿到平台的组件；它能做的事要写成一份接口，由宿主决定给多少。
+- **What if it is written wrong.** A single edit by an Agent can be syntactically broken, mismatch the manifest, or have a handler of the wrong shape. Errors must be named before anything runs, and must not take the previously working page down with them.
+- **How to get back after breaking it.** An Agent will keep editing its own Workflow; both the user and the Agent need a way back, and that way back must not carry away the data already accumulated.
+- **What it may touch.** A Workflow should not get hold of the platform's components; what it can do must be written down as an interface, with the host deciding how much to give.
 
-PRFC-0001 的 Future possibilities 已经指出「Workflow 作为 Agent 目录里的一个模块……是同一套机制的自然延伸」；05「服务端模块树」的分层表里也留着 workflow 这一行（Agent 自己的目录，按 Agent 安装 / 重载）。本提案把这一层落到实处。
+The Future possibilities of PRFC-0001 already pointed out that "a Workflow as a module in the Agent's directory … is a natural extension of the same machinery"; the layering table in 05 "Server-side module tree" also reserves a row for workflow (the Agent's own directory, installed / reloaded per Agent). This proposal makes that layer real.
 
-场景：
+Scenarios:
 
-- **Agent 给自己做一张待办页。** 用户说「给我一个能勾选的待办列表」；Agent 在 `workflows/todo/` 写下清单、处理器与页面，Chat 旁随即出现 *todo* 标签页，无需刷新。条目存进 `state.json`；页面上一个按钮经 `createSession` 与 `run` 把「处理下一项」交回给 Agent。
-- **Agent 改坏了处理器。** 新的 `index.ts` 里 `handle` 的返回类型不对，或者调用了宿主没有的方法；类型检查在代码运行之前报出文件、行号与原因，标签页上显示这条加载错误，页面与处理器仍是上一个版本。Agent 看到错误后修复，或用户在 *历史* 里点 *恢复*。
-- **一个 Workflow，两张标签页。** 待办 Workflow 后来多了一张「统计」页：Agent 在清单里再投一条 `sessionTabs`，指向 `ui/stats.html`，不需要第二个 Workflow，也不需要新的约定。
-- **一张页面就是整个应用。** `penguin web --app default_project/default_agent/todo` 让浏览器直接打开到这张页面，没有侧栏与聊天。
+- **The Agent builds itself a to-do page.** The user says "give me a to-do list I can check off"; the Agent writes the manifest, the handler, and the page under `workflows/todo/`, and the *todo* tab appears beside Chat right away, no refresh needed. Items are stored in `state.json`; a button on the page hands "process the next item" back to the Agent via `createSession` and `run`.
+- **The Agent breaks the handler.** In the new `index.ts` the return type of `handle` is wrong, or it calls a method the host does not have; type checking reports the file, line, and reason before any code runs, the tab shows this load error, and the page and handler remain the previous version. The Agent fixes it after seeing the error, or the user clicks *Restore* in *History*.
+- **One Workflow, two tabs.** The to-do Workflow later gains a "stats" page: the Agent submits one more `sessionTabs` entry in the manifest, pointing at `ui/stats.html` — no second Workflow, and no new convention.
+- **A page as the whole app.** `penguin web --app default_project/default_agent/todo` opens the browser straight to that page, with no sidebar and no chat.
 
 ## Guide-level explanation
 [guide-level-explanation]: #guide-level-explanation
 
-把 Workflow 想成一个**只属于这个 Agent 的 plugin**：同一种包形状、同一道校验，区别只在它住在哪里、由谁写、对谁可见。
+Think of a Workflow as a **plugin that belongs to this Agent alone**: the same package shape, the same validation — the differences are only where it lives, who writes it, and who can see it.
 
 ```
 <agentDir>/
-  agent_state/                  Agent State（不含 Workflow）
+  agent_state/                  Agent State (Workflows not included)
   workflows/<id>/
-    package.json                "type": "module" 与 penguin.modules：清单；没有要安装的依赖
-    index.ts                    默认导出：{ modules: { <Name>: { create } } }，满足 WorkflowPackage
-    ui/                         静态文件的根；放什么、有几张页面由清单决定
-    state.json                  Workflow 自己的文档，由服务端读写
-    .harness/                   平台写下的：plugin.d.ts（类型）、ifaces.json（渲染它所用的那部分表）、harness.json、README.md（约定简述）；只读不改
-    .build/<revision>/          服务端转译的产物；不计入修订，不要手改
-    .build/status.json          最近一次加载的结果，Agent 读它来得知修改是否生效
+    package.json                "type": "module" and penguin.modules: the manifest; no dependencies to install
+    index.ts                    default export: { modules: { <Name>: { create } } }, satisfies WorkflowPackage
+    ui/                         root of static files; what is placed here and how many pages exist are decided by the manifest
+    state.json                  the Workflow's own document, read and written by the server
+    .harness/                   written by the platform: plugin.d.ts (types), ifaces.json (the part of the table used to render it), harness.json, README.md (a brief account of the conventions); read-only, never modified
+    .build/<revision>/          output transpiled by the server; not counted in the revision, do not edit by hand
+    .build/status.json          result of the most recent load; the Agent reads it to learn whether an edit took effect
   workflows-history/<id>/
-    <revision>/                 每次成功加载时的整份目录副本
-    versions.json               版本列表，新的在前
+    <revision>/                 a full copy of the directory at each successful load
+    versions.json               the version list, newest first
 ```
 
-最小的一个 Workflow：
+A minimal Workflow:
 
 ```json
 {
@@ -78,7 +78,7 @@ PRFC-0001 的 Future possibilities 已经指出「Workflow 作为 Agent 目录�
         "provides": { "main": "@prismshadow/penguin-server#WorkflowMain" },
         "contributes": {
           "WebModule.sessionTabs": [
-            { "id": "todo.board", "key": "board", "title": "Todo", "titleZh": "待办", "renderer": { "iframe": { "src": "ui/index.html" } } }
+            { "id": "todo.board", "key": "board", "title": "Todo", "titleZh": "Todo", "renderer": { "iframe": { "src": "ui/index.html" } } }
           ]
         }
       }
@@ -118,50 +118,50 @@ export default {
 ```
 
 ```html
-<!-- ui/index.html：页面在 ui/ 下提供，所以自己的处理器是 ../api/ -->
+<!-- ui/index.html: the page is served under ui/, so its own handler is at ../api/ -->
 <button class="wf-primary" onclick="add()">Add</button>
 <script>
   const add = () => fetch("../api/items", { method: "POST", body: JSON.stringify({ text: "…" }) });
 </script>
 ```
 
-应当这样理解它：
+Understand it this way:
 
-- **文件即安装。** 没有安装、启用这一步；目录存在且含 `package.json` 就是一个 Workflow，目录删掉它就没了。Agent 用的是它本来就有的文件工具。
-- **代码是 TypeScript。** `satisfies WorkflowPackage` 让 `use.host` 与 `handle` 的参数、返回值都有类型；不写它，`strict` 下的隐式 `any` 本身就是错误，不会静默通过。服务端负责类型检查与转译，Agent 不需要运行任何构建步骤；产物由服务端写进目录里的 `.build/`。
-- **类型来自运行它的 harness。** `@prismshadow/penguin-server/plugin` 在这里不是一个包：第一次加载时平台写下 `.harness/plugin.d.ts`，这条导入解析到的就是它。先写 `package.json` 与最小的 `index.ts`，让平台加载一次，再读 `.harness/plugin.d.ts`，就是这个 harness 确切提供的 `WorkflowHost`。平台换代之后这份记录不动，既有的 Workflow 对着新平台重新比较一遍，不兼容在加载时点名，而不是在第一次调用时；删掉 `.harness/`，Workflow 就改为依据现在运行它的 harness。
-- **界面是声明出来的。** 有没有标签页、有几张、叫什么，都写在 `contributes` 里；`ui/` 只是这些页面的文件所在。没有投稿的 Workflow 是纯服务端的，只有处理器。
-- **保存即重载。** 服务端监视 `workflows/`，文件变化后重新加载对应的 Workflow；打开着的标签页收到事件后更新，`ui/` 变了才重新加载页面。
-- **坏的编辑不生效。** 当前文件加载失败时，`error` 写明原因，上一个实例继续答请求。列表里看到的 `revision` 是当前文件的，服务着的却可能是上一个——`error` 非空即是这种状态。
-- **代码可回退，数据不回退。** 回滚恢复的是某个版本的代码文件；`state.json` 是 Workflow 的数据，不属于任何版本。
-- **Agent 从 Skill 里知道这一切，而不是从系统提示词。** 目录布局、两个接口、主题变量与退路写在 `penguin-sdk` Skill 的 Workflows 一节，Agent 被要求做 Workflow 时才加载；不向任何 Agent 的系统提示词追加内容。
+- **The files are the install.** There is no install or enable step; a directory that exists and contains `package.json` is a Workflow, and it is gone when the directory is deleted. The Agent uses the file tools it already has.
+- **The code is TypeScript.** `satisfies WorkflowPackage` gives types to `use.host` and to the parameters and return values of `handle`; without it, the implicit `any` under `strict` is itself an error, not a silent pass. The server does the type checking and the transpiling; the Agent runs no build step of any kind, and the server writes the output into `.build/` inside the directory.
+- **The types come from the harness that runs it.** `@prismshadow/penguin-server/plugin` is not a package here: on first load the platform writes `.harness/plugin.d.ts`, and that is what this import resolves to. Write `package.json` and a minimal `index.ts` first, let the platform load once, then read `.harness/plugin.d.ts` — that is exactly the `WorkflowHost` this harness provides. After the platform changes generation this record stays untouched; existing Workflows are compared against the new platform, and incompatibility is named at load time rather than at first call; delete `.harness/`, and the Workflow goes back to depending on whichever harness runs it now.
+- **The UI is declared.** Whether there are tabs, how many, and what they are called are all written in `contributes`; `ui/` is only where those pages' files live. A Workflow that submits nothing is purely server-side, handler only.
+- **Saving is reloading.** The server watches `workflows/` and reloads the corresponding Workflow after file changes; an open tab updates on the event, and the page reloads only when `ui/` changed.
+- **A bad edit does not take effect.** When the current files fail to load, `error` states the reason and the previous instance keeps answering requests. The `revision` seen in the list is that of the current files, while what is serving may still be the previous one — that is exactly the state signaled by a non-empty `error`.
+- **Code can roll back, data cannot.** Rolling back restores the code files of some version; `state.json` is the Workflow's data and belongs to no version.
+- **The Agent learns all of this from a Skill, not from the system prompt.** The directory layout, the two interfaces, the theme variables, and the way back are written in the Workflows section of the `penguin-sdk` Skill, loaded only when the Agent is asked to make a Workflow; nothing is appended to any Agent's system prompt.
 
 ## Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
 
-### 目录与修订
+### Directory and revision
 
-- Workflow id 是目录自己的名字，须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`；不含 `package.json` 的目录不是 Workflow。`package.json` 解析失败的目录**仍是** Workflow——错误由加载过程报出，而不是让它从列表里消失。
-- `name` / `version` 取自 `package.json`，`name` 缺省为 id，`version` 可为 null。
-- **revision** 是对目录内全部文件（相对路径与内容，按路径排序）取 SHA-256 的前 12 位十六进制；`state.json`、`node_modules/` 与以 `.` 开头的条目不计入。**uiRev** 是同一算法只算 `ui/` 之下的文件，没有 `ui/` 时为 null；它只是页面的缓存键，不决定标签页的有无。
-- `workflows/` 与 `agent_state/` 平级：Workflow 不在 Agent State 的版本链里，它的版本由下文的历史自己承担。
+- The Workflow id is the directory's own name and must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; a directory without `package.json` is not a Workflow. A directory whose `package.json` fails to parse **still is** a Workflow — the error is reported by the loading process, not by letting it vanish from the list.
+- `name` / `version` are taken from `package.json`; `name` defaults to the id, and `version` may be null.
+- **revision** is the first 12 hex characters of the SHA-256 over all files in the directory (relative paths and contents, sorted by path); `state.json`, `node_modules/`, and entries starting with `.` are excluded. **uiRev** is the same algorithm over only the files under `ui/`, null when there is no `ui/`; it is merely the pages' cache key and does not decide whether tabs exist.
+- `workflows/` sits at the same level as `agent_state/`: a Workflow is not in Agent State's version chain; its versions are carried by the history described below.
 
-### 加载
+### Loading
 
-1. 读 `package.json`：须有 `"type": "module"`（Workflow 是 ES 模块；否则 NodeNext 会把入口当作 CommonJS 转译），`penguin.modules` 逐条 `parseManifest`，列表为空即错误。
-2. 入口是 `index.ts`；只有 `index.js` / `index.mjs` 的目录加载失败，错误写明 Workflow 须以 TypeScript 编写。入口及其相对导入的 `.ts` 文件构成一个 tsc 程序：编译选项由宿主固定（`strict`、NodeNext，目录里的 `tsconfig.json` 不被采用——Workflow 不能替自己关掉严格模式）；编译之前，目录里没有 `.harness/` 的先由平台写入（见「接口检查」），`@prismshadow/penguin-server/plugin` 由编译器宿主直接解析到 `.harness/plugin.d.ts`，不经过任何包，其余导入按 Node 的规则解析。程序里另有一个虚拟的根文件，把默认导出赋给 `WorkflowPackage`：作者没写 `satisfies WorkflowPackage` 时形状照样被检查。类型检查有任何诊断即加载失败，诊断（文件、行、列、原因）即 `error`，至多报 12 条。
-3. 检查通过后由同一个程序转译，产物写到 Workflow 目录**之内**的 `.build/<revision>/`，导入的是它——不同的 revision 是不同的 URL，改过的代码一定被重新导入。放在目录之内，是为了让产物按 Node 的规则解析到 Workflow 自己的 `node_modules`（它的运行时依赖）；用点目录，是因为修订哈希、版本副本与监视器都跳过点目录，产物因此不计入修订、不进版本历史、也不触发重载。它随目录的移除而删除，加载成功后只保留当前 revision 的那一份。
-4. 默认导出须为 `{ modules: { <name>: { create } | create } }`（类型 `WorkflowPackage`），按名与清单配对；清单点名而导出里没有的模块、`children` 指向未声明的模块，均为错误。
-5. 根模块必须名为 `Workflow`，且其 `provides` 中有一项是 `@prismshadow/penguin-server#WorkflowMain`。
-6. `bootModules(root, { ifaces, resources, published })`：`ifaces` 是平台自己的接口表，`published` 把宿主对象作为模块 `Host` 发布进这棵树（PRFC-0001：宿主发布的能力是虚拟的根级兄弟，处处可见）。同一个 `published` 里还有宿主向 Workflow 开放的槽（见「贡献」）。整树校验先于任何 `create()`，投稿的槽名与数据形状也在其中；两个方向的接口比较见「接口检查」。
-7. 成功：取根模块提供的 `WorkflowMain`，收集清单里的投稿，释放上一棵树，记录版本。失败：写一行日志，保留上一棵树与上一个处理器，`error` 为问题文本；从未成功过的 Workflow 没有处理器，其 `api/*` 答 503。
+1. Read `package.json`: it must have `"type": "module"` (a Workflow is an ES module; otherwise NodeNext would transpile the entry as CommonJS); every entry of `penguin.modules` goes through `parseManifest`, and an empty list is an error.
+2. The entry is `index.ts`; a directory with only `index.js` / `index.mjs` fails to load, with an error stating that a Workflow must be written in TypeScript. The entry and the `.ts` files it relatively imports form one tsc program: the compiler options are fixed by the host (`strict`, NodeNext; a `tsconfig.json` in the directory is not adopted — a Workflow cannot turn strict mode off for itself); before compiling, a directory without `.harness/` has one written by the platform first (see "Interface checks"), `@prismshadow/penguin-server/plugin` is resolved by the compiler host straight to `.harness/plugin.d.ts` without passing through any package, and the remaining imports resolve by Node's rules. The program contains one more virtual root file that assigns the default export to `WorkflowPackage`: the shape is checked even when the author wrote no `satisfies WorkflowPackage`. Any type-checking diagnostic fails the load; the diagnostics (file, line, column, reason) become the `error`, at most 12 reported.
+3. After the checks pass, the same program transpiles; the output is written to `.build/<revision>/` **inside** the Workflow directory, and that is what gets imported — different revisions are different URLs, so changed code is always re-imported. It is inside the directory so that the output resolves, by Node's rules, to the Workflow's own `node_modules` (its runtime dependencies); it is a dot-directory because the revision hash, the version copies, and the watcher all skip dot-directories, so the output counts toward neither the revision nor the version history and triggers no reload. It is deleted along with the directory, and after a successful load only the copy for the current revision is kept.
+4. The default export must be `{ modules: { <name>: { create } | create } }` (type `WorkflowPackage`), paired with the manifest by name; a module named by the manifest but absent from the export, or `children` pointing at an undeclared module, is an error.
+5. The root module must be named `Workflow`, and one item of its `provides` must be `@prismshadow/penguin-server#WorkflowMain`.
+6. `bootModules(root, { ifaces, resources, published })`: `ifaces` is the platform's own interface table, and `published` publishes the host object into this tree as the module `Host` (PRFC-0001: capabilities published by the host are virtual root-level siblings, visible everywhere). The same `published` also carries the slots the host opens to Workflows (see "Contributions"). Whole-tree validation runs before any `create()`, and the contributed slot names and data shapes are part of it; the interface comparison in both directions is described in "Interface checks".
+7. Success: take the `WorkflowMain` provided by the root module, collect the manifest's contributions, release the previous tree, and record a version. Failure: write one log line, keep the previous tree and the previous handler, and set `error` to the problem text; a Workflow that has never succeeded has no handler, and its `api/*` answers 503.
 
-每个 `(project, agent, workflow)` 同时只有一个实例，且同一时刻只有一次加载在进行：一次加载要跑编译器，监视器与请求可能在它完成之前再次触发，后到的排在其后、加载届时磁盘上的内容，版本因此按序记录。服务组件 dispose 时关闭全部监视器并释放全部树。
+Each `(project, agent, workflow)` has at most one instance at a time, and at most one load in progress at any moment: a load runs the compiler, and the watcher or a request may trigger again before it finishes; the later one queues behind it and loads whatever is on disk at that time, so versions are recorded in order. When the service component disposes, every watcher is closed and every tree released.
 
-### 两个接口
+### The two interfaces
 
 ```ts
-// 宿主发布，模块名 Host
+// published by the host, module name Host
 abstract class WorkflowHost extends Interface<{
   listAgents(): { agentId: string }[];
   createSession(opts?: { agentId?: string }): Promise<{ sessionId: string }>;
@@ -172,54 +172,54 @@ abstract class WorkflowHost extends Interface<{
   log(message: string): void;
 }>() {}
 
-// Workflow 提供
+// provided by the Workflow
 abstract class WorkflowMain extends Interface<{
   handle(request: { method: string; path: string; query: Record<string, string>; body: unknown }):
     Promise<{ status?: number; body?: unknown }>;
 }>() {}
 ```
 
-- **与 SDK 同一套动词**，限定在 Workflow 所属的 Project 之内。`listAgents` 列出本 Project 的 Agent，即 `createSession` 的 `agentId` 可取的值（SDK 里没有对应的动词：SDK 的调用方自己持有 Agent）。`createSession` 即 SDK 的 `agent.createSession`：为本 Agent 开一个 Session，`agentId` 指定同一 Project 的另一个 Agent。`run` 即 SDK 的 `session.run`：`input` 同样是一个条目列表，今天每一项是 `{ text }`（SDK 用 `userText("…")` 构造它，而 Workflow 不安装任何包，运行时无处导入这个构造函数，所以把条目直接写出来），在一个新的或已有的 Session 里跑一轮，开始后即返回；Session 正忙时作为后续消息排队（`queued: true`）而不是被拒绝；不属于本 Project 的 Session 被拒绝；无论 Workflow 写了什么，Agent 听到的都是来自服务端的消息，不是来自人。`sessionStatus` 返回本 Project 某个 Session 的运行态。走的是定时任务所用的同一对 Session 创建器与 Task 运行器。
-- **今天不做结构化，将来只加可选字段。** `opts`、`input` 的元素与返回值都是对象：要指定模型、Workspace，要带图片，要回传更多，都是加一个可选成员——按接口检查的规则，平台一侧加可选成员不影响既有的 Workflow。
-- `getState` / `setState` 读写本 Workflow 的 `state.json`（整份文档，原子替换）；文档在首次使用时读入内存，`getState` 同步返回。
-- 宿主对象按 `(project, agent, workflow)` 构造，Workflow 无从指定别的 Agent。
-- **给 Workflow 增加能力的唯一途径是给 `WorkflowHost` 加成员**（接口先行）；Workflow 树不直接够到平台组件。
+- **The same verbs as the SDK**, scoped to the Project the Workflow belongs to. `listAgents` lists this Project's Agents — the values the `agentId` of `createSession` may take (the SDK has no matching verb: the SDK's caller holds the Agent itself). `createSession` is the SDK's `agent.createSession`: it opens a Session for this Agent, and `agentId` names another Agent of the same Project. `run` is the SDK's `session.run`: `input` is likewise a list of entries, each today `{ text }` (the SDK builds it with `userText("…")`, but a Workflow installs no packages, so at runtime there is nowhere to import that constructor from — the entry is written out directly); it runs one round in a new or an existing Session and returns as soon as it has started; a busy Session queues the message as a follow-up (`queued: true`) instead of rejecting; a Session outside this Project is rejected; whatever the Workflow writes, what the Agent hears is a message from the server, never from a human. `sessionStatus` returns the run state of one of this Project's Sessions. It goes through the same pair of Session creator and Task runner that scheduled tasks use.
+- **Nothing is structured today; the future only adds optional fields.** `opts`, the elements of `input`, and the return values are all objects: naming a model or a Workspace, carrying images, returning more — each is one more optional member, and by the rules of the interface checks, an optional member added on the platform side does not affect existing Workflows.
+- `getState` / `setState` read and write this Workflow's `state.json` (the whole document, replaced atomically); the document is read into memory on first use, and `getState` returns synchronously.
+- The host object is constructed per `(project, agent, workflow)`; a Workflow has no way to name a different Agent.
+- **The only way to give Workflows more capability is to add members to `WorkflowHost`** (interface first); the Workflow tree cannot reach platform components directly.
 
-### 接口检查
+### Interface checks
 
-判定一律交给 tsc，分两道。
+The verdict is always left to tsc, in two passes.
 
-**第一道：源码对着它写下时依据的那份类型。** 见「加载」第 2 步。Workflow 是 TypeScript，tsc 以 `strict` 检查它的源码，类型是平台写进 `.harness/plugin.d.ts` 的那一份。`handle` 的参数与返回值、对 `use.host` 的每一次调用，都在这里核对；这回答的是「Workflow 把接口**实现**对了没有」。以 Guide 一节的示例实测（tsc 5.9.3）：原样通过并转译，351 ms；把 `handle` 改成返回字符串、把 `setState` 拼成 `setStat`，报 `TS2322`（`Promise<string>` 不可赋值给 `Promise<WorkflowResponse>`）与 `TS2551 Property 'setStat' does not exist on type 'WorkflowHost'. Did you mean 'setState'?`，带文件与行列；去掉 `satisfies WorkflowPackage`，报 `TS7031 Binding element 'use' implicitly has an 'any' type`——没写类型的代码不会通过。
+**Pass one: the source against the types it was written against.** See step 2 of "Loading". A Workflow is TypeScript; tsc checks its source under `strict`, against the types the platform wrote into `.harness/plugin.d.ts`. The parameters and return value of `handle`, and every call on `use.host`, are verified here; this answers "did the Workflow **implement** the interface correctly". Measured with the example from the Guide section (tsc 5.9.3): passes and transpiles as written, 351 ms; change `handle` to return a string and misspell `setState` as `setStat`, and it reports `TS2322` (`Promise<string>` not assignable to `Promise<WorkflowResponse>`) and `TS2551 Property 'setStat' does not exist on type 'WorkflowHost'. Did you mean 'setState'?`, with file, line, and column; drop `satisfies WorkflowPackage`, and it reports `TS7031 Binding element 'use' implicitly has an 'any' type` — untyped code does not pass.
 
-**第二道：那份类型与平台这一代是否兼容。** 第一道只说明 Workflow 与它写下时依据的类型自洽；平台可能已经换了一代，或者同一个目录正被另一个 harness 加载。这一道要有**两份**声明可比：
+**Pass two: whether those types are compatible with the platform's current generation.** Pass one only shows the Workflow is consistent with the types it was written against; the platform may have changed generation since, or the very same directory may be being loaded by another harness. This pass needs **two** declarations to compare:
 
-**载体仍是 `ifaces.json`。** 它是每个包自带的、自包含的接口表（引用从不离开这张表），因此检查时不需要任何模块解析；槽的贡献数据按值校验、`create()` 之后按名核对，也继续用它。两份各有出处：
+**The carrier is still `ifaces.json`.** It is the self-contained interface table every package carries with it (references never leave the table), so the check needs no module resolution; the by-value validation of contributed slot data and the by-name verification after `create()` keep using it as well. The two copies have different origins:
 
-- **消费者的一份是它自己带着的。** plugin 的 `ifaces.json` 在它构建时由 `gen-ifaces` 生成。Workflow 没有构建步骤，它的一份是 `.harness/ifaces.json`：
+- **The consumer's copy is the one it carries itself.** A plugin's `ifaces.json` is generated by `gen-ifaces` when it is built. A Workflow has no build step; its copy is `.harness/ifaces.json`:
 
-  **`.harness/` 由平台写入，只写一次。** 加载一个没有 `.harness/` 的目录时，平台从**自己这一代**的表渲染出 `plugin.d.ts`——`WorkflowHost`、`WorkflowMain` 及其可达的类型，按导出名命名（`WorkflowHost` 而不是表里的键），外加默认导出的形状 `WorkflowPackage`——并把渲染所用的那一部分表写为 `ifaces.json`，来源与时间写在 `harness.json`。目录先在旁边写好再改名就位，半截的目录不会被当成已安装。**此后平台不再动它**：它是「这个 Workflow 写下时依据什么」的记录，换代之后拿来比较的正是它；每次加载都刷新它，比较就又退回「自己比自己」。要让 Workflow 改依据当前的 harness，删掉 `.harness/` 即可，随后编译器会报出需要改的地方。它是点目录：不计入修订与版本历史，监视器不理会，`npm install` 也不会把它当作多余的包清掉。
+  **`.harness/` is written by the platform, once.** When loading a directory without `.harness/`, the platform renders `plugin.d.ts` from **its own generation's** table — `WorkflowHost`, `WorkflowMain`, and the types reachable from them, named by export name (`WorkflowHost`, not the table's key), plus the shape of the default export, `WorkflowPackage` — and writes the part of the table used for that rendering as `ifaces.json`, with the origin and time recorded in `harness.json`. The directory is fully written beside its place and then renamed into position, so a half-written directory is never taken as installed. **After that the platform never touches it again**: it is the record of "what this Workflow was written against", and it is exactly what gets compared after a generation change; refreshing it on every load would degrade the comparison back into "comparing itself with itself". To make a Workflow depend on the current harness again, delete `.harness/`, and the compiler will then report what needs changing. It is a dot-directory: not counted in revisions or version history, ignored by the watcher, and not swept away by `npm install` as a stray package.
 
-  之所以不从 npm 取：一台机器上可以并存多个 harness，任何一个未发布的提交、任何一个带着自己接口的定制平台，都不对应 npm 上的某个版本；类型必须出自运行它的那个平台本身。平台的产物里本来就内联着它的接口表，渲染只要几毫秒，因此每个提交天然带着自己的 `.d.ts`，不需要额外的构建产物。
-- **平台的一份是它自己这一代的表**，随平台产物携带；热推送来的一代带着它自己的那份。
+  Why not take it from npm: several harnesses can coexist on one machine, and any unreleased commit, any customized platform carrying its own interfaces, corresponds to no version on npm; the types must come from the very platform that runs it. The platform's artifacts already inline their interface table, and rendering takes only a few milliseconds, so every commit naturally carries its own `.d.ts`, with no extra build artifact needed.
+- **The platform's copy is its own generation's table**, carried along with the platform's artifacts; a hot-pushed generation carries its own copy.
 
-**判定：生成 `.d.ts`，由 tsc 检查。** 加载时从两份表各生成一份自包含的 `.d.ts`，再生成一个检查文件，每一项比较是一条赋值语句；tsc 的诊断即问题文本。两个方向，都在任何 `create()` 运行之前：
+**The verdict: generate `.d.ts`, check with tsc.** At load time a self-contained `.d.ts` is generated from each of the two tables, plus one check file in which each comparison is an assignment statement; tsc's diagnostics are the problem text. Two directions, both before any `create()` runs:
 
-| 方向 | 判定 |
+| Direction | Verdict |
 | --- | --- |
-| Workflow **依赖**的接口 | 平台这一代的 `WorkflowHost` 可赋值给消费者那一份 `WorkflowHost` |
-| Workflow **实现**的接口 | 消费者那一份 `WorkflowMain` 可赋值给平台这一代的 `WorkflowMain`——此处平台是消费者 |
+| Interfaces the Workflow **depends on** | The platform-generation `WorkflowHost` is assignable to the consumer's copy of `WorkflowHost` |
+| Interfaces the Workflow **implements** | The consumer's copy of `WorkflowMain` is assignable to the platform-generation `WorkflowMain` — here the platform is the consumer |
 
-`create()` 之后另有一次对**值**的核对（声明的方法在返回的对象上确为函数）；它保留，但不替代上面两项。
+After `create()` there is one more check on **values** (that the declared methods are indeed functions on the returned object); it stays, but it does not replace the two above.
 
-约束有四条：
+There are four constraints:
 
-1. **所需一律从消费者那一份里解析，解析不到即失败。** `.harness/ifaces.json` 读不出来、其中没有清单点名的接口，是具名问题；绝不回落到平台的那一份——那样的回落正是「自己比自己」。plugin 适用同一比较，且与 Workflow 共用同一份实现（`plugin/typescript.ts`、`plugin/iface-check.ts`，在 plugin 加载处调用）：plugin 的一侧是它包内生成的 `ifaces.json`；它今天的实际效力见下文「plugin 一侧今天还比不出东西」。
-2. **生成无损，否则拒绝。** 表里没有「可选参数」，只有容许 `undefined` 的类型；渲染时把末尾这样的参数写回可选，否则 `createSession()` 对着 `createSession(opts?)` 过不了类型检查。 生成器遇到它不能如实写成 TypeScript 的表达式，报具名的「不支持」并拒绝加载，绝不写成 `unknown` 或 `never` 放行。表这一侧同理：`gen-ifaces` 把泛型方法擦除为 `unknown` 是当初的遗漏，属缺陷，表要带上足以还原的信息。
-3. **成员生成为函数类型的属性**（`line: (a0: string) => void`），而不是方法简写：`strictFunctionTypes` 下前者的参数是逆变的，正是 PRFC-0001 写下的规则（参数逆变、返回协变）；方法简写是双变的，会放过参数收窄。
-4. **`typescript` 成为服务端的运行时依赖，并随推送与桌面构建一起交付。** 第一个 Workflow 需要时才加载；平台的单文件 bundle 不把它打进去，运行时依次在三处解析：平台模块旁、正在运行的程序旁、推送携带的资产里。后两处是实测补上的——一台装着打包桌面版的机器上，服务端是一个没有 `node_modules` 的单文件，且早于「编译器成为依赖」安装，推送之后每个 Workflow 都报「编译器不可用」。现在编译器像 node-pty 一样被携带：推送把它打成资产里的一个归档（入口与缺省库文件，101 个文件、约 12 MB，按内容寻址，只传一次），桌面构建把同一组文件放在服务端 bundle 旁边。找不到时不加载任何 Workflow 并说明原因——没有「跳过检查」这条路。内核里手写的可赋值判定（`satisfies` / `dataExtends`）在模块树的整树校验里仍在，随 PRFC-0001 的修订退役；Workflow 的两个方向已只由 tsc 判定。
-5. **只生成用得到的部分。** `.d.ts` 只含被问到的接口及其可达的类型，因此「不支持即拒绝」只会因 Workflow 实际依赖的声明而触发。
+1. **Requirements always resolve from the consumer's copy, and failure to resolve is a failure.** An unreadable `.harness/ifaces.json`, or a missing interface that the manifest names, is a named problem; there is never a fallback to the platform's copy — that fallback would be exactly "comparing itself with itself". The same comparison applies to plugins, sharing one implementation with Workflows (`plugin/typescript.ts`, `plugin/iface-check.ts`, invoked at plugin load): a plugin's side is the `ifaces.json` generated inside its package; its practical effect today is described below in "The plugin side still compares nothing today".
+2. **Generation is lossless, or it is refused.** The table has no "optional parameters", only types that admit `undefined`; when rendering, such trailing parameters are written back as optional, otherwise `createSession()` would not type-check against `createSession(opts?)`. When the generator meets an expression it cannot faithfully write as TypeScript, it reports a named "unsupported" and refuses the load — never writing `unknown` or `never` to let it through. The same holds on the table's side: `gen-ifaces` erasing generic methods to `unknown` was an oversight, a defect; the table must carry enough information to restore them.
+3. **Members are generated as function-typed properties** (`line: (a0: string) => void`), not method shorthand: under `strictFunctionTypes` the former's parameters are contravariant — exactly the rule PRFC-0001 wrote down (parameters contravariant, returns covariant); method shorthand is bivariant and would let narrowed parameters slip through.
+4. **`typescript` becomes a runtime dependency of the server and ships with pushes and desktop builds alike.** It is loaded only when the first Workflow needs it; the platform's single-file bundle does not bake it in, and at runtime it is resolved in three places in turn: beside the platform's modules, beside the running program, and among the assets carried by the push. The latter two were added after field testing — on a machine with the packaged desktop edition, the server is a single file without `node_modules`, installed before "the compiler became a dependency", and after a push every Workflow reported "compiler unavailable". The compiler is now carried the way node-pty is: the push packs it as an archive among the assets (the entry and the default library files, 101 files, about 12 MB, content-addressed, transferred once), and the desktop build places the same set of files beside the server bundle. When it cannot be found, no Workflow loads and the reason is stated — there is no "skip the check" path. The hand-written assignability checks in the kernel (`satisfies` / `dataExtends`) still stand in the module tree's whole-tree validation, to be retired with the PRFC-0001 revision; both directions for Workflows are already decided by tsc alone.
+5. **Only the needed parts are generated.** The `.d.ts` contains only the interfaces asked for and the types reachable from them, so "refuse what is unsupported" can only be triggered by declarations the Workflow actually depends on.
 
-以真实的平台表实测（158 个接口、468 个具名类型，tsc 5.9.3）：生成 `.d.ts` 9 ms（183 KiB，0 个不支持的表达式），整张表逐一自检加三项跨版本比较的整个 tsc 程序 418 ms。整体比较意味着平台删改已发布接口的任何成员都会拒绝依据旧版的 Workflow——那本来就是破坏性变更；纯新增不受影响。消费者那一份把 `Log.line` 的参数记为 `number`、`Memory` 多记一个平台已删的方法时，诊断为：
+Measured against the real platform table (158 interfaces, 468 named types, tsc 5.9.3): generating the `.d.ts` takes 9 ms (183 KiB, 0 unsupported expressions), and the whole tsc program — the full table self-checked entry by entry plus three cross-version comparisons — takes 418 ms. Whole-table comparison means that any member the platform removes or changes on a published interface rejects Workflows written against the old one — which is a breaking change anyway; pure additions are unaffected. When the consumer's copy records the parameter of `Log.line` as `number` and `Memory` records one method the platform has since removed, the diagnostics are:
 
 ```
 Type 'server#Log' is not assignable to type 'server#Log'.
@@ -229,208 +229,208 @@ Type 'server#Log' is not assignable to type 'server#Log'.
 Property 'removedSince' is missing in type 'server#Memory' but required in type 'server#Memory'.
 ```
 
-未变的接口通过。检查器的这次更换属于 PRFC-0001 的范围，其修订另文给出；本文陈述的是 Workflow 对它的要求与依据。
+Unchanged interfaces pass. Replacing the checker belongs to the scope of PRFC-0001; its revision is given in a separate document. What this document states are the requirements Workflow places on it and the reasons.
 
-#### plugin 一侧今天还比不出东西
+#### The plugin side still compares nothing today
 
-比较已接在 plugin 的加载路径上，但对链顶的全部 plugin 表实测，结果是「无可比较」：`claude-code` 的 2 个问题里有 1 个、`discord-bot` 的 13 个问题里有 12 个，plugin 的表里**没有宿主接口的副本**。原因在生成器，有两处：
+The comparison is already wired into the plugin load path, but tested against every plugin table at the top of the chain, the result is "nothing to compare": 1 of `claude-code`'s 2 problems, 12 of `discord-bot`'s 13 — the plugin tables **carry no copy of the host interfaces**. The cause is in the generator, in two places:
 
-1. **`gen-ifaces` 只写包自己声明的接口。** 它跳过声明文件与 `node_modules`，所以 plugin 所依赖的宿主接口不会被投影进 plugin 的表——`PluginHost.ifaces()` 注释里「plugin 的表带着它编译时所见的宿主接口副本」描述的是意图，不是现状。
-2. **`@Interface()` 写法的接口，隔着 `.d.ts` 认不出来。** 装饰器在声明文件里被擦除，`declare abstract class WorkflowHost { … }` 与任何抽象类无异；`extends Interface<…>()` 的写法生成器倒是认得（`X_base` 的形状）。对着已发布的类型写一个类形式的模块、`@Use() host!: WorkflowHost`，生成器报「must be a @Component class or an interface class」。
+1. **`gen-ifaces` writes only the interfaces the package declares itself.** It skips declaration files and `node_modules`, so the host interfaces a plugin depends on are not projected into the plugin's table — the comment on `PluginHost.ifaces()` saying "the plugin's table carries a copy of the host interfaces as seen at compile time" describes the intent, not the present state.
+2. **Interfaces written with `@Interface()` are not recognizable through a `.d.ts`.** Decorators are erased in declaration files, so `declare abstract class WorkflowHost { … }` is indistinguishable from any abstract class; the generator does recognize the `extends Interface<…>()` form (the `X_base` shape). Writing a class-form module against the published types with `@Use() host!: WorkflowHost`, the generator reports "must be a @Component class or an interface class".
 
-因此规则分两种：Workflow 的一侧是它所装版本的**整张表**，表里没有即该版本确实没有，算失败；plugin 的表今天不含副本，没有副本的接口记为「未比较」并写入日志，不使加载失败——否则一次推送会让每台机器上依赖宿主接口的 plugin 全部停掉。表里**有**副本而不再相容的，照常失败。程序早于「`typescript` 成为依赖」的安装上同理：plugin 照旧加载，日志写明未做比较。两处生成器问题补上之后，「未比较」应当收紧为失败。
+Hence the rule splits in two: on the Workflow side it is the **whole table** of the version it carries — what is not in the table truly is not in that version, and that is a failure; a plugin's table today carries no copies, and interfaces without a copy are recorded as "not compared" and written to the log, without failing the load — otherwise one push would stop every plugin depending on host interfaces on every machine. Where the table **does** carry a copy that is no longer compatible, it fails as usual. The same applies on installations whose program predates "`typescript` becomes a dependency": plugins load as before, with the log stating that no comparison was made. Once the two generator problems are fixed, "not compared" should be tightened into a failure.
 
-#### 现状（缺陷）
+#### Current state (defects)
 
-以 #718 所用的内核（`checkTree` / `bootModules`）逐项实测：
+Verified case by case against the kernel used by #718 (`checkTree` / `bootModules`):
 
-| 情形 | 结果 |
+| Case | Result |
 | --- | --- |
-| 清单点名了表里没有的接口、`from` 指向不存在的模块、投稿的槽不存在或数据不合槽形、id 或模块名撞名 | 报出，在任何代码运行之前 |
-| 平台的 `WorkflowHost` 变了——删掉了 Workflow 正在调用的 `setState`，或改了 `log` 的参数类型 | **不报**：0 个问题，第一次调用时才失败 |
-| Workflow 所供的 `WorkflowMain` 与平台要求的不一致 | **不比较** |
-| `create()` 返回的 `main` 没有 `handle`，或 `handle` 不是函数 | 报出，但在 `create()` 之后，且只比方法名；形状不对（参数个数、同步返回、返回字符串）不报——#718 的入口是无类型的 `index.mjs` |
-| 宿主发布的对象缺少它声明的方法 | 不报 |
+| The manifest names an interface absent from the table, `from` points at a nonexistent module, a contributed slot does not exist or its data does not fit the slot shape, or an id or module name collides | Reported, before any code runs |
+| The platform's `WorkflowHost` changed — the `setState` the Workflow was calling was removed, or the parameter type of `log` changed | **Not reported**: 0 problems; it fails only at the first call |
+| The Workflow's provided `WorkflowMain` disagrees with what the platform requires | **Not compared** |
+| The `main` returned by `create()` has no `handle`, or `handle` is not a function | Reported, but after `create()`, and comparing method names only; wrong shapes (parameter count, synchronous return, returning a string) are not reported — #718's entry was an untyped `index.mjs` |
+| An object published by the host lacks a method it declares | Not reported |
 
-原因只有一个：所需与所供都在**同一张表**（平台的 `ifaces.json`）里按键查出。`requires.host.iface` 写的是 `@prismshadow/penguin-server#WorkflowHost`，查出的「所需」与宿主发布的「所供」是同一条声明，`satisfies(decl, decl)` 恒真；`provides` 一侧同理，只确认键存在。Workflow 自己依据的那一份从未被读取。plugin 一侧是同一缺陷的另一个入口：`PluginHost.ifaces()` 合并两张表时「两边都有的键以宿主的为准」，plugin 带来的副本被丢弃。
+There is one cause: both the required and the provided are looked up by key in **the same table** (the platform's `ifaces.json`). `requires.host.iface` names `@prismshadow/penguin-server#WorkflowHost`; the "required" it finds and the "provided" the host publishes are the same declaration, so `satisfies(decl, decl)` is always true; the `provides` side likewise only confirms that the key exists. The copy the Workflow itself was written against is never read. The plugin side is another entrance to the same defect: when `PluginHost.ifaces()` merges the two tables, "keys present on both sides resolve to the host's", and the copy brought by the plugin is discarded.
 
-### 贡献
+### Contributions
 
-Workflow 的界面是它清单里的 `contributes`，与 plugin 向平台投稿是同一种数据、同一道校验；区别只在**作用域**——Workflow 的投稿只对它所属的 Agent 生效。
+A Workflow's UI is the `contributes` in its manifest — the same data and the same validation as a plugin submitting to the platform; the difference is only **scope**: a Workflow's contributions take effect only for the Agent it belongs to.
 
-- **宿主开放哪些槽，Workflow 才能投哪些槽。** 宿主把开放的槽以平台中同名模块的名义发布进 Workflow 树（与 `Host` 一样是虚拟的根级兄弟），槽的数据形状来自平台的接口表。向未开放的槽投稿是 `no-such-slot`，数据不合槽形是 `bad-contribution`，id 撞名是 `duplicate-id`——都是 PRFC-0001 已有的具名问题，在任何代码运行之前报出，上一个实例继续服务。内核不需要改动：对已发布模块的槽的校验本来就在整树校验之内。
-- **今天开放的槽只有一个：`WebModule.sessionTabs`**——Chat 旁的标签页。
+- **A Workflow can only submit to the slots the host has opened.** The host publishes the open slots into the Workflow tree under the name of the same-named platform module (a virtual root-level sibling like `Host`), and the slots' data shapes come from the platform's interface table. Submitting to an unopened slot is `no-such-slot`, data that does not fit the slot shape is `bad-contribution`, and a colliding id is `duplicate-id` — all named problems that already exist in PRFC-0001, reported before any code runs, while the previous instance keeps serving. The kernel needs no change: validation of the slots of published modules is already part of whole-tree validation.
+- **Only one slot is open today: `WebModule.sessionTabs`** — tabs beside Chat.
 
   ```ts
   { id: string; key: string; title: string; titleZh?: string;
     renderer: { iframe: { src: string } } | { builtin: string } }
   ```
 
-  `key` 在该 Workflow 内唯一，是标签页的稳定标识（出现在 URL 里）；`title` / `titleZh` 是标签上的字。`iframe.src` 是相对 Workflow 目录的路径，必须落在 `ui/` 之下，否则加载失败并点名该条投稿。`builtin` 指 Web App 自带渲染器的名字；这一版应用不认得的渲染器，其标签页被跳过，规则与平台的 `pages` 槽一致。
-- **投稿是纯数据，没有代码半。** 宿主发布的槽不带 `code`；页面要的行为都在 `WorkflowMain` 后面。
-- **宿主自己收集。** 已发布的模块不在树里创建，拿不到 `contributions`；加载成功后由 Workflow 服务从各模块清单里读出这些（已校验的）条目，解析 `src`，放进列表项的 `tabs`。
-- **开放一个新位置 = 宿主多发布一个槽**：先在平台侧有这个槽（plugin 已经能投），再决定它对 Workflow 开放、且按 Agent 限定作用域时是什么含义。Workflow 一侧不需要任何新约定。
+  `key` is unique within the Workflow and is the tab's stable identity (it appears in the URL); `title` / `titleZh` are the words on the tab. `iframe.src` is a path relative to the Workflow directory and must land under `ui/`, or the load fails and names that contribution. `builtin` names one of the renderers the Web App carries built in; a renderer this version of the app does not recognize has its tab skipped, the same rule as the platform's `pages` slot.
+- **Contributions are pure data, with no code half.** The slots the host publishes carry no `code`; whatever behavior a page needs lives behind `WorkflowMain`.
+- **The host collects them itself.** Published modules are not created in the tree, so they never see `contributions`; after a successful load the Workflow service reads these (already validated) entries out of the module manifests, resolves `src`, and puts them into the list item's `tabs`.
+- **Opening a new location = the host publishing one more slot**: first the slot exists on the platform side (plugins can already submit to it), then a decision on what it means when opened to Workflows and scoped per Agent. Nothing new is needed on the Workflow side.
 
-### 重载
+### Reloading
 
-- 监视器按 `(project, agent)` 建立，在该 Agent 的 Workflow 列表第一次被读取时启动；`fs.watch(recursive)`，监视的是 `workflows/` 的**真实路径**（符号链接与 Windows 短文件名下，事件携带的路径与声明路径不一致会使进程中止）。
-- **Agent 的第一个 `workflows/` 目录在出现时即被发现。** 该目录尚不存在时，平台改为监视 Agent 目录本身，等它出现后再转为正常监视并加载其中已有的内容；否则一个只靠文件工具写出来的首个 Workflow，要等到有人再次读取列表才会被加载。
-- **每次加载的结果写成文件。** 无论成败，平台都把结果写入 `<workflow>/.build/status.json`（`ok`、`revision`、`checkedAt`、`error`、`tabs`）。写 Workflow 的 Agent 手里只有文件、没有 HTTP API 的会话；没有这个文件，它要得知「刚才的修改加载了没有、编译器说了什么」就只能去找端口、设法鉴权、翻服务端产物——实测中一个 Agent 的大部分步骤正花在这里。它的工作循环于是只有三步：改文件、稍等、读 `status.json`；`.harness/plugin.d.ts` 则是它了解宿主接口的唯一来源。
-- **加载成功但多半不是本意的情形，由平台说出来。** `status.json` 与接口返回的 Workflow 上都带 `hints`：每条指出一种这样的情形并给出对应的修改，它不是失败（失败是 `error`）。目前只有一条——`ui/` 下有页面而清单没有贡献任何标签页：加载是绿的，界面上却什么也没有，此时 `hints` 直接给出应写入的 `WebModule.sessionTabs` 条目。同理，平台在 `.harness/README.md` 里用自己的话简述这份约定（文件、清单、标签页、状态文件），内容与运行中的平台不一致时重写；它不属于「Workflow 据以编写的类型」那份记录。这样做的原因是 Agent 已安装的 Skill 只是副本，平台热推送不会刷新它，Agent 也可能根本没装该 Skill，而 Workflow 目录它总是有的。
-- 事件按路径首段归到 Workflow id；`state.json` 的变化不触发重载。同一 Workflow 的一串写入在 300 ms 静默后合并为一次重载。
-- 重载时目录已不存在：丢弃实例并通知，历史保留——历史只在显式移除时删除。
-- 监视器之外还有一道按内容的比对：列表与 `api/*` 分发都先读目录的 revision，与已加载的不同就先加载。监视器建不起来的平台上，Workflow 仍然是对的，只是慢一步。
+- Watchers are established per `(project, agent)` and started the first time that Agent's Workflow list is read; `fs.watch(recursive)`, watching the **real path** of `workflows/` (under symlinks and Windows short file names, a path carried by events that disagrees with the declared one would abort the process).
+- **An Agent's first `workflows/` directory is discovered the moment it appears.** While that directory does not yet exist, the platform watches the Agent directory itself, switches to normal watching once it appears, and loads what is already inside; otherwise a first Workflow written purely with file tools would wait for the next list read before being loaded.
+- **The result of every load is written to a file.** Success or failure, the platform writes the result to `<workflow>/.build/status.json` (`ok`, `revision`, `checkedAt`, `error`, `tabs`). The Agent writing a Workflow has only files, no session with an HTTP API; without this file, to learn "did my last edit load, and what did the compiler say" it would have to find the port, somehow authenticate, and dig through the server's artifacts — in field testing one Agent spent most of its steps doing exactly that. Its work loop is thus three steps: edit the files, wait a moment, read `status.json`; and `.harness/plugin.d.ts` is its single source of knowledge about the host interfaces.
+- **Situations that load green but are probably not what was meant are spelled out by the platform.** Both `status.json` and the Workflow returned by the API carry `hints`: each names one such situation and gives the corresponding fix, and it is not a failure (failures are `error`). There is one today — `ui/` has pages while the manifest contributes no tab: the load is green, yet nothing shows in the UI, and `hints` then hands over the `WebModule.sessionTabs` entry that should be written. Likewise, the platform summarizes these conventions in its own words in `.harness/README.md` (the files, the manifest, tabs, the status file), rewritten whenever its content disagrees with the running platform; it is not part of the "types the Workflow was written against" record. The reason: an installed Skill is only a copy — hot pushes do not refresh it, and the Agent may not have installed the Skill at all, while the Workflow directory it always has.
+- Events are attributed to a Workflow id by the first path segment; changes to `state.json` trigger no reload. A burst of writes to one Workflow coalesces into one reload after 300 ms of quiet.
+- If the directory no longer exists at reload time: discard the instance and notify, keeping the history — history is deleted only on explicit removal.
+- Beyond the watcher there is one more content-based comparison: both the list and the `api/*` dispatch first read the directory's revision, and load first if it differs from the loaded one. On platforms where a watcher cannot be created, Workflows are still correct, just one step slower.
 
-### 版本与回滚
+### Versions and rollback
 
-- 每次**成功**加载把整份目录（不含 `state.json`）复制到 `workflows-history/<id>/<revision>/`，并记入 `versions.json`（`revision`、`savedAt`、`name`、`version`、`uiRev`、`files`）。最新一条已是该 revision 时不重复记录；见过的 revision 再次加载时移到最前而不是新增一条——一次回滚正是这样的一次加载。
-- 每个 Workflow 保留 20 个版本，更旧的连同副本删除。
-- 回滚把目录恢复为**恰好**该版本：版本里没有的代码文件删除，版本里的文件覆盖写回，`state.json` 不动；随后重新加载。
-- 移除（`DELETE`）同时删除目录与 `workflows-history/<id>/`：没有入口的历史没有存在的理由。
+- Every **successful** load copies the whole directory (minus `state.json`) to `workflows-history/<id>/<revision>/` and records it in `versions.json` (`revision`, `savedAt`, `name`, `version`, `uiRev`, `files`). When the newest entry already is that revision, nothing is recorded again; a revision seen before moves to the front when loaded again instead of gaining a new entry — a rollback is exactly such a load.
+- Each Workflow keeps 20 versions; older ones are deleted along with their copies.
+- A rollback restores the directory to **exactly** that version: code files absent from the version are deleted, the version's files are written back over, `state.json` is untouched; a reload follows.
+- Removal (`DELETE`) deletes both the directory and `workflows-history/<id>/`: history without an entrance has no reason to exist.
 
-### 路由
+### Routes
 
-挂在 `/api/projects/:projectId/agents/:agentId/workflows`，作为平台贡献的路由组（`auth: "user"`），每条路由都要求调用者有该 Project 的访问权。
+Mounted at `/api/projects/:projectId/agents/:agentId/workflows`, as a route group contributed by the platform (`auth: "user"`); every route requires the caller to have access to that Project.
 
-| 方法与路径 | 作用 |
+| Method and path | Purpose |
 | --- | --- |
-| `GET /` | 该 Agent 的 Workflow 列表（顺带加载磁盘上变化了的） |
-| `POST /:id/reload` | 立即重新加载 |
-| `GET /:id/history` | 已记录的版本，新的在前 |
-| `POST /:id/rollback` `{ revision }` | 恢复该版本的文件并重新加载 |
-| `DELETE /:id` | 移除目录及其版本 |
-| `GET /:id/ui/*` | `ui/` 下的静态文件；`cache-control: no-cache` |
-| `* /:id/api/*` | 交给 `WorkflowMain.handle`；收发均以 JSON 为默认，其余内容类型见下 |
+| `GET /` | This Agent's list of Workflows (loading whatever changed on disk along the way) |
+| `POST /:id/reload` | Reload immediately |
+| `GET /:id/history` | The recorded versions, newest first |
+| `POST /:id/rollback` `{ revision }` | Restore that version's files and reload |
+| `DELETE /:id` | Remove the directory and its versions |
+| `GET /:id/ui/*` | Static files under `ui/`; `cache-control: no-cache` |
+| `* /:id/api/*` | Handed to `WorkflowMain.handle`; JSON is the default in both directions, other content types below |
 
-**处理器的请求与应答。** `handle` 收到 `{ method, path, query, headers, body, bytes? }`，应答 `{ status?, headers?, body?, bytes?, stream? }`：
+**The handler's request and response.** `handle` receives `{ method, path, query, headers, body, bytes? }` and answers `{ status?, headers?, body?, bytes?, stream? }`:
 
-- JSON 是两个方向的默认：JSON 请求体解析后放在 `body`（解析失败或无请求体为 `null`）；应答未写 `content-type` 时，`body` 按 JSON 发出。
-- 其他内容类型的请求体（表单、上传、纯文本）以 `bytes`（`Uint8Array`）原样交给处理器，上限 50 MB；`headers` 是小写化的请求头，应用自己的凭据（`cookie`、`authorization`）不传入。
-- 应答在 `headers` 里写明 `content-type` 即按原样发出：`body` 为字符串，`bytes` 为二进制（优先于 `body`）；`location` 加 3xx 状态即重定向。`set-cookie` 与传输层自行决定的头会被丢弃——Workflow 不写应用的 Cookie。同一来源本来就按原样提供 `ui/` 下的文件，处理器返回 HTML 并不比一个 HTML 文件更宽。
-- `stream` 是字符串或字节的异步可迭代对象（`AsyncIterable<Uint8Array | string>`，类型表里即 `stream`），优先于 `bytes` 与 `body`：迭代器每产出一块，平台就向客户端写出一块，按客户端读取的速度拉取，不等到结束——server-sent events、被转发的流式应答靠它送达。客户端断开即结束迭代（调用 `return()`），生成器的 `finally` 是中止上游请求的地方。经机器转发时，代理本来就按流转发应答体。
-- 由此，处理器可以接收上传、返回页面或下载，也可以转发它在本机上运行的程序：页面运行在用户的浏览器里，浏览器可能在另一台机器上，页面里的 `127.0.0.1` 指的不是 Workflow 所在的机器；需要展示本机程序时，由**处理器**去取 `http://127.0.0.1:<port>` 并把结果返回。平台因此不提供端口转发。
-- **跨站写入的防线。** 全站的写请求只接受 HTML 表单伪造不了的内容类型（`application/json` 等），这条在处理器的挂载点上不再成立，取而代之的是浏览器自己对请求来源的陈述：`Sec-Fetch-Site` 须为 `same-origin`；浏览器不发该头时比较 `Origin` 与 `Host`；两者皆无的请求不是浏览器发出的，没有可被借用的 Cookie。不满足则 403 `cross_origin_write`。其余路由不变，表单类型仍一律 415。
-- 类型表中 `Uint8Array` 记为 `lib#Uint8Array`；语言自带库的类型在每个程序里都是同一个类型，生成的 `.d.ts` 里按其本名写出，而不是不可构造的 `Opaque<…>`。
+- JSON is the default in both directions: a JSON request body is parsed into `body` (`null` when parsing fails or there is no body); when the answer does not set `content-type`, `body` is sent as JSON.
+- Request bodies of other content types (forms, uploads, plain text) are handed to the handler verbatim as `bytes` (`Uint8Array`), capped at 50 MB; `headers` are the lower-cased request headers, with the app's own credentials (`cookie`, `authorization`) not passed in.
+- An answer that states its `content-type` in `headers` is sent as written: `body` for strings, `bytes` for binary (taking precedence over `body`); `location` plus a 3xx status is a redirect. `set-cookie` and headers the transport layer decides by itself are dropped — a Workflow does not write the app's cookies. The same origin already serves the files under `ui/` verbatim, so a handler returning HTML is no wider than an HTML file.
+- `stream` is an async iterable of strings or bytes (`AsyncIterable<Uint8Array | string>`, named `stream` in the type table), taking precedence over `bytes` and `body`: each chunk the iterator yields, the platform writes to the client, pulling at the speed the client reads and not waiting for the end — server-sent events and forwarded streaming replies get through by it. A client disconnect ends the iteration (calling `return()`); the generator's `finally` is where to abort the upstream request. When forwarded through a machine, the proxy already forwards reply bodies as streams.
+- Hence a handler can receive uploads, return pages or downloads, and forward programs running on the local machine: the page runs in the user's browser, and the browser may be on another machine, so `127.0.0.1` inside the page does not name the machine the Workflow lives on; to show a local program, it is the **handler** that fetches `http://127.0.0.1:<port>` and returns the result. The platform therefore provides no port forwarding.
+- **The defense against cross-site writes.** Site-wide, write requests accept only content types an HTML form cannot forge (`application/json` and the like); at the handler's mount point this no longer holds, and in its place stands the browser's own statement of the request's origin: `Sec-Fetch-Site` must be `same-origin`; when the browser does not send that header, `Origin` is compared with `Host`; a request carrying neither was not sent by a browser and has no cookies to borrow. Otherwise 403 `cross_origin_write`. The other routes are unchanged, and form types still get 415 across the board.
+- In the type table, `Uint8Array` is recorded as `lib#Uint8Array`; types from the language's own standard library are the same type in every program, and the generated `.d.ts` writes them by their own names, not as an unconstructible `Opaque<…>`.
 
-列表项（`WorkflowInfo`）为 `id`、`name`、`version`、`revision`、`uiRev`、`tabs`、`loadedAt`、`error`、`hints`；`tabs` 是**服务着的那个实例**的 `sessionTabs` 投稿（`id`、`key`、`title`、`titleZh`、`renderer`，其中 `iframe.src` 已解析为该 Workflow `ui/` 路由下的地址）——当前文件加载失败时，它仍是上一个实例的标签页。路径段经校验，`ui/` 之外的文件取不到。
+The list item (`WorkflowInfo`) is `id`, `name`, `version`, `revision`, `uiRev`, `tabs`, `loadedAt`, `error`, `hints`; `tabs` is the `sessionTabs` contribution of **the instance that is serving** (`id`, `key`, `title`, `titleZh`, `renderer`, where `iframe.src` is resolved to the address under that Workflow's `ui/` route) — when the current files fail to load, these are still the previous instance's tabs. Path segments are validated; files outside `ui/` cannot be fetched.
 
-### 事件
+### Events
 
-Project 的 owner 与成员在各自的用户事件流上收到：
+The Project's owner and members receive, on their respective user event streams:
 
-- `workflow_updated { projectId, agentId, workflow }`——加载成功**或失败**之后（失败时 `workflow.error` 非空）。
-- `workflow_removed { projectId, agentId, workflowId }`——经路由移除，或目录在磁盘上被删。
+- `workflow_updated { projectId, agentId, workflow }` — after a load succeeds **or fails** (on failure, `workflow.error` is non-empty).
+- `workflow_removed { projectId, agentId, workflowId }` — removed via the routes, or the directory deleted on disk.
 
-### 提示词：不加
+### Prompt: nothing added
 
-Workflow 不向系统提示词添加任何内容。最初的实现经一个新槽 `HostAssembly.promptSections` 给每个 Agent 的每个 Session 追加一节 *Workflows*（约 3.5k 字符、870 个 token），无论这个 Agent 是否碰过 Workflow——这是让所有用户为一项多数时候用不到的能力持续付费；而改 Workflow 本来就不是高频操作。说明改由 `penguin-sdk` Skill 承载：系统提示词里只有 Skill 的名字与一句描述，正文按需加载。该槽、`Assembly` 机制及其在会话运行时里的接线随之删除——Workflow 曾是它唯一的投稿者。
+Workflows add nothing to the system prompt. The initial implementation appended a *Workflows* section to every Session of every Agent via a new slot `HostAssembly.promptSections` (about 3.5k characters, 870 tokens), regardless of whether that Agent had ever touched a Workflow — that is making all users pay continuously for a capability most never use; and editing Workflows is not a frequent operation to begin with. The explanation is carried by the `penguin-sdk` Skill instead: the system prompt holds only the Skill's name and a one-line description, with the body loaded on demand. That slot, the `Assembly` mechanism, and its wiring in the session runtime were deleted with it — Workflows had been its only contributor.
 
 ### Web App
 
-- 标签条按该 Agent 各 Workflow 的 `tabs` 逐条渲染，一条投稿一张标签页，标识为 `<workflowId>/<key>`，同一 Workflow 的标签页相邻、按清单顺序；没有投稿的 Workflow 不出现在标签条上。标签条在聊天工具栏之上，*聊天* 恒在且恒可达，标签页消失时回落到聊天。
-- 页面以 iframe 展示，覆盖在聊天之上，聊天保持挂载；iframe 以 `uiRev` 为键，只改处理器不会重新加载页面。
-- 框架栏属于 Workflow 而不是某一张标签页：同一 Workflow 的各张标签页看到的是同一条。它显示版本与修订、当前文件的加载错误，并提供 *重新加载*、*历史*（每个版本带 *恢复*）、需点击两次的 *移除*、*占满应用*。
+- The tab strip renders, entry by entry, the `tabs` of that Agent's Workflows — one contribution, one tab, identified as `<workflowId>/<key>`, with one Workflow's tabs adjacent and in manifest order; a Workflow that contributes nothing does not appear on the strip. The strip sits above the chat toolbar; *Chat* is always present and always reachable, and when tabs disappear the view falls back to chat.
+- Pages are shown in an iframe laid over the chat, which stays mounted; the iframe is keyed by `uiRev`, so changing only the handler never reloads the page.
+- The frame bar belongs to the Workflow, not to any single tab: all tabs of one Workflow see the same bar. It shows the version and revision and the current files' load error, and offers *Reload*, *History* (each version with *Restore*), a two-click *Remove*, and *Fill app*.
 
-### 占满应用
+### Filling the app
 
-- 路由 `/app/:projectId/:agentId/:workflowId[/:tabKey]` 位于应用外壳之外：只有这一张页面，没有侧栏、聊天与标签条；省略 `tabKey` 时取该 Workflow 的第一条投稿。
-- 三个入口：框架栏的 *占满应用*；页面自己 `parent.postMessage({ type: "penguin:fill-app" }, "*")`；`penguin web --app <project>/<agent>/<workflow>[/<tab>]`（不是三段或四段非空时，在启动任何东西之前报 `Invalid --app`）。页面经 `postMessage` 请求时，占满的就是发出请求的那张标签页。
-- 该路由**刻意没有可点的出口**，出口是命令面板：面板同时响应 Ctrl+P 与 Ctrl+Shift+P（macOS 为 ⌘），页面拿走其中一个也困不住用户；在该路由上面板多出 *退出全页模式（回到聊天）*，记住 Project 与 Agent 后落到它们的聊天页。
+- The route `/app/:projectId/:agentId/:workflowId[/:tabKey]` sits outside the app shell: only that one page, with no sidebar, chat, or tab strip; omitting `tabKey` takes the Workflow's first contribution.
+- Three entrances: *Fill app* on the frame bar; the page itself calling `parent.postMessage({ type: "penguin:fill-app" }, "*")`; `penguin web --app <project>/<agent>/<workflow>[/<tab>]` (anything other than three segments, or four non-empty ones, reports `Invalid --app` before anything is started). When the request comes from a page via `postMessage`, what gets filled is the tab that sent it.
+- The route **deliberately has no clickable exit**; the exit is the command palette: the palette answers both Ctrl+P and Ctrl+Shift+P (⌘ on macOS), so even a page that captures one of them cannot trap the user; on this route the palette gains *Leave full-page mode (back to chat)*, which remembers the Project and Agent and lands on their chat page.
 
-### 主题
+### Theming
 
-Workflow 页面是独立文档，应用的样式表与 `html.dark` 到不了它。框架在页面加载时、以及外观设置变化后：
+Workflow pages are separate documents; the app's stylesheets and `html.dark` never reach them. The frame, on page load and after appearance settings change:
 
-1. 在页面根节点标上 `light` / `dark`；
-2. 把应用**已解析**的令牌复制过去——灰阶、强调色对、字体栈、根字号；
-3. 把 `/workflow-ui.css` 注入 `<head>` 最前，页面自己的规则因此优先。
+1. Marks the page's root node `light` / `dark`;
+2. Copies the app's **resolved** tokens over — the gray scale, the accent color pair, the font stack, the root font size;
+3. Injects `/workflow-ui.css` at the very front of `<head>`, so the page's own rules take precedence.
 
-`workflow-ui.css` 为纯 HTML（标题、列表、表单、表格、代码）定样，暴露 `--wf-bg`、`--wf-fg`、`--wf-muted`、`--wf-border`、`--wf-surface`、`--wf-accent`、`--wf-accent-fg` 与类 `wf-primary`、`wf-card`、`wf-rows`、`wf-row`、`wf-muted`。调色板只有一份定义：样式表引用复制过来的值，不重述灰阶。写死颜色或字体的页面保持原样，并与用户的主题冲突——提示词一节因此要求只用这些变量。
+`workflow-ui.css` styles plain HTML (headings, lists, forms, tables, code) and exposes `--wf-bg`, `--wf-fg`, `--wf-muted`, `--wf-border`, `--wf-surface`, `--wf-accent`, `--wf-accent-fg` and the classes `wf-primary`, `wf-card`, `wf-rows`, `wf-row`, `wf-muted`. The palette has exactly one definition: the stylesheet references the copied values and does not restate the gray scale. A page that hard-codes colors or fonts stays as it is and clashes with the user's theme — which is why the prompt section asks that only these variables be used.
 
-### 所属的层
+### Which layer it belongs to
 
-`WorkflowsModule`（`WorkflowPrompt` + `WorkflowService` + `WorkflowRoutes`，导出 `Workflows`）是平台模块树的一个子模块，随推送更新；Workflow 自身是 05 分层表里独立的一层，生命周期跟着 Agent 的目录，不跟着平台的代。平台被替换时 Workflow 的实例随旧一代释放，由新一代按需重新加载；`state.json` 与历史都在磁盘上，不受影响。
+`WorkflowsModule` (`WorkflowPrompt` + `WorkflowService` + `WorkflowRoutes`, exporting `Workflows`) is a submodule of the platform's module tree, updated with pushes; the Workflow itself is an independent layer in 05's layering table, its lifecycle tied to the Agent's directory, not to the platform's generation. When the platform is replaced, Workflow instances are released with the old generation and reloaded on demand by the new one; `state.json` and the history live on disk and are unaffected.
 
-## 落地状态
+## Implementation status
 [status]: #status
 
-本文所述内容均已在 [penguin-harness#718](https://github.com/Prism-Shadow/penguin-harness/pull/718)（已合并）实现：
+Everything described in this document is implemented in [penguin-harness#718](https://github.com/Prism-Shadow/penguin-harness/pull/718) (merged):
 
-- 服务端 `workflows/{store,service,routes}.ts` 与 `mechanisms/workflows.ts`；`workflows/compile.ts`（源码检查与转译）、`workflows/harness-types.ts`（把本平台的类型写进 `.harness/`）；与 plugin 共用的 `plugin/typescript.ts`（编译器的惰性加载）、`plugin/iface-check.ts`（表 → `.d.ts` 与两个方向的判定）。
-- 不安装任何东西：`@prismshadow/penguin-server/plugin` 由编译器宿主解析到 `.harness/plugin.d.ts`；`WorkflowPackage` 的唯一定义就在这份渲染出的文件里；`typescript` 由 devDependency 改为 dependency。
-- `WebModule.sessionTabs` 的槽形改为本文的形状（增加 `title` / `titleZh`，去掉无人使用的 `namespace`），由宿主发布进 Workflow 树；`WorkflowInfo.tabs`；`ui/*` 不再有缺省文档。
-- Web 的标签条按 `tabs` 渲染（标题随语言）、全页路由与 CLI 的 `--app` 接受可选的标签页 key；主题与命令面板出口如前。
-- 不加全局提示词：`HostAssembly.promptSections` 槽与 `Assembly` 机制已删除，说明在 `penguin-sdk` Skill 里（含 `workflows/` 与 `agent_state/` 平级这一处更正）。
-- 宿主接口为 SDK 的动词 `createSession` / `run`，限定在本 Project 之内。
-- 接口比较与编译器加载在 `plugin/` 下，plugin 加载时同样调用（今天对 plugin 多数只能得到「未比较」，见「接口检查」）。
-- 测试：TypeScript 的检查与转译、拒绝 JavaScript、两个方向的接口比较（含「平台新增不受影响」「没有表即失败」）、多标签页与未开放的槽、目录的重载 / 版本 / 移除；Web 的标签模型与全页路由；`serve` 的 `--app`。以真实构建出的包（类型与随包的表）实测：源码检查加转译 399 ms，接口比较 249 ms。
+- Server-side `workflows/{store,service,routes}.ts` and `mechanisms/workflows.ts`; `workflows/compile.ts` (source checking and transpiling), `workflows/harness-types.ts` (writing this platform's types into `.harness/`); shared with plugins, `plugin/typescript.ts` (lazy loading of the compiler) and `plugin/iface-check.ts` (table → `.d.ts` and the verdicts in both directions).
+- Nothing is installed: `@prismshadow/penguin-server/plugin` is resolved by the compiler host to `.harness/plugin.d.ts`; the sole definition of `WorkflowPackage` lives in that rendered file; `typescript` moved from devDependency to dependency.
+- The slot shape of `WebModule.sessionTabs` changed to the one in this document (adding `title` / `titleZh`, dropping the unused `namespace`), published by the host into the Workflow tree; `WorkflowInfo.tabs`; `ui/*` no longer has a default document.
+- The web tab strip renders from `tabs` (titles follow the language), and the full-page route and the CLI's `--app` accept an optional tab key; theming and the command-palette exit as described.
+- No global prompt addition: the `HostAssembly.promptSections` slot and the `Assembly` mechanism are deleted, and the explanation lives in the `penguin-sdk` Skill (including the correction that `workflows/` sits beside `agent_state/`).
+- The host interfaces are the SDK verbs `createSession` / `run`, scoped to this Project.
+- Interface comparison and compiler loading live under `plugin/`, also invoked when plugins load (today most plugins only get "not compared"; see "Interface checks").
+- Tests: TypeScript checking and transpiling, rejecting JavaScript, interface comparison in both directions (including "platform additions are unaffected" and "no table means failure"), multiple tabs and unopened slots, directory reload / versions / removal; the web tab model and full-page route; `serve`'s `--app`. Measured against the really built package (the types and the table shipped with it): source checking plus transpiling 399 ms, interface comparison 249 ms.
 
-**在真实安装上的验证：** 推送到一台打包桌面版（Windows）之后，用一个临时 Workflow 走完整条链路：`.harness/` 写入、`strict` 编译、两个方向的比较、`sessionTabs` 投稿、`listAgents()` 返回本 Project 的 Agent；把源码改坏后，错误带文件与行列，上一实例继续应答。这次验证查出并修掉了两处：编译器在该机器上解析不到（见「接口检查」约束 4），以及 `gen-ifaces` 把可选的 `unknown` 成员投影成 `{}`——`getNonNullableType(unknown)` 的结果——致使 `body: null` 被拒绝。
+**Verified on a real installation:** after pushing to a packaged desktop edition (Windows), a temporary Workflow walked the whole chain: `.harness/` written, `strict` compilation, comparison in both directions, the `sessionTabs` contribution, `listAgents()` returning this Project's Agents; after breaking the source, the error carried the file, line, and column, and the previous instance kept answering. This verification caught and fixed two things: the compiler could not be resolved on that machine (see "Interface checks", constraint 4), and `gen-ifaces` projected optional `unknown` members as `{}` — the result of `getNonNullableType(unknown)` — causing `body: null` to be rejected.
 
-**尚未实现：** 模块树整树校验自身（平台与 plugin）仍用手写的判定、仍在同一张表里查两侧——那是 PRFC-0001 修订的范围。
+**Not yet implemented:** the module tree's whole-tree validation itself (platform and plugins) still uses the hand-written checks and still looks up both sides in one table — that is in the scope of the PRFC-0001 revision.
 
 ## Drawbacks
 [drawbacks]: #drawbacks
 
-- **Workflow 的代码在服务端进程内运行，不受沙箱约束。** 接口校验约束的是宿主**交给**它什么，管不了它自己 `import` 什么：一个 Workflow 可以 `import "node:fs"`。Agent 的 shell 命令受 Session 的沙箱策略约束，它写下的 Workflow 却以服务端的权限执行。这是本设计最大的一处欠账，见 Unresolved questions。
-- **`typescript` 进入运行时。** 约 9 MB 的依赖要随程序交付，平台的单文件 bundle 不宜把它打进去；每次 Workflow 加载要跑源码检查、转译与跨版本比较（整张平台表的比较约 0.4 s），平台每换一代对既有 Workflow 重做一遍。判定规则随所装的 tsc 版本而定。
-- **页面与应用同源。** iframe 带着用户的 cookie，页面里的脚本能以该用户的身份调用任何 API，而不只是自己的 `../api/`。
-- **类型安全不是健全性。** `as any` 与类型断言仍然能绕过检查；`strict` 保证的是没写类型的代码不会通过，不是写了断言的代码一定正确。
-- **模块缓存只增不减。** 每个 revision 是一个新的 import URL，Node 不提供卸载；频繁编辑的 Workflow 会在进程生命周期内留下每一版的模块，直到下一次重启。
-- **处理器只讲 JSON。** 没有流式应答，没有二进制上传。
-- **历史是整份副本。** 每个版本复制整个目录，20 个封顶；带大资产的 `ui/` 会放大磁盘占用。
-- **监视器是惰性的。** 在某个 Agent 的列表第一次被读取之前，该 Agent 的目录没有监视器；此前的编辑要等到下一次列表或请求才生效。
+- **Workflow code runs inside the server process, with no sandbox.** Interface validation constrains what the host **hands over**; it cannot govern what the Workflow itself `import`s: a Workflow can `import "node:fs"`. An Agent's shell commands are constrained by the Session's sandbox policy, while the Workflow it writes executes with the server's privileges. This is the design's largest outstanding debt; see Unresolved questions.
+- **`typescript` enters the runtime.** A dependency of about 9 MB must ship with the program, and the platform's single-file bundle should not bake it in; every Workflow load runs source checking, transpiling, and the cross-version comparison (about 0.4 s for the whole platform table), redone for existing Workflows at every platform generation. The verdict rules depend on the installed tsc version.
+- **Pages share the app's origin.** The iframe carries the user's cookies, so a script in the page can call any API as that user, not only its own `../api/`.
+- **Type safety is not soundness.** `as any` and type assertions still bypass the checks; what `strict` guarantees is that untyped code does not pass, not that code carrying assertions is correct.
+- **The module cache only grows.** Every revision is a new import URL, and Node offers no unloading; a frequently edited Workflow leaves a module per version for the process's lifetime, until the next restart.
+- **The handler only speaks JSON.** No streaming replies, no binary uploads.
+- **History is a full copy.** Every version copies the whole directory, 20 at most; a `ui/` with large assets magnifies the disk usage.
+- **Watchers are lazy.** Before some Agent's list is read for the first time, that Agent's directories have no watcher; edits made before then wait for the next list read or request to take effect.
 
 ## Rationale and alternatives
 [rationale-and-alternatives]: #rationale-and-alternatives
 
-- **沿用模块机制，而不是另立一套脚本约定。** 「一个导出 `handle` 的脚本」更短，但「写错了怎么办」的答案得重新发明一遍。PRFC-0001 的整树校验已经能在运行之前点名七种问题，Agent 拿到的错误文本与平台开发者拿到的是同一种；Workflow 日后长出第二个模块、需要槽与贡献时，也不必换形状。
-- **Workflow 而不是 plugin。** plugin 面向整个安装、由管理员决定；Workflow 面向一个 Agent、由 Agent 自己写。两者共用包形状，不共用作用域与授权。
-- **清单写在 `package.json`。** 平台 plugin 的清单由装饰器生成；Workflow 的作者是没有构建步骤的 Agent，清单必须是能直接手写的数据。
-- **Workflow 只接受 TypeScript。** 无类型的 JavaScript 里，「`handle` 的形状对不对」「调用的宿主方法存不存在」只有运行时才知道，加载前能做的只剩按方法名核对；对 JS 开 `checkJs` 靠的是推断与 JSDoc，漏网的 `any` 多，而且要求作者写注解却没有语法强制。TypeScript 加 `strict` 把这件事变成语言层面的要求。Agent 写 TypeScript 没有额外成本，服务端已经带着 tsc，检查与转译都由它完成，Workflow 目录里不出现构建步骤。转译用 tsc 而不依赖运行时的类型擦除：后者不做检查，且只认可擦除的语法。
-- **用 tsc 判定，而不是自己写类型检查。** 自己的检查器要么只覆盖 TypeScript 的一个子集（现行实现即如此，且在子集之外静默放行），要么得长期追着 tsc 的可赋值规则跑；这份节省不值得。tsc 的规则是接口作者写代码时已经在用的那一套，诊断文本也是他们认得的。
-- **载体留 `ifaces.json`，`.d.ts` 在检查时生成，而不是直接携带 `.d.ts`。** 表是自包含的数据：每个包带着它编译时所见的那一份，不依赖检查时的模块解析（`peerDependency`、依赖提升都影响不到它），槽数据的按值校验与 `create()` 之后的按名核对也要用它。`.d.ts` 只是把这份数据交给 tsc 的形式，毫秒级即可生成。
-- **修订取内容哈希，而不是 mtime 或计数器。** 同一份内容无论怎么到达（编辑、`git checkout`、回滚）都是同一个 revision：回滚因此自然去重，import URL 因此恰好在内容变化时变化。
-- **`state.json` 不计入修订，历史放在目录之外。** 数据变化不该触发重载、不该产生版本、不该被回滚带走；历史若放在目录里，会被自己的哈希与监视器看见。
-- **窄接口而不是把平台组件交出去。** `WorkflowHost` 的每个成员都是一次明确的授权，且可被签名校验；直接暴露 `SessionManager` 一类的组件，等于把平台内部冻结成 Workflow 的公共 API。
-- **界面由贡献声明，而不是「有 `ui/` 就有一张标签页」。** 目录约定只能表达「一个 Workflow、一张页面、一个位置」：第二张标签页要么拆成第二个 Workflow（状态与处理器随之分家），要么再立一条约定（`ui2/`？）；出现在别的位置更是每个位置一条新约定。贡献声明把这三件事变成同一件——往某个槽里多写一条数据——并且继承了槽已有的全部性质：形状经校验、错误具名、宿主逐个决定开放与否。代价是最小的 Workflow 多了几行清单。
-- **沿用平台的槽名，而不是 Workflow 专属的 `Host.tabs`。** 同一件事（「Chat 旁加一张标签页」）在 plugin 与 Workflow 里应当是同一种写法；一个 Workflow 日后升格为 plugin，或者反过来，投稿不必改写。Workflow 特有的只是作用域，那是宿主的事，不是清单的事。
-- **`ui/` 保留为静态文件的根。** `src` 本可指向目录里的任意文件，但那要求服务端对「哪些文件可以被浏览器取走」另有一份判断（`index.ts`、`state.json` 不该被取走）；一个固定的静态根让这份判断是一条路径前缀。它约束的是文件放在哪，不再约束界面有几张、在哪里。
-- **iframe 而不是渲染进应用的 DOM。** 页面是 Agent 写的任意 HTML，独立文档隔开了它与应用的样式和脚本全局。代价是主题照不进去，于是有「复制已解析的令牌」这一步；复制而不是在样式表里重述调色板，是为了调色板只有一份定义。
-- **全页路由不设出口按钮。** 任何固定的出口都要占用页面的像素，而页面是别人的。命令面板不占像素；两个快捷键同时有效，是因为页面可能拿走其中一个。
-- **什么都不做**：Agent 的产出继续只存在于对话里；需要页面的场景只能做成 plugin，由管理员为所有人安装。
+- **Keep the module machinery instead of inventing a script convention.** "A script that exports `handle`" is shorter, but the answer to "what if it is written wrong" would have to be reinvented. PRFC-0001's whole-tree validation can already name seven kinds of problems before anything runs, and the error text an Agent gets is the same kind a platform developer gets; when a Workflow later grows a second module and needs slots and contributions, it need not change shape either.
+- **Workflow, not plugin.** A plugin faces the whole installation and is decided by an administrator; a Workflow faces one Agent and is written by that Agent. The two share the package shape, not the scope or the authorization.
+- **The manifest lives in `package.json`.** A platform plugin's manifest is generated by decorators; a Workflow's author is an Agent without a build step, so the manifest must be data that can be written by hand.
+- **Workflows accept TypeScript only.** In untyped JavaScript, "is `handle`'s shape right" and "does the host method it calls exist" are known only at run time, and what can be done before load shrinks to checking method names; turning on `checkJs` for JS relies on inference and JSDoc, lets plenty of `any` slip through, and asks the author for annotations without any syntactic enforcement. TypeScript with `strict` turns this into a language-level requirement. Writing TypeScript costs an Agent nothing extra — the server already carries tsc, which does the checking and the transpiling, and no build step appears in the Workflow directory. Transpiling uses tsc rather than relying on runtime type erasure: the latter does no checking and accepts only erasure-compatible syntax.
+- **Let tsc decide, instead of writing our own type checker.** A homegrown checker either covers a subset of TypeScript (the current implementation does exactly that, silently passing everything outside the subset) or must forever chase tsc's assignability rules; the saving is not worth it. tsc's rules are the ones interface authors already code against, and its diagnostic text is the one they already know.
+- **Keep `ifaces.json` as the carrier and generate `.d.ts` at check time, instead of shipping `.d.ts` directly.** The table is self-contained data: each package carries the copy it saw when it was built, independent of module resolution at check time (`peerDependency` and dependency hoisting cannot touch it), and the by-value validation of slot data and the by-name verification after `create()` need it too. The `.d.ts` is only the form in which this data is handed to tsc, generated in milliseconds.
+- **Revisions are content hashes, not mtimes or counters.** The same content is the same revision however it arrives (edit, `git checkout`, rollback): rollbacks therefore deduplicate naturally, and the import URL changes exactly when the content does.
+- **`state.json` is not counted in the revision, and history lives outside the directory.** Data changes should not trigger reloads, should not create versions, and should not be carried away by rollbacks; were the history placed inside the directory, it would be seen by its own hash and its own watcher.
+- **A narrow interface, not handing over platform components.** Every member of `WorkflowHost` is one explicit grant, checkable by signature; exposing components like `SessionManager` outright would freeze the platform's internals into the Workflow's public API.
+- **The UI is declared by contributions, not "having `ui/` means having a tab".** A directory convention can only say "one Workflow, one page, one location": a second tab means either splitting into a second Workflow (state and handler split with it) or another convention (`ui2/`?); appearing anywhere else means one new convention per location. Contribution declarations turn all three into the same thing — one more piece of data written into some slot — and inherit everything the slots already have: validated shapes, named errors, the host deciding openness one by one. The cost is a few more manifest lines in the smallest Workflow.
+- **Reuse the platform's slot names, not a Workflow-only `Host.tabs`.** The same thing ("add a tab beside Chat") should be written the same way in a plugin and in a Workflow; should a Workflow be promoted to a plugin later, or the other way around, the contribution need not be rewritten. What is special to Workflows is only the scope, and that is the host's business, not the manifest's.
+- **`ui/` remains the root of static files.** `src` could have pointed at any file in the directory, but that would require the server to hold another judgment about "which files may be taken by the browser" (`index.ts` and `state.json` should not be); a fixed static root reduces that judgment to one path prefix. It constrains where files go, no longer how many pages the UI has or where they sit.
+- **An iframe, not rendering into the app's DOM.** Pages are arbitrary HTML written by an Agent; a separate document walls them off from the app's styles and script globals. The cost is that the theme does not shine through, hence the "copy the resolved tokens" step; copying rather than restating the palette in a stylesheet keeps the palette defined exactly once.
+- **The full-page route has no exit button.** Any fixed exit would take up the page's pixels, and the page belongs to someone else. The command palette takes no pixels; the two shortcuts are both live because the page may capture one of them.
+- **Do nothing**: what an Agent produces keeps living only in the conversation; scenarios needing pages can only be built as plugins, installed by an administrator for everyone.
 
-此前的 `feat/workflow-hmr` 分支被本设计取代，留下的只有「每个 Workflow 是 Chat 旁的一个标签页、聊天恒可达」这一点。
+The earlier `feat/workflow-hmr` branch was superseded by this design; all that survives of it is "every Workflow is a tab beside Chat, and chat is always reachable".
 
 ## Prior art
 [prior-art]: #prior-art
 
-- **PRFC-0001「Module」**：清单、接口表、宿主发布的能力、整树校验，全部照搬；本提案没有给内核加任何东西。
-- **HMR（05「服务端模块树」）**：「新的一代启动失败，上一代继续服务」「每次成功的替换是一个可回到的版本」是同一种立场，Workflow 把它从平台搬到了单个 Agent 的目录上。
-- **VS Code Webview**：扩展的页面同样是独立文档，编辑器把主题以 `--vscode-*` CSS 变量注入并在 body 上标注 `vscode-light` / `vscode-dark`，要求扩展只用这些变量着色。`--wf-*` 与根节点上的 `light` / `dark` 是同一做法。
+- **PRFC-0001 "Module"**: manifest, interface table, host-published capabilities, whole-tree validation — all borrowed wholesale; this proposal adds nothing to the kernel.
+- **HMR (05 "Server-side module tree")**: "a failing new generation leaves the old one serving" and "every successful replacement is a version you can return to" are the same stance; Workflows carry it from the platform down to a single Agent's directory.
+- **VS Code Webview**: extension pages are likewise separate documents; the editor injects the theme as `--vscode-*` CSS variables and marks the body `vscode-light` / `vscode-dark`, asking extensions to color with those variables only. `--wf-*` plus `light` / `dark` on the root node is the same approach.
 
 ## Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
-- **Workflow 的执行边界。** 进程内、无沙箱是现状而不是结论。可选的方向：在独立进程里运行并受 Session 同一套沙箱后端约束；或者把「这个 Agent 可以拥有 Workflow」做成需要用户批准的授权。期望在本 PRFC 合并之前经讨论定下立场。
-- **Workflow 直接用 plugin 的类形式，暂时做不到。** 目标是 Workflow 与 plugin 同一种写法（装饰器类加 `export default { modules: [Workflow] }`），清单由服务端在加载时替它生成，`WorkflowPackage`、手写清单的读取与配对随之删除，Workflow 的表也自然带上宿主接口的副本。挡在前面的正是上面两处生成器问题，外加生成器目前是仓库脚本（`scripts/gen-ifaces.mjs`），需要先成为服务端在运行时可调用的库。三件事都属于 PRFC-0001 的修订。
-- **检查器的修订另文。** 由表生成 `.d.ts` 并交 tsc 判定、`satisfies` / `dataExtends` 退役、`gen-ifaces` 不再擦除泛型、所需一律从消费者一侧解析（含 plugin 的 `??=` 覆盖）——这些改的是 PRFC-0001 的内容，需要一篇对它的修订。
-- **桌面安装包里的编译器尚未实测。** 热推送这条路径已在一台真实的桌面安装上端到端验证（编译、接口比较、标签页、处理器、坏编辑保留上一实例）；桌面构建把编译器放在 bundle 旁边这一步只改了构建脚本，要等下一次打包才能验证。
-- **`.harness/` 不在修订与历史里，也未必随 Agent 包走。** 修订哈希与版本副本都跳过点目录；回滚恢复的是代码，`.harness/` 保持原样——通常正合适（它记录的本来就是更早的依据），但一个在新类型下改写过的 Workflow 回滚到旧代码后，依据的类型与代码不再同龄。是否把它纳入版本，留待实现时定。
-- **页面的权限。** 同源 iframe 是否改为带 `sandbox` 属性、经框架转发请求，使页面只够得到自己的 `api/`。
-- **既有的 Workflow 是 JavaScript、且没有投稿。** #718 尚未合并、未随任何版本发布，但开发实例上已有 Agent 写下的 Workflow：入口是 `index.mjs`，只有 `ui/` 而没有 `contributes`。按本文，前者不再加载（须改写为 `index.ts` 并安装依赖），后者不再有标签页，直到清单补上一条投稿。建议两处都不设回退（继续接受 `index.mjs` 等于保留一条不经类型检查的加载路径；「有 `ui/index.html` 而无投稿时视为一条缺省投稿」会让目录约定永久留存），由用户定。
-- **`WorkflowHost` 的下一批成员。** 目前只能轮询 `sessionStatus`；订阅 Session 事件、读取 Session 的产出、读写 Workspace 文件都还没有。按「接口先行」逐个提案，不在本文范围内。
-- **分类与用法文档。** `02-TAXONOMY.md` 尚无 Workflow 词条，`06-PROTOTYPE.md` / `07-USAGE.md` 尚未描述标签页与 `--app`；留给后续的 specs PR。
+- **The execution boundary of Workflows.** In-process and unsandboxed is the current state, not the conclusion. Candidate directions: run in a separate process under the same sandbox backend as Sessions; or make "this Agent may have Workflows" a grant requiring the user's approval. A position is expected to be settled through discussion before this PRFC merges.
+- **Workflows using the plugin class form directly is not yet possible.** The goal is one authoring form for Workflows and plugins (decorated classes plus `export default { modules: [Workflow] }`), with the manifest generated by the server at load time; `WorkflowPackage` and the reading and pairing of hand-written manifests would be deleted with it, and Workflow tables would naturally carry copies of the host interfaces. What stands in the way is precisely the two generator problems above, plus the fact that the generator is today a repository script (`scripts/gen-ifaces.mjs`) and must first become a library the server can call at run time. All three belong to the PRFC-0001 revision.
+- **The checker's revision goes in a separate document.** Generating `.d.ts` from tables and leaving the verdict to tsc, retiring `satisfies` / `dataExtends`, `gen-ifaces` no longer erasing generics, requirements always resolving from the consumer's side (including the plugin `??=` override) — these change PRFC-0001's content and need a revision to it.
+- **The compiler in the desktop installer is not yet field-tested.** The hot-push path has been verified end to end on a real desktop installation (compilation, interface comparison, tabs, the handler, a bad edit keeping the previous instance); the desktop build placing the compiler beside the bundle has so far only changed the build script and waits for the next packaging to be verified.
+- **`.harness/` is not in revisions or history, and may not travel with the Agent package.** The revision hash and the version copies both skip dot-directories; a rollback restores code and leaves `.harness/` as it is — usually just right (what it records is an older basis to begin with), but a Workflow rewritten under new types and rolled back to old code ends up with types and code of different ages. Whether to fold it into versions is left to implementation.
+- **Page permissions.** Whether the same-origin iframe should switch to a `sandbox` attribute with requests relayed through the frame, so that the page can reach only its own `api/`.
+- **Existing Workflows are JavaScript and contribute nothing.** #718 is not yet merged and not shipped with any release, but development instances already hold Workflows written by Agents: entry `index.mjs`, `ui/` only, no `contributes`. Under this document, the former no longer loads (it must be rewritten as `index.ts` with dependencies installed), and the latter loses its tab until the manifest gains a contribution. The recommendation is no fallback in either place (continuing to accept `index.mjs` means keeping a load path without type checking; "treating `ui/index.html` without a contribution as a default contribution" would let the directory convention live forever) — for the user to decide.
+- **The next batch of `WorkflowHost` members.** Today only `sessionStatus` can be polled; subscribing to Session events, reading a Session's output, and reading or writing Workspace files are all still missing. Each is to be proposed one by one under "interface first", outside this document's scope.
+- **Taxonomy and usage documentation.** `02-TAXONOMY.md` has no Workflow entry yet, and `06-PROTOTYPE.md` / `07-USAGE.md` do not yet describe tabs and `--app`; left for a later specs PR.
 
 ## Future possibilities
 [future-possibilities]: #future-possibilities
 
-- **随 Agent 分发。** Agent 包（[penguin-harness#719](https://github.com/Prism-Shadow/penguin-harness/pull/719)）已把 `workflows/` 与 `agent_state/` 一起打包，`state.json` 除外：代码随 Agent 走，数据留在原地。
-- **开放更多的槽。** 机制已在「贡献」一节；候选的位置有平台已有的 `WebModule.pages`（按 Agent 限定的整页）与 `WebModule.agentTabs`（Agent 设置页的标签），以及尚不存在的命令面板条目、定时触发。每开放一个，要回答的只有「按 Agent 限定作用域时它是什么意思」。
-- **发送侧预检。** 与 PRFC-0001 的同名问题一致：Agent 在写下文件之前，先拿宿主发布的接口表核对一遍。
+- **Distributing with the Agent.** The Agent package ([penguin-harness#719](https://github.com/Prism-Shadow/penguin-harness/pull/719)) already packs `workflows/` together with `agent_state/`, `state.json` excepted: the code travels with the Agent, the data stays where it is.
+- **Opening more slots.** The mechanism is already in the "Contributions" section; candidate locations are the platform's existing `WebModule.pages` (whole pages scoped per Agent) and `WebModule.agentTabs` (tabs of the Agent settings page), plus the not-yet-existing command palette entries and scheduled triggers. Each opening has only one question to answer: "what does it mean when scoped per Agent".
+- **Sender-side preflight.** Same as the like-named question in PRFC-0001: before writing the files, the Agent first checks them against the host-published interface table.
 
 ## Changes
 
 ### v1.0.0
 
-- Added: 迁入主仓；正文取设计仓库默认分支的已落地版本，与来源文件一致。
+- Added: migrated into the main repository; the body takes the landed version from the design repository's default branch, identical to the source file.
