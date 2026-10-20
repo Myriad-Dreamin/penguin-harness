@@ -1,7 +1,9 @@
 # PRFC-0004 Plugin Scope
 
+[中文版](PRFC-0004-plugin-scope.zh.md)
+
 > **Source**: `rfcs/PRFC-0004-plugin-scope.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — a draft, see design PR [#104](https://github.com/Prism-Shadow/penguin-harness-design/pull/104) (draft).
-> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.md](README.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `plugin-scope`
 - Start Date: 2026-09-02
