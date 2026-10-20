@@ -1,6 +1,6 @@
 # Design RFCs (PRFC)
 
-This directory is PenguinHarness's design RFC surface: one design decision per document, named `PRFC-NNNN-slug.md`. Every document here was migrated from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design), where the same files live under its `rfcs/` directory. The migration collected both states: the documents landed on that repository's default branch, and the drafts still carried by its open or draft design pull requests. The landed documents are in this directory; each draft arrives in its own pull request, and its index row gains a link when it lands.
+This directory is PenguinHarness's design RFC surface: one design decision per document, named `PRFC-NNNN-slug.md`. Every document here was migrated from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design), where the same files live under its `rfcs/` directory. The migration collected both states: the documents landed on that repository's default branch, and the drafts still carried by its open or draft design pull requests. The landed documents are in this directory; each draft arrives in its own pull request, and until then its index row names the document without a link.
 
 [中文版](README.zh.md)
 

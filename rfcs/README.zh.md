@@ -1,6 +1,6 @@
 # 设计 RFC（PRFC）
 
-这个目录是 PenguinHarness 的设计 RFC 面：一份文档记一个设计决定，文件名 `PRFC-NNNN-slug.md`。这里的每份文档都迁自设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design)（同名文件居其 `rfcs/` 目录下）。迁移按两种状态全收：已落地于设计仓默认分支的文档，与仍被 open 或 draft 设计 PR 携带的草案。已落地的文档在这个目录里；每份草案随它自己的 PR 进来，落地时索引行才带上链接。
+这个目录是 PenguinHarness 的设计 RFC 面：一份文档记一个设计决定，文件名 `PRFC-NNNN-slug.md`。这里的每份文档都迁自设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design)（同名文件居其 `rfcs/` 目录下）。迁移按两种状态全收：已落地于设计仓默认分支的文档，与仍被 open 或 draft 设计 PR 携带的草案。已落地的文档在这个目录里；每份草案随它自己的 PR 进来，在那之前索引行只写文件名、不带链接。
 
 [English](README.md)
 
