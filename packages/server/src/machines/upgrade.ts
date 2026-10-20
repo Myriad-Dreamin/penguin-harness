@@ -11,7 +11,6 @@
  * That is the difference between this and reinstalling, which replaces the program on disk
  * and needs the server bounced to take effect.
  */
-import http from "node:http";
 import { machineApi } from "./machine-api.js";
 import { readPushedBuild } from "../hmr/pushed-build.js";
 import { LEAVE_OUT, UNSATISFIED_PLUGINS_HEADER } from "../hmr/push-plugins.js";
@@ -57,11 +56,12 @@ export function refusalDetail(status: number, text: string): string {
   return said === "" ? `it refused with ${status} and said nothing` : said;
 }
 
-/** Applies this server's build on the machine reachable at `port`. Never throws. */
+/** Applies this server's build on the machine reachable at `host:port`. Never throws. */
 export async function upgradeRemote(opts: {
-  /** A dial through the machine's connection, and its server's port over there. */
-  agent: http.Agent;
+  /** The forward's endpoint on this side (machines/forwards.ts), and the server's port over there. */
+  host: string;
   port: number;
+  remotePort: number;
   /** A session on that machine, as its own cookie (`penguin_session=…`). */
   cookie: string;
   dataRoot: string;
@@ -72,7 +72,7 @@ export async function upgradeRemote(opts: {
   opts.onProgress?.(`Sending this build (${(payload.byteLength / 1048576).toFixed(1)} MB)…`);
   let answer: { status: number; text: string };
   try {
-    answer = await machineApi(opts.agent, opts.port, opts.cookie).postBytes(
+    answer = await machineApi(opts.host, opts.port, opts.remotePort, opts.cookie).postBytes(
       "/api/hmr/upgrade",
       "application/gzip",
       payload,

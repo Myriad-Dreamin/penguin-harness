@@ -21,7 +21,6 @@
  * The relay carries messages verbatim. The protocol (frames, backpressure, restore) is the
  * machine's; both ends speak it and this server does not need to.
  */
-import type http from "node:http";
 import { WebSocket } from "ws";
 import type { RawData, WebSocket as WsSocket } from "ws";
 import { Component, Interface, Use } from "@prismshadow/penguin-core/kernel";
@@ -77,12 +76,12 @@ const frameBytes = (data: RawData): number => {
 
 export interface RelayDeps {
   /**
-   * What the proxy needs to reach the machine's API by its own id — a dial through the held
-   * connection, the port over there, and a session there — or null when it is not connected.
+   * What the proxy needs to reach the machine's API by its own id — the forward's endpoint on
+   * this side, the port over there, and a session there — or null when it is not connected.
    */
   proxyTarget(
     machineId: string,
-  ): Promise<{ agent: http.Agent; port: number; cookie: string } | null>;
+  ): Promise<{ host: string; port: number; remotePort: number; cookie: string } | null>;
   isAdmin(userId: string): boolean;
 }
 
@@ -164,13 +163,12 @@ export async function relayTerminalStream(
   if (target === null) return ws.close(1013, "machine not connected");
 
   const path = `/api/terminals/${encodeURIComponent(ref.remote.terminalId)}/stream${url.search}`;
-  // Through the connection, like every request to a machine's API: the agent's sockets are
-  // SOCKS dials inside the held ssh session (transport/connection.ts). Canonical host, as the
-  // request proxy sends it — the App answers on `localhost` and refuses `127.0.0.1`. No
-  // Origin: the machine's guard reads its absence as a non-browser client, which this is.
-  const socket = new WebSocket(`ws://127.0.0.1:${target.port}${path}`, {
-    agent: target.agent,
-    headers: { host: `localhost:${target.port}`, cookie: target.cookie },
+  // Through the forward, like every request to a machine's API (machines/forwards.ts).
+  // Canonical host, as the request proxy sends it — the App answers on `localhost` and refuses
+  // `127.0.0.1`. No Origin: the machine's guard reads its absence as a non-browser client,
+  // which this is.
+  const socket = new WebSocket(`ws://${target.host}:${target.port}${path}`, {
+    headers: { host: `localhost:${target.remotePort}`, cookie: target.cookie },
     perMessageDeflate: false,
   });
   remote = socket;

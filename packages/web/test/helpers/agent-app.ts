@@ -311,7 +311,6 @@ export function agentServer(
       machineId: "local-machine",
       local: true,
       connection: null,
-      socket: null,
       api: null,
       status: null,
       root: "/data",
@@ -324,7 +323,6 @@ export function agentServer(
       machineId: m.machineId,
       local: false,
       connection: m.reconnecting === true ? null : { pid: 4242 },
-      socket: null,
       ...(m.reconnecting === true
         ? {
             reconnect: {

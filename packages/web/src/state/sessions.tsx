@@ -1910,9 +1910,10 @@ export function SessionsProvider({ children }: { children: ReactNode }) {
   // The machines aggregate (GET /api/projects/:projectId/machines/events): one stream for every
   // connected machine, each event routed as that machine's word — the routing the retired HTTP
   // relay once fed into this server's own stream — and re-published wrapped, so every subscriber
-  // of this channel (the archive page) keeps seeing the shape it always did. The hub's own
-  // events (resync_required after a replay the buffer could not honour) are this server's: the
-  // list facts missed are this list's. Reconnects on Project switches; the stream is per Project.
+  // of this channel (the archive page) keeps seeing the shape it always did. The aggregate's
+  // own events (resync_required on any re-issue, the stream keeping no buffer) are this
+  // server's: the list facts missed are this list's. Reconnects on Project switches; the stream
+  // is per Project.
   useEffect(() => {
     if (projectId === null) return;
     const conn = openMachineEvents(projectId, {

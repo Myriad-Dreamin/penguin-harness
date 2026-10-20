@@ -48,14 +48,12 @@ import type {
   MachineReconnect,
   MachineServerStatus,
   MachineSshFailure,
-  MachineSocketFact,
   MachineUseRefusal,
   MachinesCheckoutImage,
   ServerEvent,
 } from "../api/types.js";
 import { readServerLock } from "../lock.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
-import http from "node:http";
 import {
   appendHostBlock,
   closeAllConnections,
@@ -128,8 +126,9 @@ import type { ClassCtx } from "@prismshadow/penguin-core/kernel";
 import { machinesRoutes } from "../http/routes/machines.js";
 import { machinesProxy } from "./proxy.js";
 import type { ProxyTarget } from "./proxy.js";
-import { MachineEventHub } from "./event-hub.js";
-import { MachineSockets } from "./machine-sockets.js";
+import { MachineForwards } from "./forwards.js";
+import { createSshSys } from "./ssh-sys.js";
+import type { ForwardedPort } from "@prismshadow/penguin-core/sys";
 import { HttpError } from "../http/errors.js";
 import type { Access } from "../mechanisms/projects.js";
 import { Hono } from "hono";
@@ -142,15 +141,17 @@ import { currentRemoteLayout } from "./layout.js";
 import type { RemoteLayout } from "./layout.js";
 
 /**
- * What a dial to a machine's server returns: the connection to route requests over, the port
- * its server is on over there, and a session there as its own cookie. The socket proxy path
- * (proxyTarget) dials machines this way.
+ * What a dial to a machine's server returns: the forward's endpoint on this side, the port its
+ * server is on over there, and a session there as its own cookie. The proxy, the API client
+ * and the terminal relay reach machines this way (machines/forwards.ts).
  */
 interface RelayDial {
-  /** Dials the machine's server through the session held to it. */
-  agent: http.Agent;
-  /** The port its server is on over there. */
+  /** The forward's address on this side (a loopback listener). */
+  host: string;
+  /** The forward's port on this side. */
   port: number;
+  /** The port its server is on OVER THERE — what the Host header names. */
+  remotePort: number;
   /** A session on that machine, as its own cookie. */
   cookie: string;
 }
@@ -332,8 +333,11 @@ export interface MachinesEffects {
   hold: (target: RemoteTarget) => ReturnType<MachineConnection["hold"]>;
   /** The connection held to a machine, while it is up. */
   session: (address: string) => ShellSession | null;
-  /** An http.Agent that dials that machine's server through its session. */
-  agent: (target: RemoteTarget, remotePort: number) => http.Agent;
+  /**
+   * A forward to that machine's server, opened on first use (machines/forwards.ts): null when
+   * the machine carries no forward (a Windows remote) or no session can be had.
+   */
+  forward: (target: RemoteTarget, port: number) => Promise<ForwardedPort | null>;
   stopServer: (target: RemoteTarget) => ReturnType<typeof stopRemoteServer>;
   mintToken: (
     target: RemoteTarget,
@@ -362,12 +366,6 @@ export interface MachinesEffects {
   watchSessions: (listener: SessionListener) => () => void;
   /** Whether this computer's ssh can sign in with a stored password (transport/login.ts). */
   passwordSignIn: () => Promise<AskpassPlan>;
-  /**
-   * What the API socket to a machine is doing (machines/machine-sockets.ts), for `MachineInfo.socket`:
-   * connected, dialling, refused or failed, and since when. The sockets themselves are the
-   * proxy's, created beside it, so this is an injected reader rather than a field here.
-   */
-  socketFact: (machineId: string) => MachineSocketFact | null;
 }
 
 /** The id of the entry standing for the machine this server runs on. */
@@ -396,6 +394,12 @@ export class MachinesService {
   readonly #busy = new Set<string>();
   /** Sessions minted on machines, by address, reused until near their TTL. */
   readonly #sessions = new Map<string, { cookie: string; at: number }>();
+  /**
+   * The one forward per machine and port (machines/forwards.ts): a loopback listener whose
+   * connections ride that machine's session, shared by the proxy, the API client, the terminal
+   * relay and the aggregate event stream.
+   */
+  readonly #forwards: MachineForwards;
   /**
    * Machines with a config sync in flight, and whether another was asked for meanwhile. An
    * edit that arrives while a sync is running is not dropped and not queued behind it one
@@ -480,7 +484,13 @@ export class MachinesService {
       startServer: (target, port) => startRemoteServer(target, port, layout, this.#effects.runOn),
       hold: (target) => connectionTo(target).hold(),
       session: (address) => heldSessionOf(address),
-      agent: (target, remotePort) => connectionTo(target).agent(remotePort),
+      forward: (target, port) => {
+        const platform = this.repo.get(`ssh:${target.alias}`)?.platform ?? "linux";
+        const sys = createSshSys(connectionTo(target), { platform });
+        return sys.forward === undefined
+          ? Promise.resolve(null)
+          : sys.forward.forwardPort(port).catch(() => null);
+      },
       stopServer: (target) => stopRemoteServer(target, layout, this.#effects.runOn),
       mintToken: (target, runOn) => mintTokenOnRemote(target, layout, runOn),
       upgrade: upgradeRemote,
@@ -493,10 +503,15 @@ export class MachinesService {
       watchSessions: onSessionChange,
       passwordSignIn,
       lateSweepMs: 20_000,
-      socketFact: () => null,
       ...effects,
     };
     this.#passwords = new SshPasswords(path.join(dataRoot, "machines"));
+    this.#forwards = new MachineForwards((address, port) => {
+      const row = this.repo.get(address);
+      if (row === null) return Promise.resolve(null);
+      const target = this.#targetOf(address.slice("ssh:".length));
+      return this.#effects.forward(target, port).catch(() => null);
+    });
     // A held connection that drops is a machine to bring back; one that comes up is news.
     this.#unwatch = this.#effects.watchSessions((address, up) => {
       this.#changed();
@@ -635,7 +650,6 @@ export class MachinesService {
       },
       local: true,
       connection: null,
-      socket: null,
       api: null,
       root: this.dataRoot,
       status: {
@@ -666,7 +680,6 @@ export class MachinesService {
         ...(reconnect === undefined ? {} : { reconnect: this.#reconnectInfo(reconnect) }),
         ...(row?.sessionPid != null ? { keepConnected: true as const } : {}),
         ...(withPassword.has(alias) ? { passwordSaved: true as const } : {}),
-        socket: row?.machineId == null ? null : (this.#effects.socketFact(row.machineId) ?? null),
         api: this.#apiSeen.get(id) ?? null,
         ...(configSync === undefined ? {} : { configSync }),
         // The layout's own spelling, in the shell that machine speaks. Unknown platform
@@ -997,8 +1010,9 @@ export class MachinesService {
           dial === null
             ? null
             : machineApi(
-                dial.agent,
+                dial.host,
                 dial.port,
+                dial.remotePort,
                 dial.cookie,
                 row.adoptedAt === null ? {} : { [ADOPTED_AT_HEADER]: row.adoptedAt },
               ),
@@ -1021,24 +1035,33 @@ export class MachinesService {
   }
 
   /**
-   * A dial to a machine's server by its address: through the connection held to it, to the port
-   * its server was last bound to, with a session there. Null when it is not connected — or when
-   * no session can be had, which leaves nothing to call it with either.
+   * A forward to a machine's server, by that machine's address: `target` and the port its
+   * server is on over there. Null when there is none (a Windows remote, a session that is not
+   * up) — a caller must not open ssh on its own to find out.
    */
-  async #dial(address: string): Promise<(RelayDial & { session: number }) | null> {
+  async #endpoint(
+    target: RemoteTarget,
+    port: number,
+  ): Promise<{ host: string; port: number } | null> {
+    return this.#forwards.endpoint(`ssh:${target.alias}`, port);
+  }
+
+  /**
+   * A dial to a machine's server by its address: the forward held to it, the port its server is
+   * on over there, and a session there. Null when it is not connected — or when no session can
+   * be had, which leaves nothing to call it with either.
+   */
+  async #dial(address: string): Promise<RelayDial | null> {
     const row = this.repo.get(address);
     const live = this.#liveSession(address);
     if (row === null || row.remotePort === null || live === null) return null;
     const target = this.#targetOf(address.slice("ssh:".length));
     const session = await this.#sessionOn(target);
     if (!("cookie" in session)) return null;
-    return {
-      agent: this.#effects.agent(target, row.remotePort),
-      port: row.remotePort,
-      cookie: session.cookie,
-      // The socket relay reuses a socket only within one ssh session (socket-relay.ts).
-      session: live.pid,
-    };
+    const endpoint = await this.#forwards.endpoint(address, row.remotePort);
+    return endpoint === null
+      ? null
+      : { ...endpoint, remotePort: row.remotePort, cookie: session.cookie };
   }
 
   /**
@@ -1177,9 +1200,15 @@ export class MachinesService {
    * 2026-10-15).
    */
   #record(address: string, patch: Parameters<MachinesRepo["patch"]>[1]): void {
-    const adoption =
-      this.repo.get(address) === null ? { adoptedAt: this.#effects.now().toISOString() } : {};
+    const before = this.repo.get(address);
+    const adoption = before === null ? { adoptedAt: this.#effects.now().toISOString() } : {};
     this.repo.patch(address, { ...adoption, ...patch });
+    // A forward rides the session it was opened over, to the port its server was on: a new
+    // session, or a server that moved to another port, makes the old listener reach nothing —
+    // and every path that learns either fact ends up here.
+    const moved = patch.remotePort !== undefined && before?.remotePort !== patch.remotePort;
+    const resessioned = patch.sessionPid !== undefined && before?.sessionPid !== patch.sessionPid;
+    if (moved || resessioned) void this.#forwards.drop(address);
   }
 
   /**
@@ -2059,12 +2088,13 @@ export class MachinesService {
   ): Promise<{ ok: true; build: RunningBuild } | { ok: false; detail: string }> {
     const session = await this.#sessionOn(target);
     if (!("cookie" in session)) return { ok: false, detail: session.detail };
+    const endpoint = await this.#endpoint(target, port);
+    if (endpoint === null) return { ok: false, detail: `no forward to port ${port} on it` };
     try {
-      const answer = await machineApi(
-        this.#effects.agent(target, port),
-        port,
-        session.cookie,
-      ).request("GET", "/api/version");
+      const answer = await machineApi(endpoint.host, endpoint.port, port, session.cookie).request(
+        "GET",
+        "/api/version",
+      );
       if (answer.status !== 200) {
         return { ok: false, detail: `it answered ${answer.status} when asked its version` };
       }
@@ -2087,6 +2117,7 @@ export class MachinesService {
       this.#record(address, { sessionPid: null });
     }
     this.#settle(address);
+    void this.#forwards.drop(address);
     closeConnectionTo(address);
     this.#sessions.delete(address);
     this.#changed();
@@ -2109,8 +2140,9 @@ export class MachinesService {
 
   /**
    * Whether a machine is connected as far as this server is concerned: the connection held.
-   * A server that stopped or restarted over there is no longer noticed from here — a machine
-   * with a hub (event-hub.ts) says so through it, and one without answers when next used.
+   * A server that stopped or restarted over there is no longer noticed from here — the
+   * aggregate event stream reads that machine's own `/api/events` over the forward and says so,
+   * and a machine nobody watches answers when next used.
    */
   #isUp(address: string): boolean {
     return this.#liveSession(address) !== null;
@@ -2122,6 +2154,9 @@ export class MachinesService {
    * again while it is down is the same loss, and must not cut its wait short.
    */
   #lost(address: string, delay = RECONNECT_FIRST_MS): void {
+    // The session that carried this machine's forwards is gone; they would only dial a dead
+    // channel. Opened again by the first caller after the reconnect.
+    void this.#forwards.drop(address);
     if (this.#stopped || this.#reconnects.has(address) || !this.#keepsConnected(address)) return;
     const now = this.#effects.now().getTime();
     this.#reconnects.set(address, {
@@ -2407,6 +2442,7 @@ export class MachinesService {
     this.#unwatch();
     if (this.#lateSweep !== null) clearTimeout(this.#lateSweep);
     this.#lateSweep = null;
+    void this.#forwards.closeAll();
     closeAllConnections();
   }
 
@@ -2484,7 +2520,12 @@ export class MachinesService {
       fail(`Config not synced — ${session.detail}`);
       return finish();
     }
-    const api = machineApi(this.#effects.agent(target, port), port, session.cookie);
+    const endpoint = await this.#endpoint(target, port);
+    if (endpoint === null) {
+      fail(`Config not synced — no forward to port ${port} on that machine.`);
+      return finish();
+    }
+    const api = machineApi(endpoint.host, endpoint.port, port, session.cookie);
 
     const models = await syncModelsToMachine({
       api,
@@ -2654,9 +2695,14 @@ export class MachinesService {
     this.#record(address, { remotePort: port });
     const session = await this.#sessionOn(target);
     if (!("cookie" in session)) return { kind: "failed", step: "sign in", detail: session.detail };
+    const endpoint = await this.#endpoint(target, port);
+    if (endpoint === null) {
+      return { kind: "failed", step: "dial", detail: `no forward to port ${port} on it` };
+    }
     return this.#effects.upgrade({
-      agent: this.#effects.agent(target, port),
-      port,
+      host: endpoint.host,
+      port: endpoint.port,
+      remotePort: port,
       cookie: session.cookie,
       // The root the plan's store sits in: `<root>/hmr` for this server's own, and the
       // image's directory for a checkout's.
@@ -3160,11 +3206,6 @@ export class MachinesModule {
         // Best effort: a page reads the list again on its next change or visit.
       }
     };
-    // The generation's one socket cache and the event hub over it (PRFC-0011): the proxy's
-    // streams and the machines' aggregate event stream share both, so the hub holds ONE
-    // subscription per machine however many tabs read it.
-    const sockets = new MachineSockets((line) => console.log(line));
-    const events = new MachineEventHub(sockets, (line) => console.log(line));
     const machines = new MachinesService(
       this.paths.root,
       repo.ownId(),
@@ -3173,20 +3214,17 @@ export class MachinesModule {
         ...(checkout === null ? {} : { packCheckout: deployPacker(checkout) }),
         // An installed release installs the image its build shipped, unless it was pushed to.
         shippedImage: shippedImage(),
-        socketFact: (machineId) => sockets.fact(machineId),
         announce: () => toAdmins({ type: "machines_changed" }),
       },
       () => this.hmr.assetsDir(),
     );
     this.machines = machines;
-    this.routes = machinesRoutes({ machines, access: this.access, events });
-    this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events });
+    this.routes = machinesRoutes({ machines, access: this.access });
+    this.serverProxyRoutes = machinesServerProxyRoutes(machines);
     // Every transient ssh session THIS generation opened closes with it, and every held one is
     // left for the successor, whose start() re-holds each one the record says was held.
     effect(() => {
       machines.stop();
-      events.close();
-      sockets.close();
     });
   }
 }
@@ -3197,16 +3235,11 @@ export class MachinesModule {
  * that machine's admin, with a session this server minted over the ssh access that installed
  * it, so this server's admin session is the one credential involved.
  */
-export function machinesServerProxyRoutes(
-  machines: MachinesService,
-  shared: { sockets?: MachineSockets; events?: MachineEventHub } = {},
-): Hono<AppEnv> {
+export function machinesServerProxyRoutes(machines: MachinesService): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const proxy = machinesProxy(
     (machineId) => machines.proxyTarget(machineId),
     (machineId, outcome) => machines.noteApiSeen(machineId, outcome),
-    (line) => console.log(line),
-    shared,
   );
   app.all("*", async (c) => {
     if (!c.var.user.isAdmin) {
