@@ -88,7 +88,7 @@ tests:
     description: a blocked ticket reaches its owner at the next sweep, once
 ---
 
-## Changes
+## What this changes
 
 `notifyTicket` no longer sends one message to the desk per event; it writes to `org_desk_notices` instead; `reconcileCalendar` calls `takeDeskNotices` before the schedule trigger and appends `deskDigest` at the end of the body.
 
