@@ -47,6 +47,15 @@ export interface PushSlip {
   refused: boolean;
   /** What the booting generation runs without, or refused to run without. */
   unsatisfied: UnsatisfiedPlugin[];
+  /**
+   * The serving generation's promise to hand the queued work over itself: the generation
+   * this push boots takes the queue only once the push has landed, from the route that
+   * opened the slip — never at the end of its own boot, which the push has not committed
+   * yet. Missing on a slip written by a serving generation older than this field: that
+   * boot claims for itself, as its kind always did, and the landed hand-over call is a
+   * no-op on it (the claim is already made).
+   */
+  queueHandover?: boolean;
 }
 
 /** Whether the request accepts leaving unsatisfied plugins out. */
@@ -59,7 +68,15 @@ export function openPushSlip(
   resources: Resources,
   leaveOut: boolean,
 ): { slip: PushSlip; close: () => void } {
-  const slip: PushSlip = { leaveOut, taken: false, refused: false, unsatisfied: [] };
+  const slip: PushSlip = {
+    leaveOut,
+    taken: false,
+    refused: false,
+    unsatisfied: [],
+    // The opener of this slip hands the queued work over once the push lands (see the
+    // field): the booted generation must not claim the queue at the end of its own boot.
+    queueHandover: true,
+  };
   return { slip, close: resources.register(PUSH_SLIP_RESOURCE_ID, slip) };
 }
 
@@ -73,6 +90,7 @@ export function takePushSlip(resources: Resources): PushSlip | null {
   slip.leaveOut = slip.leaveOut === true;
   slip.refused = false;
   slip.unsatisfied = [];
+  slip.queueHandover = slip.queueHandover === true;
   return slip as PushSlip;
 }
 

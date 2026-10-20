@@ -731,6 +731,11 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     // Taken HERE, once: this create() is what a push boots, and only its first inner boot is
     // the push's. A re-assembly later boots the same inner impl with nobody waiting on it.
     let push = takePushSlip(ctx.resources);
+    // The serving generation's promise about queued work (push-plugins.ts): IT hands the
+    // queue over to the generation this push boots, once the push has landed — so this boot
+    // must not claim the queue itself at the end of create(), which the push has not
+    // committed yet. Read before the inner boot below consumes the slip.
+    const handsQueueOver = push !== null && push.queueHandover === true;
     const innerImpl: Impl<PlatformApi, PlatformCtx> = {
       create: (innerCtx, innerContext) => {
         const slip = push;
@@ -757,6 +762,24 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
         capturedHttp = undefined;
       }
     }
+    /** Hands queued work to the inner App of the moment: its Sessions manager becomes the
+     * generation that starts what finished runs leave queued (SessionManager.becomeCurrent),
+     * and starts what the claim-less window accumulated. Called at the points a boot has
+     * become the App this shell serves — never inside a boot that has not. A tree that
+     * cannot be reached is warned about and left behind: the queued work then waits for a
+     * later generation to take it over, rather than starting in one that is not serving. */
+    function handOverQueue(): void {
+      try {
+        inner.api
+          .business()
+          ?.api<SessionManager>("SessionRuntimeModule", "Sessions")
+          ?.becomeCurrent();
+      } catch (err) {
+        console.warn(
+          `[platform] queued work left for a later generation (hand-over failed): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     async function reassemble(change?: ReassemblyChange): Promise<boolean> {
       const run = op.then(async () => {
         if (closed) return false;
@@ -774,6 +797,10 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
           if (result.status === "ok") {
             inner = result.instance;
             recaptureHttp();
+            // The re-assembly committed: its App is the serving one now, and takes the
+            // queued work over — during the swap the pointer was parked (detach), so a run
+            // that ended in the window started nothing.
+            handOverQueue();
             return true;
           }
           if (result.status === "failed") {
@@ -786,6 +813,10 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
             await change?.undo();
             inner = await boot(innerImpl, PlatformIface, result.doc, ctx.resources);
             recaptureHttp();
+            // The restored App is the serving one again, and takes the queued work over —
+            // the failed candidate never did (it never committed), so whatever piled up in
+            // the window starts here, in the generation actually serving.
+            handOverQueue();
             console.warn(
               `[platform] the App failed to boot after a plugin change; the change was undone and the previous App restored: ${reason}`,
             );
@@ -808,6 +839,13 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     const previousSockets = ctx.resources.claim<{ close(): void }>(API_SOCKETS_RESOURCE_ID);
     inner = await boot(innerImpl, PlatformIface, initialDoc(PlatformIface, context), ctx.resources);
     recaptureHttp();
+    // This boot is the App the shell serves from here: a cold start, or the previous
+    // platform re-booted after a failed push (the failed candidate took the slip, so
+    // handsQueueOver reads false and the RESTORE claims — correctly, it is the serving
+    // one). A push whose slip carries the serving side's hand-over promise holds off
+    // here: the route that opened the slip hands the queue over once the push has landed,
+    // and until then the queued work waits rather than starting in an uncommitted boot.
+    if (!handsQueueOver) handOverQueue();
 
     /** The API sockets this shell serves; each call on them resolves the inner App of the moment. */
     const apiSockets = new Set<WebSocket>();

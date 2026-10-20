@@ -179,8 +179,8 @@ describe("session-manager", () => {
     errors?: ErrorSink,
     /** Stubbed clock for persisted timestamps (see the last_active_at test). */
     now?: () => Date,
-  ): SessionManager =>
-    new SessionManager({
+  ): SessionManager => {
+    const manager = new SessionManager({
       sessions,
       channels,
       sources,
@@ -195,6 +195,13 @@ describe("session-manager", () => {
       ...(now ? { now } : {}),
       log: () => {},
     });
+    // What the platform shell does for a boot that becomes the App it serves
+    // (hmr/platform.ts handOverQueue): this manager is the test's serving generation,
+    // so the auto-start paths (a finishing run's queued follow-ups, an idle-arrival
+    // background notice) go through it.
+    manager.becomeCurrent();
+    return manager;
+  };
 
   const loaderOf = (session: RuntimeSession): SessionLoader => ({ load: async () => session });
 
@@ -311,6 +318,9 @@ describe("session-manager", () => {
       errors: { record: (args) => recordedErrors.push(args) },
       log: (line) => logs.push(line),
     });
+    // As makeManager does: the auto-start the assertions ride on goes through the
+    // serving generation's claim, not the bare constructor.
+    manager.becomeCurrent();
     const events = capture("session-1");
     await manager.startTask("session-1", [userText("hello")]);
     // Queue a follow-up while the first run is in flight: its auto-start lives in the same

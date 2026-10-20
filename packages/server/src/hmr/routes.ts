@@ -37,6 +37,39 @@ export interface HmrRouteDeps {
   resources: Resources;
 }
 
+/**
+ * The queued-work claim a landed generation's Sessions manager answers. Structural on
+ * purpose: the landed generation is another bundle's object, and a rollback to a build
+ * older than this hand-over has no such member — it claimed the state at its own
+ * construction, as its kind always did, and the call is a no-op on it.
+ */
+interface ServingSessions {
+  becomeCurrent?(): void;
+}
+
+/**
+ * Hands the queued work to the generation a landed push left serving: the booted
+ * generation held off claiming at the end of its boot — the slip it took carries this
+ * route's promise (push-plugins.ts) — so the claim is made here, once the push has
+ * committed. Reached through the control object rather than this route's own tree: the
+ * App that answered the request is the generation that OPENED the slip, and the one to
+ * claim is the one that landed. Failures are warned about and swallowed — a landed push
+ * must not answer as an error because its hand-over did not run.
+ */
+async function handOverQueueOnLanding(control: HmrControlApi): Promise<void> {
+  try {
+    const instance = await control.current();
+    const manager = instance.api
+      .business()
+      ?.api<ServingSessions>("SessionRuntimeModule", "Sessions");
+    manager?.becomeCurrent?.();
+  } catch (err) {
+    console.warn(
+      `[hmr] a landed version was left without the queued-work hand-over: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 export function hmrRoutes(deps: HmrRouteDeps): Hono<AppEnv> {
   const routes = new Hono<AppEnv>();
 
@@ -91,20 +124,28 @@ export function hmrRoutes(deps: HmrRouteDeps): Hono<AppEnv> {
   // A build that cannot run every installed plugin is refused unless the pusher accepted that
   // (push-plugins.ts). Pushes are taken one at a time here: the slip is one registry entry,
   // and a second push registering over the first would hand its answer to the wrong boot.
+  //
+  // A push that lands owes the generation it booted the queued work: that generation held
+  // off claiming it at the end of its boot (the slip says so), so THIS route makes it the
+  // serving one for queued work once the push has committed — in the finally, so a push
+  // whose landing succeeded never answers as an error because of the hand-over.
   let pushes: Promise<unknown> = Promise.resolve();
   routes.post("/upgrade", (c) => {
     const push = pushes.then(async () => {
       const { slip, close } = openPushSlip(deps.resources, acceptsLeavingOut(c.req.raw));
+      let landed = false;
       try {
-        const answered = await deps.control.endpoint(c.req.raw, (outcome) =>
+        const answered = await deps.control.endpoint(c.req.raw, (outcome) => {
+          landed = true;
           deps.channels.broadcast(
             "user:",
             { type: "web_updated", rev: outcome.web.rev },
             "server_event",
-          ),
-        );
+          );
+        });
         return await answerPush(slip, answered);
       } finally {
+        if (landed) await handOverQueueOnLanding(deps.control);
         close();
       }
     });

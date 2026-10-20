@@ -107,7 +107,12 @@ import { agentNoProxy } from "../net/proxy.js";
 import type { SandboxService } from "../sandbox/service.js";
 import type { AuthState, Channels, Clock, Config, Log } from "../hmr/capabilities.js";
 import type { ProjectConfigStore, ProjectEvents } from "../mechanisms/projects.js";
-import type { AgentState, SessionIndex, SessionOrigins } from "../mechanisms/sessions.js";
+import type {
+  AgentState,
+  RunStarter,
+  SessionIndex,
+  SessionOrigins,
+} from "../mechanisms/sessions.js";
 import type { Errors, UsageRecording } from "../mechanisms/observability.js";
 import type { TraceIndex, TraceIndexStore } from "../mechanisms/traces.js";
 import type { Settings } from "../mechanisms/settings.js";
@@ -771,13 +776,24 @@ export class SessionManager {
   private readonly sweepTimer: NodeJS.Timeout;
   /** Clock for persisted timestamps (see SessionManagerDeps.now); wall clock unless injected. */
   private readonly now: () => Date;
+  /**
+   * This instance's way of starting what a finished run leaves queued — its claim to the
+   * state's pointer, held rather than installed (see the constructor): what becomeCurrent
+   * puts on the state and detach parks. A member so the park can tell this instance's own
+   * claim from another generation's.
+   */
+  private readonly starter: RunStarter;
 
   constructor(private readonly deps: SessionManagerDeps) {
     const state = deps.state ?? new AgentStateStore();
     this.state = state;
-    // This generation works on the state from here on: whatever a run that is still going
-    // under an earlier generation starts when it ends, it starts through this one.
-    state.current = {
+    // This generation's way of starting what a finished run leaves queued — HELD, not
+    // installed: a generation takes the state's pointer only when it is the one serving
+    // (becomeCurrent), so a boot that never becomes the serving one — a candidate still
+    // behind its commit boundary — starts nothing. The platform shell installs the claim
+    // at exactly the points a boot has become the App it serves (see hmr/platform.ts);
+    // until then the state's pointer stays null and the queued work waits.
+    this.starter = {
       startQueuedFollowUp: (sessionId) => this.startQueuedFollowUp(sessionId),
       startBackgroundNoticeTask: (sessionId) => this.startBackgroundNoticeTask(sessionId),
     };
@@ -1905,13 +1921,43 @@ export class SessionManager {
   }
 
   /**
-   * The hand-over's half of a swap: this generation stops working on the state and leaves
+   * The claim half of the hand-over: makes this generation the one that starts what
+   * finished runs leave queued — whatever a run still going under an earlier generation
+   * starts when it ends, it starts through this one — and starts what accumulated while no
+   * generation held the pointer: every idle entry's queued follow-ups, and the background
+   * completion notices that arrived in the window. The platform shell calls this at the
+   * commit boundary of every boot that becomes the App it serves (a cold start, a
+   * re-assembly that committed, the restore after a failed one; a push is handed over by
+   * the route that opened its slip, once it has landed). Idempotent, and safe to call on a
+   * busy state: the starters revalidate under the session lock, so a drain that races a
+   * run launches nothing the run's own wrap-up would not.
+   */
+  becomeCurrent(): void {
+    this.state.current = this.starter;
+    for (const [sessionId, entry] of this.entries) {
+      if (entry.status !== "idle") continue;
+      // The same dispatch a finishing run's wrap-up makes (drive's finally): the queued
+      // follow-ups first, then the completion notices that raced the runs. Fire-and-forget
+      // — each starter revalidates under the lock and launches at most one.
+      if (entry.followUps.length > 0) void this.startQueuedFollowUp(sessionId);
+      else if (entry.session.hasPendingBackgroundNotices?.()) {
+        void this.startBackgroundNoticeTask(sessionId);
+      }
+    }
+  }
+
+  /**
+   * The hand-over's other half: this generation stops working on the state and leaves
    * everything in it as it is — running Tasks keep running, pending approvals keep waiting —
-   * for the next generation to take over (PRFC-0015). Only what is this instance's own stops:
-   * the idle sweep. `shutdown` is the other ending, for a state nobody takes over.
+   * for the next generation to take over (PRFC-0015). Only what is this instance's own
+   * stops: the idle sweep, and its own claim on the queued-work pointer — while no
+   * generation holds it, a run that ends starts nothing, and the queued work waits for the
+   * successor's claim instead of starting in a boot that never served. `shutdown` is the
+   * other ending, for a state nobody takes over.
    */
   detach(): void {
     clearInterval(this.sweepTimer);
+    if (this.state.current === this.starter) this.state.current = null;
   }
 
   /** The Sessions with a Task in flight right now — what a swap parks, so that a successor that cannot take the state over knows which ones to start again. */
