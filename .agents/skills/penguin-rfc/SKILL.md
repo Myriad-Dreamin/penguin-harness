@@ -24,8 +24,11 @@ documentation fix never needs one. When unsure, ask in an issue before drafting.
 
 ## Draft a new RFC
 
-1. **Copy the template.** `rfcs/TEMPLATE.md` → `rfcs/PRFC-NNNN-<slug>.md`. The slug is
-   lower-case kebab-case; one document carries one design decision.
+1. **Copy the template and write the pair.** `rfcs/TEMPLATE.md` →
+   `rfcs/PRFC-NNNN-<slug>.md` in English, and its Chinese counterpart
+   `rfcs/PRFC-NNNN-<slug>.zh.md` with the same sections. The slug is lower-case
+   kebab-case; one document carries one design decision. Each file links the other at
+   the top.
 2. **Take the next number.** The highest number present under `rfcs/`, plus one. Scan
    the open pull requests that touch `rfcs/` for numbers already claimed. Numbers need
    not be continuous: a new RFC takes the next number after the highest, not a gap.
@@ -95,6 +98,7 @@ in the pull request, not an edit to the workflow.
 ## Checklist
 
 - File named `PRFC-NNNN-<slug>.md`; the number is the next available one and not `0013`.
+- Both files of the pair are present, `<slug>.md` and `<slug>.zh.md`, each linking the other.
 - Title line `# PRFC-NNNN …` matches the file's number.
 - All nine sections present with their anchor links; `## Changes` starts at `### v1.0.0`.
 - The pull request contains only the RFC — no implementation changes.
