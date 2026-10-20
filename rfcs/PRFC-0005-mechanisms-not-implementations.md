@@ -1,7 +1,9 @@
 # PRFC-0005 Depend on mechanisms, not implementations
 
+[中文版](PRFC-0005-mechanisms-not-implementations.zh.md)
+
 > **Source**: `rfcs/PRFC-0005-mechanisms-not-implementations.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — a draft, living on the design branch `docs/mechanisms` (its own pull request [#109](https://github.com/Prism-Shadow/penguin-harness-design/pull/109) was closed as a draft; the document now sits at the bottom of the stack of the open design PRs [#113](https://github.com/Prism-Shadow/penguin-harness-design/pull/113) and [#123](https://github.com/Prism-Shadow/penguin-harness-design/pull/123)).
-> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.md](README.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `mechanisms-not-implementations`
 - Start Date: 2026-09-02
