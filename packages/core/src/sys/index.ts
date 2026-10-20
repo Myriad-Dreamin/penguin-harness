@@ -14,6 +14,8 @@ export type {
   ExecExit,
   ExecOptions,
   ExecProcess,
+  Forward,
+  ForwardedPort,
   Fs,
   Listen,
   ListenOptions,

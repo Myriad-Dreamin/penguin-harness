@@ -3,7 +3,8 @@
  * files are this process's filesystem (the file tools' in-process port, `localFsPort` — the
  * same implementation an unconfined Session already works through) plus the whole-file copy
  * a caller lays a program down with, its commands are this process's children, its endpoints
- * are this host's own loopback.
+ * are this host's own loopback, and a port it opened is already reachable — forwarding is
+ * the identity here.
  *
  * A sandbox, a machine or a cloud computer provides its own Sys instead; `HostSys` is the
  * default, not the base class — other providers implement the same interface beside it, not
@@ -26,6 +27,8 @@ import type {
   ExecExit,
   ExecOptions,
   ExecProcess,
+  Forward,
+  ForwardedPort,
   Fs,
   Listen,
   ListenOptions,
@@ -40,12 +43,13 @@ export const hostFs: Fs = {
   copyFile: (source, target) => copyFile(source, target),
 };
 
-/** The host's default Sys: this process's own files, children and loopback. */
+/** The host's default Sys: this process's own files, children, loopback and (trivial) forwards. */
 export class HostSys implements Sys {
   /** The file tools' in-process port — the same surface an unconfined Session already uses. */
   readonly fs: Fs = hostFs;
   readonly exec: Exec = hostExec;
   readonly listen: Listen = hostListen;
+  readonly forward: Forward = hostForward;
 }
 
 /**
@@ -156,6 +160,18 @@ function socketConnection(socket: Socket): SysConnection {
     },
   };
 }
+
+/**
+ * The host's forwarding: nothing to tunnel. A port a program bound here is already the
+ * caller's port, so the forward is the address itself and closing it is a no-op — the same
+ * answer a remote provider gives, so a caller never branches on which world it is on.
+ */
+const hostForward: Forward = {
+  async forwardPort(port: number): Promise<ForwardedPort> {
+    if (!reachablePort(port)) throw new Error(`bad port ${port}`);
+    return { host: "127.0.0.1", port, close: async () => undefined };
+  },
+};
 
 /** The host's listen: binds this host's own interfaces, loopback by default — binding wider than asked is exposure with nothing requesting it. */
 const hostListen: Listen = {

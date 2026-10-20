@@ -27,13 +27,15 @@ export {
   blobEndpoint,
 } from "./main.js";
 export type { Hmr, Replace } from "./main.js";
-export { HmrHost } from "./host.js";
+export { HmrHost, NoGenerationError, HMR_NO_GENERATION } from "./host.js";
 export type {
   PlatformBundle,
   GitSource,
   UpgradeAssets,
   UpgradeAllTarget,
   UpgradeOutcome,
+  InstallParts,
+  InstallOutcome,
 } from "./host.js";
 export { HotResources } from "./resources.js";
 export * from "./manifest.js";

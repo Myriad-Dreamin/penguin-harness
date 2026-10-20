@@ -81,12 +81,13 @@ async function startStub(
 }
 
 describe("HostSys", () => {
-  it("createSys() returns the host default carrying all three capabilities", () => {
+  it("createSys() returns the host default carrying its capabilities", () => {
     const sys = createSys();
     expect(sys).toBeInstanceOf(HostSys);
     expect(sys.fs?.sandboxed).toBe(false);
     expect(sys.exec).toBeDefined();
     expect(sys.listen).toBeDefined();
+    expect(sys.forward).toBeDefined();
   });
 
   it("fs is the file tools' port plus a whole-file copy", async () => {

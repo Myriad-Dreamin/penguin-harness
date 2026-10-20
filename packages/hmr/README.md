@@ -24,6 +24,22 @@ only by reinstalling every installation. The layer is named after the one thing 
 | **workflow** | An agent's own folder                                   | Installed/reloaded per agent       |
 | **state**    | Parked context documents / the resource registry        | Rides across swaps, not restarts   |
 
+## A store with no platform: install, then the next program boots it
+
+A program can carry the mechanism without carrying a platform: `HmrHost(root, null)` is a
+**bootstrap store**. It has no generation to serve (`ensure()` says so by name,
+`NoGenerationError`) and never boots one; what it does is `install(parts)` — validate a
+version, put its artifacts where `restore()` looks for them, and flip `harness.json` once.
+The server program started afterwards resumes that version through the same `restore()` an
+ordinary restart uses. That is how a machine gets its first version before the server that
+would serve a push exists: a single-file HMR program receives it, commits it, and is replaced
+by the real one.
+
+`install()` takes blobs the caller already wrote with `storeBlob()` (the stream writes each
+part as it arrives), so the bytes never have to be base64 in the receiving process. The
+transport that feeds it — one WebSocket, raw binary parts, a commit barrier — is the
+product's (`packages/server/src/hmr/stream.ts`); this package still only keeps the store.
+
 ## The rule
 
 **The HMR layer carries mechanism. It must not carry policy. And this package is not to be

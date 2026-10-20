@@ -89,6 +89,25 @@ export interface PlatformBundle {
   context: Json;
 }
 
+/**
+ * Why a store has no generation to serve: it was built with no platform compiled in (a
+ * BOOTSTRAP store, see install()) and nothing was ever committed on its data root. Not a
+ * fault — a store is allowed to hold nothing yet; the process that serves the channel is
+ * expected to say so rather than boot something.
+ */
+export const HMR_NO_GENERATION = "HMR_NO_GENERATION";
+
+export class NoGenerationError extends Error {
+  readonly code = HMR_NO_GENERATION;
+  constructor() {
+    super(
+      "no platform generation is current: this store carries no platform and nothing has " +
+        "been committed on its data root yet",
+    );
+    this.name = "NoGenerationError";
+  }
+}
+
 /** Optional provenance recorded with a pushed version (never executed here). */
 export interface GitSource {
   repo: string;
@@ -151,6 +170,32 @@ export type UpgradeOutcome =
   | { status: "blocked"; dropped: string[]; missing: string[]; invalid: string[] };
 
 /**
+ * A version handed to a STORE — no tree to swap, nothing to boot. What a bootstrap program
+ * receives over its stream (server/src/hmr/stream.ts) and commits for the next start: the
+ * web map and the asset set name BLOBS the caller already stored (storeBlob), so the bytes
+ * never had to be base64 in this process.
+ */
+export interface InstallParts {
+  /** The platform bundle's ESM source. */
+  platform: string;
+  /** The CLI bundle's ESM source (stored, never imported here). */
+  cli: string;
+  /** relPath → blob sha256, already in the store. */
+  web: Record<string, string>;
+  /** Native assets: relPath → blob sha256, plus the relPaths that must land executable. */
+  assets?: { files: Record<string, string>; exec?: string[] };
+  source?: GitSource | null;
+}
+
+/** What install() answers: the committed version, named the way a running push names it. */
+export interface InstallOutcome {
+  status: "ok";
+  impl: string;
+  web: { rev: string };
+  persisted: boolean;
+}
+
+/**
  * How many versions of each artifact (platform bundle / cli bundle / web dist / assets
  * dir, each independently) the store keeps by recency — a rollback copy behind the newest.
  * The version harness.json references is kept on top of these, so a store holds three
@@ -171,7 +216,7 @@ export class HmrHost<Api extends Park = Park> {
    * from the compiled-in default. Nor can the manifest: a push whose disk commit failed
    * (`persisted: false`) is running a version harness.json does not name.
    */
-  private current: PlatformBundle;
+  private current: PlatformBundle | null;
   /** Current version's materialized native assets dir (see assetsDir()). */
   private assets: string | null = null;
   private readonly hmrDir: string;
@@ -192,10 +237,15 @@ export class HmrHost<Api extends Park = Park> {
    * fallback a failed restore lands on. Passed in rather than imported: this package is the
    * mechanism, and it must not know what a platform is or what this product's default one
    * contains. The server hands it its own (hmr/platform.ts's `packagedPlatform`).
+   *
+   * NULL is a bootstrap store: a program that only receives versions (see install()) and
+   * has no platform of its own to boot. It is legal to hold nothing — ensure() says so by
+   * name (NoGenerationError) — and a version installed by install() is what the NEXT
+   * program boots, not this one.
    */
   constructor(
     private readonly root: string,
-    private readonly packaged: PlatformBundle,
+    private readonly packaged: PlatformBundle | null,
   ) {
     this.current = packaged;
     this.hmrDir = path.join(root, "hmr");
@@ -207,9 +257,9 @@ export class HmrHost<Api extends Park = Park> {
     process.stderr.write(`[hmr] ${msg}\n`);
   }
 
-  /** The running version's id — derived from the running bundle, never tracked alongside it. */
-  currentImplId(): string {
-    return this.current.id;
+  /** The running version's id — derived from the running bundle, never tracked alongside it. Null when none is current. */
+  currentImplId(): string | null {
+    return this.current?.id ?? null;
   }
 
   /**
@@ -242,6 +292,7 @@ export class HmrHost<Api extends Park = Park> {
       await this.restore();
       if (this.instance === null) {
         const bundle = this.packaged;
+        if (bundle === null) throw new NoGenerationError();
         this.instance = (await boot(
           bundle.impl,
           bundle.iface,
@@ -370,6 +421,58 @@ export class HmrHost<Api extends Park = Park> {
     return run;
   }
 
+  /**
+   * Stores one version for the NEXT start: validate it, put every artifact where restore()
+   * looks for it, and flip harness.json once. No boot, no swap, no current instance — this
+   * is what a bootstrap program (no platform compiled in) does with the version it received
+   * over the stream, and the server program started afterwards resumes it through restore().
+   *
+   * `web` and `assets` name blobs the caller already stored with storeBlob() as the bytes
+   * arrived; only the two ESM sources are held as text here. The platform bundle is imported
+   * once, before the commit, so harness.json never names a file that is not a bundle.
+   */
+  async install(parts: InstallParts): Promise<InstallOutcome> {
+    if (typeof parts.web["index.html"] !== "string") {
+      throw new Error("web dist manifest has no index.html");
+    }
+    const webB64: Record<string, string> = {};
+    for (const [rel, sha] of Object.entries(parts.web)) {
+      if (!isSafeRelPath(rel)) throw new Error(`unsafe path in web dist manifest: ${rel}`);
+      const blob = this.readBlob(sha);
+      if (blob === null) {
+        throw new Error(
+          `web dist names a blob this store does not hold: ${rel} (${sha.slice(0, 12)})`,
+        );
+      }
+      webB64[rel] = blob.toString("base64");
+    }
+    const { file: platformPath, sha: platformSha } = await this.storePlatformBundle(parts.platform);
+    const bundle = await this.importBundleFile(platformPath);
+    const assetsDir =
+      parts.assets === undefined
+        ? null
+        : await this.materializeAssetBlobs(parts.assets.files, parts.assets.exec);
+    const digest = filesDigest(webB64);
+    const gz = zlib.gzipSync(Buffer.from(JSON.stringify({ files: webB64 })));
+    // The same set a running push keeps alive for its probes: what an unchanged part is
+    // recognized by, whether or not this push carried it (hmr/README.md's store).
+    const blobs = [
+      sha256(Buffer.from(parts.platform, "utf8")),
+      sha256(Buffer.from(parts.cli, "utf8")),
+      ...Object.values(webB64).map((value) => sha256(Buffer.from(value, "base64"))),
+    ];
+    const persisted = await this.persistVersion(
+      platformSha,
+      parts.cli,
+      gz,
+      digest.slice(0, 16),
+      assetsDir,
+      parts.source ?? null,
+      blobs,
+    );
+    return { status: "ok", impl: bundle.id, web: { rev: digest.slice(0, 12) }, persisted };
+  }
+
   private async doUpgradeAll(
     target: UpgradeAllTarget,
     admit?: (instance: Instance<Api>) => Promise<string | null> | string | null,
@@ -489,6 +592,7 @@ export class HmrHost<Api extends Park = Park> {
   private async recoverPrevious(doc: Json): Promise<void> {
     try {
       const bundle = this.current;
+      if (bundle === null) throw new Error("no previous generation is current");
       this.instance = (await boot(bundle.impl, bundle.iface, doc, this.resources)) as Instance<Api>;
       // `current` unchanged: the previous version is the running version again.
     } catch (err) {
@@ -587,13 +691,28 @@ export class HmrHost<Api extends Park = Park> {
       if (!isSafeRelPath(rel)) throw new Error(`unsafe path in assets manifest: ${rel}`);
       files[rel] = await this.storeBlob(Buffer.from(b64, "base64"));
     }
+    return this.materializeAssetBlobs(files, assets.exec);
+  }
 
+  /** The same directory, from blobs the caller already stored (install(): the stream wrote them as they arrived). */
+  private async materializeAssetBlobs(
+    files: Record<string, string>,
+    execList?: string[],
+  ): Promise<string> {
+    for (const [rel, sha] of Object.entries(files)) {
+      if (!isSafeRelPath(rel)) throw new Error(`unsafe path in assets manifest: ${rel}`);
+      if (this.readBlob(sha) === null) {
+        throw new Error(
+          `native asset names a blob this store does not hold: ${rel} (${sha.slice(0, 12)})`,
+        );
+      }
+    }
     const sha = recordDigest(files).slice(0, 16);
     const dir = path.join(this.storeDir, "assets", sha);
     const marker = path.join(dir, MATERIALIZED);
     if (fs.existsSync(marker)) return dir;
 
-    const exec = new Set(assets.exec ?? []);
+    const exec = new Set(execList ?? []);
     for (const [rel, blob] of Object.entries(files)) {
       const file = path.join(dir, rel);
       await fsp.mkdir(path.dirname(file), { recursive: true });

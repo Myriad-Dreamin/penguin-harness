@@ -8,3 +8,5 @@
 export { HostSys, createSys, hostFs } from "./host.js";
 export { runServer, parsePortAnnouncement } from "./run-server.js";
 export type { RunServerOptions, ServerProgramItem, ServerRun } from "./run-server.js";
+export { installOverSys } from "./install.js";
+export type { InstallOverSysOptions, InstalledServer } from "./install.js";

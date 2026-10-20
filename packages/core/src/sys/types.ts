@@ -2,7 +2,7 @@
  * Sys — the capability interface that answers "where does this actually happen".
  *
  * A Sys is one world with optional capabilities: files (`fs`), command execution (`exec`),
- * and network endpoints (`listen`). The host is the default world; a sandbox, a machine or
+ * network endpoints (`listen`) and port forwarding (`forward`). The host is the default world; a sandbox, a machine or
  * a cloud computer provides its own. A capability is present or absent, never silently
  * substituted: a caller that needs one a Sys does not carry throws {@link sysCapabilityError}
  * instead of quietly running somewhere else — the same fail-closed rule the sandbox
@@ -125,6 +125,27 @@ export interface Listen {
   connect(host: string, port: number, opts?: ConnectOptions): Promise<SysConnection>;
 }
 
+/** One endpoint reachable from the caller that reaches a port on the Sys. */
+export interface ForwardedPort {
+  /** The host to dial, on the caller's side (a loopback address, or the Sys's own). */
+  readonly host: string;
+  /** The port to dial, on the caller's side. */
+  readonly port: number;
+  /** Ends the forward; idempotent. Connections opened through it end with it. */
+  close(): Promise<void>;
+}
+
+/**
+ * The port-forwarding capability: makes a port that is open ON the Sys reachable from where
+ * the caller is. The host forwards it trivially — the port already is local — while a world
+ * reached over ssh tunnels it back through the connection it is already holding, so a
+ * caller's HTTP client (or WebSocket) can talk to a program the Sys started.
+ */
+export interface Forward {
+  /** A caller-side endpoint that reaches `port` on this Sys (0 lets the provider pick the caller side). */
+  forwardPort(port: number): Promise<ForwardedPort>;
+}
+
 /**
  * One world with its capabilities, each optional: a Sys states what it can do by carrying
  * the member, and what it cannot by leaving it out. New capabilities are added as new
@@ -137,10 +158,12 @@ export interface Sys {
   readonly exec?: Exec;
   /** Network endpoints (see {@link Listen}); absent = no port opens or answers here. */
   readonly listen?: Listen;
+  /** Port forwarding (see {@link Forward}); absent = a port opened there cannot be reached from here. */
+  readonly forward?: Forward;
 }
 
 /** The capabilities this interface names today. */
-export type SysCapability = "fs" | "exec" | "listen";
+export type SysCapability = "fs" | "exec" | "listen" | "forward";
 
 /** The error code of {@link sysCapabilityError}. */
 export const SYS_CAPABILITY_ABSENT = "SYS_CAPABILITY_ABSENT";
