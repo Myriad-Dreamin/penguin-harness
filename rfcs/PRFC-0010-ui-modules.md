@@ -1,7 +1,9 @@
 # PRFC-0010 UI Modules: The Web App Is a Module Tree; Pages and Global UI Are Contributions
 
+[中文版](PRFC-0010-ui-modules.zh.md)
+
 > **Source**: `rfcs/PRFC-0010-ui-modules.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — a draft, see design PR [#317](https://github.com/Prism-Shadow/penguin-harness-design/pull/317) (open).
-> **Rev**: v1.0.0 (migrated into the main repository, taking that pull request's current version); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository, taking that pull request's current version); the conventions for this surface are in [README.md](README.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `ui_modules`
 - Start Date: 2026-10-13
