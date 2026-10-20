@@ -6,7 +6,7 @@
 
 [English](2026-10-18-design-rfcs-into-main-repo.md)
 
-新增 `rfcs/` 目录，收下项目的设计 RFC，迁自设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design)：已落地于其默认分支的十份，与仍被 open 或 draft 设计 PR 携带的十份草案，PRFC 编号与文件名原样保留。
+新增 `rfcs/` 目录，收下项目的设计 RFC，迁自设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design)：已落地于其默认分支的十份，PRFC 编号与文件名原样保留。仍被 open 或 draft 设计 PR 携带的十份草案，随它们各自的 PR 进来。
 
 ## 细节
 
@@ -14,4 +14,4 @@
 - 目录入口说明（`rfcs/README.md` 与 `rfcs/README.zh.md`）写明这个面随之固化的四条约定：一份 RFC 与它对应的 impl 改动不放在同一个 PR 里；RFC 落地后不频繁修改；修改必须提升 rev（形如 `v2.0.0`）；每次修改在 `## Changes` 里列出该版本的 change item。
 - 编号原样沿用。两份草案同占 `0005` 号（`PRFC-0005-mechanisms-not-implementations.md` 与 `PRFC-0005-plugin-versioning.md`）——两条独立的设计线，以文件名区分；`0013` 号已退役（HMR RFC 落地前改号为 `0002`）。
 - open 设计 PR 对已落地文档带而未合的修订（[penguin-harness-design #279](https://github.com/Prism-Shadow/penguin-harness-design/pull/279) 对 PRFC-0003 的「link 启用本地插件」修订），迁入文档保留落地版本，来源标记记录该未合并修订。
-- 只动文档：不改任何代码、测试或配置面。
+- 不改任何产品代码与测试。新增的自动化只有 `check-rfcs` 工作流，在 PR 触碰 `rfcs/` 时运行。
