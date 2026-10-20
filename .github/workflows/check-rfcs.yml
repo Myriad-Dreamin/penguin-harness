@@ -3,7 +3,7 @@ name: Check RFCs
 on:
   pull_request:
     paths:
-      - 'rfcs/**'
+      - "rfcs/**"
 
 jobs:
   check-rfcs:
