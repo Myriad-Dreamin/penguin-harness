@@ -1,177 +1,177 @@
-# PRFC-0004 插件的作用域
+# PRFC-0004 Plugin Scope
 
-> **来源**：设计仓库 [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) 的 `rfcs/PRFC-0004-plugin-scope.md`——草案，见设计 PR [#104](https://github.com/Prism-Shadow/penguin-harness-design/pull/104)（draft）。
-> **Rev**：v1.0.0（迁入主仓，取该草案当前版本）；本面约定见 [README.zh.md](README.zh.md)，逐版改动记于文末 `## Changes`。
+> **Source**: `rfcs/PRFC-0004-plugin-scope.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — a draft, see design PR [#104](https://github.com/Prism-Shadow/penguin-harness-design/pull/104) (draft).
+> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `plugin-scope`
 - Start Date: 2026-09-02
 - PRFC PR: [Prism-Shadow/penguin-harness-design#104](https://github.com/Prism-Shadow/penguin-harness-design/pull/104)
-- Implementation PR: machine 一级为 [Prism-Shadow/penguin-harness#769](https://github.com/Prism-Shadow/penguin-harness/pull/769)（设置分组）；project 一级未开始
-- 机队一致性与热加载：原 PRFC-0010 线（[#124](https://github.com/Prism-Shadow/penguin-harness-design/pull/124)、[#180](https://github.com/Prism-Shadow/penguin-harness-design/pull/180)；实现 [Prism-Shadow/penguin-harness#627](https://github.com/Prism-Shadow/penguin-harness/pull/627)、[#778](https://github.com/Prism-Shadow/penguin-harness/pull/778)）并入本文，编号 0010 让出
+- Implementation PR: Machine level at [Prism-Shadow/penguin-harness#769](https://github.com/Prism-Shadow/penguin-harness/pull/769) (settings groups); project level not started
+- Fleet parity and hot loading: Original PRFC-0010 line ([#124](https://github.com/Prism-Shadow/penguin-harness-design/pull/124), [#180](https://github.com/Prism-Shadow/penguin-harness-design/pull/180); implementation [Prism-Shadow/penguin-harness#627](https://github.com/Prism-Shadow/penguin-harness/pull/627), [#778](https://github.com/Prism-Shadow/penguin-harness/pull/778)) merged into this document, number 0010 released
 
 ## Summary
 [summary]: #summary
 
-一台服务器上跑着多个 Project，一个插件装上之后，它对谁生效？本提案的回答是：注册仍然是全局的，一个安装一棵模块树，插件在装配 App 时一次接进去；分级的是配置——machine 一级放这台机器的事实，project 一级放每个 Project 的意愿，插件在哪一级有配置就在哪一级生效。作用域因此是配置的属性，插件自己不必分类，manifest 里也不声明属于哪一级。machine 一级已经落地为**设置分组**，project 一级仍是提案。
+Multiple Projects run on one server. When a plugin is installed, who does it affect? This proposal answers: registration remains global—one installation installs one module tree, plugins are wired in together during App composition; what is hierarchical is configuration—machine level holds facts about this machine, project level holds each Project's preferences, and plugins take effect at the level where they have configuration. Scope is therefore a property of configuration, not of plugins themselves; plugins need not be categorized, and manifest need not declare which level they belong to. Machine level has landed as **settings groups**; project level remains a proposal.
 
-本篇同时回答「清单在哪几台机器上生效、什么时候生效」：插件清单不再是每台服务端各自的一份，而是**一支机队的一份清单**——写在 Project 配置、按机器 ID 分表，在一处启用，就在这台服务端与它使用的每台机器上启用，多出来的被移除，缺少的被补上；生效不再要求重启进程，清单一改，运行时就用与热推送同一套 park / boot 重新装配 App，新列的插件当场进树，被移除的当场退出。详见「机队一致性与热加载」。
+This document also answers "on which machines does the plugin list take effect, and when": The plugin list is no longer one per server endpoint, but rather **one list per fleet**—stored in Project configuration, partitioned by machine ID. Once enabled in one place, it is enabled on this server endpoint and every machine it uses; plugins not in the list are removed, missing ones are added. Taking effect no longer requires process restart. When the list changes, the runtime uses the same park/boot cycle as hot updates to recompose the App; newly listed plugins enter the tree immediately, removed ones exit immediately. See "Fleet parity and hot loading" for details.
 
 ## Motivation
 [motivation]: #motivation
 
-### 插件是什么，今天怎么进来
+### What are plugins and how do they enter today
 
-插件是给这套 harness 加能力的 npm 包，由部署方自己装。仓库里自带的有四个沙盒后端——bwrap（Linux）、Seatbelt（macOS）、WSL（Windows：命令在专用的 WSL2 发行版里受 bubblewrap 约束）与 DSH 适配器——以及语言包、Claude Code 表面和 Discord 机器人。消息渠道连接器（飞书、Telegram、QQ）是另一个插件可以填的槽，今天由内置实现填着。
+Plugins are npm packages that add capabilities to this harness, installed by the deployer themselves. The repository comes with four sandbox backends—bwrap (Linux), Seatbelt (macOS), WSL (Windows: commands run in a dedicated WSL2 distribution constrained by bubblewrap) and DSH adapter—plus language packs, Claude Code surface, and Discord bot. Message channel connectors (Feishu, Telegram, QQ) are another slot plugins can fill; today they are filled by built-in implementations.
 
-它们这样进来：Project 配置里的插件表列出包名（清单的形状与按机器的分表见「机队一致性与热加载」），包以装饰器类写出它提供的 Module，构建时生成 `ifaces.json` 清单。服务端装配 App 时把这些 Module 接进平台自己的模块树，整棵树一起做签名级校验——谁要的东西没人提供、谁给的东西签名不对，装配就以具名的错误停下。
+They enter this way: The plugins table in Project configuration lists package names (see "Fleet parity and hot loading" for list shape and per-machine partitioning). Packages express the Modules they provide via decorator classes; build generates an `ifaces.json` manifest. When the server composes the App, it wires these Modules into the platform's module tree; the entire tree is signature-checked together—if something required does not exist or something contributed has the wrong signature, composition stops with a named error.
 
-### 问题：装了它，就等于所有 Project 都要它
+### The problem: installing it means all Projects need it
 
-一台服务器承载多个 Project，它们往往属于不同的团队，装着各自的模型凭据，跑着互不相干的活。而插件的加载是按进程的：哪怕只有一个 Project 列了它，它的贡献也对所有 Project 生效。
+One server hosts multiple Projects, often belonging to different teams, each with their own model credentials, running unrelated work. Yet plugin loading is per-process: even if only one Project lists it, its contribution takes effect for all Projects.
 
-设想一台服务器上开着两个 Project，运维在上面装了 bwrap 沙盒后端。A 团队跑的是不受信任的第三方代码，要求命令一律断网、只准写 Workspace；B 团队在调一个必须连内网服务的构建脚本，断网就没法工作。沙盒策略如今按 Session 快照，服务端设置只是新建 Session 的缺省和非管理员的上限，两个团队可以各自收紧自己的 Session；但「A 团队的 Project 一律断网」仍无处表达，因为 Project 一级没有配置。
+Imagine a server with two Projects open. Operations installed the bwrap sandbox backend. Team A runs untrusted third-party code and requires all commands to be offline, write-only to Workspace. Team B is debugging a build script that must connect to internal services; offline breaks it. Sandbox policy snapshots per Session today; server settings are just the default for new Sessions and the ceiling for non-admins. Both teams can each tighten their own Sessions, but "Team A's Project is always offline" has no place to be expressed, because there is no project-level configuration.
 
-再设想 B 团队想把自己的 Agent 接到自己的飞书群。机器人 token 是 B 团队的，不该让 A 团队看见，也不该由运维代管；可长连接是进程级的，不可能为每个 Project 各开一条。今天没有一个地方放得下这种「凭据属于 Project、连接属于进程」的配置。
+Imagine again: Team B wants to connect their Agent to their own Feishu group. The bot token belongs to Team B, should not be visible to Team A, should not be managed by operations. Yet long-lived connections are per-process; you cannot open one per Project. Today there is no place to put configuration where "credentials belong to Project, connection belongs to process."
 
-两个场景的共同点是，「装了什么」和「对谁生效」被同一个文件、同一个时刻定了下来，而这本是两件事。装不装取决于这台机器——包在不在、原生构件支不支持这个平台；生效不生效取决于 Project——它要不要这个能力、要它怎么工作。一个文件同时回答两个问题，剩下的形态就只有两种，哪种都不对：插件一律全局生效，几个 Project 相互干扰；或者另起一套按 Project 的配置面，与「一次注册」的形态各说各话。
+Both scenarios share a root cause: "what is installed" and "who it affects" are defined in one file at one moment, when they are really two separate things. Whether to install depends on this machine—whether the package exists, whether native artifacts support the platform. Whether it affects depends on the Project—whether it wants this capability, how it should work. One file answering two questions leaves only two possible shapes, both wrong: plugins always global, Projects interfere; or a separate per-Project configuration face that contradicts "one registration."
 
 ## Guide-level explanation
 [guide-level-explanation]: #guide-level-explanation
 
-一个插件从发布到起作用要过三级台阶，每一级都有人可以喊停：这台安装上有没有这个包（随构建发货的内置插件只是带了个 builtin 标签，装不装仍由操作者授意）；装配时它有没有被接进模块树；以及有没有哪一级配置说它该工作。前两级今天就有，第三级是本提案要加的。
+A plugin passes through three gates from publication to taking effect, each where someone can stop it: whether this installation has the package (built-in plugins just carry a builtin tag; whether to install is still operator authorization); whether it gets wired into the module tree during composition; and whether any configuration level says it should work. The first two exist today; the third is what this proposal adds.
 
-配置分两级。machine 一级写这台机器的运维事实——哪个后端可用、机器本地的凭据和路径、并发上限，由管理员在设置弹窗的「插件」页里改。project 一级写这个 Project 的意愿——模式、开关、Project 自己的凭据，写在 Project 的配置文件里，每个 Module 一节。
+Configuration splits into two levels. Machine level writes operational facts about this machine—which backend is available, machine-local credentials and paths, concurrency limits—changed by admins in the "Plugins" page of the settings panel. Project level writes this Project's preferences—modes, switches, Project-owned credentials—in the Project's configuration file, one section per Module.
 
-要紧的是这两级属于配置，不属于插件。一个插件两级都有配置是正常的：沙盒后端在 machine 一级说自己怎么找到 bwrap，在 project 一级读这个 Project 要什么模式。它不必选边，也就不存在「machine 插件」和「project 插件」两套安装面、两套加载器。
+What matters is these two levels belong to configuration, not plugins. It is normal for one plugin to have configuration at both levels: a sandbox backend says at machine level how to find bwrap, reads at project level what mode this Project wants. It need not choose sides; there is no separate "machine plugins" and "project plugins" installation faces, no two loaders.
 
-插件作者要知道的只有一句：你读的是自己那一节。machine 一级已落地的读法是 `PluginConfig.get(分组名)`，读模块自己声明的设置分组；project 一级提议的读法是 `project(projectId)`，返回本模块名下那一节，可能是空的。空就是不生效。如果一个贡献本来就该装上即用，比如语法高亮的 grammar，它不该读配置节，而该直接投到平台的槽里。
+All plugin authors need to know: you read your own section. Machine level's already-landed read pattern is `PluginConfig.get(group_name)`, reading the settings group the module declares. Project level's proposed read pattern is `project(projectId)`, returning the section under this module's name, possibly empty. Empty means not in effect. If a contribution should just work when installed, like grammar for syntax highlighting, it should not read configuration; instead, contribute directly to the platform's slot.
 
 ## Reference-level explanation
 [reference-level-explanation]: #reference-level-explanation
 
-### 注册
+### Registration
 
-一个安装一棵模块树，插件在装配 App 时一并注册，不按 Project 实例化。树是整棵一起校验的；为某个 Project 单独裁剪它，这次校验就作废了，而校验正是这棵树值得信任的原因。
+One installation installs one module tree; plugins register together during App composition, not instantiated per Project. The tree is signature-checked as a whole; trimming it for one Project invalidates that check, and the check is why this tree deserves trust.
 
-### machine 一级
+### Machine level
 
-已落地为**设置分组**（Prism-Shadow/penguin-harness#769）。
+Landed as **settings groups** (Prism-Shadow/penguin-harness#769).
 
-- **声明。** 一个模块把设置分组投给 `PluginConfigProvider.groups`。这是纯数据贡献，会写进生成的 `ifaces.json`，页面不运行包就能列出它；贡献 id 即分组名。分组带标题、说明（有 `…Zh` 中文字段）和 `properties`，字段类型为 `string`、`secret`、`boolean`、`number`、`enum` 或 `list`，可声明缺省值、`required`、数值范围与 `pattern`。`parent` 让一个分组画进另一个分组的卡片里，例如沙盒后端的分组画在沙盒卡片内。
-- **存储。** web.db 的 `server_settings` 表，每个分组一份文档，键为 `plugin-config:<分组名>`。没有行就用声明的缺省值，改完即时生效，不需要推送。值按服务端各自保存，不在机器之间同步（见「插件设置不进清单」）。
-- **读取。** 声明分组的模块 `requires` `PluginConfig`：`get(name)` 返回合并到缺省值上的存储值，`watch(name, cb)` 在每次保存后触发，`saved(name)` 区分已保存的选择与缺省值。
-- **写入。** 只走管理员接口：`GET|PUT /api/admin/plugin-config`，界面是设置弹窗的「插件」页，每张卡片各自保存。插件对自己的值只读；机器事实如果能被插件自行改写，「这台机器是什么配置」就没有单一负责人了。
-- **实时状态。** 分组还可以有一个代码贡献 `PluginConfigPage.status`，给出随运行时变化的内容：提示行（语气为 `attention`、`muted` 或 `progress`；有 `progress` 时页面每两秒重读一次）；保存后的收尾 `saved()`；按钮 `actions()` 与 `run(id)`（`POST /api/admin/plugin-config/action`），其返回的 `settled` 在工作结束时让所属卡片像保存后一样收尾；以及本机无法支持的枚举选项 `unavailable()`，这些选项置灰并附原因，保存时选中即被拒绝。
-- **按钮改变机器，不改设置。** 需要在机器上做一次的事（安装 WSL、初始化沙盒发行版）由插件经按钮执行，进度与结果写在提示行里；它不回写任何设置值，因此「插件只读」这条仍然成立。
+- **Declaration.** A module contributes settings groups to `PluginConfigProvider.groups`. This is pure data contribution, written into the generated `ifaces.json`, so the page can list it without running the package. The contribution ID is the group name. Groups carry a title, description (with `…Zh` Chinese fields) and `properties`; field types are `string`, `secret`, `boolean`, `number`, `enum` or `list`; can declare defaults, `required`, number ranges and `pattern`. `parent` lets one group render inside another group's card—for example, sandbox backend groups render inside the sandbox card.
+- **Storage.** `server_settings` table in web.db, one document per group, key `plugin-config:<group_name>`. No row means use the declared default; changes take effect immediately, no push needed. Values are stored separately on each server, not synced between machines (see "Plugin settings do not enter the manifest").
+- **Reading.** Modules declaring groups `require` `PluginConfig`: `get(name)` returns stored value merged over default, `watch(name, cb)` fires after each save, `saved(name)` distinguishes saved choice from default.
+- **Writing.** Admin interface only: `GET|PUT /api/admin/plugin-config`. UI is the "Plugins" page in settings, each card saves independently. Plugins read-only their own values; if machine facts could be rewritten by plugins, "what is this machine configured as" has no single owner.
+- **Live status.** Groups can also contribute code via `PluginConfigPage.status`, giving content that changes at runtime: hint rows (tone `attention`, `muted` or `progress`; with `progress` the page re-reads every two seconds); post-save finalization `saved()`; buttons `actions()` and `run(id)` (`POST /api/admin/plugin-config/action`), whose returned `settled` makes the card finalize like after save; and unavailable enum options `unavailable()`, grayed out with reasons, rejected on save if selected.
+- **Buttons change the machine, not settings.** One-time tasks on the machine (install WSL, initialize sandbox distribution) run via button from the plugin, progress and result write to hint rows; they do not write back any settings values, so "plugin read-only" still holds.
 
-### project 一级
+### Project level
 
-存 Project 的 `.project_config.toml`，每个 Module 一节 `[plugin.<模块名>]`。`plugin.` 这个前缀不能省：顶层节名会撞上 `models`、`command_policy` 这些核心键，而核心配置的解析会把同名节当成自己的字段读进去。
+Stored in Project's `.project_config.toml`, one section per Module: `[plugin.<module_name>]`. The `plugin.` prefix is required: top-level section names would collide with `models`, `command_policy` and other core keys, and core config parsing would read same-named sections as its own fields.
 
-### 为什么两级都不放进 parked 文档
+### Why neither level goes into parked documents
 
-沙盒设置目前是随平台上下文 park 的，插件配置不走这条路。parked 文档只增字段、从不重定版本，而且旧 runtime 的 kernel 会拒收比自己新的文档；把第三方插件的 schema 放进去，等于把回滚兼容性交给插件作者去守。
+Sandbox settings currently park with platform context; plugin configuration does not follow this path. Parked documents only add fields, never version, and old runtime kernel rejects documents newer than itself. Putting third-party plugin schemas there means delegating rollback compatibility to plugin authors.
 
-沙盒设置本身属于 machine 一级，已迁到 `server_settings`（分组 `sandbox`，键 `plugin-config:sandbox`）。parked 文档仍携带当前策略跨过热切换：启动时有已保存的文档就以它为准，没有就沿用切换带来的值，所以从未保存过设置的数据根照常工作，无需迁移。
+Sandbox settings themselves are machine level, already moved to `server_settings` (group `sandbox`, key `plugin-config:sandbox`). Parked documents still carry current policy across hot switch: on startup, if a saved document exists, use it; otherwise carry the switch's value. So data roots that never saved settings work unchanged, no migration needed.
 
-### 插件看到的接口
+### What plugins see
 
-不是整张配置表，而是按调用模块名收窄的两个读法。这一点是硬要求：`.project_config.toml` 里存着模型凭据，以 0600 落盘，连系统 Prompt 都禁止读取，不能因为插件要看一节就把整张表递过去。
+Not the whole config table, but two read patterns narrowed to the calling module name. This is hard requirement: `.project_config.toml` holds model credentials, stored 0600 on disk, not even system prompts can read it. You cannot hand the whole table over just because a plugin wants one section.
 
-machine 一级的 schema 由插件声明、平台据此校验与渲染（见上）。project 一级提议的节里，schema 归插件自己所有，怎么演进用 Module 已有的 `migrations`（按起始版本链式），平台不解释其中的内容。
+Machine level's schema is declared by plugins, platform validates and renders from it (see above). In the project level section, schema belongs to plugins; how it evolves uses the Module's existing `migrations` (chained by start version); platform interprets nothing inside.
 
-### 平台不合并两级
+### Platform does not merge the two levels
 
-两份文档原样交给插件，由它自己判断关系。平台写不出通用的合并规则，因为只有插件知道自己 schema 里「更严」是哪个方向。
+Both documents pass as-is to the plugin, which judges their relationship itself. Platform cannot write a generic merge rule, because only the plugin knows which direction in its schema is "stricter."
 
-平台自己的分级配置另算。沙盒策略按 Session 快照：设置页的值是新建 Session 的缺省，也是非管理员的上限，文件系统模式与网络档位（无网络 < 本地网络 < 完全访问）都只能往紧里收；本机后端无法实施的档位置灰并被拒绝。这条规则由平台自己实现。两种语义，两处代码，不必凑成一个假装通用的合并层。
+Platform's own hierarchical configuration is separate. Sandbox policy snapshots per Session: settings page value is the default for new Sessions and the ceiling for non-admins; filesystem modes and network levels (no network < local network < full access) can only tighten; modes this machine's backend cannot enforce are grayed and rejected. Platform implements this rule itself. Two semantics, two places to code, no need to fake one generic merge layer.
 
-### 读不到 project 一级的地方
+### Where you cannot read project level
 
-只有握着 projectId 的调用点能读 project 一级。没有 Project 上下文的纯后台插件只能用 machine 一级，或者自己遍历 Project；这是分级的自然结果，不为它开口子。
+Only call sites with projectId can read project level. Background plugins without Project context can only use machine level or walk Projects themselves; this is the natural result of hierarchy, not an exception.
 
-「这个 Project 用了哪些插件」也没有名单可查，答案由「已注册的模块」和「有没有 project 节」算出来。
+"What plugins does this Project use" has no roster to query; the answer computes from "registered modules" and "has a project section."
 
-真正有杀伤力的那些面，命令约束、HTTP 路由、工具，消费者都是平台自己，作用域由平台带着解析，不指望插件配合。
+The high-impact surfaces—command constraints, HTTP routes, tools—are consumed by the platform itself; scope is parsed by the platform, plugins are not expected to help.
 
-### 落地顺序上的一个约束
+### One ordering constraint on landing
 
-core 的 `addModel`、`removeModel`、`setDefaultModel`、`setVisionModel` 是「读进来收窄成 typed 配置，再写回去」，未知的节在收窄那一步就没了。project 一级落地之前，这四条必须先改成保留未知键的整表读写，服务端的配置服务已经是这么做的；否则用户敲一次 `penguin model add`，这个 Project 的插件配置就被静默清空。
+Core's `addModel`, `removeModel`, `setDefaultModel`, `setVisionModel` are "read in, narrow to typed config, write back"; unknown sections vanish during narrowing. Before project level lands, these four must change to preserve unknown keys on whole-table read-write (server config service already does this). Otherwise one `penguin model add` and this Project's plugin config silently clears.
 
-磁盘上现在没有任何 `[plugin.*]` 节，所以这只是落地顺序的约束，不涉及存量数据怎么兼容。
+Right now the disk has no `[plugin.*]` sections, so this is only an ordering constraint, not a data compat issue.
 
-## 机队一致性与热加载
-[fleet-parity]: #机队一致性与热加载
+## Fleet parity and hot loading
+[fleet-parity]: #fleet-parity-and-hot-loading
 
-插件不再是「每台服务端各自的清单」，而是**一支机队的一份清单**：在一处启用，就在这台服务端与它使用的每台机器上启用，多出来的被移除，缺少的被补上。生效不再要求重启进程——运行时用与热推送同一套 park / boot 重新装配 App，新列的插件当场进树，被移除的当场退出。
+Plugins are no longer "one list per server endpoint," but rather **one list per fleet**—once enabled in one place, it is enabled on this server endpoint and every machine it uses. Plugins not in the list are removed, missing ones are added. Taking effect no longer requires process restart. The runtime uses the same park/boot cycle as hot updates to recompose the App; newly listed plugins enter the tree immediately, removed ones exit immediately.
 
-### 为什么不能再各管各的
+### Why you can't each manage your own anymore
 
-现状是按部署安装：`<root>/plugins.json` 一台一份，Plugins 页改的是本机那份，而且插件只在**进程启动时**加载，改完要重启。
+Today's shape is per-deployment: `<root>/plugins.json` one per machine; Plugins page changes this machine's copy; plugins load only **at process startup**, restart required to take effect.
 
-一台机器时这说得通。一支机队就不成立了：
+One machine, this makes sense. A fleet, it does not:
 
-- **装不了。** 运营者是通过 Machines 页管理远端的——安装、更新、连接、重启都在那里。插件却要求登进每台机器的服务端各点一遍，这条路在产品里根本不存在。
-- **跑在哪台，插件就得在哪台。** 会话表面（PRFC-0017）把这一点摆到了台面上：Session 建在哪台机器，表面就在哪台打开，于是那台的服务端必须装着贡献该表面的插件；而本机也必须装着它，否则「新建对话」里根本没有这一项可选。同一个插件，两台都要有，两台各装一遍。
-- **重启太贵。** 机器上跑着会话与终端。为了让一个插件生效而重启整台服务端，代价是打断正在进行的工作。
+- **Cannot install.** Operators manage remote machines via Machines page—install, update, connect, restart all there. Plugins require logging in to each machine's server and clicking once each. This path does not exist in the product.
+- **Runs where, plugins must be there.** Session surface (PRFC-0017) made this plain: Session builds on which machine, surface opens there. That server must carry the plugin that contributes the surface. This machine must also carry it, or "New conversation" has no such option. Same plugin, both places, each installed once.
+- **Restart is expensive.** Sessions and terminals run on the machine. Restarting the whole server to enable one plugin interrupts work in progress.
 
-Model 凭据早就不是这样了：`syncModelsEverywhere` 在配置变动与连接时把 Project 的模型表推给它的每台机器，理由和这里一模一样——「在那边跑的东西需要那边有这份配置」。插件缺的就是同一条通路，外加一个「不重启也能生效」。
+Model credentials stopped being this way long ago: `syncModelsEverywhere` pushes the Project's model table to every machine it uses on config change and connect, for the same reason—"things running there need config there." Plugins lack the same path, plus "no restart needed to take effect."
 
-### 给运营者的形状
+### Shape for the operator
 
-**给运营者。** 插件页照旧：勾一个插件，它就装上了。区别是「装上了」现在指整支机队——这台服务端，以及它正在使用的每台机器。页面按机器列出这次同步做了什么：加了哪些、移除了哪些、哪台没接住以及为什么。不需要登去任何一台机器，也不需要重启任何东西。
+**For operators.** Plugins page as usual: check a plugin, it is installed. Difference is "installed" now means the whole fleet—this server, every machine it uses. The page lists per machine what this sync did: what was added, removed, which machines did not catch up and why. No need to log into any machine, no restart needed anywhere.
 
-**一致是严格的。** 机队的清单以这台服务端为准：机器上多出来的插件会被移除。这是「所有机器都一样」的字面含义，代价要认下——**分平台的沙盒后端会被抹掉**：Windows 机器用 `sandbox-mxc`，Linux 用 `sandbox-bwrap`，谁都不是另一边能用的。想让某台保有它自己的后端，就把那个后端也列进机队清单：解析不到它的机器会把它显示成一条惰性的错误行，而不是丢掉自己能用的那个。
+**Parity is strict.** The fleet's list is authoritative on this server; extra plugins on machines are removed. This is what "all machines the same" means literally. The price: **platform-specific sandbox backends get erased.** Windows uses `sandbox-mxc`, Linux `sandbox-bwrap`, neither works on the other side. Want a machine to keep its own backend? List that backend in the fleet manifest too. Machines that cannot resolve it show it as an inert error row, not dropping their usable one.
 
-**也可以只给某几台。** 插件页右上角的机器选择器切换视角：「所有机器」编辑共享清单；选中某台机器（含本机），看到的是那台机器实际运行的插件，在这里安装只对这台机器启用，也只有这台机器会下载它。
+**Or just for some machines.** Plugins page top-right has a machine selector to switch perspective: "All machines" edits the shared list; pick one machine (including this one), you see what that machine actually runs. Install here only enables it on that machine, only that machine downloads it.
 
-**生效是当场的。** 插件不再等重启。清单一改，服务端就地重新装配它的 App：新插件的模块进树，被移除的不再进树。正在跑的终端与会话不受影响——它们本来就是跨装配存活的资源，热推送每天都在这么做。
+**Taking effect is immediate.** Plugins no longer wait for restart. List changes, server recomposes its App in place: new plugin modules enter the tree, removed ones do not. Running terminals and Sessions are unaffected—they are already resources that survive recomposition; hot updates do this every day.
 
-### 热加载
+### Hot loading
 
-加载发生在**平台**里，不再只发生在进程启动时。今天的 `loadPlugins` 由 runtime 在 `index.ts` 跑一次，把 `PluginHost` 发布进资源注册表；平台每次装配 App 时 `pluginHostFrom` 认领它。改动是给「重新认领」加一条路：
+Loading happens inside the **platform**, no longer just at process startup. Today `loadPlugins` runs once in runtime's `index.ts`, publishes `PluginHost` to the resource registry; every time the platform composes an App, `pluginHostFrom` claims it. The change adds one path for "claiming again":
 
-1. 平台重跑一次加载（loader 本来就在平台包里——`plugins-installed` 路由已经在用它读清单），得到一份新的 `PluginHost`，覆盖注册表里那一项。
-2. 平台请运行时**以同一个 bundle 重新装配 App**：park 当前 App、dispose、`boot(bundle.impl, bundle.iface, doc, resources)`。这正是 `HmrHost.recoverPrevious` 已经在做的动作，只是那里的触发是启动失败，这里的触发是插件清单变了。
-3. 新 App 的 `pluginHostFrom` 拿到的是新那份，于是新插件的模块进树，移除的不进。
+1. Platform reruns loading (loader is already in the platform package—`plugins-installed` route already uses it to read the manifest), gets a new `PluginHost`, overwrites that entry in the registry.
+2. Platform asks runtime to **recompose the App with the same bundle**: park current App, dispose, `boot(bundle.impl, bundle.iface, doc, resources)`. This is exactly what `HmrHost.recoverPrevious` already does; trigger was startup failure, here the trigger is the plugin list changed.
+3. New App's `pluginHostFrom` gets the new one; new plugin modules enter the tree, removed ones do not.
 
-三点必须写进实现：
+Three things must be in implementation:
 
-- **import 缓存。** Node 按 URL 缓存 `import()`。首次列入的包没问题；**内容变了的同一个包**不会被重新读取，所以导入时要带一个由内容决定的查询串，否则「更新插件」会静默地继续跑旧代码。
-- **卸载是不存在的。** Node 不能卸载模块。移除一个插件意味着它不再进树，它的代码仍留在进程内存里。诚实地写下来，不要假装它被卸载了。
-- **谁活下来。** pty、机器连接这些资源跨装配存活，与热推送同一口径。一个表面的 pty 在重新装配后仍在跑；如果它的插件正是被移除的那个，它的会话此后 404，pty 由注册表的既有规则回收。
+- **Import cache.** Node caches `import()` per URL. First-listed packages are fine. **Same package with changed content** is not re-read, so imports need a query string determined by content, or "update plugin" silently keeps running old code.
+- **Unload does not exist.** Node cannot unload modules. Removing a plugin means it no longer enters the tree; its code stays in process memory. Write that down honestly, do not pretend it unloads.
+- **What survives.** pty, machine connections are resources that survive recomposition, same as hot updates. A surface's pty keeps running after recomposition; if its plugin is the one removed, the Session then 404s, pty gets reclaimed by registry's normal rules.
 
-### 重组是平台自己的事，HMR 层一字不动
+### Recomposition is platform's own affair, HMR layer unchanged
 
-重新装配 App 是**策略**，不是机制：它随平台推送，属于 seam 之上。`packages/hmr` 不为此增加任何方法（曾设想过给 `Hmr` 能力加一个可选的 `reload()`，已否决——机制层不能为一项业务功能生长）。
+Recomposing the App is **policy**, not mechanism: it travels with the platform, lives above the seam. `packages/hmr` gains no methods for it (once thought of giving `Hmr` an optional `reload()`, rejected—mechanism layer cannot grow for business function).
 
-实现方式：`platformImpl.create()` 启动的是一个**内层实例**（真正的模块树，用 kernel 自带的 `boot`），自己返回一个外壳，外壳的每个成员都转发给当下的内层实例。重组即平台在自己的队列里对内层实例调用 kernel 的 `upgrade()`——同一个 impl、同一个 iface、同一份寄存文档，热推送做的那次交换，只是没有新 bundle；启动失败就用 `boot()` 按寄存文档恢复上一棵树，并回答 false。运行时（HMR 宿主）自始至终握着同一个外壳，对内部的替换一无所知；由运行时发起的 dispose（一次推送落地）会先等正在进行的重组结束，再释放它留下的那棵树。
+Implementation shape: `platformImpl.create()` starts an **inner instance** (true module tree, kernel's own `boot`), returns an outer shell whose members all forward to the current inner instance. Recomposition is the platform calling kernel's `upgrade()` on the inner instance in its own queue—same impl, same iface, same parked doc, same swap as hot updates, just no new bundle. Startup fails, `boot()` recovers the previous tree using the parked doc, returns false. Runtime (HMR host) holds the same outer shell from start to end, unaware of swaps inside. Dispose launched by runtime (one push lands) first waits for recomposition in flight to finish, then releases the tree it left.
 
-由此不再需要「旧运行时降级为待重启」：整段逻辑在平台里，任何运行时上都生效。路由通过平台提供的机制接口 `Reassembly.reassemble()` 触发它。
+Thus no need for "old runtime downgrades to pending restart": all logic lives in the platform, works on any runtime. Routes trigger it through the mechanism interface `Reassembly.reassemble()` the platform provides.
 
-### 清单：Project 配置，进程取闭包
+### Manifest: Project config, process takes closure
 
-插件清单从数据根的 `plugins.json` 移到 **Project 配置**（`.project_config.toml`，与 `models` 并列）。理由是它让同步范围自己成立：机器是**按 Project 借出**的，模型凭据已经按 Project 同步（`syncModelsEverywhere(projectId)`），插件跟着同一条线，范围就不必再另发明一套。
+The plugin manifest moves from data root's `plugins.json` to **Project configuration** (`.project_config.toml`, alongside `models`). The reason: it makes sync scope self-evident. Machines are **borrowed per Project**; model credentials already sync per Project (`syncModelsEverywhere(projectId)`); plugins follow the same line, scope needs no separate invention.
 
-清单的形状是一张 **`[plugins]` 表**，键为包名，值是对它的要求，照 Cargo 的 `[dependencies]`：
+Manifest shape is one **`[plugins]` table**, keys are package names, values are requirements, like Cargo's `[dependencies]`:
 
 ```toml
 [plugins]
-"@scope/name" = "*"                   # 部署自带的那个版本
-"@scope/other" = "1.2.3"              # 版本要求
-"@scope/third" = { version = "1.2" }  # 表形式；以后的字段放这里
+"@scope/name" = "*"                   # the deployment's built-in version
+"@scope/other" = "1.2.3"              # version requirement
+"@scope/third" = { version = "1.2" }  # table form; future fields go here
 ```
 
-选表而不是列表，是为了一个条目可以长出字段（版本、选项）而不必换格式。字符串值是表形式的简写（只写版本），`"*"` 与省略 `version` 同义。读取宽松：值不是字符串也不是表的条目被丢弃，其余照常，一处笔误不会连累 Project 的模型配置。接口层仍按包名传递（`PUT { plugins: [name] }`），留下的名字保留文件里对它的要求。
+Table not list because one entry can grow fields (version, options) without format change. String values are shorthand table form (version only); `"*"` means same as omit `version`. Reading is lenient: entries that are not string or table get dropped, rest works, one typo does not take down the Project's model config. Interface layer still passes by package name (`PUT { plugins: [name] }`); names retained preserve what the file asks for.
 
-但**加载是按进程的，不是按 Project 的**：模块树只有一棵，一个 App。所以配置分到 Project，生效取**闭包**：
+But **loading is per-process, not per-Project**: one module tree, one App. So config spreads per Project, effect takes **closure**:
 
-- **进程启动与重新装配时**，加载全部 Project 清单的并集。一个插件只要有任一 Project 要它，它就在这棵树里。
-- **同步到一台机器时**，发过去的是**使用该机器的那些 Project 的并集**。一台机器只被一个 Project 借用时，那就是那个 Project 的清单；被几个 Project 共用时，是它们的并集。严格一致作用在这个并集上：不在闭包里的，从那台机器上移除。
+- **On process startup and recomposition**, load the union of all Project manifests. If any Project wants a plugin, it is in the tree.
+- **On sync to one machine**, send the **union of manifests of Projects using that machine**. One machine borrowed by one Project, that is its manifest. Shared by several Projects, it is their union. Strict parity operates on this union: what is not in the closure gets removed from that machine.
 
-### 按机器的清单
+### Per-machine manifest
 
-`[plugins]` 之下可以有以**机器 ID** 为键的子表，列出这台机器在共享清单之外还要运行的插件：
+Under `[plugins]` can be sub-tables keyed by **machine ID**, listing plugins this machine runs besides the shared manifest:
 
 ```toml
 [plugins]
@@ -179,120 +179,120 @@ Model 凭据早就不是这样了：`syncModelsEverywhere` 在配置变动与连
 
 [plugins.Xk3v9Qa_bT2mLp0z]
 "@scope/only-there" = "*"
-"@scope/everywhere" = "1.2.3"   # 同名时，这台机器自己的条目优先
+"@scope/everywhere" = "1.2.3"   # when same name, this machine's entry wins
 ```
 
-- **键是机器自己的 ID**：该机器上的服务端首次启动时生成的 16 位 base64url，改名、换 alias、重装都不变。不用 ssh alias——alias 改名或指向另一台主机时，清单会悄悄换了对象。本机也用自己的 ID，没有 `local` 这类特殊键。
-- **一台机器运行的清单** = 共享表 ∪ 它自己的子表，同名条目以子表为准。只列在某台子表里的插件，只在那台运行、只在那台下载。ID 未知的机器（还没有服务端在那边启动过）只取共享表。
-- **区分子表与条目**：键形如机器 ID、值为不含 `version` 的表，才是机器子表；写入时无字段的要求一律写成 `"*"`，所以不会与之混淆。
-- **本机加载**：平台装配 App 时以本机 ID 取闭包；列给其他机器的插件本机既不下载也不加载，删除时本机的包在本机闭包不再需要它时移除。
-- **接口**：`POST { specifier, machineId? }` 与 `DELETE ?specifier&machineId` 带上 `machineId` 时只改那台的子表；不带时 `POST` 写共享表，`DELETE` 从所有表中移除。只影响其他机器的改动直接写盘，不重新装配本机 App。`PUT` 只重写共享表，是机队同步使用的动词。`GET` 的每一行报告 `everywhere`（共享表列出）、`machines`（哪些子表列出）、`here`（本机是否运行），响应带本机 `machineId`。
-- **插件页**：右上角机器选择器（仅在有其他机器或子表时出现）。「所有机器」视角列出全部插件，只给部分机器的行标注「仅在 …」；某台机器的视角只列那台运行的插件，状态读自那台机器本身（经 `/server/<machineId>/api/…`），共享表列出的插件在此不可移除，需回到「所有机器」视角。
+- **Key is the machine's own ID**: 16-char base64url generated on first server startup on that machine; unchanged if renamed, alias changed, or reinstalled. Not ssh alias—alias rename or pointing to another host means the manifest silently changes object. This machine also uses its own ID, no special `local` key.
+- **One machine's running manifest** = shared table ∪ its own sub-table, same-name entries prefer the sub-table. Plugins only in one machine's sub-table run only there, download only there. Unknown-ID machines (no server has started there yet) take only the shared table.
+- **Telling sub-tables from entries**: key looks like machine ID, value is a table with no `version` field, that is a machine sub-table. Writing always makes fields-less entries `"*"`, so no confusion.
+- **This machine's loading**: platform composes App using this machine's ID to take closure. Plugins listed for other machines neither download nor load here; on delete, this machine's packages move off when not needed in this machine's closure.
+- **Interface**: `POST { specifier, machineId? }` and `DELETE ?specifier&machineId` with `machineId` changes only that machine's sub-table. Without it, `POST` writes shared table, `DELETE` removes from all tables. Changes affecting only other machines write disk directly, do not recompose this machine's App. `PUT` rewrites only the shared table, the verb machines use to sync. `GET` each row reports `everywhere` (shared table lists it), `machines` (which sub-tables list it), `here` (does this machine run it); response carries this machine's `machineId`.
+- **Plugins page**: top-right machine selector (appears only when other machines or sub-tables exist). "All machines" view lists all plugins; rows for partial machines mark "only on…". One machine's view lists only what that machine runs, status read from that machine itself (via `/server/<machineId>/api/…`); plugins in the shared table here cannot be removed, need to go back to "All machines" view.
 
-### 插件设置不进清单
+### Plugin settings do not enter the manifest
 
-插件声明的设置值由每台服务端各自保存在自己的 `web.db`（`server_settings` 中的 `plugin-config:<group>`），不写入 Project 配置，也不随机队同步。设置弹窗的「插件」页带同样的机器选择器（仅在 Project 连接了其他机器时出现）：选中某台机器时，读取、保存与动作都经 `/server/<machineId>/api/admin/plugin-config` 落在那台机器自己的库里。机器之间不复制设置，因此没有「全机队共用的值」，每台单独设置。
+Declared settings values each server saves in its own `web.db` (`plugin-config:<group>` in `server_settings`), not written to Project config, not synced across the fleet. Settings panel's "Plugins" page has the same machine selector (appears only when Project connects other machines): picking one machine, read, save and actions all go through `/server/<machineId>/api/admin/plugin-config` and land in that machine's own store. Settings do not copy between machines, so no "shared-fleet value"; each machine configures separately.
 
-必须直说的后果：**贡献是全 App 的**。某个 Project 启用的插件，它贡献的东西（会话表面、沙盒后端、语法）在这个部署的每个 Project 里都看得见。配置分了 Project，可见性没有。要不要按 Project 过滤贡献，见 Unresolved。
+Must say plainly: **Contributions are fleet-wide.** Plugins enabled by one Project contribute things (session surfaces, sandbox backends, grammars) seen in every Project in this deployment. Config splits per Project, visibility does not. Whether to filter contributions per Project, see Unresolved.
 
-### 机队同步
+### Fleet sync
 
-`machines/plugins-sync.ts`，形状照抄 `models-sync.ts`：
+`machines/plugins-sync.ts`, shape copies `models-sync.ts`:
 
-- **触发**：某个 Project 的清单写入时（与模型那边 `void syncModelsEverywhere(projectId)` 同一口径的即发即忘），以及每次连接机器时补一次——一台离线时错过的改动，重新连上就补齐。
-- **通路**：经隧道调用那台机器自己的 `PUT /api/plugins/installed`，一次普通的已认证调用，与模型同理：由对端校验、写盘、并做它自己的热加载。
-- **严格一致**：发过去的就是该机器所属闭包的完整清单——每个 Project 的共享表加上以该机器 ID 为键的子表。到了对端，它落为那边 Project 的共享表。对端共享表里多出来的被移除；对端自己的子表不在比较之列。
-- **按需下载**：对端缺少、且其构建不自带的插件，先经对端自己的 `POST` 安装（从 npm 获取，带版本要求），再以 `PUT` 写入完整清单。没有列给这台机器的插件从不发过去，也就从不在那边下载。安装失败的条目单独汇报，并从本次清单中略去，不妨碍其余插件送达。
-- **结果按机器汇报**：加了什么、移除了什么、哪些在那台解析不到（例如那台还没更新到带该插件的构建），以及哪台整台没接住。解析不到的条目留在清单里显示为错误行——它是运营者的选择，不是同步该替他删掉的东西。
+- **Trigger**: when one Project's manifest writes (same fire-and-forget as model side's `void syncModelsEverywhere(projectId)`), plus catch up when connecting a machine—offline changes, reconnecting syncs them up.
+- **Path**: tunnel call that machine's own `PUT /api/plugins/installed`, one normal authenticated call, same as models: peer validates, writes disk, does its own hot loading.
+- **Strict parity**: what gets sent is the complete closure manifest of Projects on that machine—each Project's shared table plus the sub-table keyed by that machine's ID. Peer receives it as that Project's shared table. Extra in peer's shared table gets removed; peer's own sub-table stays out of the comparison.
+- **On-demand download**: peer lacks, build does not ship them, peer first `POST` installs them itself (from npm, version requirements), then `PUT` the complete manifest. Plugins not listed for this machine never go over, never download there. Failed entries report separately, skip from this manifest, rest land fine.
+- **Results report per machine**: what added, removed, unresolvable on that machine (e.g., still has not updated to a build with that plugin), which machines did not catch up. Unresolvable entries stay in the manifest showing as error rows—operator's choice, not something the sync should delete for them.
 
-内置插件仍有一个硬依赖：机器必须先更新到**带有该插件的构建**（Machines 页的安装 / 更新），清单同步过去才有东西可解析。npm 上发布的插件则由上面的按需下载在对端安装。
+Built-in plugins have one hard dep: machines must update first to a **build carrying that plugin** (Machines page install/update), then the manifest syncs with something to resolve. npm-published plugins the on-demand path installs on the peer.
 
-### 存量配置：明确不兼容
+### Existing config: explicitly incompatible
 
-运营者已拍板：**明确不兼容**，不做迁移，也不做双读。
+Operators decided: **explicitly incompatible**, no migration, no double-read.
 
-- 数据根的 `plugins.json` 不再被读取。清单的唯一位置是每个 Project 的配置。
-- 升级后，一个原本装着插件的部署会以**没有任何插件**的状态启动：沙盒后端、语法、会话表面都不在树里，直到运营者在需要它们的 Project 里重新勾选。
-- 因此没有任何兼容代码要写，也就没有要留多久、由谁清理的问题——这正是选它的理由。
-- 变更是 breaking 的：changelog 条目要带 `Breaking` 元数据与「兼容性」一节，写明升级后要重新启用插件，以及在哪里启用。
-- 旧文件不删、也不报错：一个平台读不到它，就当作它不存在。留在盘上对回滚有用，而回滚到旧平台时它又会被重新读到。
-- 这个键在发布前短暂有过的列表形式（`plugins = ["…"]`）同样不读：值不是表就视为没有这个键，这样的 Project 不要求任何插件，直到在插件页重新写入它的表。
+- Data root's `plugins.json` is no longer read. Manifest's only home is each Project's config.
+- After upgrade, a deployment that previously had plugins starts with **no plugins**: sandbox backends, grammars, session surfaces gone from the tree until operators re-check them in the Project that needs them.
+- Thus no compat code to write, no "keep this long, who cleans it" question—that is why it was chosen.
+- Change is breaking: changelog entry carries `Breaking` metadata and a "compatibility" section, saying upgrades require re-enabling plugins, where to do it.
+- Old file stays, no errors: platform does not read it, acts like it does not exist. Leaving it on disk helps rollback; rolling back to old platform reads it again.
+- List form briefly existed before release (`plugins = ["…"]`); also not read: non-table values mean no such key. Project wants nothing until re-entered as a table in the page.
 
 ## Drawbacks
 [drawbacks]: #drawbacks
 
-配置面从一处变成两处。运维在设置弹窗的「插件」页里改一半，Project 所有者在 Project 配置里改另一半；插件行为不对时，要看两个地方才能弄清是谁定的。
+Config surface goes from one place to two. Ops change half in settings panel "Plugins" page, Project owner changes the other half in Project config; when plugin behavior is wrong, need to look two places to figure out who defined it.
 
-「读自己那一节」是纪律，不是强制。一个插件坚持用进程级的可变状态，照样能跨 Project 干扰，平台只能保证自己消费的那些面带着作用域。
+"Read your own section" is discipline, not enforcement. One plugin could insist on per-process mutable state and still interfere cross-Project. Platform can only guarantee the surfaces it consumes carry scope.
 
-没有一张「本 Project 启用了什么」的表。它是算出来的，所以既不能读一个键得到答案，也不能改一个键批量开关。
+No roster of "what plugins does this Project have." It computes, so you cannot read one key to get the answer or change one key to toggle all.
 
-机队一致性与热加载再记三条代价：
+Fleet parity and hot loading add three more costs:
 
-- 严格一致会抹掉机器上平台特有的插件，最典型的就是沙盒后端。选择它就是选择「机队清单是唯一真相」，代价必须由运营者知情承担。
-- 热加载让「重新装配 App」从一件运营者主动做的事（推送）变成一件插件开关就能触发的事。装配失败的处理路径因此更常被走到。
-- 移除的插件代码留在内存里；反复装卸会让进程慢慢变胖。这是 Node 的限制，不是设计选择。
+- Strict parity erases platform-specific plugins on machines, most notably sandbox backends. Choose it means choose "fleet manifest is single truth"; operator must know and bear the cost.
+- Hot loading makes "recompose App" from something operators actively do (push) to something toggling plugins can trigger. Failure handling paths are hit more often.
+- Removed plugin code stays in memory; repeated add/remove makes the process slowly bloat. Node's limit, not a design choice.
 
 ## Rationale and alternatives
 [rationale-and-alternatives]: #rationale-and-alternatives
 
-最直觉的修法是给插件分类，一类作用于机器，一类作用于 Project。这条路把错位固化成了插件自身的属性，代价有三。每个插件都要选边，而有意思的那些选不了，上面两个例子都同时带着机器事实和 Project 意愿。分类一旦写进 manifest 就改不动，manifest 是发布物的一部分。而且两类插件要两套安装面、两套加载器。
+Most intuitive fix: categorize plugins, one class for machines, one for Projects. This path hardens the misalignment into plugin nature itself; three costs. Each plugin must pick a side, and the interesting ones cannot; both scenarios above carry machine facts and Project preference. Once in manifest it cannot change; manifest is published. Two classes need two install faces, two loaders.
 
-另一个想过的做法，是在 Project 配置里放一份中心的启用名单。它要求平台长出一个自己看不懂内容的 schema，还把「启用」和「配置」变成两个必须保持同步的概念。让配置节的存在本身就等于启用，概念少一个，也少一处会与实际不符的名单。
+Another idea: central enable list in Project config. Requires platform to grow a schema it does not understand, makes "enable" and "configure" two concepts that must stay in sync. Let config section's existence mean enable; one fewer concept, one fewer place to drift from reality.
 
-什么都不做的话，插件继续全局生效，一台服务器上的几个 Project 继续相互干扰，沙盒这种本该按 Project 定的策略只能全服务器一刀切。
+Do nothing: plugins stay global, multiple Projects on one server stay interfering, policies that should be per-Project like sandboxing cannot be.
 
-机队一致性与热加载考虑过的替代：
+Fleet parity and hot loading considered:
 
-- **各机器各管各的**（现状）：在 Machines 页存在的前提下不成立，运营者根本没有登去每台点一遍的路径。
-- **并集而非严格一致**：保住了分平台的沙盒后端，但做不到「所有机器一样」，而这正是被要求的。已向运营者说明代价后由其选定严格一致。
-- **重启代替热加载**：`POST /:machineId/restart` 已经存在，同步后逐台重启即可。被否决的理由是代价：那会打断机器上正在跑的会话与终端，而热更新机制本就是为「不打断」建的。
-- **什么都不做**：表面插件在机队里无法使用——本机有它才能在「新建对话」里出现，机器有它才能真的跑起来，而两者都只能手工。
+- **Each machine manages its own** (status quo): false premise in a Machines page world—operators have no path to log in and click each one.
+- **Union instead of strict parity**: keeps platform-specific sandbox backends, cannot make "all the same," which was required. Explained cost to operators, they chose strict parity.
+- **Restart instead of hot loading**: `POST /:machineId/restart` exists, can restart each after sync. Rejected because the cost: interrupts Sessions and terminals running on the machine; hot-update mechanics built for "do not interrupt."
+- **Do nothing**: surface plugins cannot work in a fleet—this machine needs it to show in "New conversation," machines need it to run, both manual only.
 
 ## Prior art
 [prior-art]: #prior-art
 
-这个仓库里已经有先例。`ProjectConfig` 的 `[command_policy]` 就是一份归 Project 所有的策略：创建时从工厂集播种，此后归它自己，每个 Session 创建时线进 Environment。project 一级的插件配置沿用同一套归属规则。`server_settings` 也早就是 machine 一级配置的家，本提案只是往里多放一类。
+Prior in this repo. `ProjectConfig`'s `[command_policy]` is one Project-owned policy: seeded from the factory at creation, thereafter its own. Each Session creation threads it into Environment. Project-level plugin config follows the same ownership rule. `server_settings` already the home of machine-level config; this proposal just adds one more class.
 
-沙盒契约自身已经说过同样的话。`SandboxPolicy` 是「每次调用携带，而不是固定在 provider 上」：provider 一份、进程级，policy 逐次传入。本提案不过是把这条推广到全部插件——状态不按作用域实例化，作用域作为参数流进来。
+Sandbox contract already said the same thing. `SandboxPolicy` is "carried on each call, not fixed to provider": provider once per process, policy each call. This proposal just generalizes to all plugins—state does not instantiate per scope, scope threads in as a parameter.
 
-VS Code 的 User / Workspace 两级设置是同一种分法，扩展在两级各有一节。machine 一级的设置分组沿用了它的声明形状：扩展在清单里声明每个键的类型与缺省值，宿主据此校验并画出表单。不同的是它由宿主把两级合并成一个值再交给扩展，我们不合并：project 一级提议的节对平台是不透明的 JSON，只有插件知道哪个方向更严。
+VS Code's User / Workspace two-level settings do the same split; extensions have sections at both. Machine level's settings groups borrowed its declaration shape: extensions declare each key's type and default in manifest, host validates and forms. Difference: it merges both levels into one value for extensions; we do not: project-level sections are opaque JSON to the platform, only plugins know which direction is "stricter."
 
-机队一致性与热加载的先例：
+Fleet parity and hot loading priors:
 
-- 本仓库的 `machines/models-sync.ts`：同一个问题（在那边跑就要那边有配置）的既有答案，本篇照它的形状做。
-- `HmrHost.recoverPrevious`：以同一个 bundle 就地重新装配 App 的既有动作，热加载复用的就是它。
-- VS Code 的扩展启用：装上即生效、不必重启宿主；其 Settings Sync 把扩展集合同步到同一账号的每台机器，也是一份清单跨机器一致。
+- This repo's `machines/models-sync.ts`: existing answer to the same problem (things running there need config there); this follows its shape.
+- `HmrHost.recoverPrevious`: existing action of recomposing the App in-place with the same bundle; hot loading reuses it.
+- VS Code's extension enabling: install takes effect, no restart; its Settings Sync syncs extension sets to each account's machines, one roster across the fleet.
 
 ## Unresolved questions
 [unresolved-questions]: #unresolved-questions
 
-machine 一级是不是对插件完全只读，可以再议。本提案取只读，写只走管理员接口；按钮改变的是机器本身，不回写设置。如果出现插件必须回写设置值的场景，比如缓存一次探测结果，这条要重新考虑。
+Whether machine level is completely read-only for plugins can be revisited. This proposal takes read-only, writes go through admin interface only; buttons change the machine itself, not write back settings. If a scenario emerges where plugins must write settings (e.g., cache a probe result), reconsider.
 
-要不要 agent 一级，暂时不做。工具已经有 Agent 层的第二重收窄（`tools.builtin`），prompt 片段和连接器没有，等具体需求点名再加。
+Whether to add an agent level, defer for now. Tools already have second narrowing at Agent level (`tools.builtin`); prompts and connectors lack it. Wait for specific demand to add it.
 
-机队一致性与热加载留下的问题：
+Fleet parity and hot loading open questions:
 
-- 贡献要不要按 Project 过滤。清单按 Project 配了，但一棵树里的贡献对每个 Project 都可见；要做到「A 启用的表面只在 A 里出现」，贡献就得带上是谁要的，并在 `/api/contributions` 按当前 Project 裁剪。
-- 一台机器同步失败到什么程度算「机队不一致」，以及页面要不要把这种不一致一直显示到修好为止。
-- 同步是否要顺带触发那台机器的更新（把它带到有该插件的构建），还是坚持只同步清单、更新仍是运营者的动作。
+- Whether contributions should filter per Project. Manifest is per-Project, but contributions in one tree are visible to every Project. To make "A's surfaces only appear in A," contributions need to carry who requested them and `/api/contributions` filters per current Project.
+- How much of a sync failure on one machine counts as "fleet not in parity," and whether the page keeps showing the inconsistency until fixed.
+- Whether sync should also trigger that machine's update (bring it to a build with the plugin), or stick to syncing manifest only, updates operator-driven.
 
 ## Future possibilities
 [future-possibilities]: #future-possibilities
 
-Project 设置页可以有一个「启用的插件」面，形状和 Agent 的 Skills tab 一样，读的就是「已注册模块 × 有没有 project 节」。
+Project settings page could have a "plugins enabled" surface, same shape as Agent Skills tab, reading "registered modules × has a project section."
 
-如果 agent 一级那个问题被具体需求推动，分级从两级变三级，读法多一个 `agent(projectId, agentId)`，其余不变。
+If the agent-level question above gets pushed by concrete demand, hierarchy becomes three levels, one more read pattern `agent(projectId, agentId)`, rest unchanged.
 
-再往远看，`command_policy` 和沙盒设置眼下各有各的存法；如果两级配置立得住，它们可以收敛到同一个形状。不过那是另一篇提案的事，不构成接受本篇的理由。
+Further out: `command_policy` and sandbox settings now have their own storage each; if two-level config holds, they could converge to one shape. That is another proposal's work, not a reason to accept this one.
 
-机队一致性与热加载往远看：
+Fleet parity and hot loading further out:
 
-- 插件版本也纳入一致性，而不只是「装没装」。
-- 热加载暴露给开发中的插件：改完代码即刻重装，不必推送整个平台。
+- Plugin versions included in parity, not just "installed or not."
+- Hot loading exposed to developing plugins: change code, reload immediately, no platform push needed.
 
 ## Changes
 
 ### v1.0.0
 
-- Added: 迁入主仓；正文取设计 PR #104 草案的当前版本，与来源文件一致。
+- Added: migrated into the main repository; the body takes the current version of the draft carried by design PR [#104](https://github.com/Prism-Shadow/penguin-harness-design/pull/104), identical to the source file.
