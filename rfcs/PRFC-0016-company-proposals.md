@@ -1,7 +1,9 @@
 # PRFC-0016 Company-mode proposals: the person reads one while the Agent builds it at the same time
 
+[中文版](PRFC-0016-company-proposals.zh.md)
+
 > **Source**: `rfcs/PRFC-0016-company-proposals.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — a draft, see design PR [#210](https://github.com/Prism-Shadow/penguin-harness-design/pull/210) (draft); the unmerged revision that the open design PR [#233](https://github.com/Prism-Shadow/penguin-harness-design/pull/233) makes to this draft has been folded into this document.
-> **Rev**: v1.0.0 (migrated into the main repository, taking the open chain's current version); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository, taking the open chain's current version); the conventions for this surface are in [README.md](README.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `company_proposals`
 - Start Date: 2026-09-21
