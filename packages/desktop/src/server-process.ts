@@ -4,12 +4,20 @@
  * port from the PENGUIN_PORT_FILE announcement, probes HTTP readiness, and stops the
  * server gracefully — shutdown endpoint first (the only graceful path on Windows, where
  * kill() is a hard TerminateProcess), then SIGTERM-equivalent kill as fallback.
+ *
+ * The launch names the world it works in (a `Sys`, see `@prismshadow/penguin-core/sys`):
+ * the announcement is read through that world's file capability, not this module's own
+ * `node:fs`, so the shell and a provider share one way of reaching the server. The process
+ * itself is forked by Electron, which is the shell's to do — the Sys is how the shell READS
+ * what the process says, and the seam another world would arrive through.
  */
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { app, utilityProcess } from "electron";
 import type { UtilityProcess } from "electron";
+import type { Fs, Sys } from "@prismshadow/penguin-core/sys";
+import { sysCapabilityError } from "@prismshadow/penguin-core/sys";
 import type { Profile } from "./app-identity.js";
 import { embeddedCliEntry } from "./launcher.js";
 import { osProxyEnv } from "./os-proxy.js";
@@ -58,12 +66,12 @@ function bundledShellEnv(): Record<string, string> {
   return fs.existsSync(sh) ? { PENGUIN_BUNDLED_SHELL: sh } : {};
 }
 
-async function waitForPortFile(file: string, exited: () => boolean): Promise<number> {
+async function waitForPortFile(files: Fs, file: string, exited: () => boolean): Promise<number> {
   const deadline = Date.now() + PORT_FILE_TIMEOUT_MS;
   for (;;) {
     if (exited()) throw new Error("The embedded server exited before announcing its port.");
     try {
-      const port = parsePortFile(fs.readFileSync(file, "utf8"));
+      const port = parsePortFile((await files.readFile(file)).toString("utf8"));
       if (port !== null) return port;
     } catch {
       // Not written yet.
@@ -105,6 +113,8 @@ async function waitForHttp(origin: string, exited: () => boolean): Promise<void>
  * `child.on("exit", …)` restart policy after this resolves.
  */
 export async function startEmbeddedServer(opts: {
+  /** The world this launch works in; its `fs` is how the announcement is read. */
+  sys: Sys;
   dataRoot: string;
   /** Which instance this is; the server reaches other machines' matching installation by it. */
   profile: Profile;
@@ -120,8 +130,12 @@ export async function startEmbeddedServer(opts: {
   /** One chunk of the server's output, as it arrived on `stream`. */
   log: (chunk: string, stream: "stdout" | "stderr") => void;
 }): Promise<EmbeddedServer> {
+  const files = opts.sys.fs;
+  if (files === undefined) throw sysCapabilityError("startEmbeddedServer", "fs");
   const token = randomBytes(32).toString("base64url");
-  fs.rmSync(opts.portFile, { force: true });
+  // The last launch's announcement must not pass for this one's: the file is emptied through
+  // the same capability the wait below reads it through.
+  await files.writeFileAtomic(opts.portFile, Buffer.alloc(0), {});
   const requestedPort = await choosePort(readPreferredPort(opts.preferredPortFile));
   const child = utilityProcess.fork(serverEntryPath(), [], {
     serviceName: "penguin-server",
@@ -150,7 +164,7 @@ export async function startEmbeddedServer(opts: {
     exited = true;
   });
 
-  const port = await waitForPortFile(opts.portFile, () => exited);
+  const port = await waitForPortFile(files, opts.portFile, () => exited);
   rememberPreferredPort(opts.preferredPortFile, port);
   const origin = appOriginFor(port);
   await waitForHttp(origin, () => exited);

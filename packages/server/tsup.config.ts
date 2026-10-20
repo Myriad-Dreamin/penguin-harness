@@ -42,6 +42,10 @@ export default defineConfig({
     // this bundle entirely — they are configuration resolved from the installation,
     // not platform capability.
     "plugin/index": "src/plugin/index.ts",
+    // "./sys": the Sys capability implementations — the host default the desktop shell
+    // starts a server through, runServer, and the bubblewrap container. Their interface is
+    // core's `@prismshadow/penguin-core/sys`, which stays external like the rest of core.
+    "sys/index": "src/sys/index.ts",
   },
   format: ["esm"],
   target: "node24",

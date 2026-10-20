@@ -72,6 +72,7 @@ import { resolveRoot } from "@prismshadow/penguin-core";
 import { mintApiToken } from "@prismshadow/penguin-server/auth-token";
 import { liveServerLock } from "@prismshadow/penguin-server/lock";
 import type { ServerLock } from "@prismshadow/penguin-server/lock";
+import { createSys } from "@prismshadow/penguin-server/sys";
 import { appIdentity, desktopDataRoot, resolveProfile } from "./app-identity.js";
 import {
   createSignInGuard,
@@ -640,6 +641,10 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
     );
   }
   const started = await startEmbeddedServer({
+    // The world this launch works in: the host default — this process's files, children and
+    // loopback. The embedded server is forked by Electron, but the shell reaches what it
+    // announces through the same capability a sandbox or a machine would provide.
+    sys: createSys(),
     dataRoot,
     webDist,
     cliEntry: embeddedCliEntry({

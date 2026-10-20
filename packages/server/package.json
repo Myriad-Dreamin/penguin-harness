@@ -57,6 +57,10 @@
     "./plugin": {
       "types": "./dist/plugin/index.d.ts",
       "import": "./dist/plugin/index.js"
+    },
+    "./sys": {
+      "types": "./dist/sys/index.d.ts",
+      "import": "./dist/sys/index.js"
     }
   },
   "main": "./dist/index.js",
