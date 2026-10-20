@@ -274,10 +274,11 @@ For smaller tasks (bug fixes, minor refactors, performance optimizations), an RF
 
 1. **Create an RFC document** using the template at [`rfcs/TEMPLATE.md`](../rfcs/TEMPLATE.md).
    Choose the next available RFC number (listed in [`rfcs/README.md`](../rfcs/README.md)) and name
-   your file `PRFC-NNNN-your-slug.md`.
+   your file `PRFC-NNNN-your-slug.md`. Every RFC is a pair: the English document and its Chinese
+   counterpart `PRFC-NNNN-your-slug.zh.md`, carrying the same sections, each linking the other at
+   the top.
 
-2. **Submit an RFC PR** to the design repository ([Prism-Shadow/penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design))
-   or directly to this repository in `rfcs/` if you are adding a draft or iteration. The RFC is
+2. **Submit an RFC PR** to this repository, adding your document under `rfcs/`. The RFC is
    reviewed before any implementation begins — design and code reviews are separate.
 
 3. **Implementation PRs reference the RFC** — mention the RFC number in your implementation PR title
