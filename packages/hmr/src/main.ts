@@ -19,7 +19,7 @@
 import zlib from "node:zlib";
 import type { Instance, Park } from "@prismshadow/penguin-core/kernel";
 import type { HmrHost, UpgradeAllTarget, UpgradeOutcome } from "./host.js";
-import { isBlobName } from "./host.js";
+import { isBlobName, UpgradeFailedError } from "./host.js";
 
 /** Where a push arrives. The product declares and contributes the route like any other; the protocol behind it is this file's. */
 export const HMR_ROUTE_PREFIX = "/api/hmr";
@@ -278,6 +278,14 @@ export async function upgradeEndpoint<Api extends Park>(
   try {
     outcome = await hmr.upgrade(target);
   } catch (err) {
+    // A failed push answers with what the receiver did about it: `recovered: true` is the
+    // clean refusal (the previous platform is serving again), `false` the double fault
+    // the receiver's own log warns about — one push or restart away from repaired.
+    if (err instanceof UpgradeFailedError) {
+      return json(400, {
+        error: { code: "bad_request", message: err.message, recovered: err.recovered },
+      });
+    }
     return bad(err instanceof Error ? err.message : String(err));
   }
   if (outcome.status === "ok") onLanded?.(outcome);

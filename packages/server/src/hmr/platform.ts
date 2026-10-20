@@ -717,6 +717,15 @@ async function resumeStopped(
  * successor. One window stays open by design: `park()` cannot wait, so a push
  * that parks exactly while a re-assembly is mid-swap parks the tree being replaced.
  */
+
+/**
+ * The one member the shell reaches for on the App's `http`: a request answered as its user.
+ * Named so the capture slot below and every call site share one spelling of it.
+ */
+interface ApiSocketHttp {
+  fetchAs(userId: string, request: Request): Promise<Response>;
+}
+
 export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
   async create(ctx, context) {
     // Taken HERE, once: this create() is what a push boots, and only its first inner boot is
@@ -734,6 +743,20 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     let closed = false;
     /** True while a re-assembly holds the inner instance mid-swap. */
     let swapping = false;
+    /** The `http` of the last tree this shell saw alive, for a call that arrives while that
+     * tree is disposed — the window between one generation's dispose and the next
+     * generation's first answer, which an open socket lives through by design. */
+    let capturedHttp: ApiSocketHttp | undefined;
+    /** Takes the `http` a socket call falls back to from the tree that just booted. */
+    function recaptureHttp(): void {
+      try {
+        capturedHttp = inner.api.business()?.api<ApiSocketHttp>("HttpModule", "http");
+      } catch {
+        // A tree that cannot be reached leaves nothing to fall back to: a call in the
+        // window then takes the designed 503 instead of serving from something not there.
+        capturedHttp = undefined;
+      }
+    }
     async function reassemble(change?: ReassemblyChange): Promise<boolean> {
       const run = op.then(async () => {
         if (closed) return false;
@@ -750,6 +773,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
           });
           if (result.status === "ok") {
             inner = result.instance;
+            recaptureHttp();
             return true;
           }
           if (result.status === "failed") {
@@ -761,6 +785,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
               result.error instanceof Error ? result.error.message : String(result.error);
             await change?.undo();
             inner = await boot(innerImpl, PlatformIface, result.doc, ctx.resources);
+            recaptureHttp();
             console.warn(
               `[platform] the App failed to boot after a plugin change; the change was undone and the previous App restored: ${reason}`,
             );
@@ -782,6 +807,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     // The predecessor shell's open sockets, read BEFORE the boot below overwrites the entry.
     const previousSockets = ctx.resources.claim<{ close(): void }>(API_SOCKETS_RESOURCE_ID);
     inner = await boot(innerImpl, PlatformIface, initialDoc(PlatformIface, context), ctx.resources);
+    recaptureHttp();
 
     /** The API sockets this shell serves; each call on them resolves the inner App of the moment. */
     const apiSockets = new Set<WebSocket>();
@@ -831,12 +857,17 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
         // One entry per call into the App of the moment; a stream call's answer rides its
         // Request in (socket/stream-answer.ts), so its route answers it directly.
         const entered = (request: Request): Promise<Response> => {
-          const http = inner.api
-            .business()
-            ?.api<{ fetchAs(userId: string, request: Request): Promise<Response> }>(
-              "HttpModule",
-              "http",
-            );
+          let http: ApiSocketHttp | undefined;
+          try {
+            http = inner.api.business()?.api<ApiSocketHttp>("HttpModule", "http");
+          } catch {
+            // The tree behind `inner` is disposed — the window between one generation's
+            // dispose and the next generation's first answer, which this socket lives
+            // through by design. The capture is the last tree this shell saw alive; its
+            // modules are gone, but their singletons (db, channels, config) are the
+            // runtime's, so it still answers until the successor closes the socket.
+            http = capturedHttp;
+          }
           if (http === undefined) {
             return Promise.resolve(
               Response.json(

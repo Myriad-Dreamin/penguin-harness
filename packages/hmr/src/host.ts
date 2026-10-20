@@ -158,6 +158,23 @@ export type UpgradeOutcome =
  */
 const STORE_KEEP = 2;
 
+/**
+ * A push whose platform failed to boot. `recovered` says what the receiver did about it:
+ * true — the previous platform was re-booted from its parked document and is serving
+ * again, so the machine the push failed on keeps working; false — that recovery failed
+ * too, and the receiver's log warns about the half-stopped App it is now serving.
+ * Reaches the pusher through the upgrade endpoint's 400 body (main.ts), so a receipt
+ * can tell a clean refusal from a receiver that needs a push or a restart.
+ */
+export class UpgradeFailedError extends Error {
+  constructor(
+    message: string,
+    readonly recovered: boolean,
+  ) {
+    super(message);
+  }
+}
+
 export class HmrHost<Api extends Park = Park> {
   readonly resources = new HotResources();
 
@@ -434,8 +451,11 @@ export class HmrHost<Api extends Park = Park> {
       // suspended machinery like any successor. The pusher still gets an error — the
       // push DID fail — but the machine it failed on keeps working.
       this.publishAssets(previousAssets);
-      await this.recoverPrevious(result.doc);
-      throw new Error(`the pushed platform failed to boot: ${errMsg(result.error)}`);
+      const recovered = await this.recoverPrevious(result.doc);
+      throw new UpgradeFailedError(
+        `the pushed platform failed to boot: ${errMsg(result.error)}`,
+        recovered,
+      );
     }
 
     // Boot succeeded: commit web to memory too, then persist platform + cli + web
@@ -484,18 +504,22 @@ export class HmrHost<Api extends Park = Park> {
    * from packaged at all (see the field's doc). Best-effort by design: a double fault
    * only warns and leaves the disposed instance in place, because /api/hmr is
    * runtime-owned and therefore still reachable for a follow-up push, and a process
-   * restart restores the committed version regardless.
+   * restart restores the committed version regardless. The returned boolean is the
+   * pusher's receipt (see UpgradeFailedError): true — the previous version is the
+   * running version again; false — the double fault the warning names.
    */
-  private async recoverPrevious(doc: Json): Promise<void> {
+  private async recoverPrevious(doc: Json): Promise<boolean> {
     try {
       const bundle = this.current;
       this.instance = (await boot(bundle.impl, bundle.iface, doc, this.resources)) as Instance<Api>;
       // `current` unchanged: the previous version is the running version again.
+      return true;
     } catch (err) {
       this.warn(
         `boot-failure recovery failed too — the process serves a half-stopped App until ` +
           `a successful push or a restart: ${errMsg(err)}`,
       );
+      return false;
     }
   }
 
