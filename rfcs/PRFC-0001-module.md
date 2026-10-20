@@ -1,7 +1,9 @@
 # PRFC-0001 Module
 
+[中文版](PRFC-0001-module.zh.md)
+
 > **Source**: `rfcs/PRFC-0001-module.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — landed (default branch `main`, commit [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)).
-> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are in [README.md](README.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `module`
 - Start Date: 2026-09-02

@@ -13,7 +13,7 @@ This directory is PenguinHarness's design RFC surface: one design decision per d
 
 ## Shape of a document
 
-Each document keeps its original title line (`# PRFC-NNNN …`), metadata bullets and body; section names follow the Rust RFC template. The migration added exactly two things to each file:
+Each document keeps its original title line (`# PRFC-NNNN …`), metadata bullets and body; section names follow the Rust RFC template. Every RFC is a pair — `PRFC-NNNN-slug.md` in English and `PRFC-NNNN-slug.zh.md` in Chinese, the same design in both languages — and the language link at the top of each file switches between them; the index below links the English file. The migration added exactly two things to each file:
 
 - a **provenance marker** right under the title: the source file in the design repository, its state there — landed on the default branch, or the open or draft design PR that carries the draft — and the current rev;
 - a **`## Changes` section at the end**, recording every revision the document goes through, starting at `v1.0.0`.

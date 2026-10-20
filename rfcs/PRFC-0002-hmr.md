@@ -1,7 +1,9 @@
 # PRFC-0002 HMR v1: the layer has only `/api/hmr`, and depends only on http and log
 
+[中文版](PRFC-0002-hmr.zh.md)
+
 > **Source**: `rfcs/PRFC-0002-hmr.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — landed (default branch `main`, commit [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)).
-> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this file are in [README.zh.md](README.zh.md); per-version changes are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this file are in [README.md](README.md); per-version changes are recorded in `## Changes` at the end.
 
 - Feature Name: `hmr`
 - Start Date: 2026-09-08

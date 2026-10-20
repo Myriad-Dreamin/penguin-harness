@@ -28,7 +28,7 @@ jobs:
             filename=$(basename "$file")
             
             # Check naming format: PRFC-NNNN-slug.md
-            if ! echo "$filename" | grep -qE '^PRFC-[0-9]{4}-[a-z0-9-]+\.md$'; then
+            if ! echo "$filename" | grep -qE '^PRFC-[0-9]{4}-[a-z0-9-]+(\.zh)?\.md$'; then
               echo "❌ $filename does not follow naming convention PRFC-NNNN-slug.md"
               ERROR=1
             else
@@ -40,7 +40,7 @@ jobs:
           echo "=== Checking RFC number sequence ==="
 
           # Extract all RFC numbers and check for duplicates
-          RFC_NUMBERS=$(ls rfcs/PRFC-*.md 2>/dev/null | sed 's/.*PRFC-\([0-9]*\)-.*/\1/' | sort)
+          RFC_NUMBERS=$(ls rfcs/PRFC-*.md 2>/dev/null | grep -v '\.zh\.md$' | sed 's/.*PRFC-\([0-9]*\)-.*/\1/' | sort)
 
           # Check for duplicate numbers (excluding known dual-0005)
           DUPLICATES=$(echo "$RFC_NUMBERS" | uniq -d | grep -v '^0005$' || true)
@@ -71,6 +71,11 @@ jobs:
               continue
             fi
 
+            # The Chinese pair carries translated headings; the English file is the one checked
+            if [[ "$file" == *.zh.md ]]; then
+              continue
+            fi
+
             filename=$(basename "$file")
             MISSING=()
 
@@ -92,7 +97,7 @@ jobs:
           echo "=== Checking Changes section for modified RFCs ==="
 
           # Get list of modified RFC files (excluding new files)
-          MODIFIED_RFCS=$(git diff --name-status origin/main...HEAD | grep -E '^M\s+rfcs/PRFC-' | awk '{print $2}' || true)
+          MODIFIED_RFCS=$(git diff --name-status origin/main...HEAD | grep -E '^M\s+rfcs/PRFC-' | grep -v '\.zh\.md$' | awk '{print $2}' || true)
 
           if [ -n "$MODIFIED_RFCS" ]; then
             for file in $MODIFIED_RFCS; do
@@ -125,7 +130,7 @@ jobs:
             echo "❌ RFC checks failed. Please fix the issues above."
             echo ""
             echo "Guidelines:"
-            echo "- RFC files must be named PRFC-NNNN-slug.md (4-digit number, lowercase kebab-case slug)"
+            echo "- RFC files must be named PRFC-NNNN-slug.md, or PRFC-NNNN-slug.zh.md for its Chinese pair (4-digit number, lowercase kebab-case slug)"
             echo "- Required sections: Summary, Motivation, Reference-level explanation"
             echo "- When modifying a landed RFC, increment the version and add a ## Changes section"
             echo "- See rfcs/TEMPLATE.md for the full RFC template"

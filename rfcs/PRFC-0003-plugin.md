@@ -1,8 +1,10 @@
 # PRFC-0003 Plugin
 
+[中文版](PRFC-0003-plugin.zh.md)
+
 > **Source**: `rfcs/PRFC-0003-plugin.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — landed (default branch `main`, commit [`ac673a24`](https://github.com/Prism-Shadow/penguin-harness-design/commit/ac673a245eec78d6afca35e260dce28b2a3ab3ac)).
 > **Unmerged revision**: the open design PR [#279](https://github.com/Prism-Shadow/penguin-harness-design/pull/279) carries one unmerged revision against this document (the passage on enabling a local plugin directory via link; based on an older base of the design repository), not folded into this version; once it is merged or rejected, the rev is raised per the conventions and recorded in `## Changes`.
-> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are in [README.zh.md](README.zh.md), and per-version changes are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository); the conventions for this surface are in [README.md](README.md), and per-version changes are recorded in `## Changes` at the end.
 
 - Feature Name: `plugin`
 - Start Date: 2026-09-02
