@@ -1,7 +1,9 @@
 # PRFC-0012 A bot that starts agents from chat is a plugin's job
 
+[中文版](PRFC-0012-chat-bots.zh.md)
+
 > **Source**: `rfcs/PRFC-0012-chat-bots.md` from the design repository [penguin-harness-design](https://github.com/Prism-Shadow/penguin-harness-design) — a draft, see design PR [#127](https://github.com/Prism-Shadow/penguin-harness-design/pull/127) (draft).
-> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.zh.md](README.zh.md), and changes from version to version are recorded in `## Changes` at the end.
+> **Rev**: v1.0.0 (migrated into the main repository, taking the draft's current version); the conventions for this surface are in [README.md](README.md), and changes from version to version are recorded in `## Changes` at the end.
 
 - Feature Name: `discord_bot_plugin`
 - Start Date: 2026-09-07
