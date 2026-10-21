@@ -42,6 +42,10 @@ function localRun(command: string, input?: Buffer): Promise<ExecResult> {
         timedOut: false,
       }),
     );
+    // A command that kills itself — or its whole process group — takes the read end of this
+    // pipe with it: `end` then raises EPIPE on the NEXT tick, with no listener to catch it,
+    // and vitest counts an unhandled error even though the test itself passed.
+    child.stdin.on("error", () => {});
     child.stdin.end(input ?? Buffer.alloc(0));
   });
 }
