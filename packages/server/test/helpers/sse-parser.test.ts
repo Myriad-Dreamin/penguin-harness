@@ -1,7 +1,7 @@
 /**
- * The SSE reader the fixtures use (helpers/sse-parser.ts): what this server's SSE writer emits
- * parses back to the same events whatever the chunking, comments vanish, and formatting
- * round-trips.
+ * The SSE reader at src/socket/sse-text.ts, as the fixtures use it: what this server's SSE
+ * writer emits parses back to the same events whatever the chunking, comments vanish, and
+ * formatting round-trips.
  */
 import { describe, expect, it } from "vitest";
 import { formatSseEvent } from "../../src/socket/sse-text.js";

@@ -16,7 +16,7 @@
  */
 import http from "node:http";
 import { HEARTBEAT_MS } from "../http/sse.js";
-import { formatSseEvent } from "../socket/sse-text.js";
+import { formatSseEvent, SseReader } from "../socket/sse-text.js";
 import type { StreamAnswer } from "../socket/stream-answer.js";
 
 /** Where a watched machine's server answers on this side, and the session to reach it with. */
@@ -48,66 +48,6 @@ export interface AggregateOptions {
 
 /** A tab that stops reading is ended rather than buffered for: this is its queue, in bytes. */
 const SUBSCRIBER_HIGH_WATER_BYTES = 4 << 20;
-
-/** One parsed event off a text/event-stream response. */
-interface SseFrame {
-  id: string | null;
-  event: string;
-  data: string;
-}
-
-/** Splits a text/event-stream body into frames; comments and blank lines are structure, not events. */
-class SseReader {
-  #pending = "";
-  #id: string | null = null;
-  #event: string | null = null;
-  #data: string[] = [];
-
-  feed(chunk: string): SseFrame[] {
-    const out: SseFrame[] = [];
-    this.#pending += chunk;
-    for (;;) {
-      const nl = this.#pending.indexOf("\n");
-      if (nl === -1) break;
-      let line = this.#pending.slice(0, nl);
-      this.#pending = this.#pending.slice(nl + 1);
-      if (line.endsWith("\r")) line = line.slice(0, -1);
-      if (line === "") {
-        const frame = this.#take();
-        if (frame !== null) out.push(frame);
-        continue;
-      }
-      this.#line(line);
-    }
-    return out;
-  }
-
-  #line(line: string): void {
-    if (line.startsWith(":")) return; // a comment: the far side's heartbeat
-    const colon = line.indexOf(":");
-    const name = colon === -1 ? line : line.slice(0, colon);
-    const value = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
-    if (name === "id") this.#id = value;
-    else if (name === "event") this.#event = value;
-    else if (name === "data") this.#data.push(value);
-  }
-
-  #take(): SseFrame | null {
-    if (this.#event === null && this.#data.length === 0) {
-      this.#id = null;
-      return null;
-    }
-    const frame = {
-      id: this.#id,
-      event: this.#event ?? "message",
-      data: this.#data.join("\n"),
-    };
-    this.#id = null;
-    this.#event = null;
-    this.#data = [];
-    return frame;
-  }
-}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
