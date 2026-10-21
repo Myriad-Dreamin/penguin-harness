@@ -18,11 +18,14 @@ import {
   Navigate,
   Outlet,
   Route,
+  Routes,
   RouterProvider,
   createBrowserRouter,
   createMemoryRouter,
   createRoutesFromElements,
+  useParams,
 } from "react-router";
+import { PageFrame } from "@prismshadow/penguin-ui";
 import { NavigationGuard } from "./lib/unsaved/navigation-guard";
 import { useAuth } from "./state/auth";
 import { useRuntimeLanguages } from "./features/chat/use-runtime-languages";
@@ -42,8 +45,9 @@ import { UsagePage } from "./features/usage/usage-page";
 import { BenchmarkPage } from "./features/benchmark/benchmark-page";
 import { BenchmarkDetailPage } from "./features/benchmark/benchmark-detail-page";
 import { TerminalPage } from "./features/terminal";
-import { OrgIndexRedirect, OrgLayout } from "./features/company/org-layout";
-import { homePath } from "./features/company/company-nav";
+import { OrgIndexRedirect, OrgLayout, OrgPageSkeleton } from "./features/company/org-layout";
+import { homePath, orgPagePath } from "./features/company/company-nav";
+import { useOrgPagesState } from "./features/company/use-org-pages";
 import { OverviewPage } from "./features/company/overview-page";
 import { OrgChartPage } from "./features/company/org-chart-page";
 import { CalendarPage } from "./features/company/calendar-page";
@@ -95,6 +99,49 @@ function PageRoute({ page }: { page: PageEntry }) {
   const { user } = useAuth();
   if (page.admin && user?.isAdmin !== true) return <Navigate to="/" replace />;
   return renderPage(page);
+}
+
+/**
+ * The company-mode pages a plugin contributes (`nav: "org"`). Their table arrives at runtime
+ * (useOrgPagesState — GET /api/contributions), after the router was built, so they cannot be
+ * children of the organization route the way its own pages are: the organization layout's one
+ * wildcard child renders a second, relative route table over the table as it stands.
+ *
+ * A page it cannot find is only missing once the table has settled: a cold deep link is routed
+ * before the contributions answer, so while they are on their way the child shows the page
+ * skeleton instead of the overview — and the fallback is an absolute path, so an unknown child
+ * can never append a segment to the address it did not match.
+ *
+ * Exported so the mounting can be stood up in a test of its own: the router's tree around it
+ * needs a whole signed-in app.
+ */
+export function OrgContributedPages() {
+  const { pages, status } = useOrgPagesState();
+  const params = useParams<{ projectId: string; orgId: string }>();
+  const overview = orgPagePath(params.projectId ?? "", params.orgId ?? "", "overview");
+  // `error` settles the table too: it stays on the local manifest, which holds no such page.
+  const settled = status === "ready" || status === "error";
+  return (
+    <Routes>
+      {orgPagesOf(pages).map((page) => (
+        <Route key={page.id} path={page.path} element={<PageRoute page={page} />} />
+      ))}
+      <Route
+        path="*"
+        element={
+          settled ? (
+            <Navigate to={overview} replace />
+          ) : (
+            // The page's own frame around the placeholder, so the content area keeps its
+            // padding while the table is on its way instead of touching the window's edge.
+            <PageFrame width="xl">
+              <OrgPageSkeleton />
+            </PageFrame>
+          )
+        }
+      />
+    </Routes>
+  );
 }
 
 /** Route guard: shows the boot status while initializing, redirects to /login when not authenticated. */
@@ -158,7 +205,11 @@ function RootFrame() {
   );
 }
 
-function appRoutes() {
+/**
+ * The route table. Exported so a suite can pin what the organization layout mounts — the
+ * wildcard child that carries the runtime page table among it — without a signed-in app.
+ */
+export function appRoutes() {
   return createRoutesFromElements(
     <Route element={<RootFrame />}>
       <Route path="/login" element={<LoginRoute />} />
@@ -206,13 +257,12 @@ function appRoutes() {
           <Route path="finance" element={<FinancePage />} />
           <Route path="handbook" element={<HandbookPage />} />
           <Route path="channels/:channelId" element={<ChannelView />} />
-          {/* The company-mode pages a plugin contributes, after the organization's own:
-              their paths are relative to this layout, and the nav row beside them is the
-              sidebar's (features/company/company-nav.ts ORG_PAGE_RENDERERS). */}
-          {orgPagesOf(PAGES).map((page) => (
-            <Route key={page.id} path={page.path} element={<PageRoute page={page} />} />
-          ))}
-          <Route path="*" element={<Navigate to="overview" replace />} />
+          {/* The company-mode pages a plugin contributes, after the organization's own: their
+              paths are relative to this layout, their nav row is the sidebar's
+              (features/company/company-nav.ts ORG_PAGE_RENDERERS), and their table is the
+              runtime one — so the wildcard child matches it as it arrives, and the same child
+              is the absolute fallback for everything else. */}
+          <Route path="*" element={<OrgContributedPages />} />
         </Route>
         {/* Settings and user management live in the settings dialog now (see
             SettingsDialog); their old routes fall through to the catch-all. */}

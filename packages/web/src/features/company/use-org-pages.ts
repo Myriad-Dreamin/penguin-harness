@@ -5,7 +5,8 @@
  *
  * One fetch per signed-in user, shared by every caller through a module-level store. Until it
  * answers — and if it never does — the table is the local manifest alone: no contributed page
- * is load-bearing.
+ * is load-bearing. {@link useOrgPagesState} says which of the two a caller is looking at, so a
+ * route can tell "not contributed" from "not asked yet".
  *
  * TODO(contributions-provider): the web UI stack's state/contributions.tsx (ContributionsProvider,
  * which also carries the session surfaces) holds this same merged table for the whole tree. Once
@@ -20,8 +21,23 @@ import { ORG_PAGE_RENDERERS } from "./company-nav";
 /** The builtin renderers a contributed company-mode page may name; one naming another is skipped. */
 const ORG_RENDERER_NAMES: ReadonlySet<string> = new Set(Object.keys(ORG_PAGE_RENDERERS));
 
+/**
+ * How far the merged table has got: nobody signed in to ask for (`idle`), the contributions
+ * are on their way (`loading`), they answered (`ready`), or the request failed and the table
+ * stays on the local manifest (`error`). Only `ready` and `error` have settled the table: until
+ * then a page missing from it may still arrive, so a lookup must not read a miss as "there is
+ * no such page".
+ */
+export type OrgPagesStatus = "idle" | "loading" | "ready" | "error";
+
+export interface OrgPagesState {
+  /** The merged page table: the local manifest alone until the contributions answer. */
+  pages: readonly PageEntry[];
+  status: OrgPagesStatus;
+}
+
 let loadedFor: string | null = null;
-let pages: readonly PageEntry[] = PAGES;
+let state: OrgPagesState = { pages: PAGES, status: "idle" };
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
@@ -29,27 +45,48 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Replaces the store's state; the object identity is what `useSyncExternalStore` compares. */
+function publish(next: OrgPagesState): void {
+  state = next;
+  listeners.forEach((l) => l());
+}
+
 function load(userId: string | null): void {
   if (userId === loadedFor) return;
   loadedFor = userId;
-  pages = PAGES;
-  listeners.forEach((l) => l());
+  publish({ pages: PAGES, status: userId === null ? "idle" : "loading" });
   if (userId === null) return;
   api.getContributions().then(
     (res) => {
       if (loadedFor !== userId) return;
-      pages = mergePages(PAGES, res.pages, ORG_RENDERER_NAMES);
-      listeners.forEach((l) => l());
+      publish({ pages: mergePages(PAGES, res.pages, ORG_RENDERER_NAMES), status: "ready" });
     },
     () => {
       // Nothing to fold in: the App stays on its local manifest, which is a complete App.
+      // The table is settled all the same — a page it does not hold is not coming.
+      if (loadedFor !== userId) return;
+      publish({ pages: PAGES, status: "error" });
     },
   );
 }
 
-/** The merged page table (local manifest plus contributed pages this build can render). */
-export function useOrgPages(): readonly PageEntry[] {
+function useOrgPagesStore(): OrgPagesState {
   const userId = useAuth().user?.userId ?? null;
   useEffect(() => load(userId), [userId]);
-  return useSyncExternalStore(subscribe, () => pages);
+  return useSyncExternalStore(subscribe, () => state);
+}
+
+/** The merged page table (local manifest plus contributed pages this build can render). */
+export function useOrgPages(): readonly PageEntry[] {
+  return useOrgPagesStore().pages;
+}
+
+/**
+ * The merged table with how far its fetch has got. A route that mounts a contributed page
+ * waits for the table to settle before it treats a page it cannot find as absent: a cold deep
+ * link is routed before the contributions answer, and sending it to the fallback then would
+ * lose it for the rest of the visit.
+ */
+export function useOrgPagesState(): OrgPagesState {
+  return useOrgPagesStore();
 }
