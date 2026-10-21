@@ -5190,7 +5190,7 @@ export interface RestartResponse {
  * One machine's event, as the machines aggregate stream carries it
  * (`GET /api/projects/:projectId/machines/events`): the machine's own `ServerEvent`, with the
  * machine it came from — one stream carries many machines, and the tag is what keeps their
- * events apart (docs: /docs/server-api § "One event stream per machine").
+ * events apart (docs: /docs/server-api § "Every machine's events on the page's one stream").
  */
 export interface MachineEvent {
   machineId: string;

@@ -121,12 +121,12 @@ export interface MachineStreamHandlers {
 /**
  * Subscribes to this Project's machines aggregate
  * (GET /api/projects/:projectId/machines/events): ONE stream for the whole tab whatever the
- * number of connected machines (docs § "One event stream per machine"). Each `machine_event`
- * carries the machine it came from, so a caller routes it the way it routed that machine's own
- * stream; the aggregate's `server_event` frames are the stream's own news and go to
- * `onHubEvent`. Reconnecting with the tab's last event id is answered with `resync_required`:
- * each machine's own channel replays, and what this tab missed it re-reads. A machine that is
- * slow to attach does not hold the stream up.
+ * number of connected machines (docs § "Every machine's events on the page's one stream").
+ * Each `machine_event` carries the machine it came from, so a caller routes it the way it
+ * routed that machine's own stream; the aggregate's `server_event` frames are the stream's own
+ * news and go to `onHubEvent`. Reconnecting with the tab's last event id is answered with
+ * `resync_required`: each machine's own channel replays, and what this tab missed it re-reads.
+ * A machine that is slow to attach does not hold the stream up.
  */
 export function openMachineEvents(
   projectId: string,
