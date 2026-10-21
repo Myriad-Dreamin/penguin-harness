@@ -36,8 +36,8 @@ import {
   forgetRefusal,
   heldSessionOf,
   sessionOf,
-} from "../src/machines/transport/index.js";
-import { SshPasswords } from "../src/machines/transport/passwords.js";
+} from "../src/sys/ssh/index.js";
+import { SshPasswords } from "../src/sys/ssh/passwords.js";
 
 // The stub `ssh` below is a shell script, which execFile cannot run on Windows; what stays
 // unmeasured on Windows is listed in ci.yml's test-windows note.
@@ -72,10 +72,8 @@ function fakeRegistry(): {
  * The transport's session module imported afresh, as a hot push re-imports the platform bundle
  * (hmr/host.ts): a generation with its own map of sessions and its own listeners.
  */
-async function generation(
-  n: number,
-): Promise<typeof import("../src/machines/transport/session.js")> {
-  const file = path.join(import.meta.dirname, "../src/machines/transport/session.ts");
+async function generation(n: number): Promise<typeof import("../src/sys/ssh/session.js")> {
+  const file = path.join(import.meta.dirname, "../src/sys/ssh/session.ts");
   return import(/* @vite-ignore */ `${file}?generation=${n}`);
 }
 

@@ -47,8 +47,8 @@ import {
 import type { HmrHost, PlatformBundle } from "@prismshadow/penguin-hmr";
 import { TerminalManager } from "../terminal/manager.js";
 import type { TerminalSession } from "../terminal/session.js";
-import { SSH_SESSION_IFACE, SESSION_GROUP, SESSION_SHAPE_ID } from "../machines/transport/index.js";
-import type { HeldSession } from "../machines/transport/index.js";
+import { SSH_SESSION_IFACE, SESSION_GROUP, SESSION_SHAPE_ID } from "../sys/ssh/index.js";
+import type { HeldSession } from "../sys/ssh/index.js";
 import type { RemoteTerminals } from "../machines/terminal-relay.js";
 import { identityFrom } from "../terminal/identity.js";
 import { bindTerminalStream } from "../terminal/stream.js";
@@ -219,7 +219,7 @@ interface ParkedInterfaces extends Interfaces {
   family: string;
   terminal: MembersOf<TerminalSession>;
   /**
-   * Versioned in its NAME (machines/transport/session.ts SESSION_GROUP): a delivered object runs old
+   * Versioned in its NAME (sys/ssh/session.ts SESSION_GROUP): a delivered object runs old
    * code. Judged by STRUCTURE too, at create(): the closed shape of SshSession registered
    * beside the sessions (SESSION_SHAPE_ID) must equal this build's, or the group is doomed.
    */
@@ -302,7 +302,7 @@ export const DECLARED_RESOURCES: ParkedInterfaces = {
     "dispose",
   ],
   // A held ssh session to a machine, as the successor's transport claims it back
-  // (machines/transport/session.ts): commands, the SOCKS port, and its command stream. Every member the adopter calls, for the same reason as `terminal` — and the
+  // (sys/ssh/session.ts): commands, the SOCKS port, and its command stream. Every member the adopter calls, for the same reason as `terminal` — and the
   // group's NAME carries a version, because a member that exists on an old object still runs
   // the old object's code: a behavior change bumps the name, so the old group is disposed
   // here (its sessions closed) and the machines are re-held fresh.

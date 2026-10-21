@@ -1,10 +1,11 @@
 /**
  * Machine traffic never goes through a proxy.
  *
- * A machine's API is reached as a channel inside the ssh session this server holds to it: a
- * SOCKS5 CONNECT on the session's loopback `-D` port, carried by node:http with an agent of its
- * own (machines/transport). Here a small SOCKS server of this test's own stands in for that
- * port, and an HTTP server behind it for the machine's server.
+ * A machine's API is reached over the forward held to it (machines/forwards.ts): a loopback
+ * listener whose every connection is a channel inside the ssh session this server holds to
+ * that machine. Here an HTTP server on loopback stands in for the machine's server, and its
+ * address for the forward's endpoint — the proxy, the API client and the page all talk to it
+ * with node:http and no agent of their own.
  *
  * - Given proxy variables that name a proxy nobody runs, and this server's global dispatcher
  *   pinned to a proxy that answers 502 to everything, a call to a machine's API is answered by
@@ -19,57 +20,12 @@ import { getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { machineApi } from "../src/machines/machine-api.js";
 import { machinesProxy } from "../src/machines/proxy.js";
-import { dialThroughSocks } from "../src/machines/transport/socks.js";
 import { buildProxyDispatcher } from "../src/net/proxy.js";
 
 const listen = (server: net.Server): Promise<number> =>
   new Promise((resolve) =>
     server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)),
   );
-
-/** Just enough SOCKS5 for a CONNECT to an IPv4 address, piped to that port on loopback. */
-function socksServer(): net.Server {
-  return net.createServer((client) => {
-    let stage = 0;
-    let buffer = Buffer.alloc(0);
-    client.on("data", (chunk: Buffer) => {
-      buffer = Buffer.concat([buffer, chunk]);
-      if (stage === 0) {
-        if (buffer.length < 2 || buffer.length < 2 + buffer[1]!) return;
-        buffer = buffer.subarray(2 + buffer[1]!);
-        stage = 1;
-        client.write(Buffer.from([5, 0]));
-      }
-      if (stage === 1) {
-        if (buffer.length < 10) return;
-        stage = 2;
-        const port = buffer.readUInt16BE(8);
-        const rest = buffer.subarray(10);
-        const upstream = net.connect({ host: "127.0.0.1", port }, () => {
-          client.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
-          if (rest.length > 0) upstream.write(rest);
-          client.pipe(upstream).pipe(client);
-        });
-        upstream.on("error", () => client.destroy());
-      }
-    });
-  });
-}
-
-/** The agent MachineConnection.agent builds, with this test's SOCKS port in place of the session's. */
-function sessionAgent(socksPort: number, remotePort: number): http.Agent {
-  const agent = new http.Agent({ keepAlive: false });
-  (agent as unknown as { createConnection: unknown }).createConnection = (
-    _options: unknown,
-    callback: (err: Error | null, socket?: net.Socket) => void,
-  ) => {
-    dialThroughSocks(socksPort, "127.0.0.1", remotePort).then(
-      (socket) => callback(null, socket),
-      (err: unknown) => callback(err instanceof Error ? err : new Error(String(err))),
-    );
-  };
-  return agent;
-}
 
 describe("machine traffic and the proxy settings", () => {
   const cleanups: Array<() => void | Promise<void>> = [];
@@ -79,7 +35,7 @@ describe("machine traffic and the proxy settings", () => {
   });
 
   /**
-   * A machine behind a SOCKS port, a proxy that answers 502 to everything (and counts what it
+   * A machine's server on loopback, a proxy that answers 502 to everything (and counts what it
    * saw), the proxy variables pointing at a port nothing listens on, and the global dispatcher
    * pinned to the 502 proxy.
    */
@@ -89,8 +45,6 @@ describe("machine traffic and the proxy settings", () => {
       res.end(JSON.stringify({ answeredBy: "the machine", path: req.url, host: req.headers.host }));
     });
     const machinePort = await listen(machine);
-    const socks = socksServer();
-    const socksPort = await listen(socks);
     const seenByProxy: string[] = [];
     const proxy = http.createServer((req, res) => {
       seenByProxy.push(`${req.method} ${req.url}`);
@@ -118,19 +72,20 @@ describe("machine traffic and the proxy settings", () => {
     setGlobalDispatcher(dispatcher);
     cleanups.push(
       () => void machine.close(),
-      () => void socks.close(),
       () => void proxy.close(),
       async () => {
         setGlobalDispatcher(previous);
         await dispatcher.close();
       },
     );
-    return { machinePort, socksPort, seenByProxy };
+    return { machinePort, seenByProxy };
   }
 
   it("a call to a machine's API is answered by the machine, and the proxy sees nothing", async () => {
-    const { machinePort, socksPort, seenByProxy } = await rig();
-    const api = machineApi(sessionAgent(socksPort, machinePort), machinePort, "penguin_session=x");
+    const { machinePort, seenByProxy } = await rig();
+    // The forward's endpoint: the machine's own address on this side, and the port its server
+    // is on over there — the same here, as a forward to a loopback stand-in's port would be.
+    const api = machineApi("127.0.0.1", machinePort, machinePort, "penguin_session=x");
 
     const answer = await api.request("GET", "/api/version");
 
@@ -144,13 +99,13 @@ describe("machine traffic and the proxy settings", () => {
   });
 
   it("a page's request through the /server/<machineId> forward is answered by the machine", async () => {
-    const { machinePort, socksPort, seenByProxy } = await rig();
+    const { machinePort, seenByProxy } = await rig();
     const forward = machinesProxy(async () => ({
-      agent: sessionAgent(socksPort, machinePort),
+      host: "127.0.0.1",
       port: machinePort,
+      remotePort: machinePort,
       cookie: "penguin_session=x",
       adoptedAt: null,
-      session: 1,
     }));
 
     const res = await forward(

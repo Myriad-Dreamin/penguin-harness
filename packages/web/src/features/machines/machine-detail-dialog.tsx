@@ -63,7 +63,6 @@ import {
 } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { dismissNotice, envOnlyNoticeId, useNoticeDismissed } from "../../lib/notice-dismissals";
-import { formatDateTime, formatRelativeShort } from "../../lib/format";
 import { S } from "../../lib/strings";
 import { toneInk } from "../../lib/tone";
 import {
@@ -85,7 +84,7 @@ import type {
   ToolbarItem,
   ToolbarVerb,
 } from "./machine-detail-view";
-import { outOfDate, readMachine, socketReading } from "./machines-view";
+import { outOfDate, readMachine } from "./machines-view";
 import { retryStatus } from "./machine-card";
 
 /**
@@ -673,8 +672,6 @@ export function MachineDetailBody({
         </div>
         {/* The machine's own id is a detail you go looking for: it closes the section, quiet,
             with its copy button. */}
-        <MachineSocketDetails machine={machine} locale={locale} />
-
         {facts.id !== null && (
           <KeyValue size="sm" className="mt-2">
             <FactRow
@@ -744,29 +741,5 @@ export function MachineDetailDialog({
         onDismissEnvOnly={() => dismissNotice(envOnlyId, envOnly)}
       />
     </Modal>
-  );
-}
-
-/** The socket held to this machine, independent of its server/process status. */
-export function MachineSocketDetails({
-  machine,
-  locale,
-}: {
-  machine: MachineInfo;
-  locale: "zh" | "en";
-}) {
-  const socket = socketReading(machine);
-  if (socket === null) return null;
-  const ink =
-    socket.tone === "attention" || socket.tone === "danger" ? toneInk[socket.tone] : undefined;
-  return (
-    <KeyValue size="sm" className="mt-2">
-      <KeyValueRow label={S.machines.detailSocket}>
-        <span className={ink} data-tooltip={formatDateTime(socket.since)}>
-          {`${socket.label} · ${formatRelativeShort(socket.since, locale)}`}
-          {socket.detail === null ? null : ` · ${socket.detail}`}
-        </span>
-      </KeyValueRow>
-    </KeyValue>
   );
 }

@@ -28,7 +28,7 @@
  */
 import type { RemotePlatform } from "./detect.js";
 import type { RemoteLayout } from "./layout.js";
-import { shQuote } from "./transport/index.js";
+import { shQuote } from "../sys/ssh/index.js";
 
 /**
  * Wraps a value for cmd.exe. There is no escape for `"` inside a quoted string, so a path

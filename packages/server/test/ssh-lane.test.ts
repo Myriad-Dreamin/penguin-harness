@@ -6,8 +6,8 @@
  * lane is the same code there.
  */
 import { describe, expect, it } from "vitest";
-import { run } from "../src/machines/transport/spawn.js";
-import { inLane } from "../src/machines/transport/lane.js";
+import { run } from "../src/sys/ssh/spawn.js";
+import { inLane } from "../src/sys/ssh/lane.js";
 
 describe("the per-machine lane", () => {
   it("serialises commands to one machine and lets different machines proceed together", async () => {

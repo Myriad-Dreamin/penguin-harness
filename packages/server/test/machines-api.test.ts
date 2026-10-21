@@ -180,7 +180,9 @@ function effects(over: Partial<MachinesEffects> = {}): Partial<MachinesEffects> 
       return { ok: true, session: { pid: process.pid, socksPort: 1 } };
     },
     session: (address) => (connected.has(address) ? { pid: process.pid, socksPort: 1 } : null),
-    agent: () => new http.Agent(),
+    // The forward a connected machine answers on: the fake servers below listen on the
+    // very port their record names, so "the tunnel" is the identity to loopback.
+    forward: async (_target, port) => ({ host: "127.0.0.1", port, close: async () => {} }),
     probe: async () => ({ state: { kind: "running", port: 7364, pid: 4242 }, machineId: null }),
     install: async (opts): Promise<RemoteInstallOutcome> => {
       opts.onProgress?.("Pushing…");
@@ -311,9 +313,6 @@ describe("machines API", () => {
           installed: null,
           local: false,
           connection: null,
-          // No stream has asked for a socket to this machine, so there is nothing to report;
-          // `machineId` is null here, which is also what decides that.
-          socket: null,
           api: null,
           // The release profile's root over there, in the shell a machine of unknown
           // platform is assumed to speak.
@@ -327,7 +326,6 @@ describe("machines API", () => {
           installed: null,
           local: false,
           connection: null,
-          socket: null,
           api: null,
           // The release profile's root over there, in the shell a machine of unknown
           // platform is assumed to speak.
@@ -337,28 +335,6 @@ describe("machines API", () => {
       ]);
       expect(body.imageVersion).toBe("9.9.9");
       expect(body.job).toBeNull();
-    });
-
-    it("says what the socket to each machine is doing, so a stuck stream is visible on the page", async () => {
-      await boot({
-        socketFact: (machineId) =>
-          machineId === "kUkIyqU-1GOfXgKD"
-            ? { state: "dialling", since: "2026-09-26T00:00:00.000Z" }
-            : null,
-      });
-      machinesRepo.patch("ssh:nas", {
-        version: "9.9.9",
-        installedAt: "2026-08-01T00:00:00.000Z",
-        machineId: "kUkIyqU-1GOfXgKD",
-      });
-      const body = (await (
-        await admin.get("/api/projects/default_project/machines")
-      ).json()) as MachinesResponse;
-      expect(body.machines[0]?.socket).toBeNull(); // the local entry is nobody's socket
-      expect(body.machines.find((machine) => machine.id === "ssh:nas")?.socket).toEqual({
-        state: "dialling",
-        since: "2026-09-26T00:00:00.000Z",
-      });
     });
 
     it("an empty or unreadable ssh config leaves this machine alone in the list, not an error", async () => {

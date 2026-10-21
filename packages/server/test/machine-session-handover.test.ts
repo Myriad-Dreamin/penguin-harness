@@ -9,11 +9,7 @@ import { closedShape } from "@prismshadow/penguin-core/kernel";
 import type { IfaceTable } from "@prismshadow/penguin-core/kernel";
 import type { Reassembly } from "../src/hmr/capabilities.js";
 import ifaceTable from "../src/ifaces.json" with { type: "json" };
-import {
-  SSH_SESSION_IFACE,
-  SESSION_GROUP,
-  SESSION_SHAPE_ID,
-} from "../src/machines/transport/index.js";
+import { SSH_SESSION_IFACE, SESSION_GROUP, SESSION_SHAPE_ID } from "../src/sys/ssh/index.js";
 import { createTestApp } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 

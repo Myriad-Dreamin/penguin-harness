@@ -3,13 +3,16 @@
  *
  * The order is the whole design (see the bootstrap's module doc for why):
  *
- * 0. the Sys is given — a host, or a machine reached over ssh (a provider's job to build);
+ * 0. the Sys is given — a world that carries `fs` and `exec`: the host today, a sandbox or a
+ *    cloud computer later. A machine is deliberately not one of them (it carries `forward`
+ *    only, because its server is installed and run on the far side), so this sequence stops at
+ *    its first check with `SYS_CAPABILITY_ABSENT` rather than laying anything there;
  * 1. its `exec` starts processes there;
  * 2. its `node` (the installed runtime's, or the host's own) runs what this lays down;
  * 3. the single-file HMR server is copied into the data root;
  * 4. started; it announces a port;
  * 5. `sys.forward` makes that port reachable from here (identity on a host, a tunnel for a
- *    machine — the provider's business, invisible here);
+ *    world reached through a connection — the provider's business, invisible here);
  * 6. an `HmrLink` opens the upgrade stream through that forward;
  * 7. the version is pushed as raw parts (platform, CLI, web dist, assets — plugins and
  *    node-pty among them), deduplicated against what the store already holds;
@@ -17,7 +20,7 @@
  *    the version just committed.
  *
  * Nothing about the target's shell, paths or address leaks into this file: steps 0–2 are
- * the caller's (a machine provider knows its layout, a host knows `process.execPath`).
+ * the caller's (another provider knows its layout, a host knows `process.execPath`).
  * What this adds is the one sequence that must not be re-derived: a version lands BEFORE
  * the server that would serve the push ever runs, which is what makes node-pty and the
  * plugin library unnecessary on a first start.

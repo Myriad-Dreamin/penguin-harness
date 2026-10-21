@@ -429,7 +429,7 @@ describe("machineApi", () => {
       server.listen(0, "127.0.0.1", () => resolve((server.address() as AddressInfo).port)),
     );
     try {
-      const api = machineApi(new http.Agent(), port, "penguin_session=x");
+      const api = machineApi("127.0.0.1", port, port, "penguin_session=x");
       await expect(api.request("GET", "/api/projects")).rejects.toThrow(
         /closed mid-answer|socket hang up|aborted/,
       );
@@ -458,7 +458,7 @@ describe("syncModelsToMachine, against a running server", () => {
       const cookie = login.setCookie.map((line) => line.split(";")[0]?.trim() ?? "").join("; ");
 
       const outcome = await syncModelsToMachine({
-        api: machineApi(new http.Agent(), port, cookie),
+        api: machineApi("127.0.0.1", port, port, cookie),
         projects: ["default_project"],
         loadLocal: async (projectId) =>
           projectId === "default_project"
@@ -495,7 +495,7 @@ describe("syncModelsToMachine, against a running server", () => {
       const cookie = login.setCookie.map((line) => line.split(";")[0]?.trim() ?? "").join("; ");
 
       const outcome = await syncModelsToMachine({
-        api: machineApi(new http.Agent(), port, cookie),
+        api: machineApi("127.0.0.1", port, port, cookie),
         projects: ["default_project"],
         // What a Project looks like once its keys live on its groups: no row carries one.
         loadLocal: async () => ({
@@ -530,7 +530,7 @@ describe("syncModelsToMachine, against a running server", () => {
       const handAdded = { provider: "penguin-go", model_id: "gemini-9.9-not-a-preset" };
 
       const outcome = await syncModelsToMachine({
-        api: machineApi(new http.Agent(), port, cookie),
+        api: machineApi("127.0.0.1", port, port, cookie),
         projects: ["default_project"],
         loadLocal: async () => ({
           models: [handAdded, local({ api_key: "sk-ours-0123456789" })],
@@ -574,7 +574,7 @@ describe("syncModelsToMachine, against a running server", () => {
       const cookie = login.setCookie.map((line) => line.split(";")[0]?.trim() ?? "").join("; ");
 
       const outcome = await syncModelsToMachine({
-        api: machineApi(new http.Agent(), port, cookie),
+        api: machineApi("127.0.0.1", port, port, cookie),
         projects: ["field_work"],
         loadLocal: async () => ({
           models: [local({ api_key: "sk-ours-0123456789" })],

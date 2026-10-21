@@ -16,7 +16,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EventEmitter, once } from "node:events";
-import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket as WsSocket } from "ws";
@@ -114,7 +113,7 @@ describe("relaying a viewer to a machine's stream", () => {
   });
 
   const depsFor = (
-    target: Promise<{ agent: http.Agent; port: number; cookie: string } | null>,
+    target: Promise<{ host: string; port: number; remotePort: number; cookie: string } | null>,
   ) => ({
     proxyTarget: () => target,
     isAdmin: () => true,
@@ -130,8 +129,18 @@ describe("relaying a viewer to a machine's stream", () => {
 
   it("dials nobody when the viewer left while the machine was being reached", async () => {
     const viewer = new FakeViewer();
-    let reached: (t: { agent: http.Agent; port: number; cookie: string }) => void = () => undefined;
-    const target = new Promise<{ agent: http.Agent; port: number; cookie: string }>((resolve) => {
+    let reached: (t: {
+      host: string;
+      port: number;
+      remotePort: number;
+      cookie: string;
+    }) => void = () => undefined;
+    const target = new Promise<{
+      host: string;
+      port: number;
+      remotePort: number;
+      cookie: string;
+    }>((resolve) => {
       reached = resolve;
     });
     const relaying = relayTerminalStream(
@@ -143,7 +152,7 @@ describe("relaying a viewer to a machine's stream", () => {
     );
     // The pane closes first; the connection to the machine answers only afterwards.
     viewer.drop();
-    reached({ agent: new http.Agent(), port: machinePort, cookie: "" });
+    reached({ host: "127.0.0.1", port: machinePort, remotePort: machinePort, cookie: "" });
     await relaying;
     // No event marks a dial that never happens; one to this loopback server is accepted within
     // a few milliseconds, so a quarter of a second of quiet is the proof.
@@ -159,7 +168,14 @@ describe("relaying a viewer to a machine's stream", () => {
       viewer as unknown as WsSocket,
       ref,
       url,
-      depsFor(Promise.resolve({ agent: new http.Agent(), port: machinePort, cookie: "" })),
+      depsFor(
+        Promise.resolve({
+          host: "127.0.0.1",
+          port: machinePort,
+          remotePort: machinePort,
+          cookie: "",
+        }),
+      ),
       () => undefined,
     );
     // The opening resize, sent while the handshake above is still in flight.
