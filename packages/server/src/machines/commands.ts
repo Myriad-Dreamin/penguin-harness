@@ -10,7 +10,7 @@
  * the remote's own network.
  *
  * COUNT THE HANDSHAKES. A handshake to a distant or loaded host costs tens of seconds — so
- * everything rides the ONE connection ssh/session.ts holds per host: commands, the
+ * everything rides the ONE connection the ssh provider's session.ts holds per host: commands, the
  * installer and the store on its stdin, every TCP connection through its SOCKS port. A POSIX
  * install is therefore the installer going in on that stdin, the same shape as the documented
  * `curl … | sh`, which is what lets the scratch directory, the scp and the cleanup
@@ -21,18 +21,14 @@
  *   password or a key passphrase would hang forever with nothing to type into. A machine that
  *   signs in with keys runs in BatchMode, which turns any question into an immediate, readable
  *   failure. A machine with a stored password signs in with that password and nothing else: ssh
- *   takes it from the askpass helper (ssh/login.ts), keys are not offered, and one wrong
+ *   takes it from the askpass helper (the ssh provider's login.ts), keys are not offered, and one wrong
  *   answer per method ends the attempt.
  * - **The user override rides the command line, never the config.** `-o User=…` selects the
  *   account for this connection; `~/.ssh/config` is read-only to us.
  */
 import type { RemotePlatform } from "./detect.js";
 import type { RemoteLayout } from "./layout.js";
-
-/** Wraps a value for a POSIX remote shell. Single quotes are literal there, except `'` itself. */
-export function shQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
+import { shQuote } from "../sys/ssh/index.js";
 
 /**
  * Wraps a value for cmd.exe. There is no escape for `"` inside a quoted string, so a path

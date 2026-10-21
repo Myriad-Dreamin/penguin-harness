@@ -13,7 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifyUpgradeAnswer, readPushedBuild, refusalDetail } from "../src/machines/upgrade.js";
-import { machineIdentity, parseHostAliases, parseHostEntries } from "../src/ssh/config.js";
+import { machineIdentity, parseHostAliases, parseHostEntries } from "../src/sys/ssh/config.js";
 import {
   parseProbe,
   probeServerState,
@@ -30,13 +30,13 @@ import {
   startServerCommand,
   uninstallCommand,
   unpackStoreCommand,
-  shQuote,
 } from "../src/machines/commands.js";
-import { scpArgs, sessionArgs, sshArgs } from "../src/ssh/args.js";
+import { shQuote } from "../src/sys/ssh/index.js";
+import { scpArgs, sessionArgs, sshArgs } from "../src/sys/ssh/args.js";
 import { installedRelease, resolvePushPlan, shippedImage } from "../src/machines/install-server.js";
-import { askpassPlan, passwordEnv } from "../src/ssh/login.js";
-import { explainSshFailure, sshFailureText } from "../src/ssh/failure.js";
-import { SshPasswords, passwordProblem } from "../src/ssh/passwords.js";
+import { askpassPlan, passwordEnv } from "../src/sys/ssh/login.js";
+import { explainSshFailure, sshFailureText } from "../src/sys/ssh/failure.js";
+import { SshPasswords, passwordProblem } from "../src/sys/ssh/passwords.js";
 
 const RELEASE = remoteLayoutFor("release");
 const DEV = remoteLayoutFor("dev");

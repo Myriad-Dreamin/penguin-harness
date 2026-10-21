@@ -1,18 +1,20 @@
 /**
- * The ssh layer's two rules, as a source scan (it runs with the suite everywhere, and its
+ * The ssh provider's rules, as a source scan (it runs with the suite everywhere, and its
  * failure message names the offending file; tests are exempt — a unit test imports a private
  * module by nature).
  *
- * 1. ONE MOUTH. Nothing outside `ssh/` starts ssh or scp. The incident behind this rule
+ * 1. ONE MOUTH. Nothing outside `sys/ssh/` starts ssh or scp. The incident behind this rule
  *    (#561) grew where four call sites each opened their own channel and each judged the
  *    machine's liveness from its own: the connection, its lifetime and its failures are known
  *    in one place or they disagree.
- * 2. THE LAYER KNOWS NOTHING ABOVE IT. `ssh/` may not import `machines/`. A host is an alias,
- *    an account and maybe a password; what a machine IS — its install, its API, its settings —
- *    belongs to the layer that uses ssh, not to ssh.
+ * 2. THE PROVIDER KNOWS NOTHING ABOVE IT. `sys/ssh/` may not import the server's features —
+ *    `machines/` above all: a host is an alias, an account and maybe a password; what a machine
+ *    IS — its install, its API, its settings — belongs to the layer that uses ssh, not to ssh.
+ *    What it may use is the server's own leaves at `src/` (a 0600 file writer), and the files
+ *    it moved with.
  *
  * The directory is entered through its index alone, which is what keeps rule 1 checkable, and
- * the paths the modules had before the layer existed stay gone.
+ * the paths those modules had before they became a provider stay gone.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
+const PROVIDER = "sys/ssh/";
 
 function* walk(dir: string): Generator<string> {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -33,34 +36,48 @@ const files = [...walk(SRC)].map((full) => ({
   rel: path.relative(SRC, full).replaceAll(path.sep, "/"),
   text: fs.readFileSync(full, "utf8"),
 }));
-const layer = files.filter((f) => f.rel.startsWith("ssh/"));
-const outside = files.filter((f) => !f.rel.startsWith("ssh/"));
+const provider = files.filter((f) => f.rel.startsWith(PROVIDER));
+const outside = files.filter((f) => !f.rel.startsWith(PROVIDER));
 
-describe("the ssh layer", () => {
+/** Every relative specifier in a file, resolved against the file that wrote it. */
+function reaches(f: { rel: string; text: string }): string[] {
+  const dir = path.posix.dirname(f.rel);
+  return [...f.text.matchAll(/from\s+["'](\.{1,2}\/[^"']+)["']/g)].map((m) =>
+    path.posix.normalize(path.posix.join(dir, m[1]!)),
+  );
+}
+
+describe("the ssh provider", () => {
   it("is the only place ssh or scp is started", () => {
     const start = /\b(?:spawn|execFile|run|runWithInput)\(\s*["'](?:ssh|scp)["']/;
     expect(outside.filter((f) => start.test(f.text)).map((f) => f.rel)).toEqual([]);
   });
 
-  it("knows nothing about machines", () => {
-    const reaches = layer
-      .filter((f) => /from\s+["'][^"']*machines\//.test(f.text))
+  it("knows nothing about the machine feature", () => {
+    const machines = provider
+      .filter((f) => reaches(f).some((p) => p.startsWith("machines/")))
       .map((f) => f.rel);
-    expect(reaches).toEqual([]);
+    expect(machines).toEqual([]);
+  });
+
+  it("reaches nothing above it but the server's own leaves", () => {
+    const above = provider
+      .filter((f) => reaches(f).some((p) => !p.startsWith(PROVIDER) && !/^[a-z0-9-]+\.js$/.test(p)))
+      .map((f) => f.rel);
+    expect(above).toEqual([]);
   });
 
   it("is entered through its index alone", () => {
     const reachers = outside
-      .filter((f) => /from\s+["'][^"']*\/ssh\/(?!index\.js)/.test(f.text))
+      .filter((f) => reaches(f).some((p) => p.startsWith(PROVIDER) && p !== `${PROVIDER}index.js`))
       .map((f) => f.rel);
     expect(reachers).toEqual([]);
   });
 
-  it("the private modules' old paths stay gone", () => {
-    // Each relative specifier is resolved against the importing file rather than matched by
-    // shape, so a caller anywhere under src/ reaching for `../machines/exec.js` is caught,
-    // not only a sibling writing `./exec.js`.
+  it("the modules' old paths stay gone", () => {
     const gone = new Set([
+      // The machine feature's copies before the provider had a directory of its own.
+      "machines/ssh-sys.js",
       "machines/exec.js",
       "machines/targets.js",
       "machines/ssh-session.js",
@@ -76,16 +93,22 @@ describe("the ssh layer", () => {
       "machines/transport/login.js",
       "machines/transport/targets.js",
       "machines/forward.js",
+      // The layer that stood at the top of src/ before it moved under sys/.
+      "ssh/index.js",
+      "ssh/args.js",
+      "ssh/config.js",
+      "ssh/connection.js",
+      "ssh/failure.js",
+      "ssh/hosts.js",
+      "ssh/lane.js",
+      "ssh/login.js",
+      "ssh/passwords.js",
+      "ssh/session.js",
+      "ssh/socks.js",
+      "ssh/spawn.js",
+      "ssh/target.js",
     ]);
-    const specifiers = /from\s+["'](\.{1,2}\/[^"']+)["']/g;
-    const stragglers = files
-      .filter((f) => {
-        const dir = path.posix.dirname(f.rel);
-        return [...f.text.matchAll(specifiers)].some((m) =>
-          gone.has(path.posix.normalize(path.posix.join(dir, m[1]!))),
-        );
-      })
-      .map((f) => f.rel);
+    const stragglers = files.filter((f) => reaches(f).some((p) => gone.has(p))).map((f) => f.rel);
     expect(stragglers).toEqual([]);
   });
 });

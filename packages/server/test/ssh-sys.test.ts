@@ -1,5 +1,5 @@
 /**
- * A machine as a Sys (src/machines/ssh-sys.ts): the translations the provider states, driven
+ * A machine as a Sys (src/sys/ssh/sys.ts): the translations the provider states, driven
  * through a transport that runs each command on THIS host instead of over ssh.
  *
  * What is under test is the translation, not ssh: the exact command strings (`base64`, `dd`,
@@ -19,10 +19,8 @@ import path from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Sys } from "@prismshadow/penguin-core/sys";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SshConnection } from "../src/ssh/index.js";
-import type { ExecResult } from "../src/ssh/index.js";
-import { createSshSys } from "../src/machines/ssh-sys.js";
-import type { SshSysTransport } from "../src/machines/ssh-sys.js";
+import { SshConnection, createSshSys } from "../src/sys/ssh/index.js";
+import type { ExecResult, SshSysTransport } from "../src/sys/ssh/index.js";
 import { makeTempRoot, removeTempRoot } from "./helpers.js";
 
 const describePosix = describe.skipIf(process.platform === "win32");
@@ -61,7 +59,7 @@ function localTransport(): SshSysTransport {
 
 /** A POSIX machine on this host, with the three capabilities known present. */
 function machine(): Required<Sys> {
-  return createSshSys(localTransport(), { platform: "linux" }) as Required<Sys>;
+  return createSshSys(localTransport(), { shell: "posix" }) as Required<Sys>;
 }
 
 /** Collects a process's stdout to its end. */
@@ -89,7 +87,7 @@ afterEach(async () => {
 });
 
 it("a win32 machine carries no Sys at all", () => {
-  expect(createSshSys(localTransport(), { platform: "win32" })).toEqual({});
+  expect(createSshSys(localTransport(), { shell: "cmd" })).toEqual({});
 });
 
 it("the real connection is one of these", () => {

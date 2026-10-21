@@ -1,12 +1,15 @@
 /**
  * A machine as a `Sys`, over the one ssh session the transport already holds to it.
  *
- * Provider, not a second transport: every word still leaves through
- * `ssh/connection.ts` — `exec` rides the session's stdin, `forward` rides its SOCKS
- * port — so the rules that module states (one connection per machine, nothing outside
- * ssh/ starts ssh) are unchanged. What this adds is the interface every other world
- * speaks: a caller that works against a `Sys` reaches a machine, a sandbox or the host with
- * one code path.
+ * Provider, not a second transport: every word still leaves through `connection.ts` — `exec`
+ * rides the session's stdin, `forward` rides its SOCKS port — so the rules that module states
+ * (one connection per machine, nothing outside this directory starts ssh) are unchanged. What
+ * this adds is the interface every other world speaks: a caller that works against a `Sys`
+ * reaches a machine, a sandbox or the host with one code path.
+ *
+ * It sits beside the host's own provider (`../host.ts`), not under the machine feature that
+ * happens to use it most: `HostSys` is the default world, this is another one, and the caller
+ * picks a world before it starts working — after that nothing above speaks ssh.
  *
  * The capabilities are the POSIX ones. A Windows remote has no session to build on
  * (connection.ts: cmd.exe holds no shell), so it gets no Sys at all and every caller fails
@@ -51,9 +54,8 @@ import type {
   FsStat,
   Sys,
 } from "@prismshadow/penguin-core/sys";
-import type { ExecResult } from "../ssh/index.js";
-import { shQuote } from "./commands.js";
-import type { RemotePlatform } from "./detect.js";
+import type { ExecResult } from "./spawn.js";
+import { shQuote } from "./quote.js";
 
 /**
  * What this provider needs of a machine: the transport's words (a command, a command with
@@ -70,18 +72,22 @@ export interface SshSysTransport {
 }
 
 export interface SshSysOptions {
-  /** What the machine's shell is; only a POSIX one carries a Sys (see the module doc). */
-  platform: RemotePlatform;
+  /**
+   * What shell the machine's sshd hands us: `posix` for Linux and macOS, `cmd` for a default
+   * Windows OpenSSH install. Only a POSIX one carries a Sys (see the module doc); the provider
+   * cares about the shell, not about the operating system's name.
+   */
+  shell: "posix" | "cmd";
   /** One line per started process, for the caller's log. */
   log?: (line: string) => void;
 }
 
 /**
- * The machine as a Sys. `win32` answers `{}`: a caller that needs anything then fails closed
- * by name, which is the truth — the transport cannot hold a session there.
+ * The machine as a Sys. A `cmd` shell answers `{}`: a caller that needs anything then fails
+ * closed by name, which is the truth — the transport cannot hold a session there.
  */
 export function createSshSys(connection: SshSysTransport, opts: SshSysOptions): Sys {
-  if (opts.platform === "win32") return {};
+  if (opts.shell === "cmd") return {};
   const log = opts.log ?? ((): void => undefined);
   return {
     fs: sshFs(connection),
@@ -90,7 +96,7 @@ export function createSshSys(connection: SshSysTransport, opts: SshSysOptions): 
   };
 }
 
-/** One command's whole answer, the shape `MachineChannel` speaks. */
+/** One command's whole answer, the shape the transport's `exec` returns. */
 interface Run {
   code: number;
   output: string;

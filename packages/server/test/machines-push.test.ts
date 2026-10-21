@@ -4,7 +4,7 @@
  * that the hmr store rides the same stdin as a tarball, that a Windows host gets its own
  * connection and a copied script, that a machine carrying the release with an empty store gets
  * the store rather than a hand-over, and each outcome the page renders. The channel is what a
- * real SshConnection speaks (ssh/connection.ts); here every verb is recorded and
+ * real SshConnection speaks (sys/ssh/connection.ts); here every verb is recorded and
  * answered as the scenario dictates, so what is exercised is what the install asks of a
  * machine, not the far side.
  */
@@ -16,7 +16,7 @@ import * as tar from "tar";
 import { installOnRemote, packHmrState } from "../src/machines/install-server.js";
 import { remoteLayoutFor } from "../src/machines/layout.js";
 import type { MachineChannel, PushPlan } from "../src/machines/install-server.js";
-import type { ExecResult } from "../src/ssh/index.js";
+import type { ExecResult } from "../src/sys/ssh/index.js";
 
 const RELEASE = remoteLayoutFor("release");
 

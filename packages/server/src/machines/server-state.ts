@@ -10,7 +10,7 @@ import { remotePenguin } from "./commands.js";
 import type { RemoteLayout } from "./layout.js";
 import { jsonAnswer } from "./answer.js";
 import type { RemotePlatform } from "./detect.js";
-import type { ExecResult, RemoteTarget } from "../ssh/index.js";
+import type { ExecResult, RemoteTarget } from "../sys/ssh/index.js";
 import type { MachineStatus } from "../machine-status.js";
 
 /**
@@ -82,7 +82,7 @@ export function parseProbe(stdout: string): MachineProbe {
  * `exec` is the caller's channel — the machines service passes the machine's shared shell,
  * so a probe every few minutes does not open a connection every few minutes. Required: the
  * one-shot fallback this parameter used to have was a second mouth to the machine, opened
- * outside the transport seam (see ssh/connection.ts).
+ * outside the transport seam (see sys/ssh/connection.ts).
  */
 export async function probeServerState(
   target: RemoteTarget,
@@ -131,7 +131,7 @@ async function probeIn(
   const result = await exec(target, readServerStateCommand(platform, layout));
   if (result.code !== 0) {
     // stdout as the fallback, not just stderr: over the shared shell the two streams are
-    // merged and stderr arrives empty (ssh/session.ts), so reading only stderr threw away
+    // merged and stderr arrives empty (sys/ssh/session.ts), so reading only stderr threw away
     // the far side's own words — which here are the whole diagnostic, the command being one
     // the machine either ran or could not find.
     const detail = result.stderr.trim() || result.stdout.trim();

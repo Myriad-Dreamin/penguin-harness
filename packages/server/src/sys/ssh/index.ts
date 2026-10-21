@@ -1,8 +1,14 @@
 /**
- * The ssh layer's one door. Everything above it — the machine stack, the platform's terminal
- * adoption — takes what it needs from here; the modules behind it are private, pinned by
- * ssh-boundary.test.ts. Nothing in this layer imports `machines/`: a host is an alias, an
- * account, and maybe a password, and that is all this knows.
+ * The ssh provider's one door: a machine as a `Sys` (`createSshSys`, in sys.ts), and the
+ * transport that Sys is built on. Everything above — the machine stack, the platform's
+ * terminal adoption — takes what it needs from here; the modules behind this door are private,
+ * pinned by ssh-boundary.test.ts. Nothing in this directory imports `machines/`: a host is an
+ * alias, an account, and maybe a password, and that is all this knows.
+ *
+ * It lives under `sys/` beside `host.ts` because it is one of the worlds a caller can work in,
+ * not a part of the machine feature that happens to use it most. `HostSys` is the default; this
+ * is the one whose files are another computer's, whose commands are another shell's, and whose
+ * ports are reached through the session below.
  *
  * THE STRUCTURE. One connection per address: an `ssh -T -D` session whose stdin carries the
  * commands, the scripts and the tarballs, and whose SOCKS port carries every TCP connection to
@@ -14,6 +20,9 @@
  * How each ssh child signs in — keys, or a password this server stores — is login.ts's, and a
  * password refused once is not offered again until it is saved anew.
  */
+export { createSshSys } from "./sys.js";
+export type { SshSysOptions, SshSysTransport } from "./sys.js";
+export { shQuote } from "./quote.js";
 export {
   SshConnection,
   closeAllConnections,

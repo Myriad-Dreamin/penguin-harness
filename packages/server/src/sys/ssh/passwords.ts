@@ -19,7 +19,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { writeSecretFile } from "../secret-file.js";
+import { writeSecretFile } from "../../secret-file.js";
 import { PASSWORD_ENV } from "./login.js";
 
 /** The longest password kept: far past any real one, short enough to refuse a pasted file. */
