@@ -19,8 +19,8 @@
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import type { RemoteTarget } from "../commands.js";
-import { explainSshFailure, sshFailureText } from "../ssh-failure.js";
+import type { RemoteTarget } from "./target.js";
+import { explainSshFailure, sshFailureText } from "./failure.js";
 
 /** The variable the helper prints: set on the ssh child that needs it, and on nothing else. */
 export const PASSWORD_ENV = "PENGUIN_SSH_PASSWORD";

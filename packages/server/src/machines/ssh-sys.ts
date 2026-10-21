@@ -2,9 +2,9 @@
  * A machine as a `Sys`, over the one ssh session the transport already holds to it.
  *
  * Provider, not a second transport: every word still leaves through
- * `transport/connection.ts` — `exec` rides the session's stdin, `forward` rides its SOCKS
+ * `ssh/connection.ts` — `exec` rides the session's stdin, `forward` rides its SOCKS
  * port — so the rules that module states (one connection per machine, nothing outside
- * transport/ opens ssh) are unchanged. What this adds is the interface every other world
+ * ssh/ starts ssh) are unchanged. What this adds is the interface every other world
  * speaks: a caller that works against a `Sys` reaches a machine, a sandbox or the host with
  * one code path.
  *
@@ -51,13 +51,13 @@ import type {
   FsStat,
   Sys,
 } from "@prismshadow/penguin-core/sys";
-import type { ExecResult } from "./transport/index.js";
+import type { ExecResult } from "../ssh/index.js";
 import { shQuote } from "./commands.js";
 import type { RemotePlatform } from "./detect.js";
 
 /**
  * What this provider needs of a machine: the transport's words (a command, a command with
- * input) and its one dial. `MachineConnection` is the real one; the shape is separate so a
+ * input) and its one dial. `SshConnection` is the real one; the shape is separate so a
  * test can hand a scripted transport instead of opening ssh.
  */
 export interface SshSysTransport {

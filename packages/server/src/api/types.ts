@@ -5255,7 +5255,7 @@ export interface MachineInfo {
   local: boolean;
   /**
    * The connection this server holds to it — the one ssh session everything to the machine
-   * rides (machines/transport/ssh-session.ts): a fact about a process on THIS side, which
+   * rides (ssh/session.ts): a fact about a process on THIS side, which
    * outlives the far server. Present means `/server/<id>/api/…` has somewhere to go; whether
    * a server ANSWERS over there is `status`'s word, from the last probe — and the two must not
    * be read for each other: taking the connection for the machine's liveness is the mistake
@@ -5606,7 +5606,7 @@ export type MachineUseRefusal = "unknown-machine" | "self" | "no-image";
 
 /**
  * Why ssh could not get a session to a machine, read from its own diagnostic
- * (machines/ssh-failure.ts); `other` when it printed none of the ones with a fixed meaning.
+ * (ssh/failure.ts); `other` when it printed none of the ones with a fixed meaning.
  */
 export type MachineSshFailure =
   | "host-key-unknown"

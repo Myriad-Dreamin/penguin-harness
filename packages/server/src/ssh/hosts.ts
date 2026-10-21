@@ -11,8 +11,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseHostAliases, parseHostEntries } from "../ssh-config.js";
-import type { SshHostLines } from "../ssh-config.js";
+import { parseHostAliases, parseHostEntries } from "./config.js";
+import type { SshHostLines } from "./config.js";
 
 const SSH_DIR = () => path.join(os.homedir(), ".ssh");
 

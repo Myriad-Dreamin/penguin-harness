@@ -24,14 +24,26 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as tar from "tar";
 import { runInstallScriptCommand, unpackStoreCommand } from "./commands.js";
-import type { RemoteTarget } from "./commands.js";
 import { parseProbeOutput, posixProbe, windowsProbe } from "./detect.js";
 import type { RemoteIdentity, RemotePlatform } from "./detect.js";
 import type { RemoteLayout } from "./layout.js";
-import { connectionTo } from "./transport/index.js";
-import { sshFailureText, sshRefusal } from "./ssh-failure.js";
+import { connectionTo, sshFailureText, sshRefusal } from "../ssh/index.js";
+import type { ExecResult, RemoteTarget } from "../ssh/index.js";
 import { parseReleaseReach, releaseReachCommand } from "./diagnose.js";
-import type { MachineChannel } from "./transport/index.js";
+
+/**
+ * The verbs the installer asks of a host — satisfied by SshConnection, and by a scripted
+ * stand-in in tests. Declared here, where it is consumed: the ssh layer knows nothing of it.
+ */
+export interface MachineChannel {
+  exec(command: string): Promise<ExecResult>;
+  stream(
+    command: string,
+    opts: { input: Buffer; onLine?: (line: string) => void; timeoutMs?: number },
+  ): Promise<ExecResult>;
+  oneShot(command: string, opts?: { timeoutMs?: number; input?: Buffer }): Promise<ExecResult>;
+  copyTo(localFiles: string[], remoteDir: string): Promise<ExecResult>;
+}
 
 /**
  * The hmr state an install replicates — `harness.json` and `store/` of `hmrDir` — as one
@@ -58,7 +70,7 @@ const SLOW_UPLINK_BYTES_PER_SECOND = 32 * 1024;
 /**
  * How long sending `payload` over the session may take before it counts as hung: the bulk
  * default, or longer for a payload that would not cross a slow uplink in it — base64 on the
- * wire (4/3), which is how the session carries stdin (transport/ssh-session.ts).
+ * wire (4/3), which is how the session carries stdin (ssh/session.ts).
  */
 export function transferTimeoutMs(payload: Buffer): number {
   const seconds = (payload.byteLength * 4) / 3 / SLOW_UPLINK_BYTES_PER_SECOND;
@@ -425,7 +437,7 @@ export async function detectRemote(
   const said = posix.stdout.trim();
   // ssh itself got no session — a host key, a key, a name, a route — so there is no shell to
   // ask in either dialect, and a second connection would only wait for the same refusal. The
-  // transport leads such words with what they mean (ssh-session.ts); said again here only
+  // transport leads such words with what they mean (ssh/session.ts); said again here only
   // when they did not come through it.
   const signIn = { password: target.password !== undefined };
   const refused = posix.code !== 0 ? sshRefusal(said, target.alias, signIn) : null;

@@ -11,7 +11,7 @@
  * answer, a log, a job's log or a command line.
  *
  * THE HELPER. `<root>/machines/ssh-askpass/askpass` (`askpass.cmd` on Windows): what ssh runs to
- * ask for a password (transport/login.ts). It holds no secret — it prints the variable that one
+ * ask for a password (login.ts). It holds no secret — it prints the variable that one
  * ssh child's environment carries — and is written once, in a 0700 directory. It answers only
  * what a password answers: a yes/no question (a host key ssh has not seen) or a key's passphrase
  * is declined, which ssh reads as no, so a password is never typed into a question it does not
@@ -20,7 +20,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { writeSecretFile } from "../secret-file.js";
-import { PASSWORD_ENV } from "./transport/index.js";
+import { PASSWORD_ENV } from "./login.js";
 
 /** The longest password kept: far past any real one, short enough to refuse a pasted file. */
 const MAX_PASSWORD = 1024;

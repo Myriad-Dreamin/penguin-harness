@@ -10,7 +10,7 @@
 import http from "node:http";
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { dialThroughSocks } from "../src/machines/transport/socks.js";
+import { dialThroughSocks } from "../src/ssh/socks.js";
 
 /**
  * Just enough SOCKS5 to answer a CONNECT: greet, connect, pipe. A refused port is answered with

@@ -47,12 +47,8 @@ import {
 import type { HmrHost, PlatformBundle } from "@prismshadow/penguin-hmr";
 import { TerminalManager } from "../terminal/manager.js";
 import type { TerminalSession } from "../terminal/session.js";
-import {
-  MACHINE_SESSION_IFACE,
-  SESSION_GROUP,
-  SESSION_SHAPE_ID,
-} from "../machines/transport/index.js";
-import type { HeldSession } from "../machines/transport/index.js";
+import { SSH_SESSION_IFACE, SESSION_GROUP, SESSION_SHAPE_ID } from "../ssh/index.js";
+import type { HeldSession } from "../ssh/index.js";
 import type { RemoteTerminals } from "../machines/terminal-relay.js";
 import { identityFrom } from "../terminal/identity.js";
 import { bindTerminalStream } from "../terminal/stream.js";
@@ -223,8 +219,8 @@ interface ParkedInterfaces extends Interfaces {
   family: string;
   terminal: MembersOf<TerminalSession>;
   /**
-   * Versioned in its NAME (transport/ssh-session.ts SESSION_GROUP): a delivered object runs old
-   * code. Judged by STRUCTURE too, at create(): the closed shape of MachineSession registered
+   * Versioned in its NAME (ssh/session.ts SESSION_GROUP): a delivered object runs old
+   * code. Judged by STRUCTURE too, at create(): the closed shape of SshSession registered
    * beside the sessions (SESSION_SHAPE_ID) must equal this build's, or the group is doomed.
    */
   [SESSION_GROUP]: MembersOf<HeldSession>;
@@ -306,7 +302,7 @@ export const DECLARED_RESOURCES: ParkedInterfaces = {
     "dispose",
   ],
   // A held ssh session to a machine, as the successor's transport claims it back
-  // (machines/transport/ssh-session.ts): commands, the SOCKS port, and its command stream. Every member the adopter calls, for the same reason as `terminal` — and the
+  // (ssh/session.ts): commands, the SOCKS port, and its command stream. Every member the adopter calls, for the same reason as `terminal` — and the
   // group's NAME carries a version, because a member that exists on an old object still runs
   // the old object's code: a behavior change bumps the name, so the old group is disposed
   // here (its sessions closed) and the machines are re-held fresh.
@@ -402,12 +398,12 @@ async function createInner(
     doomedGroups.push("agent");
   }
   // The delivered machine sessions, by structure too: the leaving build registered the
-  // closed shape of MachineSession beside them; equal means the objects answer the calls
+  // closed shape of SshSession beside them; equal means the objects answer the calls
   // this build's transport makes, as this build types them. Anything else dooms the group —
   // the sessions are closed at the commit and every machine is re-held with objects of this
   // build. (A behavior change behind an unchanged shape is the group NAME's version to catch.)
   const handedSessionShape = ctx.resources.claim<string | null>(SESSION_SHAPE_ID);
-  const sessionShape = closedShape(ifaceTable as unknown as IfaceTable, MACHINE_SESSION_IFACE);
+  const sessionShape = closedShape(ifaceTable as unknown as IfaceTable, SSH_SESSION_IFACE);
   if (
     inherited?.[SESSION_GROUP] !== undefined &&
     !doomedGroups.includes(SESSION_GROUP) &&

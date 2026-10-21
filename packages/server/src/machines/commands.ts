@@ -10,7 +10,7 @@
  * the remote's own network.
  *
  * COUNT THE HANDSHAKES. A handshake to a distant or loaded host costs tens of seconds — so
- * everything rides the ONE connection ssh-session.ts holds per machine: commands, the
+ * everything rides the ONE connection ssh/session.ts holds per host: commands, the
  * installer and the store on its stdin, every TCP connection through its SOCKS port. A POSIX
  * install is therefore the installer going in on that stdin, the same shape as the documented
  * `curl … | sh`, which is what lets the scratch directory, the scp and the cleanup
@@ -21,7 +21,7 @@
  *   password or a key passphrase would hang forever with nothing to type into. A machine that
  *   signs in with keys runs in BatchMode, which turns any question into an immediate, readable
  *   failure. A machine with a stored password signs in with that password and nothing else: ssh
- *   takes it from the askpass helper (transport/login.ts), keys are not offered, and one wrong
+ *   takes it from the askpass helper (ssh/login.ts), keys are not offered, and one wrong
  *   answer per method ends the attempt.
  * - **The user override rides the command line, never the config.** `-o User=…` selects the
  *   account for this connection; `~/.ssh/config` is read-only to us.
@@ -42,58 +42,6 @@ export function shQuote(value: string): string {
 export function cmdQuote(value: string): string {
   if (value.includes('"')) throw new Error(`cannot quote for cmd.exe: ${value}`);
   return `"${value}"`;
-}
-
-export interface RemoteTarget {
-  /** Alias as written in ~/.ssh/config — what the user picked. */
-  alias: string;
-  /** Login account. Empty means "whatever ssh resolves", i.e. no -o User override. */
-  user: string;
-  /**
-   * Present when this machine signs in with a password this server stores for its alias. The
-   * password itself is not here: `read` fetches it at the moment a connection opens, and it
-   * reaches ssh only through that child's environment (transport/login.ts).
-   */
-  password?: PasswordLogin;
-}
-
-/** How a machine that signs in with a password gets it to ssh. */
-export interface PasswordLogin {
-  /** The askpass helper: prints the password ssh's child environment carries. Holds no secret. */
-  askpass: string;
-  /** The stored password now; null when none is stored any more. */
-  read: () => string | null;
-}
-
-function connectionOptions(target: RemoteTarget): string[] {
-  const user = target.user === "" ? [] : ["-o", `User=${target.user}`];
-  if (target.password === undefined) {
-    return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", ...user];
-  }
-  // A password, and only a password: BatchMode would refuse to ask the helper, and an account
-  // that locks after a few failures must not be offered keys or asked twice per method. Each
-  // option is spelled even where it is ssh's default, because the command line wins over a
-  // config that says otherwise (`Host *` with `BatchMode yes` or `PasswordAuthentication no`).
-  // No X11 channel: older OpenSSH needs DISPLAY set to ask the helper at all.
-  return [
-    "-o",
-    "BatchMode=no",
-    "-o",
-    "PreferredAuthentications=password,keyboard-interactive",
-    "-o",
-    "PubkeyAuthentication=no",
-    "-o",
-    "PasswordAuthentication=yes",
-    "-o",
-    "KbdInteractiveAuthentication=yes",
-    "-o",
-    "NumberOfPasswordPrompts=1",
-    "-o",
-    "ForwardX11=no",
-    "-o",
-    "ConnectTimeout=10",
-    ...user,
-  ];
 }
 
 /**
@@ -145,20 +93,6 @@ export function remotePenguin(platform: RemotePlatform, layout: RemoteLayout): s
   // and nohup takes the first word as the program — a bare assignment there is "no such
   // command", and the server never starts.
   return `env PENGUIN_HOME="${layout.dataRoot.posix}" PENGUIN_PROFILE=${layout.profile} "${dir}/node/bin/node" "${dir}/lib/dist/penguin-hmr.js"`;
-}
-
-/** `ssh <options> <alias> <remote command>`. */
-export function sshArgs(target: RemoteTarget, remoteCommand: string): string[] {
-  return [...connectionOptions(target), target.alias, remoteCommand];
-}
-
-/**
- * `scp <options> <files…> <alias>:<dir>`. The remote path is NOT quoted: current OpenSSH
- * transfers over SFTP, where the path is taken literally and quotes would become part of the
- * name. Scratch directories are chosen without quotes or shell metacharacters for that reason.
- */
-export function scpArgs(target: RemoteTarget, localFiles: string[], remoteDir: string): string[] {
-  return [...connectionOptions(target), ...localFiles, `${target.alias}:${remoteDir}`];
 }
 
 /**
@@ -305,37 +239,6 @@ export function uninstallCommand(layout: RemoteLayout, removeData: boolean): str
 /** The last lines of that log, for a start that did not answer. */
 export function serverLogTail(layout: RemoteLayout): string {
   return `tail -n 20 "${layout.dataRoot.posix}/server.log" 2>/dev/null`;
-}
-
-// --- tunnelling to that server ---------------------------------------------------------------
-
-/**
- * `ssh -T -D 127.0.0.1:<port> <alias> sh` — the ONE connection to a machine (transport/
- * ssh-session.ts). `-T` because it is a command channel, not a terminal; `sh` rather than a
- * login shell, so a profile's banner cannot land in the first command's output; `-D` so the
- * session doubles as a SOCKS server on a loopback port of ours, through which every TCP
- * connection to the machine is a channel inside this same session. ExitOnForwardFailure turns
- * "local port taken" into an exit instead of a session that silently cannot dial, and the
- * keepalives surface a dead link within a minute.
- */
-export function sessionArgs(target: RemoteTarget, socksPort: number): string[] {
-  if (!Number.isInteger(socksPort) || socksPort < 1 || socksPort > 65535) {
-    throw new Error(`bad port ${socksPort}`);
-  }
-  return [
-    ...connectionOptions(target),
-    "-T",
-    "-o",
-    "ExitOnForwardFailure=yes",
-    "-o",
-    "ServerAliveInterval=15",
-    "-o",
-    "ServerAliveCountMax=4",
-    "-D",
-    `127.0.0.1:${socksPort}`,
-    target.alias,
-    "sh",
-  ];
 }
 
 /** Marker separating the resolved path from the entries in a directory listing. */

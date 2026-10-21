@@ -10,7 +10,7 @@ import {
   renderHostBlock,
   replaceHostBlock,
   validateHostEntry,
-} from "../src/machines/ssh-config.js";
+} from "../src/ssh/config.js";
 
 const AT = new Date("2026-09-05T12:00:00.000Z");
 

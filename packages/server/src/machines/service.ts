@@ -6,8 +6,8 @@
  * machines worked on at once, each job's progress pushed to the page as it goes
  * (`machines_changed`). The job lives in this App's memory; what it achieved is in web.db
  * (MachinesRepo): which machines carry this program, the session held to each, and which
- * Project uses which. Every word to a machine leaves through its MachineConnection
- * (transport/connection.ts) — ONE ssh session per machine, carrying commands on its stdin
+ * Project uses which. Every word to a machine leaves through its SshConnection
+ * (ssh/connection.ts) — ONE ssh session per machine, carrying commands on its stdin
  * and every TCP connection as a channel through its SOCKS port — and every request to a
  * machine's API is made as its admin, with a session this server mints over the ssh access
  * that installed it.
@@ -55,40 +55,43 @@ import type {
 import { readServerLock } from "../lock.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
 import {
-  appendHostBlock,
-  closeAllConnections,
   SESSION_GROUP,
+  SshPasswords,
+  appendHostBlock,
   attachSessionRegistry,
+  closeAllConnections,
   closeConnectionTo,
   connectionTo,
+  explainSshFailure,
+  findHostBlock,
   forgetRefusal,
   heldSessionOf,
   listHostAliases,
   listHostEntries,
+  machineIdentity,
   onSessionChange,
+  passwordProblem,
   passwordSignIn,
   readSshConfig,
-  writeSshConfig,
-} from "./transport/index.js";
-import type {
-  AskpassPlan,
-  ExecResult,
-  MachineConnection,
-  SessionListener,
-  ShellSession,
-} from "./transport/index.js";
-import { SshPasswords, passwordProblem } from "./ssh-passwords.js";
-import {
-  findHostBlock,
-  machineIdentity,
   renderHostBlock,
   replaceHostBlock,
   sameHostEntry,
+  sshRefusal,
   validateHostEntry,
-} from "./ssh-config.js";
-import type { SshHostEntry, SshHostProblem } from "./ssh-config.js";
+  writeSshConfig,
+} from "../ssh/index.js";
+import type {
+  AskpassPlan,
+  ExecResult,
+  RemoteTarget,
+  SessionListener,
+  SshConnection,
+  SshFailureReason,
+  SshHostEntry,
+  SshHostProblem,
+  ShellSession,
+} from "../ssh/index.js";
 import { DIR_LIST_MARK, listDirsCommand, uninstallCommand } from "./commands.js";
-import type { RemoteTarget } from "./commands.js";
 import {
   detectRemote,
   installOnRemote,
@@ -99,8 +102,6 @@ import {
   shippedImage,
 } from "./install-server.js";
 import { parseProbeOutput, posixProbe } from "./detect.js";
-import { explainSshFailure, sshRefusal } from "./ssh-failure.js";
-import type { SshFailureReason } from "./ssh-failure.js";
 import { diagnoseCommand, parseDiagnosis, sshFailureChecks } from "./diagnose.js";
 import type { CarryRelease, PushPlan, RunningBuild } from "./install-server.js";
 import { releaseCache } from "./release-cache.js";
@@ -329,8 +330,8 @@ export interface MachinesEffects {
   /** One command on a machine, over its shared shell. */
   runOn: (target: RemoteTarget, command: string) => Promise<ExecResult>;
   startServer: (target: RemoteTarget, port: number) => ReturnType<typeof startRemoteServer>;
-  /** Brings the one connection to a machine up and HOLDS it (transport/connection.ts). */
-  hold: (target: RemoteTarget) => ReturnType<MachineConnection["hold"]>;
+  /** Brings the one connection to a machine up and HOLDS it (ssh/connection.ts). */
+  hold: (target: RemoteTarget) => ReturnType<SshConnection["hold"]>;
   /** The connection held to a machine, while it is up. */
   session: (address: string) => ShellSession | null;
   /**
@@ -364,7 +365,7 @@ export interface MachinesEffects {
   announce: () => void;
   /** Starts telling `listener` when a held connection comes up or goes down; returns the stop. */
   watchSessions: (listener: SessionListener) => () => void;
-  /** Whether this computer's ssh can sign in with a stored password (transport/login.ts). */
+  /** Whether this computer's ssh can sign in with a stored password (ssh/login.ts). */
   passwordSignIn: () => Promise<AskpassPlan>;
 }
 
@@ -555,7 +556,7 @@ export class MachinesService {
     };
   }
 
-  /** How a target signs in, for reading ssh's words about it (ssh-failure.ts). */
+  /** How a target signs in, for reading ssh's words about it (failure.ts). */
   #signIn(target: RemoteTarget): { password: boolean } {
     return { password: target.password !== undefined };
   }
@@ -1829,7 +1830,7 @@ export class MachinesService {
       return { ok: false, why: "self" };
     }
     if (machine.installed === null) return { ok: false, why: "not-installed" };
-    // A Windows remote has no `sh` to hold a session on (transport/connection.ts), so there
+    // A Windows remote has no `sh` to hold a session on (ssh/connection.ts), so there
     // is no connection to hold, no SOCKS port to dial its API through, and no shell to browse
     // it with. Said here, in one sentence, rather than discovered as a POSIX command failing
     // under cmd.exe in the job's log.
@@ -2426,7 +2427,7 @@ export class MachinesService {
   /**
    * Lets go of every connection THIS generation opened — the platform's dispose effect on a hot
    * push — and every subscription and timer with them: a transient session is closed, a held one
-   * is left in the resource registry for the successor to claim (transport/ssh-session.ts). The
+   * is left in the resource registry for the successor to claim (ssh/session.ts). The
    * record of which machines are kept connected stays, so the successor's start() brings each
    * back. Nothing here closes by a remembered pid: the child handles are this generation's own.
    */

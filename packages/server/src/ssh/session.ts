@@ -38,11 +38,11 @@ import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import net from "node:net";
-import { sessionArgs } from "../commands.js";
-import type { RemoteTarget } from "../commands.js";
+import { sessionArgs } from "./args.js";
+import type { RemoteTarget } from "./target.js";
 import { Interface } from "@prismshadow/penguin-core/kernel";
 import type { Resources } from "@prismshadow/penguin-core/kernel";
-import { sshFailureText } from "../ssh-failure.js";
+import { sshFailureText } from "./failure.js";
 import { noteSignIn, signInFor } from "./login.js";
 import type { SignIn } from "./login.js";
 
@@ -162,12 +162,12 @@ const HOST: ShellHost = { changed: tell, signInFor, noteSignIn };
 /**
  * Held sessions are handed from one platform generation to the next through the runtime's
  * resource registry. The group's NAME carries a version for a behavior change behind unchanged
- * signatures; the closed shape of MachineSession, compared by the platform (hmr/platform.ts),
+ * signatures; the closed shape of SshSession, compared by the platform (hmr/platform.ts),
  * catches a change in signatures — a predecessor whose sessions lack a member is never adopted.
  */
-export const SESSION_GROUP = "machineSession.v2";
+export const SESSION_GROUP = "sshSession.v1";
 export const SESSION_SHAPE_ID = `${SESSION_GROUP}:shape`;
-export const MACHINE_SESSION_IFACE = "@prismshadow/penguin-server#MachineSession";
+export const SSH_SESSION_IFACE = "@prismshadow/penguin-server#SshSession";
 const sessionResourceId = (address: string): string => `${SESSION_GROUP}:${address}`;
 
 /**
@@ -177,7 +177,7 @@ const sessionResourceId = (address: string): string => `${SESSION_GROUP}:${addre
  * never adopted — its sessions are closed with their group and the machines held afresh.
  */
 @Interface()
-export abstract class MachineSession {
+export abstract class SshSession {
   abstract hold(): void;
   abstract held(): boolean;
   /** The latest caller's word on how to reach the machine; read when the next session opens. */
@@ -188,7 +188,7 @@ export abstract class MachineSession {
   abstract session(): ShellSession | null;
   abstract close(): void;
 }
-export type HeldSession = MachineSession;
+export type HeldSession = SshSession;
 
 let registry: Resources | null = null;
 let adoptDelivered = true;
@@ -201,7 +201,7 @@ export function attachSessionRegistry(resources: Resources | null, adoptable = t
   adoptDelivered = adoptable;
 }
 
-class MachineShell implements MachineSession {
+class MachineShell implements SshSession {
   #child: ChildProcessWithoutNullStreams | null = null;
   /** How the child signed in, and whether a command has completed over it since. */
   #signIn: SignIn | null = null;
@@ -491,33 +491,33 @@ class MachineShell implements MachineSession {
 }
 
 /**
- * The sessions, by machine address. Module-level rather than per App, so ordinary work does
+ * The sessions, by address. Module-level rather than per App, so ordinary work does
  * not reopen a connection it already has.
  *
  * A hot push re-imports this module cache-busted (hmr/host.ts), so the map starts empty in the
  * successor. A HELD session is not lost with it: the generation on its way out closes only its
  * transient sessions (closeAllShells, from the platform's dispose effect) and leaves the held ones
  * in the runtime's resource registry, where each was registered as it was held. The successor
- * re-holds every connection the record says was held (machines/service.ts) and, when the platform
- * judged the two builds' MachineSession the same, claims the live session back instead of dialling
+ * re-holds every connection the record says was held — whichever layer above asked to — and, when the platform
+ * judged the two builds' SshSession the same, claims the live session back instead of dialling
  * again; otherwise it opens its own, and the platform closes the predecessor's with their group.
  * A transient session left behind is collected by its idle timer, which belongs to the process
  * rather than to the module that armed it. Nothing is ever killed by a pid read back from a
  * file: a pid is reused by the OS, and the process at a remembered number may by then be anyone's.
  *
  * Typed by the interface, not the class: a session in here may be another build's object, and
- * only what MachineSession declares is known to exist on it.
+ * only what SshSession declares is known to exist on it.
  */
-const sessions = new Map<string, MachineSession>();
+const sessions = new Map<string, SshSession>();
 
-function shellFor(machineAddress: string, target: RemoteTarget): MachineSession {
+function shellFor(machineAddress: string, target: RemoteTarget): SshSession {
   const known = sessions.get(machineAddress);
   if (known !== undefined) {
     known.retarget(target);
     return known;
   }
   const delivered = adoptDelivered
-    ? registry?.claim<MachineSession>(sessionResourceId(machineAddress))
+    ? registry?.claim<SshSession>(sessionResourceId(machineAddress))
     : undefined;
   if (delivered === undefined) {
     const shell = new MachineShell(machineAddress, target);

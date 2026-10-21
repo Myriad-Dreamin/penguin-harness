@@ -204,7 +204,7 @@ export function sshFailureText(said: string, alias: string, signIn: SshSignIn = 
 
 /**
  * ssh's words as a person should read them, led by what they mean — whether or not the
- * transport led them already (transport/ssh-session.ts does, for a session that died) — or
+ * transport led them already (session.ts does, for a session that died) — or
  * null when they are not one of ssh's fixed diagnostics.
  */
 export function sshRefusal(said: string, alias: string, signIn: SshSignIn = {}): string | null {

@@ -19,8 +19,8 @@ import path from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Sys } from "@prismshadow/penguin-core/sys";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MachineConnection } from "../src/machines/transport/index.js";
-import type { ExecResult } from "../src/machines/transport/index.js";
+import { SshConnection } from "../src/ssh/index.js";
+import type { ExecResult } from "../src/ssh/index.js";
 import { createSshSys } from "../src/machines/ssh-sys.js";
 import type { SshSysTransport } from "../src/machines/ssh-sys.js";
 import { makeTempRoot, removeTempRoot } from "./helpers.js";
@@ -94,7 +94,7 @@ it("a win32 machine carries no Sys at all", () => {
 
 it("the real connection is one of these", () => {
   // Compile-time pin: the transport the product hands this provider must stay assignable.
-  const real: SshSysTransport = new MachineConnection({ alias: "machine", user: "test" });
+  const real: SshSysTransport = new SshConnection({ alias: "machine", user: "test" });
   expect(typeof real.dial).toBe("function");
 });
 

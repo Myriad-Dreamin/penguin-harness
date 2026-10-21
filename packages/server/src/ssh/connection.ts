@@ -1,37 +1,35 @@
 /**
- * One mouth per machine, and behind it ONE CONNECTION: every word this server speaks to a
- * machine leaves through the MachineConnection for that machine's address, and everything
- * it carries rides the single `ssh -T -D` session ssh-session.ts holds — a probe as a
- * command on its stdin, an installer or a tarball as a heredoc on the same stdin, the
- * machine's API as a channel dialled through the session's SOCKS port (socks.ts). There is
- * no forward process, no one-shot ssh per step, no scp: nothing opens a second connection
- * to a machine, however many callers ask and however often, because there is nothing that
- * could.
+ * One mouth per host, and behind it ONE CONNECTION: every word this server speaks to a host
+ * leaves through the SshConnection for that host's address, and everything it carries rides
+ * the single `ssh -T -D` session session.ts holds — a probe as a command on its stdin, an
+ * installer or a tarball as a heredoc on the same stdin, the host's own server as a channel
+ * dialled through the session's SOCKS port (socks.ts). Nothing opens a second connection to a
+ * host, however many callers ask and however often, because there is nothing that could.
  *
- * The guarantee is AUTHORITY first — nothing outside machines/transport/ may open ssh, and
- * machines-transport-boundary.test.ts pins that — and then STRUCTURE: the connection is one,
- * and a second ask queues behind the first. The incident behind this seam (#561) grew where
- * it was absent — four call sites each opened their own channel, each judged the machine's
- * liveness from its own channel's state, and the judgements disagreed.
+ * The guarantee is AUTHORITY first — nothing outside ssh/ may start ssh, and ssh-boundary.test.ts
+ * pins that — and then STRUCTURE: the connection is one, and a second ask queues behind the
+ * first. The incident behind this seam (#561) grew where it was absent — four call sites each
+ * opened their own channel, each judged the machine's liveness from its own channel's state,
+ * and the judgements disagreed.
  *
- * THE ONE EXCEPTION is a Windows remote: sshd there hands commands to cmd.exe, and there is no
+ * THE ONE EXCEPTION is a Windows host: sshd there hands commands to cmd.exe, and there is no
  * `sh` to hold a session on. `oneShot` and `copyTo` exist for that host alone — an install
- * runs the PowerShell installer on its own connection — and a Windows machine cannot be
- * connected (no session, no SOCKS, no API) until it has a shell to hold. Serialised per
- * machine all the same (lane.ts).
+ * runs the PowerShell installer on its own connection — and a Windows host cannot be connected
+ * (no session, no SOCKS) until it has a shell to hold. Serialised per host all the same
+ * (lane.ts).
  *
- * The handle is stateless on purpose: per-machine state stays in ssh-session.ts, keyed by
- * address, so holding a MachineConnection costs nothing and dropping one leaks nothing. The
- * address is always `ssh:<alias>` — the one spelling every registry in machines/ uses.
+ * The handle is stateless on purpose: per-host state stays in session.ts, keyed by address, so
+ * holding a SshConnection costs nothing and dropping one leaks nothing. The address is always
+ * `ssh:<alias>` — the one spelling every registry above this layer uses.
  *
- * LIFETIME. A session a passing command opened is transient and idles out; one a connect
- * asked to HOLD is kept — reopened by the transport itself when it drops, until a disconnect
- * closes it. Sessions belong to the generation that opened them: a platform generation on its
- * way out closes all of its own (closeAllConnections), and the next re-holds what the record
- * says was held. No session is ever closed by a pid remembered from before.
+ * LIFETIME. A session a passing command opened is transient and idles out; one a caller asked
+ * to HOLD is kept — reopened by the session itself when it drops, until a close. Sessions
+ * belong to the generation that opened them: a platform generation on its way out closes all of
+ * its own (closeAllConnections), and the next re-holds what the record says was held. No
+ * session is ever closed by a pid remembered from before.
  */
 import type net from "node:net";
-import { run, runWithInput } from "./exec.js";
+import { run, runWithInput } from "./spawn.js";
 import {
   closeAllShells,
   closeShell,
@@ -40,40 +38,26 @@ import {
   openShell,
   runOnShell,
   sessionOf,
-} from "./ssh-session.js";
-import type { ShellSession } from "./ssh-session.js";
+} from "./session.js";
+import type { ShellSession } from "./session.js";
 import { dialThroughSocks } from "./socks.js";
 import { inLane } from "./lane.js";
 import { noteSignIn, signInFor } from "./login.js";
-import { scpArgs, sshArgs } from "../commands.js";
-import type { ExecResult } from "./exec.js";
-import type { RemoteTarget } from "../commands.js";
-
-/**
- * The verbs a caller speaks to a machine with — what install-server.ts is written against,
- * so a test can hand it a scripted channel instead of a real one.
- */
-export interface MachineChannel {
-  exec(command: string): Promise<ExecResult>;
-  stream(
-    command: string,
-    opts: { input: Buffer; onLine?: (line: string) => void; timeoutMs?: number },
-  ): Promise<ExecResult>;
-  oneShot(command: string, opts?: { timeoutMs?: number; input?: Buffer }): Promise<ExecResult>;
-  copyTo(localFiles: string[], remoteDir: string): Promise<ExecResult>;
-}
+import { scpArgs, sshArgs } from "./args.js";
+import type { ExecResult } from "./spawn.js";
+import type { RemoteTarget } from "./target.js";
 
 /** Enough for an installer to download a release, or a store to cross a slow link. */
 const BULK_TIMEOUT_MS = 10 * 60_000;
 
-export class MachineConnection implements MachineChannel {
+export class SshConnection {
   readonly address: string;
 
   constructor(readonly target: RemoteTarget) {
     this.address = `ssh:${target.alias}`;
   }
 
-  /** A command over the session — queued, output merged (ssh-session.ts), in ExecResult shape. */
+  /** A command over the session — queued, output merged (session.ts), in ExecResult shape. */
   async exec(command: string): Promise<ExecResult> {
     const result = await runOnShell(this.address, this.target, command);
     return { code: result.code, stdout: result.output, stderr: "", timedOut: false };
@@ -168,8 +152,8 @@ export class MachineConnection implements MachineChannel {
 }
 
 /** The machine's connection handle. Cheap: state lives in the per-address registry. */
-export function connectionTo(target: RemoteTarget): MachineConnection {
-  return new MachineConnection(target);
+export function connectionTo(target: RemoteTarget): SshConnection {
+  return new SshConnection(target);
 }
 
 /**

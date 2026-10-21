@@ -46,7 +46,7 @@ import {
   diagnoseCommand,
   parseDiagnosis,
 } from "../src/machines/diagnose.js";
-import type { ExecResult } from "../src/machines/transport/index.js";
+import type { ExecResult } from "../src/ssh/index.js";
 import { makeTempRoot, waitFor } from "./helpers.js";
 
 const DEV = remoteLayoutFor("dev");
