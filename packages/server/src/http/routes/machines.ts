@@ -96,12 +96,13 @@ export function machinesRoutes(deps: MachinesRouteDeps): Hono<AppEnv> {
 
   /**
    * Every connected machine's own events, on ONE stream per tab — each machine's `/api/events`
-   * read over the forward held to it (machines/aggregate-stream.ts, and docs § "One event
-   * stream per machine"). Each event carries the machine it came from; `last-event-id` is
-   * answered by the machine that minted it, resumed with that id. The stream opens at once and
-   * the machines attach as they are reached, so a slow machine cannot hold the tab's stream up;
-   * the machines are read again on each of the stream's beats, so one connected after the tab
-   * opened joins the stream the tab already holds.
+   * asked for on that machine's own API socket, through the forward held to it
+   * (machines/machine-socket.ts, machines/aggregate-stream.ts; docs § "Every machine's events
+   * on the page's one stream"). Each event carries the machine it came from; `last-event-id`
+   * is answered by the machine that minted it, resumed with that id. The stream opens at once
+   * and the machines attach as they are reached, so a slow machine cannot hold the tab's
+   * stream up; the machines are read again on each of the stream's beats, so one connected
+   * after the tab opened joins the stream the tab already holds.
    */
   app.get("/events", (c) => {
     const projectId = requireValidId(c, "projectId");
