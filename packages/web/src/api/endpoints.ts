@@ -2351,11 +2351,14 @@ export const getOrgChart = (projectId: string, orgId: string) =>
 export const listOrgRoadmaps = (
   projectId: string,
   orgId: string,
-  filter: { channel?: string; status?: string } = {},
+  filter: { channel?: string; status?: string; items?: boolean } = {},
 ) => {
   const q = new URLSearchParams();
   if (filter.channel !== undefined) q.set("channel", filter.channel);
   if (filter.status !== undefined) q.set("status", filter.status);
+  // A list read for its rows asks for no items: the sidebar and a room's column never look at
+  // them, and an organization's every brief in one answer is what a hub kept re-reading.
+  if (filter.items === false) q.set("items", "0");
   const qs = q.toString();
   return apiFetch<{ roadmaps: OrgRoadmapItem[] }>(
     `${orgBase(projectId, orgId)}/roadmaps${qs === "" ? "" : `?${qs}`}`,

@@ -42,6 +42,14 @@ export interface MachineSocketTarget {
 /** How long a refused handshake is remembered before the machine is asked again. */
 const REFUSED_FOR_MS = 60_000;
 /**
+ * How long a dial that FAILED (anything but an answered refusal) is remembered. Without it every
+ * stream re-dials a machine whose ssh channel is gone and hears the same instant failure: on
+ * 2026-10-21 that turned one broken channel into a storm of failed reads on the hub. Inside the
+ * window `socketFor` dials nothing and answers 503 with `Retry-After`; a dial that succeeds
+ * clears it.
+ */
+export const DIAL_FAILED_FOR_MS = 5_000;
+/**
  * A dial that has neither opened nor failed after this is torn down. It covers the SOCKS
  * channel and the upgrade both: a machine that accepts the connection and never answers the
  * upgrade would otherwise hold every later stream to it behind one promise.
@@ -49,8 +57,23 @@ const REFUSED_FOR_MS = 60_000;
 export const SOCKET_DIAL_TIMEOUT_MS = 10_000;
 
 /** Why no stream could be relayed, as the proxy answers it. */
-export function unavailable(status: number, code: string, message: string): Response {
-  return Response.json({ error: { code, message } }, { status });
+export function unavailable(
+  status: number,
+  code: string,
+  message: string,
+  headers: Record<string, string> = {},
+): Response {
+  return Response.json({ error: { code, message } }, { status, headers });
+}
+
+/** What a caller gets while a failed dial's cooldown keeps this server from dialling again. */
+export function notConnectedAnswer(machineId: string, retryAfterS: number): Response {
+  return unavailable(
+    503,
+    "not_connected",
+    `No API socket to ${machineId}: its last dial failed; retry in ${retryAfterS} s.`,
+    { "retry-after": String(retryAfterS) },
+  );
 }
 
 /** A machine that answered the socket handshake with a status: its build has no socket, or it refused this server. */
@@ -220,17 +243,21 @@ export function machineFaultInto(errors: Errors): MachineFault {
 export class MachineSockets {
   readonly #sockets = new Map<string, CachedSocket>();
   readonly #refusedUntil = new Map<string, { until: number; status: number }>();
+  /** Until when a failed dial keeps this machine from being dialled again (DIAL_FAILED_FOR_MS). */
+  readonly #failedUntil = new Map<string, number>();
   readonly #facts = new Map<string, MachineSocketFact>();
   /** The failure each machine's dials have been repeating since its last good one. */
   readonly #failing = new Map<string, string>();
   readonly #dialTimeoutMs: number;
+  readonly #dialFailedForMs: number;
   readonly #fault: MachineFault | undefined;
 
   constructor(
     private readonly log: (line: string) => void,
-    options: { dialTimeoutMs?: number; fault?: MachineFault } = {},
+    options: { dialTimeoutMs?: number; dialFailedForMs?: number; fault?: MachineFault } = {},
   ) {
     this.#dialTimeoutMs = options.dialTimeoutMs ?? SOCKET_DIAL_TIMEOUT_MS;
+    this.#dialFailedForMs = options.dialFailedForMs ?? DIAL_FAILED_FOR_MS;
     this.#fault = options.fault;
   }
 
@@ -261,6 +288,20 @@ export class MachineSockets {
     if (refused !== undefined && Date.now() < refused.until) {
       return { answer: refusedAnswer(machineId, refused.status) };
     }
+    // A dial that failed a moment ago says the channel is still gone: dialling again per stream
+    // would only repeat it (see DIAL_FAILED_FOR_MS), so the caller is told when to come back.
+    const failedUntil = this.#failedUntil.get(machineId);
+    if (failedUntil !== undefined) {
+      if (Date.now() < failedUntil) {
+        return {
+          answer: notConnectedAnswer(
+            machineId,
+            Math.max(1, Math.ceil(this.#dialFailedForMs / 1_000)),
+          ),
+        };
+      }
+      this.#failedUntil.delete(machineId);
+    }
     let cached = this.#sockets.get(machineId);
     if (cached !== undefined && cached.session !== target.session) {
       // The transport reopened the ssh session: whatever was dialled over the old one is
@@ -284,6 +325,7 @@ export class MachineSockets {
       entry.pending.then(
         (socket) => {
           this.#refusedUntil.delete(machineId);
+          this.#failedUntil.delete(machineId);
           this.#failing.delete(machineId);
           this.#state(machineId, "connected");
           socket.onClose(() => {
@@ -299,7 +341,8 @@ export class MachineSockets {
           if (this.#sockets.get(machineId) === entry) this.#sockets.delete(machineId);
           // An ANSWERED refusal is remembered for a while (its build has no socket, or it
           // turned this server away): asking again on every stream would only repeat it. A
-          // dial that failed says nothing about the build; the next stream tries again.
+          // dial that failed says nothing about the build, but it does say the channel is not
+          // carrying anything now: it is remembered for a short cooldown, then dialled again.
           if (err instanceof HandshakeRefused) {
             this.#failing.delete(machineId);
             this.#refusedUntil.set(machineId, {
@@ -313,6 +356,9 @@ export class MachineSockets {
             this.#fault?.({ machineId, code: "machine_socket_refused", err });
           } else {
             const detail = err instanceof Error ? err.message : String(err);
+            // Not an answer, so nothing says the channel works: the next stream waits the
+            // cooldown out instead of dialling into the same failure at once.
+            this.#failedUntil.set(machineId, Date.now() + this.#dialFailedForMs);
             this.#state(machineId, "failed", detail);
             // A machine that stays down is dialled again and again (the event hub keeps dialling
             // for a tab that holds it): the same failure is logged and filed once per run, and

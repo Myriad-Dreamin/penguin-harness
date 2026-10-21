@@ -30,7 +30,7 @@ export function useChannelRoadmap(
     if (!enabled) return;
     let live = true;
     api
-      .listOrgRoadmaps(projectId, orgId, { channel: channelId })
+      .listOrgRoadmaps(projectId, orgId, { channel: channelId, items: false })
       .then((res) => {
         const r = res.roadmaps.at(-1);
         if (live && r !== undefined) setFound({ key, number: r.number, name: r.name });

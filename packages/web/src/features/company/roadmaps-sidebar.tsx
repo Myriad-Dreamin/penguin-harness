@@ -203,7 +203,7 @@ export function RoadmapsSidebar({
     if (!enabled) return;
     let live = true;
     api
-      .listOrgRoadmaps(projectId, orgId)
+      .listOrgRoadmaps(projectId, orgId, { items: false })
       .then((res) => {
         if (!live) return;
         setRoadmaps(res.roadmaps);

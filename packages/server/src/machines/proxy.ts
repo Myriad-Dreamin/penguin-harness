@@ -96,6 +96,16 @@ const cancelledResponse = (): Response =>
 export const FORWARD_ANSWER_TIMEOUT_MS = 15_000;
 
 /**
+ * How long a machine is spared another forward after one to it failed. A machine whose ssh
+ * channel is gone fails EVERY attempt at once (the transport answers before anything is dialled
+ * over there), and a caller that re-issues on failure turns one broken channel into a storm: on
+ * 2026-10-21 a hub sent 5,160 failed roadmap reads in six minutes, 2,248 of them in one, each
+ * about a millisecond apart. Inside the window this proxy answers the reason without resolving
+ * the target at all; the first forward that reaches the machine clears it.
+ */
+export const FORWARD_COOLDOWN_MS = 5_000;
+
+/**
  * Forwards one request to the machine's server and streams the answer back — both
  * directions are pipes, so SSE and long downloads flow as they arrive. The socket is the
  * agent's: a dial through the machine's session (transport/connection.ts). node:http rather
@@ -271,15 +281,44 @@ export function machinesProxy(
     trustProxy?: boolean;
     fault?: MachineFault;
   } = {},
-  /** Test hook: how long a forwarded read may wait for its answer (FORWARD_ANSWER_TIMEOUT_MS). */
-  options: { answerTimeoutMs?: number } = {},
+  /**
+   * Test hooks: how long a forwarded read may wait for its answer (FORWARD_ANSWER_TIMEOUT_MS),
+   * and how long a machine a forward failed to is left alone (FORWARD_COOLDOWN_MS).
+   */
+  options: { answerTimeoutMs?: number; cooldownMs?: number } = {},
 ): (request: Request) => Promise<Response | null> {
   const answerTimeoutMs = options.answerTimeoutMs ?? FORWARD_ANSWER_TIMEOUT_MS;
+  const cooldownMs = options.cooldownMs ?? FORWARD_COOLDOWN_MS;
+  const retryAfterS = Math.max(1, Math.ceil(cooldownMs / 1_000));
+  /** When each machine's forward failures stop being retried here (see FORWARD_COOLDOWN_MS). */
+  const coolingUntil = new Map<string, number>();
   const relay = new MachineSocketRelay(log, shared);
+  // What each forward learned, and the cooldown it starts or clears: an answer means the machine
+  // is reachable, a failure means dialling it again this instant would only repeat the failure.
+  // A caller that gives up is neither (proxyThroughSession reports nothing for it).
+  const outcome: ProxyReport = (machineId, result) => {
+    if (result.ok) coolingUntil.delete(machineId);
+    else coolingUntil.set(machineId, Date.now() + cooldownMs);
+    report?.(machineId, result);
+  };
   return async (request) => {
     const url = new URL(request.url);
     const path = parseProxyPath(url.pathname);
     if (path === null) return null;
+    const until = coolingUntil.get(path.machineId);
+    if (until !== undefined && Date.now() < until) {
+      // Not resolved, not dialled: the machine just failed, and the caller is told when to come
+      // back instead of being handed the same instant failure as fast as it can ask.
+      return Response.json(
+        {
+          error: {
+            code: "not_connected",
+            message: `No live forward to ${path.machineId}: its last forward failed; retry in ${retryAfterS} s.`,
+          },
+        },
+        { status: 503, headers: { "retry-after": String(retryAfterS) } },
+      );
+    }
     const target = await resolve(path.machineId);
     if (target === null) {
       return Response.json(
@@ -304,7 +343,7 @@ export function machinesProxy(
         path: `${path.remotePath}${url.search}`,
         lastEventId: request.headers.get("last-event-id"),
       });
-      if (relayed.status < 500) report?.(path.machineId, { ok: true });
+      if (relayed.status < 500) outcome(path.machineId, { ok: true });
       return relayed;
     }
     return proxyThroughSession(
@@ -315,7 +354,7 @@ export function machinesProxy(
       target.cookie,
       answerTimeoutMs,
       shared.trustProxy === true,
-      report,
+      outcome,
     );
   };
 }

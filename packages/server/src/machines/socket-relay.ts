@@ -39,12 +39,23 @@ import type { MachineFault, MachineSocket, MachineSocketTarget, Sink } from "./m
 export { SOCKET_DIAL_TIMEOUT_MS, STREAM_OPEN_TIMEOUT_MS };
 export type { MachineSocketTarget };
 
+/**
+ * Streams one socket may leave unopened in a row before the socket is torn down. The first
+ * cancels only that stream: one slow endpoint on an otherwise serving socket must not fail
+ * every other stream riding it (2026-10-21: the hub tore a machine's whole socket down at 8 s
+ * because one Session stream had not opened, and every request in flight died with it). A
+ * second in a row says the socket itself is what is not serving, and it is replaced.
+ */
+export const UNOPENED_BEFORE_TEARDOWN = 2;
+
 export interface MachineSocketRelayOptions extends MachineEventHubOptions {
   /** The shared socket cache; one is made when the relay is used on its own (tests). */
   sockets?: MachineSockets;
   /** The shared event hub; one is made over the same cache when not given. */
   events?: MachineEventHub;
   dialTimeoutMs?: number;
+  /** How long a failed dial keeps the machine from being dialled again (DIAL_FAILED_FOR_MS). */
+  dialFailedForMs?: number;
 }
 
 /**
@@ -56,6 +67,8 @@ export class MachineSocketRelay {
   readonly #events: MachineEventHub;
   readonly #openTimeoutMs: number;
   readonly #fault: MachineFault | undefined;
+  /** Streams left unopened in a row, per socket; the first that opens clears it. */
+  readonly #unopened = new WeakMap<MachineSocket, number>();
 
   constructor(
     private readonly log: (line: string) => void,
@@ -65,6 +78,7 @@ export class MachineSocketRelay {
       options.sockets ??
       new MachineSockets(log, {
         dialTimeoutMs: options.dialTimeoutMs,
+        dialFailedForMs: options.dialFailedForMs,
         ...(options.fault !== undefined ? { fault: options.fault } : {}),
       });
     this.#events = options.events ?? new MachineEventHub(this.#sockets, log, options);
@@ -102,10 +116,19 @@ export class MachineSocketRelay {
     const headers: Record<string, string> = { accept: "text/event-stream" };
     if (request.lastEventId !== null) headers["last-event-id"] = request.lastEventId;
     return this.#respond(machineId, (base) => {
-      // Issued, but neither opened nor answered nor ended in time: the socket is not serving.
+      // Issued, but neither opened nor answered nor ended in time: this stream is not being
+      // served. Cancel it — the other streams on this socket were doing nothing wrong — and
+      // only a second stream in a row that never opens condemns the socket itself.
       const opening = setTimeout(() => {
+        const unopened = (this.#unopened.get(socket) ?? 0) + 1;
+        this.#unopened.set(socket, unopened);
+        const teardown = unopened >= UNOPENED_BEFORE_TEARDOWN;
         this.log(
-          `[machines] stream ${request.path} on ${machineId}: not opened in ${this.#openTimeoutMs} ms over a socket that is alive; terminating the socket, the next stream dials again`,
+          `[machines] stream ${request.path} on ${machineId}: not opened in ${this.#openTimeoutMs} ms over a socket that is alive; ${
+            teardown
+              ? `${unopened} streams in a row never opened; terminating the socket, the next stream dials again`
+              : "cancelled that stream only, the socket stays up"
+          }`,
         );
         this.#fault?.({
           machineId,
@@ -113,11 +136,18 @@ export class MachineSocketRelay {
           err: `${request.path} not opened in ${this.#openTimeoutMs} ms over a socket that is alive`,
         });
         socket.cancel(id);
-        socket.terminate();
+        if (teardown) {
+          this.#unopened.delete(socket);
+          socket.terminate();
+        }
         base.onResponse(504, {
           error: {
             code: "machine_stream_not_opened",
-            message: `${machineId} did not open ${request.path} in ${this.#openTimeoutMs} ms; its socket was torn down and the next attempt dials again.`,
+            message: `${machineId} did not open ${request.path} in ${this.#openTimeoutMs} ms; ${
+              teardown
+                ? "its socket was torn down and the next attempt dials again"
+                : "that stream was cancelled and the socket kept"
+            }.`,
           },
         });
       }, this.#openTimeoutMs);
@@ -126,6 +156,7 @@ export class MachineSocketRelay {
         ...base,
         onStart: (status) => {
           clearTimeout(opening);
+          this.#unopened.delete(socket);
           base.onStart(status);
         },
       };

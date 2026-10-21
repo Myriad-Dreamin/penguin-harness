@@ -4,7 +4,9 @@
  * reads; every write is a roadmap Action, run through company-proposals' Action registry
  * (`POST …/actions/:key/runs`, builtin-actions.ts).
  *
- *   GET    /[?channel=&status=]      the roadmaps (a room's, for the channel page's side panel)
+ *   GET    /[?channel=&status=&items=0]  the roadmaps (a room's, for the channel page's side
+ *                                   panel); items=0 leaves their items out, for a list read only
+ *                                   for its rows
  *   GET    /:number                  one roadmap: record, body, items, delegations, events
  *
  * Every route answers 404 while company mode is off. A read from inside a Session carries
@@ -65,10 +67,13 @@ export function roadmapRoutes(service: RoadmapService): Hono {
     const [p, o] = orgOf(c);
     const channel = c.req.query("channel");
     const status = c.req.query("status");
+    // `items=0`: the caller wants the rows, not every brief under them.
+    const items = c.req.query("items");
     return c.json(
       await service.list(p, o, actorOfQuery(c), {
         ...(channel ? { channel } : {}),
         ...(status ? { status } : {}),
+        ...(items === "0" ? { items: false } : {}),
       }),
     );
   });

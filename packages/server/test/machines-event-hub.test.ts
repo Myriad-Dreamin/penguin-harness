@@ -194,7 +194,9 @@ function setup() {
   const faults: { machineId: string; code: string }[] = [];
   const fault = ({ machineId, code }: { machineId: string; code: string }) =>
     void faults.push({ machineId, code });
-  const sockets = new MachineSockets(log, { dialTimeoutMs: 250, fault });
+  // A failed dial is remembered for a moment (machine-sockets.ts): tens of ms here, as every
+  // other clock in this rig, so a held tab's re-dials still reach the machine while it is dark.
+  const sockets = new MachineSockets(log, { dialTimeoutMs: 250, dialFailedForMs: 50, fault });
   const hub = new MachineEventHub(sockets, log, {
     heartbeatMs: 40,
     openTimeoutMs: 250,
@@ -445,12 +447,15 @@ describe("the machine event hub", () => {
     // The link goes down: the socket drops, and every dial after it times out unanswered.
     m.goDark();
     await waitUntil(() => failures().length > 0);
-    // A reader that re-issues on its own (one machine's stream) is still answered at once...
+    // A reader that re-issues on its own (one machine's stream) is still answered at once —
+    // with the dial's failure, or with the cooldown a dial that just failed put it in.
     const own = await relay.stream("mA", targetOf(m.port), {
       path: "/api/events",
       lastEventId: null,
     });
-    expect(own.status).toBe(502);
+    expect([502, 503]).toContain(own.status);
+    const ownBody = (await own.json()) as { error: { code: string } };
+    expect(["machine_socket_unavailable", "not_connected"]).toContain(ownBody.error.code);
     // ...while the tab's hold keeps the hub dialling: well past one dial deadline, more dials
     // arrive, and the same failure is logged once for the whole run, not once per dial.
     const dialsWhileDark = m.upgrades;

@@ -132,6 +132,26 @@ describe("the routes", () => {
     expect(((await a.get(`${BASE}?status=established`)).body.roadmaps as unknown[]).length).toBe(0);
   });
 
+  it("leave the items out of a list read with items=0, and keep them otherwise", async () => {
+    // The app's sidebar and a room's column read the list for its rows; every item's brief in
+    // the same answer made the list 986 KB uncompressed on 2026-10-21.
+    await a.run("roadmap.open", "organization", open);
+    await a.run("roadmap.draft", "roadmap:1", {
+      body: "## Why\n",
+      items: [
+        { key: "a", kind: "proposal", title: "T", brief: "B", owner: "acme_dev", cites: ["Why"] },
+      ],
+    });
+    const full = (await a.get(BASE)).body.roadmaps as Array<{ items: unknown[] }>;
+    expect(full[0]!.items).toHaveLength(1);
+    const slim = (await a.get(`${BASE}?items=0`)).body.roadmaps as Array<{ items: unknown[] }>;
+    expect(slim[0]!.items).toEqual([]);
+    // Columns the app draws rows from are still there.
+    expect((await a.get(`${BASE}?items=0`)).status).toBe(200);
+    const one = await a.get(`${BASE}/1`);
+    expect((one.body.items as unknown[]).length).toBe(1); // one roadmap always answers its items
+  });
+
   it("are read routes alone", () => {
     const routes = roadmapRoutes(w.service()).routes.map((r) => `${r.method} ${r.path}`);
     expect(routes.filter((r) => !r.startsWith("GET "))).toEqual([]);

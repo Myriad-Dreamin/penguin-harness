@@ -19,11 +19,16 @@ import net from "node:net";
 /**
  * How long the SOCKS handshake itself may take; the request behind it sets its own after.
  * Opening a channel is one round trip over a session already up, so this is generous — and
- * it stays under the host's proxy answer deadline (FORWARD_ANSWER_TIMEOUT_MS,
+ * it stays under the host's proxy answer deadline (FORWARD_ANSWER_TIMEOUT_MS = 15_000,
  * packages/server/src/machines/proxy.ts), so a stalled session is answered in
  * this layer's own words before anything above it gives up.
+ *
+ * 12 s rather than 8: a session that is slow for a few seconds — a loaded machine, a link
+ * that stalls and recovers — used to be given up on at 8 s, and every attempt failed the
+ * same way while the session was still coming back (2026-10-21: the hub's whole read storm
+ * carried this deadline). 3 s of headroom under the answer deadline is what is left.
  */
-export const SOCKS_HANDSHAKE_TIMEOUT_MS = 8_000;
+export const SOCKS_HANDSHAKE_TIMEOUT_MS = 12_000;
 
 /** Dials `host:port` as seen from the machine, through the session's SOCKS port. */
 export function dialThroughSocks(

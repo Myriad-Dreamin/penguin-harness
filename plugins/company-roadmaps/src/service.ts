@@ -255,11 +255,18 @@ export class RoadmapService {
   // Reads
   // -------------------------------------------------------------------------
 
+  /**
+   * The roadmaps, each with its items unless `items: false`. A list is read for its rows — the
+   * app's sidebar and a room's column want a name, a status and what moved last — while every
+   * item's brief, cites and approvals ride along by default: the whole organization's draft
+   * items in one answer is what the hub re-read through the proxy (2026-10-21: 986 KB, no
+   * compression). A single roadmap's items are always in `get`.
+   */
   async list(
     projectId: string,
     orgId: string,
     actor: OrgActor,
-    filter: { channel?: string; status?: string } = {},
+    filter: { channel?: string; status?: string; items?: boolean } = {},
   ): Promise<{ roadmaps: RoadmapView[] }> {
     const { store } = await this.open(projectId, orgId, actor);
     const roadmaps = store
@@ -267,7 +274,10 @@ export class RoadmapService {
         ...(filter.channel !== undefined ? { channel: filter.channel } : {}),
         ...(filter.status !== undefined ? { status: filter.status as RoadmapStatus } : {}),
       })
-      .map((r) => this.view(r));
+      .map((r) => {
+        const view = this.view(r);
+        return filter.items === false ? { ...view, items: [] } : view;
+      });
     return { roadmaps };
   }
 

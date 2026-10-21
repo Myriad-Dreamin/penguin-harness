@@ -283,6 +283,107 @@ describe("the report", () => {
   });
 });
 
+describe("a machine a forward failed to", () => {
+  const request = (machineId: string) =>
+    new Request(`http://app.local${SERVER_PROXY_PREFIX}${machineId}/api/me`);
+
+  /** An agent that fails every dial while `state.broken`, and dials `port` when it is not. */
+  function agentOf(state: { broken: boolean }, port: number): http.Agent {
+    const agent = new http.Agent();
+    (agent as unknown as { createConnection: unknown }).createConnection = (
+      options: net.NetConnectOpts,
+      callback: (err: Error | null, socket?: net.Socket) => void,
+    ) => {
+      if (state.broken) {
+        setImmediate(() =>
+          callback(
+            new Error(
+              "the session closed the channel to 127.0.0.1:7364 before answering — nothing is listening there, or the session is going down",
+            ),
+          ),
+        );
+        return undefined;
+      }
+      const socket = net.connect(options);
+      socket.once("connect", () => callback(null, socket));
+      socket.once("error", (err) => callback(err));
+      return socket;
+    };
+    return agent;
+  }
+
+  it("is not resolved again inside the cooldown: the next request is answered 503 with Retry-After", async () => {
+    // The storm of 2026-10-21: the ssh channel was gone, so every attempt failed in about a
+    // millisecond, and the page re-issued as fast as it could.
+    let resolves = 0;
+    const proxy = machinesProxy(
+      async () => {
+        resolves += 1;
+        return {
+          agent: agentOf({ broken: true }, 7364),
+          port: 7364,
+          cookie: "penguin_session=x",
+          session: 1,
+        };
+      },
+      undefined,
+      undefined,
+      {},
+      { cooldownMs: 60_000 },
+    );
+
+    const first = await proxy(request(A));
+    expect(first?.status).toBe(502);
+    const second = await proxy(request(A));
+    expect(second?.status).toBe(503);
+    expect(second.headers.get("retry-after")).toBe("60");
+    const body = (await second!.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("not_connected");
+    expect(body.error.message).toContain("retry in 60 s");
+    expect(resolves).toBe(1);
+  });
+
+  it("is dialled again once the cooldown passes, and a forward that answers clears it", async () => {
+    const state = { broken: true };
+    const upstream = http.createServer((_req, res) => {
+      res.statusCode = 200;
+      res.end('{"ok":true}');
+    });
+    const port = await new Promise<number>((resolve) =>
+      upstream.listen(0, "127.0.0.1", () => resolve((upstream!.address() as AddressInfo).port)),
+    );
+    const agent = agentOf(state, port);
+    let resolves = 0;
+    const proxy = machinesProxy(
+      async () => {
+        resolves += 1;
+        return { agent, port, cookie: "penguin_session=x", session: 1 };
+      },
+      undefined,
+      undefined,
+      {},
+      { cooldownMs: 50 },
+    );
+    try {
+      expect((await proxy(request(A)))?.status).toBe(502);
+      expect((await proxy(request(A)))?.status).toBe(503);
+      expect(resolves).toBe(1);
+
+      await new Promise((r) => setTimeout(r, 80));
+      state.broken = false;
+      const again = await proxy(request(A));
+      expect(again?.status).toBe(200);
+      expect(await again!.json()).toEqual({ ok: true });
+      expect(resolves).toBe(2);
+      // The answer cleared the record: the very next request is forwarded too.
+      expect((await proxy(request(A)))?.status).toBe(200);
+    } finally {
+      upstream.closeAllConnections();
+      upstream.close();
+    }
+  });
+});
+
 describe("the answer deadline", () => {
   it("sits under the browser's 20 s, so the browser hears the machine's 504 first", () => {
     // The ssh kind's SOCKS handshake deadline sits under this one; its test pins that side.
