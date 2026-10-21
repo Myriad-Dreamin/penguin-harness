@@ -2,31 +2,26 @@
  * The aggregate stream (`GET /api/projects/:projectId/machines/events`): one response per tab,
  * carrying every watched machine's own events, each tagged with the machine it came from.
  *
- * Each machine is one ORDINARY HTTP STREAM through the forward held to it
- * (machines/forwards.ts): `GET /api/events` on that machine's server, read as text/event-stream
- * and re-tagged. There is no socket, no hub and no buffer in the middle — the machine's own
- * channel already replays from its last event id and answers `resync_required` when it cannot,
- * so a reconnecting reader is told to resync here too rather than being replayed from a copy
- * this server would have to keep and bound.
+ * Each machine is one streaming call on that machine's own API socket, opened over the forward
+ * held to it (machines/machine-socket.ts): `GET /api/events` on that machine's server, whose
+ * events arrive already framed, and re-tagged. There is no hub and no buffer in the middle —
+ * the machine's own channel already replays from its last event id and answers
+ * `resync_required` when it cannot, so a reconnecting reader is told to resync here too
+ * rather than being replayed from a copy this server would have to keep and bound.
  *
  * The set of machines is not fixed when the stream opens. A tab keeps its one stream for as
  * long as it shows the Project, so a machine this server connects to later joins the stream it
  * already holds; that is re-read on every beat. A machine that goes away is detached, and one
  * that comes back is attached again.
  */
-import http from "node:http";
 import { HEARTBEAT_MS } from "../http/sse.js";
-import { formatSseEvent, SseReader } from "../socket/sse-text.js";
+import { formatSseEvent } from "../socket/sse-text.js";
 import type { StreamAnswer } from "../socket/stream-answer.js";
+import { openMachineStream } from "./machine-socket.js";
+import type { MachineSocketTarget, MachineStream } from "./machine-socket.js";
 
 /** Where a watched machine's server answers on this side, and the session to reach it with. */
-export interface WatchedTarget {
-  host: string;
-  port: number;
-  /** Its server's port OVER THERE — what the Host header must name. */
-  remotePort: number;
-  cookie: string;
-}
+export type WatchedTarget = MachineSocketTarget;
 
 /** A machine a tab watches: its own id, and how to read its connection right now. */
 export interface WatchedMachine {
@@ -107,13 +102,14 @@ export function machineEventsStream(
   };
 
   /**
-   * Follows one machine's `/api/events` for as long as the tab lives: opens through its
-   * forward, re-tags every `server_event` frame, and re-opens — with the machine's own last
-   * event id, so its channel replays what this reader missed — after a drop, with a backoff.
+   * Follows one machine's `/api/events` for as long as the tab lives: opens a streaming call
+   * on that machine's socket through its forward, re-tags every `server_event`, and re-opens —
+   * with the machine's own last event id, so its channel replays what this reader missed —
+   * after a drop, with a backoff.
    */
   const follow = (machine: WatchedMachine): (() => void) => {
     let closed = false;
-    let request: http.ClientRequest | null = null;
+    let stream: MachineStream | null = null;
     let resumeFrom: string | null = null;
 
     const pump = async (): Promise<void> => {
@@ -128,62 +124,29 @@ export function machineEventsStream(
           wait = Math.min(wait * 2, retry.max);
           continue;
         }
-        const opened = await new Promise<boolean>((resolve) => {
-          const headers: Record<string, string> = {
-            accept: "text/event-stream",
-            host: `localhost:${target.remotePort}`,
-            cookie: target.cookie,
-          };
-          if (resumeFrom !== null) headers["last-event-id"] = resumeFrom;
-          const req = http.request(
-            {
-              agent: false,
-              host: target.host,
-              port: target.port,
-              path: "/api/events",
-              method: "GET",
-              headers,
-            },
-            (res) => {
-              const kind = res.headers["content-type"] ?? "";
-              if ((res.statusCode ?? 0) !== 200 || !kind.includes("text/event-stream")) {
-                res.resume();
-                resolve(false);
-                return;
-              }
-              const reader = new SseReader();
-              res.setEncoding("utf8");
-              res.on("data", (chunk: string) => {
-                for (const frame of reader.feed(chunk)) {
-                  if (frame.id !== null) resumeFrom = frame.id;
-                  if (frame.event !== "server_event" || frame.data === "") continue;
-                  sequence += 1;
-                  write(
-                    "machine_event",
-                    `{"machineId":${JSON.stringify(machine.machineId)},"event":${frame.data}}`,
-                    `${machine.machineId}:${sequence}`,
-                  );
-                }
-              });
-              res.on("end", () => resolve(true));
-              // A reader torn down while its machine's server is restarting ends with `close`
-              // and not always with `end`: either way the stream that opened is over.
-              res.on("close", () => resolve(true));
-              res.on("error", () => resolve(true));
-            },
+        const socket = openMachineStream(target, "/api/events", resumeFrom, (event, id, data) => {
+          if (id !== null) resumeFrom = id;
+          if (event !== "server_event" || data === "") return;
+          sequence += 1;
+          write(
+            "machine_event",
+            `{"machineId":${JSON.stringify(machine.machineId)},"event":${data}}`,
+            `${machine.machineId}:${sequence}`,
           );
-          request = req;
-          req.on("error", () => resolve(false));
-          req.end();
         });
-        request = null;
-        if (closed || ended) return;
+        stream = socket;
+        const opened = await socket.opened;
+        if (closed || ended) return socket.close();
         if (opened) {
           // The stream opened and then ended: the machine restarted, or its channel closed
           // this reader. Re-open after the first backoff rather than at once.
+          await socket.ended;
+          stream = null;
+          if (closed || ended) return;
           wait = retry.first;
           await sleep(wait);
         } else {
+          stream = null;
           log(
             `[machines] ${machine.machineId}: its /api/events stream could not be opened; retrying`,
           );
@@ -196,8 +159,10 @@ export function machineEventsStream(
 
     return () => {
       closed = true;
-      request?.destroy();
-      request = null;
+      // Closes the socket (and so ends the streaming call) if one is open; the pump sees
+      // `closed` on its next wake-up and stops asking.
+      stream?.close();
+      stream = null;
     };
   };
 

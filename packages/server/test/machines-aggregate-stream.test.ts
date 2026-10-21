@@ -1,39 +1,54 @@
 /**
  * The machines aggregate stream (`/api/projects/:projectId/machines/events`) with no hub
- * behind it: each watched machine's own `/api/events` is read as an ordinary
- * text/event-stream through its forward (machines/aggregate-stream.ts), and every event it
- * carries is re-tagged as `machine_event` with the machine it came from.
+ * behind it: each watched machine's own `/api/events` is read as one streaming call on that
+ * machine's API socket through its forward (machines/machine-socket.ts,
+ * machines/aggregate-stream.ts), and every event it carries is re-tagged as `machine_event`
+ * with the machine it came from.
  *
  * What this pins:
  * - ONE response for the tab, carrying every machine's events tagged with its id and given an
  *   id of this stream's own — the whole point of the aggregate, whatever the machine count.
- * - Each machine's reader resumes with THAT MACHINE'S last event id when its stream drops; one
+ * - Each machine's call resumes with THAT MACHINE'S last event id when its socket drops; one
  *   machine's cut is not the other's.
  * - A stream re-issued with a last event id is answered `resync_required`: this layer keeps no
  *   buffer to replay from, so it says so rather than pretending nothing was missed.
  * - A machine connected after the tab opened joins on the stream's beat, and one that leaves
  *   is detached.
  *
- * The machines are real HTTP servers on loopback, standing in for the forward's endpoint.
+ * The machines are real WebSocket servers on loopback, standing in for the forward's endpoint:
+ * the handshake records the cookie and Host the appliance insists on, and each call frame is
+ * answered the way a machine's `/api/socket` answers one (socket/frames.ts).
  */
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { WebSocketServer } from "ws";
+import type { WebSocket } from "ws";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SseEvent } from "../src/socket/sse-text.js";
 import { SseParser } from "./helpers/sse-parser.js";
 import { machineEventsStream } from "../src/machines/aggregate-stream.js";
 import type { WatchedMachine } from "../src/machines/aggregate-stream.js";
 
-/** One machine's stand-in: records every `/api/events` request and writes what a test says. */
+/** One streaming call a fake machine opened, as the machine saw it. */
+interface FakeCall {
+  /** The path the call named. */
+  path: string;
+  /** The headers the call frame carried — where a resume point rides. */
+  headers: Record<string, string>;
+}
+
+/** One machine's stand-in: records its handshakes and calls, and writes what a test says. */
 interface FakeMachine {
   port: number;
-  /** The headers of each `/api/events` request, in order. */
-  requests: http.IncomingHttpHeaders[];
-  /** How many `/api/events` readers are open right now. */
+  /** The upgrade's own headers, one per `/api/socket` handshake, in order. */
+  handshakes: http.IncomingHttpHeaders[];
+  /** Every streaming call opened on those sockets, in order. */
+  calls: FakeCall[];
+  /** How many `/api/events` streams are open right now. */
   readers(): number;
-  /** Writes one event to every open reader. */
+  /** Writes one event to every open stream. */
   push(id: string, event: string, data: string): void;
-  /** Ends every open reader, as a restarted machine would. */
+  /** Ends every open stream, as a restarted machine would. */
   cut(): void;
 }
 
@@ -43,40 +58,68 @@ afterEach(async () => {
 });
 
 function machine(): Promise<FakeMachine> {
-  const requests: http.IncomingHttpHeaders[] = [];
-  const open = new Set<http.ServerResponse>();
-  const server = http.createServer((req, res) => {
-    if (req.url?.split("?")[0] !== "/api/events") {
-      res.writeHead(404).end();
-      return;
-    }
-    requests.push(req.headers);
-    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-    res.flushHeaders();
-    open.add(res);
-    res.on("close", () => open.delete(res));
+  const handshakes: http.IncomingHttpHeaders[] = [];
+  const calls: FakeCall[] = [];
+  /** The open streams, with the id of the call each one answers. */
+  const open = new Map<WebSocket, number>();
+  const server = http.createServer();
+  const wss = new WebSocketServer({ server });
+
+  wss.on("connection", (ws, req) => {
+    handshakes.push(req.headers);
+    ws.on("message", (raw, isBinary) => {
+      if (isBinary) return;
+      const frame = JSON.parse(raw.toString()) as {
+        id: number;
+        call?: { path: string; headers?: Record<string, string> };
+      };
+      if (frame.call === undefined) return;
+      const call: FakeCall = { path: frame.call.path, headers: frame.call.headers ?? {} };
+      calls.push(call);
+      if (call.path !== "/api/events") {
+        ws.send(JSON.stringify({ id: frame.id, status: 404, headers: {}, body: null }));
+        return;
+      }
+      open.set(ws, frame.id);
+      ws.on("close", () => open.delete(ws));
+      ws.send(
+        JSON.stringify({
+          id: frame.id,
+          status: 200,
+          stream: true,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+    });
+    ws.on("close", () => open.delete(ws));
   });
+
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       const port = (server.address() as AddressInfo).port;
       stops.push(
         () =>
           new Promise<void>((done) => {
-            for (const res of open) res.destroy();
+            for (const ws of open.keys()) ws.terminate();
             open.clear();
+            for (const client of wss.clients) client.terminate();
+            wss.close();
             server.closeAllConnections();
             server.close(() => done());
           }),
       );
       resolve({
         port,
-        requests,
+        handshakes,
+        calls,
         readers: () => open.size,
         push: (id, event, data) => {
-          for (const res of open) res.write(`id: ${id}\nevent: ${event}\ndata: ${data}\n\n`);
+          for (const [ws, callId] of open) {
+            ws.send(JSON.stringify({ id: callId, event, eventId: id, data }));
+          }
         },
         cut: () => {
-          for (const res of open) res.end();
+          for (const ws of open.keys()) ws.terminate();
           open.clear();
         },
       });
@@ -140,7 +183,7 @@ const target = (machine: FakeMachine) => async () => ({
 
 type MachineEventData = { machineId: string; event: { type: string } };
 
-describe("the machines aggregate, over each machine's own stream", () => {
+describe("the machines aggregate, over each machine's own socket", () => {
   it("carries every machine's events on one response, tagged and id'd by this stream", async () => {
     const [a, b] = await Promise.all([machine(), machine()]);
     const watched = (): WatchedMachine[] => [
@@ -171,9 +214,13 @@ describe("the machines aggregate, over each machine's own stream", () => {
       expect(event.id).toMatch(/^m[AB]:\d+$/);
       expect((JSON.parse(event.data) as MachineEventData).event.type).toBe("machines_changed");
     }
-    expect(a.requests[0]?.cookie).toBe("penguin_session=x");
-    // The Host the machine's App insists on: its own port over there, not the forward's.
-    expect(a.requests[0]?.host).toBe("localhost:7364");
+    // The API socket's own handshake, over the forward: the session cookie, and the Host the
+    // machine's App insists on (its own port over there, not the forward's).
+    expect(a.handshakes[0]?.cookie).toBe("penguin_session=x");
+    expect(a.handshakes[0]?.host).toBe("localhost:7364");
+    // And the call is what marks the answer a stream (socket/frames.ts, CALL_HEADERS).
+    expect(a.calls[0]?.path).toBe("/api/events");
+    expect(a.calls[0]?.headers.accept).toBe("text/event-stream");
   });
 
   it("resumes each machine with ITS last event id, and only that one", async () => {
@@ -190,11 +237,11 @@ describe("the machines aggregate, over each machine's own stream", () => {
     await settle(() => aggregate.events.some((event) => event.event === "machine_event"));
     // The machine restarts under its reader.
     a.cut();
-    await settle(() => a.requests.length === 2);
+    await settle(() => a.calls.length === 2);
 
-    expect(a.requests[1]?.["last-event-id"]).toBe("a-1");
+    expect(a.calls[1]?.headers["last-event-id"]).toBe("a-1");
     // The other machine was not touched: its own stream never dropped.
-    expect(b.requests).toHaveLength(1);
+    expect(b.calls).toHaveLength(1);
   });
 
   it("answers a re-issued stream with resync_required — it keeps no buffer to replay", async () => {
@@ -211,8 +258,8 @@ describe("the machines aggregate, over each machine's own stream", () => {
       data: '{"type":"resync_required"}',
     });
     // Each machine is still read from scratch: the resync is the tab re-reading, not a replay.
-    await settle(() => a.requests.length === 1);
-    expect(a.requests[0]?.["last-event-id"]).toBeUndefined();
+    await settle(() => a.calls.length === 1);
+    expect(a.calls[0]?.headers["last-event-id"]).toBeUndefined();
   });
 
   it("attaches a machine connected later, and detaches one that goes away", async () => {
@@ -237,18 +284,18 @@ describe("the machines aggregate, over each machine's own stream", () => {
     await settle(() => a.readers() === 1);
     // B is watched but not connected: nothing is dialled for it.
     await sleep(40);
-    expect(b.requests).toHaveLength(0);
+    expect(b.calls).toHaveLength(0);
 
     connectedB = true;
     await settle(() => b.readers() === 1);
     b.push("b-1", "server_event", '{"type":"hello"}');
     await settle(() => aggregate.events.some((event) => event.event === "machine_event"));
 
-    // B leaves the Project: the reader is ended and the machine asked nothing further.
+    // B leaves the Project: its socket is closed and the machine asked nothing further.
     watchesB = false;
     await settle(() => b.readers() === 0);
-    const asked = b.requests.length;
+    const asked = b.calls.length;
     await sleep(40);
-    expect(b.requests).toHaveLength(asked);
+    expect(b.calls).toHaveLength(asked);
   });
 });
