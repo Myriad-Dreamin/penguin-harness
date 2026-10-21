@@ -1,13 +1,12 @@
 /**
- * A client for one machine's own API, reached over the forward held to it (machines/forwards.ts)
- * — a loopback address, like any local server. Every piece of work this server does ON a
- * machine goes through here — the hot update, the config sync.
+ * A client for one machine's own API, dialled through the connection this side holds. Every piece
+ * of work this server does ON a machine goes through here — the hot update, the config sync.
  *
  * node:http rather than fetch: the Host header has to be the canonical app host
- * (`localhost:<port>`) while the connection goes to the forward's own port, and fetch ignores
- * an explicit host header. On a loopback bind the App answers on ONE loopback name and serves
- * previews on the other (app.ts's canonical-host guard), so a request addressed to `127.0.0.1`
- * is refused as a preview-host call to /api.
+ * (`localhost:<port>`) while the connection goes to 127.0.0.1, and fetch ignores an explicit
+ * host header. On a loopback bind the App answers on ONE loopback name and serves previews
+ * on the other (app.ts's canonical-host guard), so a request addressed to `127.0.0.1` is
+ * refused as a preview-host call to /api.
  */
 import http from "node:http";
 
@@ -34,15 +33,13 @@ export interface MachineApi {
 }
 
 /**
- * One client per (machine, session): `host`/`port` are the forward's endpoint on this side,
- * `remotePort` is the server's port over there (what the Host header names). `headers` ride on
- * every call (the adoption time a reading of that machine's Sessions carries, see
- * runtime/session-sources.ts).
+ * One client per (machine, session): `agent` dials the machine's server through its session,
+ * `port` is the server's port over there. `headers` ride on every call (the adoption time a
+ * reading of that machine's Sessions carries, see runtime/session-sources.ts).
  */
 export function machineApi(
-  host: string,
+  agent: http.Agent,
   port: number,
-  remotePort: number,
   cookie: string,
   headers: Record<string, string> = {},
 ): MachineApi {
@@ -58,17 +55,15 @@ export function machineApi(
     new Promise((resolve, reject) => {
       const req = http.request(
         {
-          // One request, one channel: a pooled socket would outlive the forward it was
-          // opened through (machines/forwards.ts).
-          agent: false,
-          host,
+          agent,
+          host: "127.0.0.1",
           port,
           path,
           method,
           headers: {
             ...headers,
             ...extra,
-            host: `localhost:${remotePort}`,
+            host: `localhost:${port}`,
             cookie,
             ...(payload === null
               ? {}

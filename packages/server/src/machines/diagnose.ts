@@ -18,13 +18,13 @@
  *
  * The POSIX checks run as ONE command over the session (the probe before it opened it), so a
  * check costs one round trip whatever the count. A Windows machine answers the probe and
- * nothing else: it can be installed on but not connected (sys/ssh/connection.ts).
+ * nothing else: it can be installed on but not connected (machines/transport/connection.ts).
  */
 import type { MachineCheck, MachineSourceReach } from "../api/types.js";
 import type { RemoteIdentity } from "./detect.js";
 import type { RemoteLayout } from "./layout.js";
-import { explainSshFailure } from "../sys/ssh/index.js";
-import type { SshSignIn } from "../sys/ssh/index.js";
+import { explainSshFailure } from "./transport/index.js";
+import type { SshSignIn } from "./transport/index.js";
 
 /**
  * Where install.sh downloads a release from — its OSS_RELEASE_ROOT and GITHUB_RELEASE_ROOT,

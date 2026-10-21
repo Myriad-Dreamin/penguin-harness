@@ -52,18 +52,13 @@ describe("handing a build over to a machine", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  const handOver = () => {
-    // The forward's endpoint is this machine's own port on loopback, as a forward to a
-    // stand-in's port would be; the Host header names the server's port over there.
-    const port = (server.address() as AddressInfo).port;
-    return upgradeRemote({
-      host: "127.0.0.1",
-      port,
-      remotePort: port,
+  const handOver = () =>
+    upgradeRemote({
+      agent: new http.Agent(),
+      port: (server.address() as AddressInfo).port,
       cookie: "penguin_session=x",
       dataRoot: root,
     });
-  };
 
   it("sends the push with the acceptance on it", async () => {
     const outcome = await handOver();

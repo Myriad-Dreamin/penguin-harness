@@ -28,6 +28,7 @@
  * its own (closeAllConnections), and the next re-holds what the record says was held. No
  * session is ever closed by a pid remembered from before.
  */
+import http from "node:http";
 import type net from "node:net";
 import { run, runWithInput } from "./spawn.js";
 import {
@@ -104,6 +105,22 @@ export class SshConnection {
     const opened = await this.open();
     if (!opened.ok) throw new Error(opened.detail);
     return dialThroughSocks(opened.session.socksPort, "127.0.0.1", remotePort);
+  }
+
+  /** An http.Agent whose every socket is a dial through the session — for node:http callers. */
+  agent(remotePort: number): http.Agent {
+    const agent = new http.Agent({ keepAlive: false });
+    // createConnection is documented on Agent (and overridable); the typings omit it.
+    (agent as unknown as { createConnection: unknown }).createConnection = (
+      _options: unknown,
+      callback: (err: Error | null, socket?: net.Socket) => void,
+    ) => {
+      this.dial(remotePort).then(
+        (socket) => callback(null, socket),
+        (err: unknown) => callback(err instanceof Error ? err : new Error(String(err))),
+      );
+    };
+    return agent;
   }
 
   /**

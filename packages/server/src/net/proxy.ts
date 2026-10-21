@@ -55,7 +55,7 @@
  * Machines are not reached through any of this. A connected machine's API, events and
  * terminals are channels inside the one ssh session this server holds to it, dialled through
  * that session's loopback SOCKS port by node:http with an agent of its own
- * (sys/ssh/), so neither the proxy variables nor the global dispatcher ever see
+ * (machines/transport/), so neither the proxy variables nor the global dispatcher ever see
  * that traffic.
  *
  * The values persisted in server_settings stay authoritative (the routes read/write the

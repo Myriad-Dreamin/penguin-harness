@@ -35,7 +35,7 @@ import { SESSION_COOKIE, bearerToken } from "../auth/middleware.js";
 import { answerOf } from "../socket/stream-answer.js";
 import type { StreamAnswer } from "../socket/stream-answer.js";
 
-/** The beat both the named ping and the `heartbeat` server event are written on (machines/aggregate-stream.ts times its machines' silence by it). */
+/** The beat both the named ping and the `heartbeat` server event are written on (machines/event-hub.ts times the hub's silence by it). */
 export const HEARTBEAT_MS = 20_000;
 
 /** An event stream's socket that sends nothing for this long is destroyed (app.ts): two missed beats. */

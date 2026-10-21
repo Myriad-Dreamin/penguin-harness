@@ -16,7 +16,7 @@ import * as tar from "tar";
 import { installOnRemote, packHmrState } from "../src/machines/install-server.js";
 import { remoteLayoutFor } from "../src/machines/layout.js";
 import type { MachineChannel, PushPlan } from "../src/machines/install-server.js";
-import type { ExecResult } from "../src/sys/ssh/index.js";
+import type { ExecResult } from "../src/machines/transport/index.js";
 
 const RELEASE = remoteLayoutFor("release");
 

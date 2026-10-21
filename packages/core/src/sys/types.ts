@@ -21,8 +21,6 @@
  */
 import type { ToolFs } from "../environment/tools/fs-port.js";
 
-export type { FsDirent, FsFetchResult, FsStat } from "../environment/tools/fs-port.js";
-
 /**
  * The file capability: the exact surface the file tools already work through
  * (see environment/tools/fs-port.ts) — plain stat facts, whole or ranged reads, atomic

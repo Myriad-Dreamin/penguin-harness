@@ -220,10 +220,10 @@ PUT 时，请求省略的字段保持原值，`null` 或 `""` 清除该字段，
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/projects/:projectId/machines` | 本机以及服务器自身 `~/.ssh/config` 中的主机别名，连同本 Project 的安装记录、最近状态和每台机器的任务：`{machines: [{id, alias, machineId, installed, elsewhere?, member?, local, connection, keepConnected?, reconnect?, api, configSync?, status}], imageVersion, job, jobs}` |
+| GET | `/api/projects/:projectId/machines` | 本机以及服务器自身 `~/.ssh/config` 中的主机别名，连同本 Project 的安装记录、最近状态和每台机器的任务：`{machines: [{id, alias, machineId, installed, elsewhere?, member?, local, connection, socket, keepConnected?, reconnect?, api, configSync?, status}], imageVersion, job, jobs}` |
 | GET | `/api/projects/:projectId/machines/ssh-hosts` | ssh 配置（包括 Include 的文件）中的每台主机，以及它自己的配置段原样写明的 `user`、`hostName` 与 `port`：`{hosts: [{alias, hostName?, user?, port?}]}` |
 | POST | `/api/projects/:projectId/machines/add` | 把 `{machines: [id…]}` 加入本 Project 的列表，不安装任何东西；返回列表，以及按 id 列出的 `refused` |
-| GET | `/api/projects/:projectId/machines/events` | 一个标签页的一条 SSE 流：每台已连接机器自己的事件，各自由该机器自己的 `/api/events` 经它的 forward 读来，并带上来源机器的标记——见 **每台机器的全部事件都在页面唯一那条流上** |
+| GET | `/api/projects/:projectId/machines/events` | 本 Project 已连接机器的一条 SSE 流：每台机器自己的事件，各自带上来源机器的标记，由 hub 每台机器唯一的那次订阅合并而来——见 **socket hub 内每台机器一条事件流** |
 | POST | `/api/projects/:projectId/machines/probe` | 逐台询问本 Project 已安装机器正在做什么（每台一次 ssh 往返，最多 5 台并发），返回携带最新状态的列表 |
 | POST | `/api/projects/:projectId/machines/use` | 把 `{machines: [id…]}` 作为一批启用——按需安装或更新、启动、连接并下发 Project 配置——并加入本 Project 的列表；返回 `202`、列表，以及按 id 列出的 `refused` |
 | POST | `/api/projects/:projectId/machines/stop-using` | 把 `{machines: [id…]}` 从本 Project 删除：断开各自的连接，不再保持连接；那台机器上的程序与数据都保留，ssh 配置里的主机也不变 |
@@ -268,6 +268,7 @@ PUT 时，请求省略的字段保持原值，`null` 或 `""` 清除该字段，
 - `installed`：本服务器最近一次在那台机器上执行的安装，格式为 `{version, at}`；从未安装过则为 `null`。它保存在数据根目录下，因此重启、热推送和其他机器上的安装都不会使它丢失。它记录的是实际执行过的操作，并不核对远端状态，所以手动清空过的机器仍会显示为已安装，直到下一次安装把它纠正过来。安装失败不会留下任何记录。
 - `machineId`：机器自身的 id，由运行在那台机器上的服务器生成（记录在它的 `machine` 表中），共 16 个 base64url 字符。重命名、修改别名和重新安装都不会改变它，持久化引用应指向它。在那台机器上启动过服务器之前，它为 `null`，因为还没有任何东西生成过它。本服务器在与 `status` 同一次往返中获知它，并把它与安装记录存放在一起。同一主机的两个别名报告相同的 `machineId`。
 - `local`：标记本服务器所在的机器。由于应答请求的正是它，这条记录始终在列表中，始终显示为已安装且正在运行；它也永远不会成为安装目标：对它调用 `POST …/install` 返回 `409` `self_install`。
+- `socket`：本服务器对那台机器持有的 API 套接字，形如 `{state, since, detail?}`——握手完成后为 `connected`，拨号尚未结束时为 `dialling`，机器对握手回了状态码时为 `refused`，拨号本身失败时为 `failed`——`since` 是进入该状态的时刻，`detail` 在有话可说时携带传输层自己的原话。本地这条记录为 `null`；在有任何流索要过套接字之前同样为 `null`。它与 `connection` 一样，是关于本侧某个进程的事实；Machines 页读它，卡住的流就不必再去浏览器控制台里找。
 - `status`：`{state, checkedAt, port?, detail?}`，其中 `state` 为 `running`、`stopped` 或 `unreachable`；从未探测过的机器为 `null`。没有单独的 ssh 状态。ssh 就是传输通道，连不上的机器即为 `unreachable`，`detail` 携带 OpenSSH 自己的报错信息。`GET` 从不主动探测，只报告最近一次的结果，因为每探测一台机器都要花费一次 ssh 往返，而列表本身只是配置文本。只有 `POST …/machines/probe` 会付出这些往返开销，而且只针对已安装的机器。
 
 ### 已连接机器的 API
@@ -280,26 +281,32 @@ URL 使用机器自身的 id，而不是连接所用的 ssh 别名。别名只�
 
 启用机器人之前，本服务器还会询问 Project 的每台已连接机器启用了哪些机器人账号（`GET /api/messaging/accounts`），见[跨服务器的机器人账号](#跨服务器的机器人账号)。
 
-已连接机器自己的用户级事件经由 Project 的机器聚合流（`GET /api/projects/:projectId/machines/events`，**每台机器的全部事件都在页面唯一那条流上**）而不是代理送到页面：本服务器在每台机器的 API 套接字上开一次调用，经它对该机器持有的 forward 索取机器自己的 `/api/events`，给每个服务端事件标上来源机器，只发给管理员。因此无论连了多少台机器，页面都只持有一条事件流——浏览器对同一来源只允许 6 条 HTTP/1.1 连接，每台机器一条流的做法连上 5 台就会把它们占满。带 last event id 回来的读取方得到 `resync_required`，页面据此重新拉取列表：重放归机器自己的通道所有，本服务器不另存一份。
+已连接机器自己的用户级事件经由 Project 的机器聚合流（`GET /api/projects/:projectId/machines/events`，**socket hub 内每台机器一条事件流**）而不是代理送到页面：hub 经它的套接字对每台机器的 `/api/events` 只持有唯一的一次订阅，给每个服务端事件标上来源机器，只发给管理员。因此无论连了多少台机器，页面都只持有一条事件流——浏览器对同一来源只允许 6 条 HTTP/1.1 连接，每台机器一条流的做法连上 5 台就会把它们占满。订阅断开后按上次的事件 id 续订；缓存无法满足的重放以 `resync_required` 作答，页面据此重新拉取列表。运行着不带 socket hub 版本的机器会对聚合流的拨号回以拒绝，它的事件因此不会实时到达页面；它的行数据仍可经 HTTP 读取，更新该机器后即恢复。
 
-**一条流就是经 forward 的一条普通 HTTP 响应，与其他请求完全相同。** `accept` 要求 `text/event-stream` 的请求，和其他请求走同一条路：响应一字节到达就一字节回传，机器端结束它、或调用方不再听时才结束。流没有第二种传输、也没有自己的拨号——流就是回答不结束的请求，调用方放弃时中止上游，与其他请求一模一样。本服务器对该机器没有 forward 时，代理回 `503` `not_connected`；forward 无处投递时回 `502` `server_unreachable`，并带上传输层自己的原话。其余都不是代理自己的：机器自己的回答——`403`、`404`、一条流——原样透传，它给出的 `location` 会重新挂到代理前缀下。
+**流只走套接字。** `accept` 要求 `text/event-stream` 的请求，经本服务器对该机器持有的那条套接字转发；若把流经 HTTP 转发，每条流都要占住一条永不结束的响应——即 ssh 会话内的一条通道——每台机器、每条流各一条，正是套接字本应消除的那堆被占住的连接。因此当没有套接字能承载一条流时，代理自己作答，形状即上文的错误形状，浏览器随后按该流自己的退避（1 s 起倍增到 30 s，流打开后归零）重新发起它，而不是去要一个 HTTP 孪生：
 
-### 每台机器的全部事件都在页面唯一那条流上
+- `502` `machine_socket_refused`——机器对套接字握手回了状态码。这正是构建早于套接字的程序，或拒绝了本服务器的程序；该拒绝会被记住一分钟，这一分钟内的流直接作答而不再拨号，旧程序需要 API socket 能力才能使用这些 socket 代理流。
+- `502` `machine_socket_unavailable`——拨号失败。既未打开、也未在 10 s 内失败的拨号会被拆掉而不是继续等待，因此一次卡住的握手永远不能把它之后该机器的所有流堵在后面。此回答不被记忆：下一条流会重新拨号。
+- `504` `machine_stream_not_opened`——套接字在，但机器 8 s 内未打开该流。那是热推把这条套接字留在了已 dispose 的 App 上：心跳让它看起来还活着，实则什么都不答。此时套接字在这里被拆掉，其上每一条流随之结束、由浏览器重新发起，下一条流拨向机器当前的程序。
 
-Web App 本身就是聚合读取方：它从 Project 聚合流消费远端机器事件，因此一个标签页无论盯多少台机器都只持有一条流。它背后，每台被关注的机器都是本服务器替这个标签页在该机器的 API 套接字上开的一次流式调用——经它对该机器持有的 forward 发 `GET /api/events`，收到的 `server_event` 帧边到边重新打标。
+套接字属于拨出它的那条 ssh 会话，而不只属于机器 id：传输层重开会话时——掉线、重连——旧套接字被关闭，下一条流重新拨号，因此没有哪条套接字能比它所在的连接活得更久。机器自己的非流式回答（`403`、`404`）原样透传；只有上述三个码是代理自己的。
 
-盯住 N 台机器，过去要花掉标签页在浏览器里的 N 条连接：它对每台机器各调用一次 `/server/<machineId>/api/events`，于是有 T 个标签页就持有 T × N 条连接，一台机器静默下来，其重发风暴还要乘以标签页数。现在标签页无论机器多少都只持有一条流；这条流在背后按每台被关注的机器扇出成一次流式调用，重试也在那里做，浏览器从不因某一台机器而重新发起：
+### socket hub 内每台机器一条事件流
+
+Web App 本身就是聚合读取方：它从 Project 聚合流消费远端机器事件，聚合流由 socket hub 供给，因此对一台被关注的机器，唯一的那次订阅同时覆盖 Web App 与每个显式读取方。这里现在是单上游保证——可能另持第二条上游订阅的 HTTP 用户事件 relay 已退役，随它一起退役的还有它不问一声就对每台机器开出的那条服务端订阅。
+
+盯住 N 台机器，过去要花掉标签页 N 条流：它对每台机器各调用一次 `/server/<machineId>/api/events`，于是有 T 个标签页的 hub 就持有 T × N 条上游订阅，一台机器静默下来，其重发风暴还要乘以标签页数。现在 hub 对一台机器的 `/api/events` 只持有唯一的那一次订阅，走的就是它对该机器持有的那条套接字，由它供给 aggregate 与 proxy 读取方。机器事件的每个读取方都由这唯一的一次订阅供给：
 
 - `GET /api/projects/:projectId/machines/events` 是聚合流（与上文路由一样仅限管理员，且调用方须是该 Project 的成员）：无论机器多少，每个标签页只有一条流，承载每台已连接机器的事件，各自带上来源机器的标记。它的帧是 `event: machine_event`，`data: {"machineId": "…", "event": {…ServerEvent}}`，另有按 SSE 节奏发出的 `event: heartbeat`——标签页凭帧判断聚合流是活着还是停住了，与它在 `/api/events` 上的判断方式完全一致。
-- `/server/<machineId>/api/events` 仍然回答单台机器的那条流、用的仍是机器自己的说法：同样的事件、同样的 id、同样按该机器缓冲区尚能覆盖的边界用 `last-event-id` 重放——因为它就是那条被转发过来的流。
+- `/server/<machineId>/api/events` 仍然回答单台机器的那条流，取自同一次订阅、用的仍是机器自己的说法：同样的事件、同样的 id、同样按缓冲区尚能覆盖的边界用 `last-event-id` 重放。
 
-中间没有缓冲区。机器自己的通道本来就留着一条——最近 10,000 个事件或 8MB——本来就对它能满足的 `last-event-id` 重放、不能满足时回 `resync_required`、对不带 id 的新读取方回 `hello`。因此聚合流给自己的帧自铸 id（`<machineId>:<n>`，在它承载的机器之间唯一），对不带 id 的新订阅者回 `hello`；带着 id 回来的订阅者得到 `resync_required`，重新读取它展示的内容，而不是等本服务器替它留一份有界副本再重放。每台机器那条上游流由该机器自己的通道从它给出的 last event id 续上，所以重连的标签页错过的东西，在事件真正所在的地方重放。
+每次订阅都按机器带自己的重放缓冲区——最近 10,000 个事件或 8MB，先到者为准，与通道相同。读取方带回的 `last-event-id` 由它作答：仍在缓冲区内的 id 从其后重放；缓冲区从未持有过（或已被挤出）的 id 先得到 `resync_required`；不带 id 的新读取方先得到 `hello`，与 `/api/events` 一致。缓冲区按**机器**有界，绝不按读取方有界：不再消费的读取方，其流被结束，而不是无界地替它缓存，之后它带着自己的 last event id 重新发起。
 
-**静默下来的流会被发现。** 无论背后的机器在做什么，聚合流每 20 秒写入一个 `heartbeat` 服务器事件。标签页以它为尺衡量自己的静默：一拍在流上，而注释行与传输层的 ping 对流的使用者都是不可见的，没有它，一条不再写出的聚合流会永远看起来像活着。机器自己的 `heartbeat` 不会被转发——到达标签页的是它发出的每个 `server_event`，各自带上机器 id——所以标签页的看门狗只看聚合流这一拍。
+**静默下来的流会被发现。** 机器的 `/api/events` 每 20 秒写入一个 `heartbeat` 服务器事件，节奏与套接字自身的心跳相同——但它在流上，而套接字的心跳是看不见的。这正是董事会那份控制台报告里第二种情形得以显形的原因：热推送把某台机器的 App dispose 掉之后，套接字心跳照旧，流上却什么都不来。hub 在漏掉两拍后结束这条上游订阅，并用机器给出的 last event id 重新订阅；浏览器按同样的规则结束自己那条流，并带着 `last-event-id` 重新发起。两拍是对"还在"最省也最诚实的读法：没话可说的机器也照样打拍。
 
-**一次打开失败不会结束标签页的盯守。** 标签页从不为某一台机器重新发起——无论背后的机器怎样，它的聚合流都保持打开——所以只要标签页还连着，聚合流就一直替它尝试每台被关注的机器：还没有 forward（机器未连接）、套接字打不开、调用被机器回以一条不是流的东西。它按 500 毫秒起、逐次翻倍、最长 10 秒的退避重试，每次重试前重新索取 forward，因为这台机器可能在此期间被连上或重连过；打开之后才结束的流（机器重启了，或它的通道结束了这个读取方）先等过第一段退避，再带着该机器给出的 last event id 重新打开，由它自己的通道补上这个读取方错过的事件。每失败一次打开就写一行日志，但没有一次会结束标签页的流；标签页只在聚合流自身结束、或因跟不上而被结束时才重开聚合流。
+**一次拨号失败不会结束标签页的盯守。** 标签页从不为某一台机器重新发起——无论背后的机器怎样，它的聚合流都靠 hub 自己的心跳保持打开——所以只要标签页还连着，hub 就替它聚合流盯着的每台机器持续拨号。拨号失败时（10 秒内没有套接字握手、当前没有持有到该机器的 ssh 会话、机器始终没有打开流），hub 按浏览器同样的退避再拨：1 秒起、逐次翻倍、最长 30 秒。每次重拨前它都重新读取一次该机器的连接，因为失败那次拨号所走的 ssh 会话可能已被替换。此期间，Machines 页上该机器的 `socket` 在 `dialling` 与 `failed` 之间切换，一次拨号成功后读作 `connected`。随后流从机器给出的最后一个 event id 续上，与静默之后的重订相同：机器自己的缓冲还留着时，标签页补收错过的事件，否则收到 `resync_required`。同一个失败反复出现时，每一轮只写一次日志、只记一行错误表，而不是每次拨号都记。`/server/<machineId>/api/events` 的读取方照旧立刻收到失败并按自己的退避重新发起；没有标签页再盯着这台机器时，hub 停止拨号。
 
-**后来连上的机器会加入已打开的标签页流。** 标签页聚合流承载哪些机器，并不在开流那一刻定死。聚合流每打一次心跳，就重新读取一次本 Project 的机器里本服务器持有连接的有哪些，把还没接上的接进来、把已经离开的摘出去：从这个标签页启用的机器、重启或热推送之后重新持有的机器、标签页打开时 ssh 会话正在重开的机器，都属此列。这样的机器在它的连接可读之后一次心跳（20 秒）之内，加入标签页已持有的那条流，此后与上文其他机器一样被盯守。已经接上的机器不会在每次心跳时再读一遍。
+**后来连上的机器会加入已打开的标签页流。** 标签页聚合流承载哪些机器，并不在开流那一刻定死。聚合流每打一次心跳，就重新读取一次本 Project 的机器里本服务器持有连接的有哪些，把还没接上的接进来：从这个标签页启用的机器、重启或热推送之后重新持有的机器、标签页打开时 ssh 会话正在重开的机器，都属此列。这样的机器在它的连接可读之后一次心跳（20 秒）之内，加入标签页已持有的那条流，此后与上文其他机器一样被盯守。已经接上的机器不会在每次心跳时再读一遍。
 
 ### 任务
 
@@ -1312,7 +1319,7 @@ Agent 用 `penguin browser` 驱动的浏览器，路由位于 `/api/builtin-brow
 | --- | --- | --- |
 | 每个 Session | `GET /api/sessions/:sessionId/stream` | Session 的消息流和运行事件，包括子 Agent Session 的 `session_created` 以及目标模式事件 |
 | 每个用户 | `GET /api/events` | `hello` 握手和跨 Session 的通知：`session_created`、`session_archived`、`session_deleted`、`session_state`、`session_background`、`session_approvals`、`session_title`、`schedule_fired`、`schedule_queued`、`web_updated`、公司模式的 `org_*` 事件，以及只发给管理员的 `machines_changed` |
-| 每个 Project 的机器 | `GET /api/projects/:projectId/machines/events` | 每台已连接机器自己的事件，各自带上来源机器的标记，经各自的 forward 读自该机器自己的 `/api/events`（**每台机器的全部事件都在页面唯一那条流上**） |
+| 每个 Project 的机器 | `GET /api/projects/:projectId/machines/events` | 每台已连接机器自己的事件，各自带上来源机器的标记，由 hub 每台机器唯一的那次订阅合并而来（**socket hub 内每台机器一条事件流**） |
 
 ### 传输格式
 
@@ -1388,7 +1395,7 @@ export type ServerEvent =
 - 以下情况会触发 `session_background`：命令超过让出窗口转入后台，或以 `run_in_background` 启动；进程退出或停止；后台子 Agent 开始一轮、结束一轮或释放。事件携带 `SessionInfo.backgroundTasks` 的当前值（`processes` = 仍在运行的后台命令会话数，`subagents` = 已转入后台、正处于一轮中的子 Agent Session 数），归零时同样发送，列表无需重新拉取就能撤下标记。两个计数都为零时，列表行和单个 Session 的 GET 会省略这个字段。受众与 `session_state` 相同。
 - 以下情况会触发 `session_approvals`：工具调用升级给人审批（`always-ask` 下的每个调用，`read-only` 下读写或权限未知的调用）；某个审批得到回答；中断拒绝了所有等待中的审批（只发一个事件）。`count` 是 Session 当前的 `pendingApprovalCount`，归零时同样发送。调用本身以 `approval_request` 出现在该 Session 自己的流上，订阅时会重放。受众与 `session_state` 相同。
 - `credentials_updated` 在 `PUT /models` 或签发 API key 的流程完成之后发送。缓存的运行时已失效，客户端应清除因认证失败而禁用的输入框状态。
-- `heartbeat` 由端点自己的 SSE 写入方每 20 秒写出一次——出现在 `/api/events` 上和机器的聚合流上（**每台机器的全部事件都在页面唯一那条流上**）。读取方以它为尺衡量自己的静默：套接字的 ping 和 SSE 注释行对流的使用者都是不可见的，若没有它，一条套接字仍健康、流却停住的连接会永远看起来像活着。
+- `heartbeat` 由端点自己的 SSE 写入方每 20 秒写出一次——出现在 `/api/events` 上和机器的聚合流上（**socket hub 内每台机器一条事件流**）。读取方以它为尺衡量自己的静默：套接字的 ping 和 SSE 注释行对流的使用者都是不可见的，若没有它，一条套接字仍健康、流却停住的连接会永远看起来像活着。
 - `web_updated` 以 `rev` 携带新的 web 修订号，发送到每个用户通道。
 - `session_created` 在每次创建时发送到 Project 所有者和成员的用户通道；子 Agent Session 还会同时发送到父 Session 的通道。`source` 是新 Session 的 `session_meta` 所记录的来源。通过 `PATCH /api/sessions/:id` 设置的标题以同样方式作为 `session_title` 宣告。
 - `session_archived` 在 Session 被归档或取消归档时发送：来自 `PATCH /api/sessions/:id` 设置 `archived`，或已归档对话页的批量取消归档，每个 Session 一个事件。`archived` 是新的状态，列表据此移除已归档的行，或按 id 取回取消归档的行。它发送到 Project 所有者和成员的用户通道。
@@ -1443,7 +1450,7 @@ API 套接字是同一个 API 的第二种传输，供自带的 Web App 使用�
 
 `call.headers` 只接受 `last-event-id`、`accept` 与 `content-type`；凭据来自握手。JSON 正文以 `application/json` 发送；多部分正文与二进制响应（下载）不经套接字——后者回 `415 unsupported_transport`，客户端改用 fetch。服务端按 SSE 心跳的节奏 ping，两拍无应答即断开；发送积压超过水位的客户端，其流以 `reason: "lagging"` 结束——上文的投递保证对重新发起的调用与对一次重连完全相同。
 
-显式 Project aggregate 读取方与其他请求一样经 HTTP forward 抵达机器。显式聚合读取方只开一次调用——`GET /api/projects/<projectId>/machines/events`——而不是每台机器各开一次 proxy 调用；它背后，本服务器为每台被关注的机器在它自己的 API 套接字上开一次流式调用，并给事件标上来源机器（**每台机器的全部事件都在页面唯一那条流上**）。单机器 proxy 流就是那台机器自己的 `/api/events` 被转发：没有到它的 forward 时代理回 `503` `not_connected`，调用方放弃时中止上游。打不开的机器流在后台重试，聚合流自身保持打开，因此读取方不会因某一台机器失败而重开聚合流；只有聚合流自身结束、静默或因背压被结束时，才由读取方重开聚合流。该聚合读取方在浏览器一侧的流数量与机器数无关。这描述的既是显式聚合读取方，也是默认的 Web App：它像任何显式读取方一样读取聚合流。
+显式 Project aggregate 与 socket proxy 读取方的上游传输只走套接字。对于单机器 socket proxy 流，当没有通往该机器的套接字能承载这条流时，proxy 以 `502`/`504` 作答，原因见上文 **已连接机器的 API**，绝不改走 HTTP 转发，由该 proxy 读取方按自身退避重新发起。Project aggregate 对被关注机器的 dial/open 失败采用不同处理：聚合流自身保持打开，由 hub 在后台重试该机器，读取方不会因该机器失败而重开聚合流；只有聚合流自身结束、静默或因背压被结束时，才由读取方重开聚合流。显式聚合读取方只开一次调用——`GET /api/projects/<projectId>/machines/events`——而不是每台机器各开一次 proxy 调用；hub 把每台机器一次订阅扇入其中，并给事件标上来源机器（**socket hub 内每台机器一条事件流**）。该聚合读取方的流数量与机器数无关；socket hub 每台机器只持有一条上游流，不是每个读取方每台机器各一条。这描述的既是显式 aggregate/proxy 路径，也是默认的 Web App：它像任何显式读取方一样读取聚合流，每台机器一次订阅的保证同样覆盖它。
 
 ## 类型导入
 

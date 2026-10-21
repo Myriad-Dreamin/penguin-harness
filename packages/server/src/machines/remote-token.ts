@@ -8,8 +8,8 @@
  */
 import { remotePenguin } from "./commands.js";
 import type { RemoteLayout } from "./layout.js";
-import { execFailureText } from "../sys/ssh/index.js";
-import type { ExecResult, RemoteTarget } from "../sys/ssh/index.js";
+import { execFailureText } from "./transport/index.js";
+import type { ExecResult, RemoteTarget } from "./transport/index.js";
 
 /** Precedes the token on its own line — the same mark the CLI prints (cli/commands/auth.ts). */
 const TOKEN_MARK = "---penguin-auth-token---";

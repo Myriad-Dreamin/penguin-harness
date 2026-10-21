@@ -1,8 +1,6 @@
 /**
  * The same-origin server proxy: `/server/<machineId>/api/…` on THIS server forwards to that
- * machine's server over the forward held to it (machines/forwards.ts) — one ordinary HTTP
- * request to a loopback address, so SSE, long downloads and cancellation are what they are
- * for any local server, and nothing here knows what ssh is.
+ * machine's server through the forward held to it.
  *
  * Addressed by the machine's OWN id, not the ssh alias it was reached through: an alias is a
  * line in one config file, and renaming it would change every URL below. Only `/api/` paths
@@ -17,18 +15,20 @@
 import http from "node:http";
 import { Readable } from "node:stream";
 import { ADOPTED_AT_HEADER } from "../runtime/session-sources.js";
+import { answerOf } from "../socket/stream-answer.js";
+import type { MachineEventHub } from "./event-hub.js";
+import { MachineSocketRelay } from "./socket-relay.js";
+import type { MachineSockets } from "./machine-sockets.js";
 
 /** Path prefix of the proxy: `/server/<id>/api/…`. */
 export const SERVER_PROXY_PREFIX = "/server/";
 
 /** Where a request to one machine goes, as the machines service answers it. */
 export interface ProxyTarget {
-  /** The forward's address on this side (a loopback listener; machines/forwards.ts). */
-  host: string;
-  /** The forward's port on this side. */
+  /** Dials the machine's server through the session held to it. */
+  agent: http.Agent;
+  /** Its server's port over there. */
   port: number;
-  /** Its server's port OVER THERE — what the Host header must name (the App refuses `127.0.0.1`). */
-  remotePort: number;
   /** A session on that machine, as its own cookie. */
   cookie: string;
   /**
@@ -37,6 +37,11 @@ export interface ProxyTarget {
    * time was recorded, which sends nothing.
    */
   adoptedAt: string | null;
+  /**
+   * The ssh session the agent dials through (its pid): a socket is only ever reused within
+   * one (socket-relay.ts).
+   */
+  session: number;
 }
 
 /** A parsed proxy path: which machine, and the remote-side path to request. */
@@ -94,17 +99,18 @@ const cancelledResponse = (): Response =>
 
 /**
  * Forwards one request to the machine's server and streams the answer back — both
- * directions are pipes, so SSE and long downloads flow as they arrive, and an aborted request
- * drops the upstream. node:http rather than fetch: the Host header must be the canonical app
- * host (`localhost:<port>`), which fetch will not set.
+ * directions are pipes, so SSE and long downloads flow as they arrive. The socket is the
+ * agent's: a dial through the machine's session (transport/connection.ts). node:http rather
+ * than fetch: the Host header must be the canonical app host (`localhost:<port>`), and the
+ * socket is not one fetch could be handed.
  */
-function proxyThroughForward(
+function proxyThroughSession(
   request: Request,
   path: ProxyPath,
   target: ProxyTarget,
   report?: ProxyReport,
 ): Promise<Response> {
-  const { host, port, remotePort, cookie } = target;
+  const { agent, port, cookie } = target;
   // Given up on before it left: nothing to dial for.
   if (request.signal.aborted) return Promise.resolve(cancelledResponse());
   return new Promise((resolve) => {
@@ -113,16 +119,14 @@ function proxyThroughForward(
     request.headers.forEach((value, name) => {
       if (!DROP_REQUEST_HEADERS.has(name.toLowerCase())) headers[name] = value;
     });
-    headers["host"] = `localhost:${remotePort}`;
+    headers["host"] = `localhost:${port}`;
     headers["cookie"] = cookie;
     if (target.adoptedAt !== null) headers[ADOPTED_AT_HEADER] = target.adoptedAt;
 
     const upstream = http.request(
       {
-        // No pooling: a forward carries one channel per connection (machines/forwards.ts),
-        // and a pooled socket outliving its forward would answer from a closed listener.
-        agent: false,
-        host,
+        agent,
+        host: "127.0.0.1",
         port,
         path: `${path.remotePath}${url.search}`,
         method: request.method,
@@ -186,6 +190,11 @@ function proxyThroughForward(
 }
 
 /**
+ * The seam handler: `/server/<id>/api/…` → that machine, or a clear answer when there is
+ * nothing to forward to. `resolve` is the machines service's lookup: a dial through the
+ * session, the port over there and a session cookie, or null when it is not connected.
+ */
+/**
  * Told what each forwarded request learned: the machine's API answered, or the forward had
  * nowhere to deliver. The machines service stamps it into the list's `api` fact — passive
  * measurement, riding traffic that flows anyway (api/types.ts on MachineInfo.api).
@@ -195,15 +204,14 @@ export type ProxyReport = (
   outcome: { ok: true } | { ok: false; detail: string },
 ) => void;
 
-/**
- * The seam handler: `/server/<id>/api/…` → that machine, or a clear answer when there is
- * nothing to forward to. `resolve` is the machines service's lookup: the forward's endpoint,
- * the port over there and a session cookie, or null when it is not connected.
- */
 export function machinesProxy(
   resolve: (machineId: string) => Promise<ProxyTarget | null>,
   report?: ProxyReport,
+  log: (line: string) => void = () => undefined,
+  /** The shared socket cache and event hub, so this generation's routes read the facts the relay writes. */
+  shared: { sockets?: MachineSockets; events?: MachineEventHub } = {},
 ): (request: Request) => Promise<Response | null> {
+  const relay = new MachineSocketRelay(log, shared);
   return async (request) => {
     const url = new URL(request.url);
     const path = parseProxyPath(url.pathname);
@@ -220,6 +228,24 @@ export function machinesProxy(
         { status: 503 },
       );
     }
-    return proxyThroughForward(request, path, target, report);
+    // A stream rides the one socket held to the machine (PRFC-0011) and ONLY that: a stream
+    // forwarded over HTTP is a channel held open for good, and across many machines those
+    // pile up. Without a socket the stream is answered with the reason, and the browser
+    // re-issues it on its backoff (socket-relay.ts).
+    const wantsStream =
+      request.method === "GET" &&
+      (request.headers.get("accept") ?? "").includes("text/event-stream");
+    if (wantsStream) {
+      // The socket transport's answer, when the socket carried this request
+      // (socket/stream-answer.ts): the machine's frames answer it directly.
+      const relayed = await relay.stream(path.machineId, target, {
+        path: `${path.remotePath}${url.search}`,
+        lastEventId: request.headers.get("last-event-id"),
+        answer: answerOf(request),
+      });
+      if (relayed.status < 500) report?.(path.machineId, { ok: true });
+      return relayed;
+    }
+    return proxyThroughSession(request, path, target, report);
   };
 }

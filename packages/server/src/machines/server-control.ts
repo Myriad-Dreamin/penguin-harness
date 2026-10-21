@@ -17,7 +17,7 @@ import {
   startServerCommand,
 } from "./commands.js";
 import type { RemoteLayout } from "./layout.js";
-import type { ExecResult, RemoteTarget } from "../sys/ssh/index.js";
+import type { ExecResult, RemoteTarget } from "./transport/index.js";
 import { probeServerState } from "./server-state.js";
 import { jsonAnswer } from "./answer.js";
 

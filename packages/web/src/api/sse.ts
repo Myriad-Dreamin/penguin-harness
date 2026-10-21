@@ -9,9 +9,8 @@
  *   machine's own server event, tagged with the machine it came from.
  * - A stream is a call on the page's one API socket (api/socket.ts, PRFC-0011), which
  *   re-issues it with `last-event-id` after any interruption (the server replays from its
- *   ring buffer where it keeps one; the machines aggregate keeps none and pushes
- *   resync_required instead). There is no second transport for a stream: without a socket it
- *   waits for one, in silence.
+ *   ring buffer; if the event was already evicted, it pushes resync_required instead). There
+ *   is no second transport for a stream: without a socket it waits for one, in silence.
  * - Liveness: a connection can die without any error (half-open TCP, a stuck proxy or NAT).
  *   Once a stream has carried its beat (`heartbeat` every 20 s), {@link STREAM_HEARTBEAT_MS}
  *   without any frame of its own ends it and re-issues it from its last event id.
@@ -109,9 +108,9 @@ export interface MachineStreamHandlers {
   /** One machine's own event, with the machine it came from and its SSE event id. */
   onMachineEvent: (machineId: string, event: ServerEvent, eventId: string | null) => void;
   /**
-   * The aggregate's own server events on the same stream: `hello` on a fresh subscribe, and
-   * `resync_required` when the tab came back with a last event id — this stream keeps no
-   * buffer of its own, so a re-issued aggregate always means application events were missed.
+   * The hub's own server events on the same stream: `hello` on a fresh subscribe, and
+   * `resync_required` when the tab's last event id could not be honoured from the hub's
+   * bounded buffer — the one that means application events were missed.
    */
   onHubEvent?: (event: ServerEvent, eventId: string | null) => void;
   onOpen?: () => void;
@@ -121,12 +120,11 @@ export interface MachineStreamHandlers {
 /**
  * Subscribes to this Project's machines aggregate
  * (GET /api/projects/:projectId/machines/events): ONE stream for the whole tab whatever the
- * number of connected machines (docs § "Every machine's events on the page's one stream").
- * Each `machine_event` carries the machine it came from, so a caller routes it the way it
- * routed that machine's own stream; the aggregate's `server_event` frames are the stream's own
- * news and go to `onHubEvent`. Reconnecting with the tab's last event id is answered with
- * `resync_required`: each machine's own channel replays, and what this tab missed it re-reads.
- * A machine that is slow to attach does not hold the stream up.
+ * number of connected machines (docs § "One event stream per machine"). Each `machine_event`
+ * carries the machine it came from, so a caller routes it the way it routed that machine's own
+ * stream; the hub's `server_event` frames are the stream's own news and go to `onHubEvent`.
+ * Reconnecting with the tab's last event id replays the hub's buffer, filtered to the machines
+ * this Project watches; a machine that is slow to attach does not hold the stream up.
  */
 export function openMachineEvents(
   projectId: string,
