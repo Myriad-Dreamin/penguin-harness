@@ -1,0 +1,61 @@
+/**
+ * gzip for the JSON an answer carries, when the caller asks for it.
+ *
+ * The company surface's JSON grew past what a forwarded hop likes: a roadmaps list was close
+ * to a megabyte, and the ssh kind's tunnel carried every byte of it. A browser asks for gzip on
+ * every request; this is where its `Accept-Encoding` is finally answered.
+ *
+ * The scope is deliberately narrow, so nothing that streams is caught in it:
+ *
+ * - GET answers of 200 whose content type is JSON, and nothing else. The streaming answers
+ *   (an SSE feed, a proxied machine, a download) are either not JSON or not buffered; a
+ *   response that is already encoded is left as it is.
+ * - Not the machine proxy (`/server/…`): it relays the machine's own answer, headers and
+ *   bytes as they are, and the machine — which owns the route — is the one that decides.
+ * - Only bodies that declare themselves worth it (at least `MIN_BYTES`); a two-line error
+ *   answer costs more to compress than it saves.
+ *
+ * The compression itself runs in the libuv thread pool (`zlib.gzip`), never on the event
+ * loop, so a big answer does not become a stall for everything else this server is doing.
+ */
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
+import type { MiddlewareHandler } from "hono";
+import type { AppEnv } from "../auth/middleware.js";
+
+const gzipAsync = promisify(gzip) as (bytes: Uint8Array) => Promise<Buffer>;
+
+/** Below this a body answers as it is: compression would cost more than it carries. */
+const MIN_BYTES = 2048;
+
+export function compressJson(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    await next();
+    const res = c.res;
+    if (
+      c.req.method !== "GET" ||
+      res.status !== 200 ||
+      !(res.headers.get("content-type") ?? "").startsWith("application/json") ||
+      res.headers.has("content-encoding") ||
+      // The proxy relays; the machine that owns the route decides the encoding.
+      c.req.path.startsWith("/server/") ||
+      !(c.req.header("accept-encoding") ?? "").includes("gzip")
+    ) {
+      return;
+    }
+    if (res.body === null) return;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength < MIN_BYTES) return;
+    const headers = new Headers(res.headers);
+    try {
+      const packed = await gzipAsync(bytes);
+      headers.set("content-encoding", "gzip");
+      headers.set("content-length", String(packed.byteLength));
+      headers.append("vary", "Accept-Encoding");
+      c.res = new Response(packed, { status: res.status, headers });
+    } catch {
+      // Not compressible for a reason of zlib's own: the answer stands, as it was.
+      c.res = new Response(bytes, { status: res.status, headers });
+    }
+  };
+}
