@@ -3,13 +3,14 @@
  * way http-route-groups.test.ts wires the assembly: by hand, because the point is the rule,
  * not the tree around it.
  *
- * - A GET answer of JSON that the caller says it accepts gzipped comes back gzipped, with the
- *   length of the packed bytes and a `Vary` that says the answer depends on the asking.
+ * - A GET answer of JSON that the caller says it accepts packed comes back packed — zstd
+ *   when the caller takes it and this Node has it, gzip otherwise — with the length of the
+ *   packed bytes and a `Vary` that says the answer depends on the asking.
  * - The same answer without the asking — and the same asking without the JSON, or without
  *   the GET, or below the worth-it size, or on the machine proxy's prefix — comes back as it
  *   was.
  */
-import { gunzipSync } from "node:zlib";
+import * as zlib from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { wire } from "@prismshadow/penguin-core/kernel";
@@ -20,6 +21,10 @@ import {
   DEFAULT_ATTACHMENT_MAX_MB,
   DEFAULT_ATTACHMENT_TOTAL_MB,
 } from "../src/services/attachment-limits.js";
+
+/** Node's zstd is young: its typings are not in every @types/node, so probe before using. */
+const zstdDecompress = (zlib as unknown as { zstdDecompressSync?: (b: Uint8Array) => Buffer })
+  .zstdDecompressSync;
 
 /** A payload comfortably past the worth-it size: rows of JSON, the shape every list answers in. */
 const rows = Array.from({ length: 400 }, (_, i) => ({
@@ -97,7 +102,23 @@ describe("the JSON compression rule", () => {
     const packed = new Uint8Array(await res.arrayBuffer());
     expect(packed.byteLength).toBe(Number(res.headers.get("content-length")));
     expect(packed.byteLength).toBeLessThan(rowsJson.length / 2);
-    expect(JSON.parse(gunzipSync(packed).toString("utf8"))).toEqual({ rows });
+    expect(JSON.parse(zlib.gunzipSync(packed).toString("utf8"))).toEqual({ rows });
+  });
+
+  it("prefers zstd for a caller that accepts both, and falls back to gzip where Node has none", async () => {
+    const { fetch } = assemble();
+    const res = await fetch("/api/things/big", { headers: { "accept-encoding": "gzip, zstd" } });
+    const encoding = res.headers.get("content-encoding");
+    const packed = new Uint8Array(await res.arrayBuffer());
+    expect(packed.byteLength).toBe(Number(res.headers.get("content-length")));
+    expect((res.headers.get("vary") ?? "").toLowerCase()).toContain("accept-encoding");
+    if (zstdDecompress !== undefined) {
+      expect(encoding).toBe("zstd");
+      expect(JSON.parse(zstdDecompress(packed).toString("utf8"))).toEqual({ rows });
+    } else {
+      expect(encoding).toBe("gzip");
+      expect(JSON.parse(zlib.gunzipSync(packed).toString("utf8"))).toEqual({ rows });
+    }
   });
 
   it("answers the same route uncompressed to a caller that does not ask", async () => {
