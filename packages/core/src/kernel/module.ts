@@ -319,6 +319,13 @@ export interface BootModulesOptions {
   resources: Resources;
   /** Parked documents from the previous generation, by module name. */
   parked?: Record<string, Json>;
+  /**
+   * Interposes on every interface value a module provides, before any consumer wires it:
+   * observability (the server's telemetry) times a boundary method without the module's
+   * file knowing. Called once per distinct api value; returning the value unchanged leaves
+   * it alone. `iface` is the provided interface's declared name ("" when unpublished).
+   */
+  wrapApi?: (info: { module: string; alias: string; iface: string }, api: unknown) => unknown;
 }
 
 interface Flat {
@@ -519,12 +526,20 @@ export async function bootModules(root: ModuleDef, opts: BootModulesOptions): Pr
 
   const instances = new Map<string, { inst: ModuleInstance; disposers: Array<() => void> }>();
   const created: string[] = [];
+  // WrapApi's memo: one wrapper per distinct api value, so every consumer of an interface
+  // sees the same wrapped object (a wrapper is stateful — telemetry's reconcile dedup is).
+  const wrapped = new Map<unknown, unknown>();
   const apiOf = (module: string, alias: string): unknown => {
     const inst = instances.get(module);
-    if (inst !== undefined) return inst.inst.api[alias];
-    const value = opts.published?.values[module]?.[alias];
+    const value = inst !== undefined ? inst.inst.api[alias] : opts.published?.values[module]?.[alias];
     if (value === undefined) throw new ModuleBootError(`no api '${alias}' on module '${module}'`);
-    return value;
+    if (opts.wrapApi === undefined) return value;
+    let out = wrapped.get(value);
+    if (out === undefined) {
+      out = opts.wrapApi({ module, alias, iface: provides[module]?.[alias]?.name ?? "" }, value);
+      wrapped.set(value, out);
+    }
+    return out;
   };
   /** Runs every disposer, newest first, through failures; the failures come back together. */
   const drain = (disposers: Array<() => void>): unknown[] => {
