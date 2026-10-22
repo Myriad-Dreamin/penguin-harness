@@ -44,9 +44,14 @@ export function compressJson(): MiddlewareHandler<AppEnv> {
       return;
     }
     if (res.body === null) return;
+    // From here on the original body is consumed: every path has to hand the adapter a fresh
+    // response, because the one it holds a reader to is the locked original, unreadable now.
     const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength < MIN_BYTES) return;
     const headers = new Headers(res.headers);
+    if (bytes.byteLength < MIN_BYTES) {
+      c.res = new Response(bytes, { status: res.status, headers });
+      return;
+    }
     try {
       const packed = await gzipAsync(bytes);
       headers.set("content-encoding", "gzip");

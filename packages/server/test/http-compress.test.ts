@@ -112,6 +112,13 @@ describe("the JSON compression rule", () => {
     const gzip = { headers: { "accept-encoding": "gzip" } };
     const small = await fetch("/api/things/small", gzip);
     expect(small.headers.get("content-encoding")).toBeNull();
+    // The rule read this body to learn it was too small to pack; reading it back is the
+    // regression guard for the adapter, which cannot re-read the consumed original.
+    expect((await small.json()) as unknown).toEqual({ ok: true });
+    const smallBoth = await fetch("/api/things/small", {
+      headers: { "accept-encoding": "gzip, zstd" },
+    });
+    expect((await smallBoth.json()) as unknown).toEqual({ ok: true });
     const stream = await fetch("/api/things/stream", gzip);
     expect(stream.headers.get("content-encoding")).toBeNull();
     const bytes = await fetch("/api/things/bytes", gzip);
