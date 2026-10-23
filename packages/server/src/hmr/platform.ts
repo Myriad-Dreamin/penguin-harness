@@ -96,6 +96,13 @@ import type { UnsatisfiedPlugin } from "../api/types.js";
 import { migrate } from "../db/migrations/index.js";
 import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
+import type { Telemetry } from "../mechanisms/telemetry.js";
+import { BootTimings, timeAdmission } from "../telemetry/boot.js";
+import { ProbePort } from "../telemetry/wrap.js";
+import { compileModuleTree, describeCompile } from "../compile/pipeline.js";
+import { telemetryPass } from "../compile/telemetry.js";
+import { describeTree } from "../compile/tree.js";
+import path from "node:path";
 
 /**
  * This server's hot host: the mechanism (@prismshadow/penguin-hmr) with the api ITS platforms
@@ -332,6 +339,8 @@ async function createInner(
   reassemble: (change?: ReassemblyChange) => Promise<boolean>,
   /** The slip of the push this boot belongs to (push-plugins.ts); null for every other boot. */
   push: PushSlip | null = null,
+  /** True when a re-assembly (not a boot or a push) is creating this App. */
+  reassembling = false,
 ): Promise<PlatformApi> {
   // The claim comes FIRST, before a single registry read is acted on, and "refused" is a
   // throw — what each outcome means and why lives on HmrClaim (capabilities.ts).
@@ -348,6 +357,10 @@ async function createInner(
     );
   }
   const caps = claim.kind === "claimed" ? claim.caps : null;
+  // Telemetry's boot timings, this App's generation number, and where the boundary probes
+  // (telemetry/wrap.ts) record until the tree is up (telemetry/boot.ts, telemetry/wrap.ts).
+  const boot = new BootTimings(ctx.resources, reassembling);
+  const probes = new ProbePort();
   // A pushed platform carries its own migrations, which is the only way the tables its
   // business needs can reach a runtime older than they are — that runtime will never grow
   // them by restarting, because it does not have them. swapPath: this boot can be rolled
@@ -355,7 +368,7 @@ async function createInner(
   // applied here; the boot never fails on them. Before any node is created: every repo below
   // prepares its statements against this schema.
   if (caps !== null) {
-    const { deferred } = migrate(caps.db, { swapPath: true });
+    const { deferred } = boot.time("boot.migrate", () => migrate(caps.db, { swapPath: true }));
     if (deferred.length > 0) {
       console.log(`[platform] left for the runtime's next restart: ${deferred.join(", ")}`);
     }
@@ -444,6 +457,7 @@ async function createInner(
     }
     throw err;
   };
+  const pluginsAt = performance.now();
   const plugins =
     caps === null
       ? pluginHostFrom(ctx.resources)
@@ -454,7 +468,17 @@ async function createInner(
           // A Project may list a plugin for one machine only (`[plugins.<machineId>]`); this
           // server's own id says which of those tables are its own.
           new MachinesRepo(caps.db).ownId(),
+          // Telemetry's plugin.load, one per plugin imported — kept like the boot timings. A
+          // plugin named by a path (a dev checkout) goes unnamed: samples carry no paths.
+          (plugin, ms, ok) =>
+            boot.add({
+              probe: "plugin.load",
+              durMs: ms,
+              status: ok ? "ok" : "error",
+              ...(path.isAbsolute(plugin) ? {} : { attrs: { plugin } }),
+            }),
         ).catch(restoreGeneration);
+  boot.since("boot.plugins", pluginsAt);
   // Plus whatever a test stood up in process, which no closure could name (see the id).
   const injected = ctx.resources.claim<PluginHost | null>(HMR_TEST_PLUGINS_RESOURCE_ID);
   if (injected != null && typeof injected.entries === "function") {
@@ -494,13 +518,23 @@ async function createInner(
     console.warn("[platform] bare kernel: terminals only, no business surface");
     terminals = new TerminalManager(ctx.resources, { assets: () => null });
     terminals.adopt(adoptable("TerminalModule") ? (context.terminals ?? []) : []);
-    ({ tree, unsatisfied } = await bootKept((kept) =>
-      bootModules(bareTree(kept.modules, kept.replacements), {
-        ifaces: plugins.ifaces(ifaceTable as unknown as IfaceTable),
+    ({ tree, unsatisfied } = await bootKept(async (kept) => {
+      // THE COMPILE (compile/pipeline.ts): the bare tree carries none of telemetry's
+      // declared interfaces, so the pass is SKIPPED with the reason logged — a line to
+      // read instead of a silent difference between kernels.
+      const ifaces = plugins.ifaces(ifaceTable as unknown as IfaceTable);
+      const compiled = await compileModuleTree(
+        bareTree(kept.modules, kept.replacements),
+        [telemetryPass({ port: probes })],
+        { ifaces },
+      );
+      console.log(`[compile] bare: ${describeCompile(compiled.trace)}`);
+      return bootModules(compiled.tree, {
+        ifaces,
         resources: ctx.resources,
         parked: parkedModules(context),
-      }),
-    ));
+      });
+    }));
   } else {
     // A tree that fails to boot on this generation points `current` back before the throw
     // reaches the re-assembly (or the upgrade) that restores the previous App.
@@ -508,8 +542,14 @@ async function createInner(
     // group and the terminal manager are modules wired by their manifests — checked as
     // data before any create() runs, created in dependency order. Sandbox backends the
     // plugin host registered enter the same tree as one contributing module.
-    ({ tree, unsatisfied } = await bootKept((kept) =>
-      bootModules(
+    const modulesAt = performance.now();
+    ({ tree, unsatisfied } = await bootKept(async (kept) => {
+      // THE COMPILE (compile/pipeline.ts): the assembled tree is data; the telemetry
+      // plugin rewrites it as one checked, skippable, traced pass — its declared
+      // interfaces resolved, the result verified with the kernel's own checkTree —
+      // and the kernel boots it with no hook and no seam of its own.
+      const ifaces = plugins.ifaces(ifaceTable as unknown as IfaceTable);
+      const compiled = await compileModuleTree(
         platformDef(
           caps,
           adoptable,
@@ -520,13 +560,26 @@ async function createInner(
           // SessionManager is built over it, running Tasks and all.
           takenOver ? new Map([[AgentStateStore, handed.state]]) : new Map(),
         ),
-        {
-          ifaces: plugins.ifaces(ifaceTable as unknown as IfaceTable),
-          resources: ctx.resources,
-          parked: parkedModules(context),
-        },
-      ),
-    ).catch(restoreGeneration));
+        [
+          telemetryPass({
+            port: probes,
+            // boot.module: each node's create() timed by the same pass, from outside.
+            onModuleBoot: (module, ms) =>
+              boot.add({ probe: "boot.module", durMs: ms, attrs: { module } }),
+          }),
+        ],
+        { ifaces },
+      );
+      console.log(`[compile] ${describeCompile(compiled.trace)}`);
+      // debug(): the compiled tree — every module with what it provides.
+      if (process.env.PENGUIN_MODULE_COMPILE_DEBUG === "1") console.log(describeTree(compiled.tree));
+      return bootModules(compiled.tree, {
+        ifaces,
+        resources: ctx.resources,
+        parked: parkedModules(context),
+      });
+    }).catch(restoreGeneration));
+    boot.since("boot.modules", modulesAt);
     business = tree;
     terminals = tree.api<TerminalManager>("TerminalModule", "terminals");
   }
@@ -602,6 +655,7 @@ async function createInner(
   // a swap aborts none — so api.drained(), which the KERNEL awaits between dispose and the
   // successor's boot (kernel/upgrade.ts), has nothing to report.
   ctx.effect(() => {
+    const start = performance.now();
     // Held machine sessions are DELIVERED, not suspended: the machines module's own dispose
     // effect closes only its transient sessions and leaves the held ones in the registry.
     // Nothing is stopped here: whether the runs go on is the SUCCESSOR's call, made once it
@@ -609,6 +663,8 @@ async function createInner(
     manager?.detach();
     tree.dispose();
     if (business === null) terminals.quiesce();
+    // hmr.dispose: measured for the successor through the registry (telemetry/boot.ts).
+    boot.disposed(start);
   });
 
   // COMMIT: from here the App is built and nothing below throws, so the irreversible
@@ -651,13 +707,22 @@ async function createInner(
     fetch(request: Request): Promise<Response>;
     fetchAs(userId: string, request: Request): Promise<Response>;
   }>("HttpModule", "http");
-  const http = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
+  const served = httpApi !== undefined ? seamHttp(httpApi) : seamHttp(bareApp(terminals, identity));
   const logNode = business?.api<Log>("RuntimeModule", "Log") ?? null;
+  const telemetry = business?.api<Telemetry>("TelemetryModule", "Telemetry") ?? null;
+  boot.flush(telemetry);
+  probes.bind(telemetry);
+  // hmr.admit: a push's admission probe is the first request a new generation is sent
+  // (telemetry/boot.ts); everything else goes to `served` untouched.
+  const http = timeAdmission(served, telemetry);
 
   return {
     log: (line) => (logNode !== null ? logNode.line(line) : console.log(line)),
     park: () => {
+      const parkAt = performance.now();
       const modules = tree.park();
+      // hmr.park: measured for the successor through the registry (telemetry/boot.ts).
+      boot.parked(parkAt);
       // The top-level fields are written for every platform that reads them: a bare
       // kernel's own ptys, and the two parking modules' state in the form the first
       // platforms parked it — so a rollback to any of them keeps terminals and confinement.
@@ -743,11 +808,13 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     // Taken HERE, once: this create() is what a push boots, and only its first inner boot is
     // the push's. A re-assembly later boots the same inner impl with nobody waiting on it.
     let push = takePushSlip(ctx.resources);
+    /** True while a re-assembly (a plugin change) is the cause of the next inner boot. */
+    let reassembling = false;
     const innerImpl: Impl<PlatformApi, PlatformCtx> = {
       create: (innerCtx, innerContext) => {
         const slip = push;
         push = null;
-        return createInner(innerCtx, innerContext, reassemble, slip);
+        return createInner(innerCtx, innerContext, reassemble, slip, reassembling);
       },
     };
     let inner: Instance<PlatformApi>;
@@ -762,6 +829,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
         // interleave, and each re-assembly reads exactly what was written for it.
         await change?.write();
         swapping = true;
+        reassembling = true;
         try {
           const result = await upgrade({
             current: inner,
@@ -789,6 +857,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
           return false;
         } finally {
           swapping = false;
+          reassembling = false;
         }
       });
       op = run.then(
