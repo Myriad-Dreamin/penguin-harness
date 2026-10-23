@@ -464,6 +464,13 @@ export function AppLayout() {
           />
         )
       }
+      footer={
+        /* The status bar across the very bottom: the footer slot, so it spans the window's
+         * whole width — under the sidebar and the dock column, not only the main column
+         * (admin-only — it renders nothing until its first poll answers). The bar is a fixed
+         * part of the Web App this round; a plugin-provided bar would follow later. */
+        <StatusBar />
+      }
       overlays={
         <>
           {/* The App info dialog, opened from the account menu's App info row and the draft
@@ -550,10 +557,6 @@ export function AppLayout() {
           and are laid over the dock's browser tab by coordinates — a webview moved in the DOM
           reloads, so navigating the app must never re-parent one. */}
       <BuiltinBrowserLayer />
-      {/* The status bar across the very bottom: the machine on the left, the harness on the
-          right (admin-only — it renders nothing until its first poll answers). The bar is a
-          fixed part of the Web App this round; a plugin-provided bar would follow later. */}
-      <StatusBar />
     </AppShell>
   );
 }

@@ -110,7 +110,7 @@ import { envSourced, syncModelsToMachine } from "./models-sync.js";
 import { syncPluginsToMachine, type WantedPlugin } from "./plugins-sync.js";
 import type { LocalModels } from "./models-sync.js";
 import { localSettings, syncSettingsToMachine } from "./settings-sync.js";
-import { machineApi } from "./machine-api.js";
+import { machineApi, type MachineApi } from "./machine-api.js";
 import { startRemoteServer, stopRemoteServer } from "./server-control.js";
 import type { MachineRow } from "../db/repos/machines.js";
 import { Interface, Bind, Module, Provide, Use } from "@prismshadow/penguin-core/kernel";
@@ -1026,6 +1026,29 @@ export class MachinesService {
       address,
       outcome.ok ? { answeredAt: at } : { failedAt: at, detail: outcome.detail },
     );
+  }
+
+  /**
+   * Every machine this server holds out to — any Project's, since the machine itself is not
+   * Project-scoped — each with a client to its own API while it is connected (null
+   * otherwise). This server is never among them, even where a config lists it back: a
+   * surface reading the WHOLE harness here already holds this server's share locally, and
+   * asking itself over its own tunnel would count it twice. For surfaces that span every
+   * Project's machines at once (the status bar's poll).
+   */
+  async connectedApis(): Promise<Array<{ machineId: string; alias: string; api: MachineApi | null }>> {
+    const out: Array<{ machineId: string; alias: string; api: MachineApi | null }> = [];
+    for (const machine of this.#allMachines()) {
+      if (machine.local || machine.installed === null || machine.machineId === null) continue;
+      if (machine.machineId === this.#machineId) continue;
+      const dial = await this.#dial(machine.id);
+      out.push({
+        machineId: machine.machineId,
+        alias: machine.alias,
+        api: dial === null ? null : machineApi(dial.agent, dial.port, dial.cookie),
+      });
+    }
+    return out;
   }
 
   /**
@@ -3227,6 +3250,7 @@ export abstract class Machines extends Interface<
     | "dialPort"
     | "setForwards"
     | "forwardFacts"
+    | "connectedApis"
     | "jobs"
     | "startUse"
     | "stopUsing"
