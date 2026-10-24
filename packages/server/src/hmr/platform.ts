@@ -98,14 +98,14 @@ import { MachinesRepo } from "../db/repos/machines.js";
 import type { Auth } from "../mechanisms/identity.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
 import { BootTimings, timeAdmission } from "../telemetry/boot.js";
-import { compileModuleDef } from "../compile/module.js";
-import { compileModuleTree, describeCompile } from "../compile/pipeline.js";
 import {
   ProbePort,
   TELEMETRY_PASS_ID,
   telemetryModulePass,
   telemetryPluginDef,
-} from "../compile/telemetry.js";
+} from "../telemetry/plugin.js";
+import { compileModuleDef } from "../compile/module.js";
+import { compileModuleTree, describeCompile } from "../compile/pipeline.js";
 import { describeTree } from "../compile/tree.js";
 import path from "node:path";
 
@@ -363,7 +363,7 @@ async function createInner(
   }
   const caps = claim.kind === "claimed" ? claim.caps : null;
   // Telemetry's boot timings, this App's generation number, and where the boundary probes
-  // (compile/telemetry.ts ProbePort) record until the tree is up (telemetry/boot.ts).
+  // (telemetry/plugin.ts ProbePort) record until the tree is up (telemetry/boot.ts).
   const boot = new BootTimings(ctx.resources, reassembling);
   const probes = new ProbePort();
   // The compile's debug switch: trace, timings and the tree dump; off is silent and untimed.

@@ -14,15 +14,19 @@
  * class, and the two cannot drift apart; each arm is typed by the class it serves.
  * (What a string switch could never carry: the type of the arm it selects.)
  *
+ * Placement: this file is telemetry's own half — it lives here, in telemetry/, and the
+ * compile machinery it talks to (pipeline, registration slot, tree utilities) stays in
+ * compile/: the module-pass feature is the kernel's neighbor, not telemetry's.
+ *
  * boot.module rides the same walk: each node's create() is timed from the outside, per
  * node, no core hook, no second traversal — one rewrite visits every node once and
  * does both.
  */
 import type { IfaceClass, ModuleDef } from "@prismshadow/penguin-core/kernel";
 import { defineModule } from "@prismshadow/penguin-core/kernel";
-import type { ModulePass, RewriteCtx } from "./pipeline.js";
-import { declNameOf, targetsOfDef } from "./tree.js";
-import { PASSES_SLOT } from "./module.js";
+import type { ModulePass, RewriteCtx } from "../compile/pipeline.js";
+import { declNameOf, targetsOfDef } from "../compile/tree.js";
+import { PASSES_SLOT } from "../compile/module.js";
 import type { Telemetry } from "../mechanisms/telemetry.js";
 import type { TelemetryKeys, TelemetrySampleInput } from "../api/types.js";
 import { Sessions, SessionLoaders, SessionServiceIface } from "../runtime/session-manager.js";

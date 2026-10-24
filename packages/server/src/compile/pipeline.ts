@@ -162,27 +162,29 @@ export async function compileModuleTree(
   return { tree: m, trace };
 }
 
-/** The registrations' `after` deps, topologically — registration order breaking ties, a cycle a loud error naming the path. */
+/** The registrations' `after` deps, topologically — registration order breaking ties, a cycle a loud error naming the path. Membership is judged by Set (O(1)); an array's indexOf would make the check O(n) and the whole sort O(n²) in passes. The path array survives only to WRITE the cycle, and its scan runs once, on the way out. */
 function orderPasses(registered: readonly PassDecl[]): PassDecl[] {
   const byId = new Map(registered.map((reg) => [reg.id, reg] as const));
   const out: PassDecl[] = [];
   const done = new Set<string>();
-  const visiting: string[] = [];
+  const visiting = new Set<string>();
+  const path: string[] = [];
   const visit = (reg: PassDecl): void => {
     if (done.has(reg.id)) return;
-    const at = visiting.indexOf(reg.id);
-    if (at >= 0) {
+    if (visiting.has(reg.id)) {
       throw new ModuleBootError(
-        `pass dependencies form a cycle: ${[...visiting.slice(at), reg.id].join(" -> ")}`,
+        `pass dependencies form a cycle: ${[...path.slice(path.indexOf(reg.id)), reg.id].join(" -> ")}`,
       );
     }
-    visiting.push(reg.id);
+    visiting.add(reg.id);
+    path.push(reg.id);
     // An `after` naming an id nobody registered is vacuous — "behind it, if present".
     for (const dep of reg.after ?? []) {
       const next = byId.get(dep);
       if (next !== undefined) visit(next);
     }
-    visiting.pop();
+    path.pop();
+    visiting.delete(reg.id);
     done.add(reg.id);
     out.push(reg);
   };
