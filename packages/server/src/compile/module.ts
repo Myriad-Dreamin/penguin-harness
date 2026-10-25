@@ -59,11 +59,13 @@ export const PASSES_SLOT = `${COMPILE_MODULE}.passes`;
  *
  * The manifest's `name` is spelled through the `COMPILE_MODULE` constant ON PURPOSE.
  * The generator keys an interface class by the module its file belongs to, and a
- * directory's module name is read from its `module.ts` by a TEXT scan that matches
- * `defineModule({ name: "…"` — a string literal here would name this directory's module
- * `CompileModule` and re-key `Compile` away from the package key the manifest's
- * provides names below. The constant keeps the scan missing, so the key falls back to
- * the package name — the one the provides string names.
+ * directory's module name is read from its `module.ts` by a text scan that looks for a
+ * defineModule or decorator literal opening with a QUOTED name property — a string
+ * literal here would name this directory's module `CompileModule` and re-key `Compile`
+ * away from the package key the manifest's provides names below. The constant keeps
+ * the scan missing, so the key falls back to the package name — the one the provides
+ * string names. (The scan reads this whole file as text, so this comment deliberately
+ * avoids spelling the exact shape it matches.)
  */
 export const compileModuleDef = (): ModuleDef =>
   defineModule(
