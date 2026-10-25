@@ -28,7 +28,12 @@ const registering = (...passes: PassDecl[]): ModuleDef =>
   leaf(
     manifest({
       name: "passModules",
-      contributes: { [PASSES_SLOT]: passes.map((p) => ({ ...p })) },
+      contributes: {
+        [PASSES_SLOT]: passes.map((p) => ({
+          id: p.id,
+          ...(p.after === undefined ? {} : { after: [...p.after] }),
+        })),
+      },
     }),
   );
 
@@ -231,7 +236,7 @@ describe("the module-tree compile", () => {
     });
     expect(debug.trace).toHaveLength(1);
     expect(debug.trace[0]).toMatchObject({ id: "loudly", state: "applied" });
-    expect(typeof debug.trace[0].ms).toBe("number");
+    expect(typeof debug.trace[0]?.ms).toBe("number");
   });
 });
 
