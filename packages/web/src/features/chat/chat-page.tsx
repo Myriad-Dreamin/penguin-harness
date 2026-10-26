@@ -119,7 +119,10 @@ import {
 } from "./session-project";
 import { RouteProbe } from "./route-probe";
 import { machineForSession } from "../../lib/session-machines";
-import { HistoryLoadFailed } from "./history-load-failed";
+import { HistoryLoadFailed, MachineAwayPanel } from "./history-load-failed";
+import { MachineAwayBanner } from "./machine-away-notice";
+import { offlineMachineOf } from "./route-offline";
+import type { OfflineMachine } from "./route-offline";
 import { nameOnMachine } from "../../lib/workspace-machines";
 import { CHAT_DEFAULTS_CHANGED_EVENT, chatDefaultsChangedDetail } from "./chat-defaults-event";
 import { advanceCostStat, applyUsageFetch, createCostStatHold } from "./header-stats";
@@ -470,6 +473,19 @@ export function ChatPage() {
   const [probeFailedKey, setProbeFailedKey] = useState<string | null>(null);
   /** The probe that failed did so with a 404: the server has no such Session for this user. */
   const [probeMissingKey, setProbeMissingKey] = useState<string | null>(null);
+  /**
+   * The probe that failed answered 503 `not_connected` and named the machine holding the
+   * Session (route-offline.ts): the Session is not gone — it lives on a machine this server
+   * cannot reach right now. Keyed like the other probe answers and read by the render (the
+   * machine's own panel, by the alias the server sent) and by the probe effect (the Session
+   * stays pending — never redirect-able — and once the machine is back the lookup runs again,
+   * which is what opens the conversation in place, without a reload).
+   */
+  const [probeOffline, setProbeOffline] = useState<(OfflineMachine & { key: string }) | null>(
+    null,
+  );
+  /** Bumped by the offline note's own Retry: the probe effect re-issues the lookup. */
+  const [probeRetryNonce, setProbeRetryNonce] = useState(0);
   const heldSession = useRef<SessionInfo | null>(null);
   heldSession.current = heldRouteSession(
     heldSession.current,
@@ -869,11 +885,35 @@ export function ChatPage() {
     (routeSessionOwner === null
       ? machinesUnreachable
       : offlineMachineIds.includes(routeSessionOwner));
+  /**
+   * The machine the probe's 503 named as holding the routed Session, while that answer is the
+   * current one — the strongest fact this page can hold about a Session it cannot read: it
+   * exists, and where it lives. While it holds, the Session is pending (never redirected away
+   * from) whatever the machine list says, so a machine coming back opens the conversation here
+   * rather than bouncing the route to another one.
+   */
+  const heldOfflineMachineId =
+    probeOffline !== null && probeKey !== null && probeOffline.key === probeKey
+      ? probeOffline.machineId
+      : null;
+  /**
+   * The machine the offline answer named is no longer among the out-of-reach ones — back, or
+   * gone from the list. Either way the held-offline Session gets one more lookup: a machine
+   * back opens the conversation in place, a machine removed answers 404 and the page says so.
+   */
+  const heldOfflineBack =
+    heldOfflineMachineId !== null && !offlineMachineIds.includes(heldOfflineMachineId);
   // Read from `listed`, never from `selected`: the held Session above keeps the conversation
   // on screen through a refetch, but it must not tell the probe that the row is loaded — a
   // Session that really is gone has to keep probing until the lookup fails and releases both.
+  // The offline answer keeps it pending on its own: the machine holding it cannot be asked
+  // until it is back, which is not "gone" either.
   const routeSessionPending =
-    !!routeSessionId && listed === null && (probeFailedKey !== probeKey || routeSessionUnowned);
+    !!routeSessionId &&
+    listed === null &&
+    (probeFailedKey !== probeKey ||
+      routeSessionUnowned ||
+      heldOfflineMachineId !== null);
   /**
    * The lookup has failed and the only servers that could still answer for this Session are
    * out of reach. It is not gone — so the redirect must not fire and the row must not be
@@ -931,7 +971,18 @@ export function ChatPage() {
           setProbeFailedKey(probeKey);
           // Only an answer that the Session does not exist settles it as missing; a failure to
           // get any answer is not that, and keeps the old way on.
-          if (cause instanceof ApiError && cause.status === 404) setProbeMissingKey(probeKey);
+          if (cause instanceof ApiError && cause.status === 404) {
+            setProbeMissingKey(probeKey);
+            // A machine an earlier offline answer named did not keep the Session after all:
+            // the offline hold would keep a dead link pending forever.
+            setProbeOffline(null);
+            return;
+          }
+          // The server's 503 names the machine holding the Session: hold it — it is what the
+          // offline note shows the reader and what re-opens the conversation once the machine
+          // is back (heldOfflineBack below re-runs this lookup).
+          const offline = offlineMachineOf(cause);
+          if (offline !== null) setProbeOffline({ key: probeKey, ...offline });
         },
       },
     );
@@ -948,6 +999,10 @@ export function ChatPage() {
     selected,
     addSession,
     isSessionDeleted,
+    // The machine the offline answer named is back (or gone from the list): one more lookup.
+    heldOfflineBack,
+    // The offline note's own Retry: the lookup again, now.
+    probeRetryNonce,
   ]);
   // The row found during the list's first load, added once the list has settled and only if
   // it did not bring the row itself (one beyond the first page, or an organization's row,
@@ -2703,6 +2758,12 @@ export function ChatPage() {
                       // ChatInput always mounts in the same JSX slot, so it isn't unmounted and
                       // recreated when the first message arrives (preserving draft/focus).
                       <>
+                        {/* The machine this conversation runs on, when it is out of reach: the
+                            history on screen stays readable, and the strip names the machine
+                            with the same retry the Machines page shows. A conversation already
+                            open says nothing otherwise — its read happened while the machine
+                            answered, and nothing fails again to say the machine has gone. */}
+                        <MachineAwayBanner projectId={projectId} sessionId={selected.sessionId} />
                         {/* `relative`: the floating dock launcher below anchors to this body —
                             the region between the toolbar and the composer — so clamping to
                             it keeps the launcher off both. */}
@@ -2770,16 +2831,38 @@ export function ChatPage() {
                       </>
                     )
                   ) : routeSessionOffline ? (
-                    <EmptyState
-                      title={
-                        routeSessionOwner === null
-                          ? S.chat.sessionOnOfflineMachineUnknown
-                          : S.chat.sessionOnOfflineMachine(
-                              machineLabels.get(routeSessionOwner) ?? routeSessionOwner,
-                            )
-                      }
-                      description={S.chat.sessionOfflineHint}
-                    />
+                    // The lookup failed and only machines out of reach could have answered. The
+                    // 503 named the machine holding the Session, so the note is the machine's
+                    // own: its alias, its retry, and the fold with the server's words. Without
+                    // that answer (the lookup failed another way) the generic sentence stands.
+                    probeOffline !== null && heldOfflineMachineId === probeOffline.machineId ? (
+                      <MachineAwayPanel
+                        projectId={projectId}
+                        machineId={probeOffline.machineId}
+                        alias={probeOffline.alias}
+                        error={probeOffline.message}
+                        onRetry={() => setProbeRetryNonce((n) => n + 1)}
+                        fallback={
+                          <EmptyState
+                            title={S.chat.sessionOnOfflineMachine(
+                              probeOffline.alias ?? probeOffline.machineId,
+                            )}
+                            description={S.chat.sessionOfflineHint}
+                          />
+                        }
+                      />
+                    ) : (
+                      <EmptyState
+                        title={
+                          routeSessionOwner === null
+                            ? S.chat.sessionOnOfflineMachineUnknown
+                            : S.chat.sessionOnOfflineMachine(
+                                machineLabels.get(routeSessionOwner) ?? routeSessionOwner,
+                              )
+                        }
+                        description={S.chat.sessionOfflineHint}
+                      />
+                    )
                   ) : !sessionsLoading && routeOutcome === "notFound" ? (
                     // A dead link: said in place, with the one way on that fits the mode —
                     // a new conversation, or back to the organization in company mode.
