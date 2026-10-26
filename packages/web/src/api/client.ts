@@ -18,7 +18,7 @@ import { sessionKindPath, type ErrorDetails } from "@prismshadow/penguin-server/
 import { S } from "../lib/strings";
 import { apiUrl } from "../lib/server-context";
 import { machineForPath } from "../lib/session-machines";
-import { SocketTimeoutError, apiSocket } from "./socket";
+import { SocketTimeoutError, apiSocket, type SocketCallResult } from "./socket";
 
 /**
  * Unified API error: carries the HTTP status code and server error code (server error body
@@ -142,23 +142,37 @@ interface ErrorEnvelope {
   error?: { code?: string; message?: string; details?: unknown };
 }
 
+/** The headers a proxy names itself in on an answer it produced: only an HTTP answer can carry one. */
+const PROXY_HEADERS = ["via", "proxy-agent", "x-squid-error"];
+
 /**
  * The error for an answer that is not the server's: no JSON came back, so something between the
  * page and the server answered in its place. Every answer the server gives is JSON, its errors
  * included; a web page is a dev server or reverse proxy that did not forward the request, and a
  * gateway status or a proxy's own header is an HTTP proxy that could not reach the server.
+ *
+ * It reads the facts both transports hand back — the status, the content type, and whether a
+ * proxy named itself — so a page a socket carried as text is judged here exactly as one read off
+ * a Response is.
  */
-function notTheServer(response: Response): ApiError {
-  const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim();
-  const proxied =
-    [502, 503, 504].includes(response.status) ||
-    ["via", "proxy-agent", "x-squid-error"].some((name) => response.headers.has(name));
+function notTheServerAnswer(status: number, contentType: string, proxyNamed: boolean): ApiError {
+  const type = contentType.split(";")[0]!.trim();
+  const proxied = [502, 503, 504].includes(status) || proxyNamed;
   const message = proxied
-    ? S.errors.notTheServer.proxy(response.status)
+    ? S.errors.notTheServer.proxy(status)
     : type === "text/html"
-      ? S.errors.notTheServer.page(response.status)
-      : S.errors.notTheServer.other(response.status, type);
-  return new ApiError(response.status, "not_the_server", message);
+      ? S.errors.notTheServer.page(status)
+      : S.errors.notTheServer.other(status, type);
+  return new ApiError(status, "not_the_server", message);
+}
+
+/** {@link notTheServerAnswer} for an answer read off a Response, whose headers a proxy may have marked. */
+function notTheServer(response: Response): ApiError {
+  return notTheServerAnswer(
+    response.status,
+    response.headers.get("content-type") ?? "",
+    PROXY_HEADERS.some((name) => response.headers.has(name)),
+  );
 }
 
 /**
@@ -330,15 +344,9 @@ async function callOverSocket(
   body: unknown,
   target: string | null,
 ): Promise<Answer | null> {
+  let res: SocketCallResult;
   try {
-    const res = await apiSocket.call(method, url, body !== undefined ? { body } : {});
-    return {
-      status: res.status,
-      body: res.body ?? null,
-      date: res.headers.date ?? null,
-      retryAfterSeconds: retryAfterOf(res.headers["retry-after"]),
-      etag: res.headers.etag ?? null,
-    };
+    res = await apiSocket.call(method, url, body !== undefined ? { body } : {});
   } catch (err) {
     // A read the server never answered (socket.ts ANSWER_TIMEOUT_MS, warned about there) is
     // asked again over HTTP: nothing was changed by asking, and a page waiting on it would
@@ -355,6 +363,25 @@ async function callOverSocket(
     // acted on — report it as a network error.
     throw new ApiError(0, "network_error", S.errors.networkError);
   }
+  // The socket frames a `text/*` answer as its text (server/src/socket/serve.ts answerOnce), so
+  // a page — or whatever else in front of a machine answered — arrives here as a string body
+  // instead of as a Response the HTTP path would have read itself. The one rule (see
+  // notTheServerAnswer) judges it: the type names a page, and a gateway status names a proxy.
+  // What a socket answer cannot show is a proxy's own header — only content-type, retry-after
+  // and etag come back with it — so proxying rests on the status alone here, 502/503/504 (the
+  // HTTP side still reads the header). A JSON-labelled body keeps its own reading, the one
+  // answerOnce gives it: parsed when it parses, carried as its raw text when it does not.
+  const contentType = res.headers["content-type"] ?? "";
+  if (typeof res.body === "string" && !contentType.includes("json")) {
+    throw notTheServerAnswer(res.status, contentType, false);
+  }
+  return {
+    status: res.status,
+    body: res.body ?? null,
+    date: res.headers.date ?? null,
+    retryAfterSeconds: retryAfterOf(res.headers["retry-after"]),
+    etag: res.headers.etag ?? null,
+  };
 }
 
 const isReadMethod = (method: string): boolean => method === "GET" || method === "HEAD";
