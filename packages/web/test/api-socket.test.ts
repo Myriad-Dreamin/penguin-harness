@@ -66,6 +66,11 @@ async function openViaReady(s: ApiSocket = socket): Promise<Promise<boolean>> {
   return pending;
 }
 
+/** Runs the microtasks a step of ready(), onopen or a rejection queued up (fake timers leave them alone). */
+async function settle(steps = 6): Promise<void> {
+  for (let i = 0; i < steps; i++) await Promise.resolve();
+}
+
 describe("calls", () => {
   it("is not open until the handshake completes, then frames a call and resolves its answer", async () => {
     expect(socket.isOpen()).toBe(false);
@@ -140,6 +145,66 @@ describe("calls", () => {
     await expect(answer).rejects.toThrow("socket_closed");
     expect(socket.isOpen()).toBe(false);
   });
+
+  it("sends two or more queued calls in the order they were made, every answer reaching its own caller", async () => {
+    const first = socket.call("GET", "/api/a");
+    const second = socket.call("POST", "/api/b", { body: { n: 2 } });
+    const third = socket.call("GET", "/api/c");
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(1);
+    last().open();
+    expect(last().frames()).toEqual([
+      { id: 1, call: { method: "GET", path: "/api/a" } },
+      { id: 2, call: { method: "POST", path: "/api/b", body: { n: 2 } } },
+      { id: 3, call: { method: "GET", path: "/api/c" } },
+    ]);
+    // Answered out of order: the frame's id, not the answer's arrival, is what matches a call.
+    last().receive({ id: 3, status: 200, headers: {}, body: "c" });
+    last().receive({ id: 1, status: 200, headers: {}, body: "a" });
+    last().receive({ id: 2, status: 201, headers: {}, body: "b" });
+    await expect(first).resolves.toEqual({ status: 200, headers: {}, body: "a" });
+    await expect(second).resolves.toEqual({ status: 201, headers: {}, body: "b" });
+    await expect(third).resolves.toEqual({ status: 200, headers: {}, body: "c" });
+  });
+
+  it("refuses every call waiting for a handshake when nobody is signed in", async () => {
+    whoAmI = async () => null;
+    const answers = [
+      socket.call("GET", "/api/a"),
+      socket.call("POST", "/api/b", { body: { n: 2 } }),
+      socket.call("GET", "/api/c"),
+    ];
+    const settled = await Promise.allSettled(answers);
+    expect(settled.map((s) => s.status)).toEqual(["rejected", "rejected", "rejected"]);
+    expect(settled.map((s) => (s as PromiseRejectedResult).reason.message)).toEqual([
+      "socket_closed",
+      "socket_closed",
+      "socket_closed",
+    ]);
+    expect(FakeSocket.instances).toHaveLength(0); // nobody to open for
+    expect(socket.report().pendingCalls).toEqual([]);
+  });
+
+  it("refuses every call waiting for a handshake when the page has no WebSocket", async () => {
+    const noWs = new ApiSocket(
+      () => "ws://test/socket",
+      async () => "admin",
+      false,
+    );
+    const answers = [
+      noWs.call("GET", "/api/a"),
+      noWs.call("GET", "/api/b"),
+      noWs.call("GET", "/api/c"),
+    ];
+    const settled = await Promise.allSettled(answers);
+    expect(settled.map((s) => s.status)).toEqual(["rejected", "rejected", "rejected"]);
+    expect(settled.map((s) => (s as PromiseRejectedResult).reason.message)).toEqual([
+      "socket_closed",
+      "socket_closed",
+      "socket_closed",
+    ]);
+    expect(noWs.report().pendingCalls).toEqual([]);
+  });
 });
 
 describe("identity", () => {
@@ -180,6 +245,137 @@ describe("identity", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(last().url).toBe("ws://test/socket/bob");
+  });
+});
+
+describe("identity boundary of the queue", () => {
+  it("never sends a call queued under one identity on the next identity's socket", async () => {
+    await openViaReady(); // settled as admin
+    const h = handlers();
+    socket.stream("/api/events", h);
+    last().receive({ id: 1, status: 200, stream: true, headers: {} });
+    last().drop(); // the stream is parked, so the next handshake is already on the backoff
+    const post = socket.call("POST", "/api/admin-only", { body: { name: "secret" } });
+    expect(socket.report().pendingCalls).toEqual(["POST /api/admin-only (waiting for the socket)"]);
+
+    // The admin signed out and bob signed in: the POST was the admin's, and it never goes out
+    // under bob's authorization.
+    whoAmI = async () => "bob";
+    socket.identityChanged();
+    await expect(post).rejects.toThrow("identity_changed");
+
+    const bobCall = socket.call("GET", "/api/projects");
+    vi.advanceTimersByTime(1_000); // the reconnect the drop scheduled
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(2);
+    expect(last().url).toBe("ws://test/socket/bob");
+    last().open();
+    // Bob's own call and the stream, in that order — and nothing of the admin's.
+    expect(last().frames()).toEqual([
+      { id: 2, call: { method: "GET", path: "/api/projects" } },
+      {
+        id: 3,
+        call: { method: "GET", path: "/api/events", headers: { accept: "text/event-stream" } },
+      },
+    ]);
+    last().receive({ id: 2, status: 200, headers: {}, body: { projects: [] } });
+    await expect(bobCall).resolves.toEqual({ status: 200, headers: {}, body: { projects: [] } });
+  });
+
+  it("revokes the queue when a /api/me answer names another user than the last one", async () => {
+    await openViaReady(); // settled as admin
+    socket.stream("/api/events", handlers());
+    last().drop(); // something to carry keeps the reconnect scheduled
+    const write = socket.call("POST", "/api/admin-only", { body: { name: "secret" } });
+    socket.identityIs("bob"); // the cookie was replaced under this tab
+    await expect(write).rejects.toThrow("identity_changed");
+    expect(socket.report().pendingCalls).toEqual([]);
+  });
+
+  it("keeps the queue when the same user is confirmed again", async () => {
+    await openViaReady(); // settled as admin
+    socket.stream("/api/events", handlers());
+    last().drop();
+    const answer = socket.call("GET", "/api/projects");
+    socket.identityIs("admin"); // same user: nothing the queue was made under has moved
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(2);
+    last().open();
+    expect(last().frames()[0]).toEqual({ id: 2, call: { method: "GET", path: "/api/projects" } });
+    last().receive({ id: 2, status: 200, headers: {}, body: { projects: [] } });
+    await expect(answer).resolves.toEqual({ status: 200, headers: {}, body: { projects: [] } });
+  });
+
+  it("does not open a socket for a whoAmI answer the identity has already moved past", async () => {
+    let answer: ((userId: string | null) => void) | undefined;
+    let askedTimes = 0;
+    whoAmI = () => {
+      askedTimes += 1;
+      if (askedTimes === 1)
+        return new Promise<string | null>((resolve) => {
+          answer = resolve;
+        });
+      return Promise.resolve("bob");
+    };
+    const ready = socket.ready();
+    expect(askedTimes).toBe(1); // the probe is in flight
+    socket.identityChanged(); // a sign-out lands while it is in flight
+    answer!("alice"); // the stale answer names the user the page was
+    await settle();
+    // The stale answer opened nothing: the identity is asked again, and the socket is bob's.
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(last().url).toBe("ws://test/socket/bob");
+    last().open();
+    await expect(ready).resolves.toBe(true);
+    expect(askedTimes).toBe(2);
+  });
+});
+
+describe("reconnect backoff", () => {
+  it("holds calls in the wait for the scheduled reconnect instead of opening one per call", async () => {
+    await openViaReady();
+    socket.stream("/api/events", handlers()); // what a page always has: something to carry
+    last().drop(); // the drop schedules the next attempt
+    const answers = [
+      socket.call("GET", "/api/a"),
+      socket.call("GET", "/api/b"),
+      socket.call("POST", "/api/c", { body: { n: 3 } }),
+    ];
+    vi.advanceTimersByTime(999);
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(1); // nothing before the backoff is up
+    vi.advanceTimersByTime(1);
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(2); // exactly one handshake, when the ladder says so
+    last().open();
+    expect(
+      last()
+        .frames()
+        .map((f) => (f as { call: { path: string } }).call.path),
+    ).toEqual(["/api/a", "/api/b", "/api/c", "/api/events"]);
+    for (const [i, body] of ["a", "b", "c"].entries()) {
+      last().receive({ id: i + 2, status: 200, headers: {}, body });
+    }
+    await expect(answers[0]).resolves.toEqual({ status: 200, headers: {}, body: "a" });
+    await expect(answers[1]).resolves.toEqual({ status: 200, headers: {}, body: "b" });
+    await expect(answers[2]).resolves.toEqual({ status: 200, headers: {}, body: "c" });
+  });
+
+  it("keeps the same timetable when more calls arrive during the wait", async () => {
+    await openViaReady();
+    socket.stream("/api/events", handlers());
+    last().drop(); // the first step is 1 s out
+    vi.advanceTimersByTime(400);
+    socket.call("GET", "/api/a");
+    vi.advanceTimersByTime(400); // t = 800 ms
+    socket.call("GET", "/api/b");
+    vi.advanceTimersByTime(199); // t = 999 ms
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(1);
+    vi.advanceTimersByTime(1); // t = 1000 ms: the drop's own step, not 400 ms after the last call
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(2);
   });
 });
 
@@ -480,6 +676,93 @@ describe("robustness", () => {
     socket.identityIs("alice"); // the cookie changed under the tab
     expect(socket.isOpen()).toBe(false);
     expect(socket.isUnavailable()).toBe(false);
+  });
+
+  it("ends every call it took out of the queue when the socket cannot send", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const answers = [1, 2, 3, 4].map((n) =>
+      socket.call("POST", `/api/write/${n}`, { body: { n } }),
+    );
+    await settle(); // the identity settles and the socket is handed to the client
+    expect(FakeSocket.instances).toHaveLength(1);
+    const ws = last();
+    ws.send = () => {
+      throw new Error("InvalidStateError");
+    };
+    ws.open();
+    const settled = await Promise.allSettled(answers);
+    // Every call is over: rejected here or refused by the close — none is left without a deadline.
+    expect(settled.map((s) => s.status)).toEqual(["rejected", "rejected", "rejected", "rejected"]);
+    expect(settled.map((s) => (s as PromiseRejectedResult).reason.message)).toEqual([
+      "socket_closed",
+      "socket_closed",
+      "socket_closed",
+      "socket_closed",
+    ]);
+    expect(socket.report().pendingCalls).toEqual([]);
+    expect(warn.mock.calls.some(([m]) => String(m).includes("could not be sent"))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it("keeps the streams coming back when a call in the batch cannot be sent", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const h = handlers();
+    await openViaReady();
+    socket.stream("/api/events", h);
+    last().receive({ id: 1, status: 200, stream: true, headers: {} });
+    expect(h.opens).toBe(1);
+    last().drop(); // the stream is parked; the reconnect is one backoff step out
+    const answers = [
+      socket.call("GET", "/api/a"),
+      socket.call("GET", "/api/b"),
+      socket.call("GET", "/api/c"),
+    ];
+    vi.advanceTimersByTime(1_000);
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(2);
+    const ws = last();
+    let sends = 0;
+    ws.send = () => {
+      sends += 1;
+      if (sends === 2) throw new Error("InvalidStateError"); // the second frame of the batch
+    };
+    ws.open();
+    const settled = await Promise.allSettled(answers);
+    expect(settled.map((s) => s.status)).toEqual(["rejected", "rejected", "rejected"]);
+    // The failed batch did not cost the stream its place: the next attempt carries it.
+    vi.advanceTimersByTime(2_000);
+    await settle();
+    expect(FakeSocket.instances).toHaveLength(3);
+    last().open();
+    // The stream is the fourth frame the client ever numbered: the refused batch's third call
+    // never reached the wire, so it took no id. What matters is that the stream arrived.
+    expect(last().frames()).toEqual([
+      {
+        id: 4,
+        call: { method: "GET", path: "/api/events", headers: { accept: "text/event-stream" } },
+      },
+    ]);
+    last().receive({ id: 4, status: 200, stream: true, headers: {} });
+    expect(h.opens).toBe(2);
+    warn.mockRestore();
+  });
+
+  it("refuses only the call that cannot be framed, and sends the rest of the batch", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const bad = socket.call("POST", "/api/bad", { body: circular });
+    const good = socket.call("POST", "/api/good", { body: { ok: true } });
+    await settle();
+    last().open();
+    await expect(bad).rejects.toThrow("socket_unserializable");
+    expect(last().frames()).toEqual([
+      { id: 2, call: { method: "POST", path: "/api/good", body: { ok: true } } },
+    ]);
+    last().receive({ id: 2, status: 200, headers: {}, body: { ok: true } });
+    await expect(good).resolves.toEqual({ status: 200, headers: {}, body: { ok: true } });
+    expect(socket.isOpen()).toBe(true); // the socket itself is fine: only that one call was not
+    warn.mockRestore();
   });
 });
 
