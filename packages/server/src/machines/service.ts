@@ -130,6 +130,9 @@ import { machinesProxy } from "./proxy.js";
 import type { ProxyTarget } from "./proxy.js";
 import { MachineEventHub } from "./event-hub.js";
 import { MachineSockets } from "./machine-sockets.js";
+import type { StreamSettle } from "./machine-sockets.js";
+import { askHandshake, judgeHandshake } from "./handshake.js";
+import type { HandshakeReading } from "./handshake.js";
 import { machineSessionForward } from "./session-forward.js";
 import type { MachineSessionForward } from "./session-forward.js";
 import { HttpError } from "../http/errors.js";
@@ -375,11 +378,64 @@ export interface MachinesEffects {
 /** The id of the entry standing for the machine this server runs on. */
 const LOCAL_MACHINE_ID = "local";
 
+/**
+ * How long each step of one settle may take: the push's budget for the reinstall, and a stop plus
+ * a start (readiness wait included) for the restart. The handshake needs none of its own.
+ */
+export interface SettleTimeouts {
+  install: number;
+  restart: number;
+}
+
+/** The production budgets; a test injects shorter ones to watch a step give up. */
+const SETTLE_TIMEOUTS: SettleTimeouts = { install: 10 * 60_000, restart: 2 * 60_000 };
+
+/** What one settle concluded (`#settleBuild`). */
+type SettleOutcome =
+  /** In line: nothing was touched. */
+  | { kind: "in-line" }
+  /** It could not be asked at all (down, no server, no session): nothing was done. */
+  | { kind: "unanswered" }
+  /** One reinstall, one restart and one agreeing handshake later. */
+  | { kind: "settled" }
+  /** Unmendable; the verdict holds the next automatic attempt back. */
+  | { kind: "incompatible"; record: Incompatible };
+
+/** The two builds a settle could not bring together, in the plan's spelling, and its last words. */
+interface Incompatible {
+  /** What this hub serves. */
+  local: string;
+  /** What the machine answered it runs, or null when that could not be read. */
+  remote: string | null;
+  detail: string;
+}
+
 /** How many machines are worked on at once by the automatic sweeps and the probe. */
 const CONCURRENCY = 5;
 
 /** A minted session is used for this long before a fresh one is asked for (its TTL is an hour). */
 const SESSION_REUSE_MS = 50 * 60_000;
+
+/** `work` within `ms`, or the caller's own answer for "it did not finish in time". */
+async function within<T>(
+  ms: number,
+  work: () => Promise<T>,
+  late: (detail: string) => T,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<T>((resolve) => {
+    timer = setTimeout(
+      () => resolve(late(`it did not finish within ${Math.round(ms / 1000)} s`)),
+      ms,
+    );
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([work(), deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 export class MachinesService {
   #job: MachineJob | null = null;
@@ -455,6 +511,16 @@ export class MachinesService {
   readonly #passwords: SshPasswords;
   /** The boot's second sweep, pending (see start()). */
   #lateSweep: ReturnType<typeof setTimeout> | null = null;
+  /** The one settle in flight per machine: connect, the boot sweep and a refused stream join it. */
+  readonly #settling = new Map<string, Promise<SettleOutcome>>();
+  /**
+   * What each machine's last settle could not mend, by address. In memory like the statuses: it
+   * holds the next automatic attempt back until one side's build changes; a person's press clears
+   * it.
+   */
+  readonly #incompatible = new Map<string, Incompatible>();
+  /** How long each step of one settle may take. */
+  readonly #settleTimeouts: SettleTimeouts;
 
   constructor(
     private readonly dataRoot: string,
@@ -463,10 +529,12 @@ export class MachinesService {
     effects: Partial<MachinesEffects> = {},
     assets: () => string | null = () => null,
     layout: RemoteLayout = currentRemoteLayout(),
+    settleTimeouts: Partial<SettleTimeouts> = {},
   ) {
     this.#assets = assets;
     this.#machineId = machineId;
     this.#layout = layout;
+    this.#settleTimeouts = { ...SETTLE_TIMEOUTS, ...settleTimeouts };
     this.#effects = {
       listAliases: listHostAliases,
       listHosts: listHostEntries,
@@ -1444,6 +1512,8 @@ export class MachinesService {
     const withImage = this.#imageForBatch();
     if (withImage === null) return { ok: false, why: "no-image" };
 
+    // A person's press: a verdict on this pair is not a reason to keep it from running again.
+    this.#incompatible.delete(address);
     this.#startJob(
       "install",
       machine,
@@ -1718,6 +1788,7 @@ export class MachinesService {
       // On the Project's list from the moment it is asked for, so its card shows the job — and
       // keeps showing a first install that failed, with its Retry, rather than vanishing with it.
       this.#setMember(projectId, address, true);
+      this.#incompatible.delete(address);
       this.#startJob(
         "use",
         machine,
@@ -1807,6 +1878,7 @@ export class MachinesService {
     // it with. Said here, in one sentence, rather than discovered as a POSIX command failing
     // under cmd.exe in the job's log.
     if (this.repo.get(address)?.platform === "win32") return { ok: false, why: "unsupported" };
+    this.#incompatible.delete(address);
     this.#startJob(
       "connect",
       machine,
@@ -1834,6 +1906,8 @@ export class MachinesService {
     const job = this.#jobs.get(address);
     if (job !== undefined && (job.queued || job.running)) return { ok: false, why: "busy" };
     if (!this.#keepsConnected(address)) return { ok: false, why: "not-kept" };
+    // A person's Retry is also a retry of the one action (machines/handshake.ts).
+    this.#incompatible.delete(address);
     const state = this.#reconnects.get(address);
     if (state === undefined) {
       if (this.#isUp(address)) return { ok: true, started: false };
@@ -1934,6 +2008,22 @@ export class MachinesService {
     // Whatever answers on that port gets this server's Project config next, and a server of
     // another build may not read it: an Agent there then fails at its first Session. So it is
     // asked what it runs first, and brought in line before anything is handed over.
+    //
+    // The handshake decides first (machines/handshake.ts): a machine whose disk was brought
+    // forward while its process was not answers the build it still serves, and is installed
+    // again and restarted here — once — before the version gate below sees anything. One that
+    // cannot be asked at all falls through to that gate as it always did.
+    if (expected !== null) {
+      const settled = await this.#settleBuild(address, target, expected, say, remotePort);
+      if (settled.kind === "incompatible") {
+        return {
+          ok: false,
+          step: "sync",
+          message: `${mustUpdate(null, expected.version)} ${this.#incompatibleSentence(address, settled.record)}`,
+        };
+      }
+      remotePort = this.repo.get(address)?.remotePort ?? remotePort;
+    }
     const lined = await this.#inLine(address, target, remotePort, expected, say);
     if (!lined.ok) return { ok: false, step: "sync", message: lined.message };
     remotePort = lined.port;
@@ -2077,6 +2167,187 @@ export class MachinesService {
     } catch (err) {
       return { ok: false, detail: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /**
+   * Brings a machine's PROCESS onto the build this hub serves, once — the one action behind a
+   * connect, the boot sweep, and a stream whose socket dial was refused.
+   *
+   * In line (the handshake), nothing is touched. Anything else — another build, or no door at all
+   * (404, its build unknown) — is repaired only from what this server already has: the
+   * installer's `forceInstaller` puts that build on the disk, the stop and the start bring the
+   * server back onto it, and the handshake is asked once more. An answer that agrees settles it;
+   * one that does not ends `incompatible`. `port` is where its server answers, when the caller has
+   * just found that out; one run per machine, and a later caller joins it.
+   */
+  async #settleBuild(
+    address: string,
+    target: RemoteTarget,
+    plan: PushPlan,
+    say: Say,
+    port?: number,
+  ): Promise<SettleOutcome> {
+    const inflight = this.#settling.get(address);
+    if (inflight !== undefined) return inflight;
+    const run = this.#settleBuildOnce(address, target, plan, say, port).finally(() => {
+      if (this.#settling.get(address) === run) this.#settling.delete(address);
+    });
+    this.#settling.set(address, run);
+    return run;
+  }
+
+  /** One settle, as `#settleBuild` describes it. Every step that can hang has its own deadline. */
+  async #settleBuildOnce(
+    address: string,
+    target: RemoteTarget,
+    plan: PushPlan,
+    say: Say,
+    port?: number,
+  ): Promise<SettleOutcome> {
+    const probed = port === undefined ? await this.#probe(address, target) : null;
+    const at = port ?? (probed?.state.kind === "running" ? probed.state.port : null);
+    if (at === null) return { kind: "unanswered" };
+    const asked = await this.#handshakeAt(target, at);
+    const first = judgeHandshake(asked, plan);
+    if (first.inLine) {
+      this.#incompatible.delete(address);
+      this.#inLineRow(address, plan.version);
+      return { kind: "in-line" };
+    }
+    // A machine that could not be asked at all — down, no session — is not a pair to repair:
+    // installing would wait for the same ssh, and the caller's own probe says what happened.
+    if (asked.kind === "failed") return { kind: "unanswered" };
+    // The same pair, still unrepairable since the last run: no second install on its own.
+    const held = this.#incompatible.get(address);
+    if (held !== undefined && held.local === plan.version && held.remote === first.version) {
+      return { kind: "incompatible", record: held };
+    }
+
+    say(
+      `It answers ${first.version ?? "no build"}, not ${plan.version}; installing ${plan.version} there…`,
+      "install",
+    );
+    const installed = await within(
+      this.#settleTimeouts.install,
+      () =>
+        this.#effects.install({
+          target,
+          plan,
+          onProgress: say,
+          assets: this.#assets,
+          layout: this.#layout,
+          carryRelease: this.#effects.carryRelease,
+          forceInstaller: true,
+        }),
+      (detail) => ({ kind: "failed" as const, step: "install", detail }),
+    );
+    if (installed.kind === "failed") {
+      return this.#signOff(
+        address,
+        plan,
+        first.version,
+        `it could not be installed again: ${installed.detail}`,
+      );
+    }
+    this.#record(address, { platform: installed.identity.platform });
+
+    say("Restarting its server, so what it serves is what is on its disk…", "restart");
+    const restarted = await within(
+      this.#settleTimeouts.restart,
+      () => this.#restartForSettle(address, target, at, say),
+      (detail) => ({ ok: false as const, detail }),
+    );
+    if (!restarted.ok) {
+      return this.#signOff(
+        address,
+        plan,
+        first.version,
+        `the install landed but its server did not come back: ${restarted.detail}`,
+      );
+    }
+
+    // Asked once more, and only once: what answers now is the process the restart started.
+    const nowAt = this.repo.get(address)?.remotePort ?? at;
+    const second = judgeHandshake(await this.#handshakeAt(target, nowAt), plan);
+    if (second.inLine) {
+      this.#incompatible.delete(address);
+      this.#inLineRow(address, plan.version);
+      return { kind: "settled" };
+    }
+    return this.#signOff(address, plan, second.version, second.detail);
+  }
+
+  /**
+   * A stream found no socket to a machine (machine-sockets.ts's `settle`): one settle is asked
+   * for, and the stream is told where it stands. Null when there is nothing to say.
+   */
+  settleForStream(machineId: string): StreamSettle | null {
+    const row = this.#rowFor(machineId);
+    const plan = this.#plan();
+    if (row === null || row.version === null || plan === null) return null;
+    const verdict = this.#incompatible.get(row.address);
+    if (verdict !== undefined && verdict.local === plan.version) {
+      return { kind: "incompatible", detail: this.#incompatibleSentence(row.address, verdict) };
+    }
+    // A job is already working that machine — an install, a connect, a restart — and it is the
+    // one that brings it forward: a second install started here would race it on one machine.
+    if (this.#machineBusy(row.address)) {
+      return { kind: "upgrading", detail: "a job is already working that machine" };
+    }
+    const target = this.#targetOf(row.address.slice("ssh:".length));
+    void this.#settleBuild(row.address, target, plan, () => {}).catch(() => undefined);
+    return { kind: "upgrading", detail: `it is being brought onto ${plan.version}` };
+  }
+
+  /** The handshake, asked over one machine's API as its admin. */
+  async #handshakeAt(target: RemoteTarget, port: number): Promise<HandshakeReading> {
+    const session = await this.#sessionOn(target);
+    if (!("cookie" in session)) return { kind: "failed", detail: session.detail };
+    return askHandshake(machineApi(this.#effects.agent(target, port), port, session.cookie));
+  }
+
+  /** The stop and the start this server already has, once — or only the start if none was up. */
+  async #restartForSettle(
+    address: string,
+    target: RemoteTarget,
+    port: number,
+    say: Say,
+  ): Promise<{ ok: true } | { ok: false; detail: string }> {
+    const before = await this.#probe(address, target);
+    if (before.state.kind !== "running") {
+      say(`Starting it on port ${port}…`, "restart");
+      const started = await this.#effects.startServer(target, port);
+      if (!started.ok) return { ok: false, detail: started.detail };
+      await this.#refreshStatus(address, target);
+      this.#record(address, { remotePort: port });
+      return { ok: true };
+    }
+    const restarted = await this.#restartServer(address, target, say);
+    return restarted.ok ? { ok: true } : { ok: false, detail: restarted.detail };
+  }
+
+  /** The row brought up to the build its process serves — only when it names another one. */
+  #inLineRow(address: string, version: string): void {
+    if (this.repo.get(address)?.version === version) return;
+    this.#record(address, { version, installedAt: this.#effects.now().toISOString() });
+  }
+
+  /** Records a pair this hub could not bring onto one build, and answers with the verdict. */
+  #signOff(address: string, plan: PushPlan, remote: string | null, detail: string): SettleOutcome {
+    const record: Incompatible = { local: plan.version, remote, detail };
+    this.#incompatible.set(address, record);
+    console.log(`[machines] ${address} ended incompatible: ${detail}`);
+    this.#changed();
+    return { kind: "incompatible", record };
+  }
+
+  /** One sentence for a verdict: what this hub serves, what the machine answers, and why. */
+  #incompatibleSentence(address: string, record: Incompatible): string {
+    const remote = record.remote === null ? "no build" : record.remote;
+    return (
+      `${address} runs ${remote} where this hub serves ${record.local}, and could not be ` +
+      `brought onto it: ${record.detail}`
+    );
   }
 
   /**
@@ -2725,6 +2996,7 @@ export class MachinesService {
     if (machine === undefined) return { ok: false, why: "unknown-machine" };
     if (machine.local) return { ok: false, why: "self" };
     if (machine.installed === null) return { ok: false, why: "not-installed" };
+    this.#incompatible.delete(address);
     this.#startJob(
       "restart",
       machine,
@@ -3017,19 +3289,26 @@ export class MachinesService {
   }
 
   /**
-   * Hands this server's build to every machine carrying a different one. A checkout hands
-   * over the image it last built and builds nothing here: this runs at every start, and a
-   * dev server restarts on every edit.
+   * Brings every machine this server installed on onto the build it serves. A checkout hands
+   * over the image it last built and builds nothing here: this runs at every start, and a dev
+   * server restarts on every edit.
+   *
+   * What the row remembers is where the sweep starts, not what it decides: a machine can carry
+   * this build on its disk and still serve a process it started before it — the pair a stream
+   * fails on — so every machine is asked the handshake (`#settleBuild`). One already in line
+   * costs one request; one that cannot be asked keeps the hand-over this sweep always did.
    */
   async syncOutOfDate(): Promise<void> {
     const plan = await this.#readyPlan();
     if (plan === null) return;
-    const behind = this.repo
+    const known = this.repo
       .all()
-      .filter((row) => row.version !== null && row.version !== plan.version)
+      .filter((row) => row.version !== null)
       .map((row) => row.address);
     const sweep = () =>
-      this.#sweep(behind, async (address, target) => {
+      this.#sweep(known, async (address, target) => {
+        const settled = await this.#settleBuild(address, target, plan, () => {});
+        if (settled.kind !== "unanswered") return;
         const outcome = await this.#handOverBuild(address, target, plan, () => {});
         // Recorded only when the machine also wrote it down: a swap it could not persist is
         // gone at its next restart, and a record of it would outlive the thing it records.
@@ -3173,9 +3452,12 @@ export class MachinesModule {
     // subscription per machine however many tabs read it.
     // A machine whose server answers HTTP and never the socket's handshake reads as needing a
     // restart on the Machines page: that reading arrives with the list, so its start and its end
-    // are told like any other change to it.
+    // are told like any other change to it. A dial that finds no socket also asks the service —
+    // built next, so the reader is a closure — for one settle.
+    let service: MachinesService | null = null;
     const sockets = new MachineSockets((line) => console.log(line), {
       announce: () => toAdmins({ type: "machines_changed" }),
+      settle: (machineId) => service?.settleForStream(machineId) ?? null,
     });
     const events = new MachineEventHub(sockets, (line) => console.log(line));
     const machines = new MachinesService(
@@ -3191,6 +3473,7 @@ export class MachinesModule {
       },
       () => this.hmr.assetsDir(),
     );
+    service = machines;
     this.machines = machines;
     this.routes = machinesRoutes({ machines, access: this.access, events });
     this.serverProxyRoutes = machinesServerProxyRoutes(machines, { sockets, events });

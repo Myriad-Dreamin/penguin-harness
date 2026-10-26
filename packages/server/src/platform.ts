@@ -136,6 +136,7 @@ import {
   DesktopUpdateRoutes,
 } from "./http/routes/desktop.js";
 import { InstallRoutes } from "./http/routes/install.js";
+import { HandshakeRoutes } from "./http/routes/handshake.js";
 import { HmrRoutes } from "./hmr/routes.js";
 import { EventsRoutes } from "./http/routes/events.js";
 import { PluginRegistryRoutes, PluginRoutes } from "./http/routes/plugins.js";
@@ -480,6 +481,7 @@ export class CompanyModule {}
     HttpModule,
     WebModule,
     InstallRoutes,
+    HandshakeRoutes,
     VersionRoutes,
     HmrRoutes,
     DesktopRoutes,

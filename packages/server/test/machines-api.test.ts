@@ -190,6 +190,19 @@ function effects(over: Partial<MachinesEffects> = {}): Partial<MachinesEffects> 
   };
 }
 
+/**
+ * A port this host is not listening on: bound once and released. Lets a case use a layout port
+ * of its own, since a shared default can have an unrelated server on it — and a connect asks
+ * that server its identity now.
+ */
+async function quietPort(): Promise<number> {
+  const server = http.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
+}
+
 describe("machines API", () => {
   let t: TestApp;
   let admin: ReturnType<typeof apiClient>;
@@ -1074,13 +1087,20 @@ describe("machines API", () => {
     });
 
     it("a machine never reached before starts on the profile's own default port", async () => {
+      // The dev profile's layout, with its port replaced by one of this host's own: the case is
+      // about the port coming from the layout rather than from a guess, and on a shared default
+      // an unrelated server may be listening — one a connect now asks its identity.
       const starts: number[] = [];
       let up = false;
+      const layout = { ...remoteLayoutFor("dev"), defaultPort: await quietPort() };
       await boot(
         {
           probe: async () =>
             up
-              ? { state: { kind: "running" as const, port: 7371, pid: 4242 }, machineId: null }
+              ? {
+                  state: { kind: "running" as const, port: layout.defaultPort, pid: 4242 },
+                  machineId: null,
+                }
               : { state: { kind: "stopped" as const }, machineId: null },
           startServer: async (_t, port) => {
             starts.push(port);
@@ -1088,14 +1108,14 @@ describe("machines API", () => {
             return { ok: true };
           },
         },
-        remoteLayoutFor("dev"),
+        layout,
       );
       installed("9.9.9");
       await admin.post("/api/projects/default_project/machines/ssh:nas/connect");
       await waitFor(() => t.deps.machines.job()?.running === false);
       expect(t.deps.machines.job()?.result).toEqual({ ok: true, connected: true });
-      expect(starts).toEqual([7371]);
-      expect(machinesRepo.get("ssh:nas")?.remotePort).toBe(7371);
+      expect(starts).toEqual([layout.defaultPort]);
+      expect(machinesRepo.get("ssh:nas")?.remotePort).toBe(layout.defaultPort);
     });
 
     it("remembers the port the machine says it serves on, not the one that was asked for", async () => {
@@ -1313,9 +1333,16 @@ describe("machines API", () => {
         },
       },
     });
-    /** A machine's server: says what runs there, and keeps the Model config it is handed. */
-    const machineServer = async (initially: Runs) => {
-      const state = { runs: initially, puts: [] as ModelsUpdateRequest[] };
+    /**
+     * A machine's server: says what runs there, and keeps the Model config it is handed.
+     *
+     * `runs` is what its disk holds (GET /api/version); `processRuns` is the build the process
+     * loaded at its start (GET /api/handshake), this hub's image unless a case says a hot update
+     * moved the disk and not the process — these cases are about the version gate below the
+     * handshake, and a machine the handshake already judges in line is what leaves it to decide.
+     */
+    const machineServer = async (initially: Runs, processRuns: Runs = "the image") => {
+      const state = { runs: initially, process: processRuns, puts: [] as ModelsUpdateRequest[] };
       const server = http.createServer((req, res) => {
         let body = "";
         req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
@@ -1325,11 +1352,13 @@ describe("machines API", () => {
           }
           res.writeHead(200, { "content-type": "application/json" });
           res.end(
-            req.url === "/api/version"
-              ? JSON.stringify(versionReport(state.runs))
-              : req.url === "/api/projects"
-                ? JSON.stringify({ projects: [{ projectId: PROJECT }] })
-                : JSON.stringify({ models: [] }),
+            req.url === "/api/handshake"
+              ? JSON.stringify({ identity: versionReport(state.process) })
+              : req.url === "/api/version"
+                ? JSON.stringify(versionReport(state.runs))
+                : req.url === "/api/projects"
+                  ? JSON.stringify({ projects: [{ projectId: PROJECT }] })
+                  : JSON.stringify({ models: [] }),
           );
         });
       });
@@ -1502,6 +1531,44 @@ describe("machines API", () => {
 
         expect(job.result).toEqual({ ok: true, connected: true });
         expect(touched).toEqual([]);
+        expect(remote.state.puts).toHaveLength(1);
+      } finally {
+        remote.close();
+      }
+    });
+
+    it("a machine whose process is behind its disk is installed on and restarted once, then handed the config", async () => {
+      // The report's machine: a hot update moved the disk to this hub's image, the process went
+      // on serving the one before it, and every stream over there fails with nothing saying why.
+      const remote = await machineServer("the image", "an older image");
+      const done: string[] = [];
+      try {
+        await bootOn(remote, {
+          install: async (opts) => {
+            done.push(`install(force: ${String(opts.forceInstaller)})`);
+            return { kind: "installed", output: "done", identity: IDENTITY };
+          },
+          stopServer: async () => {
+            done.push("stop");
+            return { ok: true as const };
+          },
+          startServer: async () => {
+            done.push("start");
+            // What comes back is the build the install left on the disk.
+            remote.state.process = "the image";
+            return { ok: true };
+          },
+        });
+
+        const job = await connect();
+
+        expect(job.result).toEqual({ ok: true, connected: true });
+        expect(done).toEqual(["install(force: true)", "stop", "start"]);
+        expect(job.log.join("\n")).toContain(
+          "It answers 9.9.9+hmr.0123456789ab, not 9.9.9+hmr.cafe01234567; installing 9.9.9+hmr.cafe01234567 there…",
+        );
+        expect(machinesRepo.get("ssh:nas")?.version).toBe(IMAGE.version);
+        // Handed over once, and only to the build it now serves.
         expect(remote.state.puts).toHaveLength(1);
       } finally {
         remote.close();
