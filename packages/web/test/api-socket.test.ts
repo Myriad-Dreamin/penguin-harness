@@ -1,7 +1,7 @@
 /**
  * The API socket client (api/socket.ts) against a scripted WebSocket: frames out, answers
- * in, streams that outlive the socket, the identity it settles by itself, and giving up
- * when no socket is to be had.
+ * in, streams that outlive the socket, the identity it settles by itself, and a socket that
+ * is retried on the backoff however often its handshake fails.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiSocket, SocketTimeoutError } from "../src/api/socket";
@@ -69,7 +69,6 @@ async function openViaReady(s: ApiSocket = socket): Promise<Promise<boolean>> {
 describe("calls", () => {
   it("is not open until the handshake completes, then frames a call and resolves its answer", async () => {
     expect(socket.isOpen()).toBe(false);
-    await expect(socket.call("GET", "/api/me")).rejects.toThrow("socket_closed");
     await expect(openViaReady()).resolves.toBe(true);
     expect(socket.isOpen()).toBe(true);
     expect(last().url).toBe("ws://test/socket/admin"); // addressed by the identity it settled
@@ -87,6 +86,51 @@ describe("calls", () => {
       headers: { date: "Mon, 07 Sep 2026 00:00:00 GMT" },
       body: { ok: true },
     });
+  });
+
+  it("holds a call made before the socket is open, and sends it once the handshake completes", async () => {
+    // The call is what opens the socket: it asks for one and waits in order, rather than
+    // failing so that apiFetch would fetch beside the socket (the second transport this
+    // client no longer has).
+    const answer = socket.call("GET", "/api/projects");
+    expect(socket.report().pendingCalls).toEqual(["GET /api/projects (waiting for the socket)"]);
+    await Promise.resolve(); // the identity promise
+    await Promise.resolve();
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(last().frames()).toEqual([]); // nothing goes out before the handshake
+    last().open();
+    expect(socket.report().pendingCalls).toEqual(["GET /api/projects"]);
+    expect(last().frames()).toEqual([{ id: 1, call: { method: "GET", path: "/api/projects" } }]);
+    last().receive({ id: 1, status: 200, headers: {}, body: { projects: [] } });
+    await expect(answer).resolves.toEqual({ status: 200, headers: {}, body: { projects: [] } });
+  });
+
+  it("keeps a call through a handshake that never opened, and sends it on the one that does", async () => {
+    const answer = socket.call("GET", "/api/projects");
+    await Promise.resolve();
+    await Promise.resolve();
+    last().drop(); // e.g. a proxy that refuses the upgrade: the call is not the casualty
+    await Promise.resolve();
+    expect(socket.report().pendingCalls).toEqual(["GET /api/projects (waiting for the socket)"]);
+    vi.advanceTimersByTime(1_000); // the reconnect ladder
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeSocket.instances).toHaveLength(2);
+    last().open();
+    expect(last().frames()).toEqual([{ id: 1, call: { method: "GET", path: "/api/projects" } }]);
+    last().receive({ id: 1, status: 200, headers: {}, body: { projects: [] } });
+    await expect(answer).resolves.toEqual({ status: 200, headers: {}, body: { projects: [] } });
+  });
+
+  it("refuses a call when there is no socket to be had, instead of carrying it elsewhere", async () => {
+    vi.stubGlobal("WebSocket", undefined);
+    const noWs = new ApiSocket(
+      () => "ws://test/socket",
+      async () => "admin",
+    );
+    await expect(noWs.call("GET", "/api/projects")).rejects.toThrow("socket_closed");
+    whoAmI = async () => null;
+    await expect(socket.call("GET", "/api/projects")).rejects.toThrow("socket_closed");
   });
 
   it("rejects calls in flight when the socket drops", async () => {
@@ -255,23 +299,52 @@ describe("streams", () => {
     expect(last().frames()).toHaveLength(3); // fatal: no further attempt
   });
 
-  it("gives up on the socket after three handshakes never opened, and streams wait silently", async () => {
-    const conn = socket.stream("/api/events", handlers());
-    for (let i = 0; i < 3; i++) {
+  it("keeps trying after three handshakes that never opened: the fourth is a real attempt, one backoff step later", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const h = handlers();
+    const conn = socket.stream("/api/events", h);
+    // Three handshakes in a row that never opened, each one retried on the next step of the one
+    // ladder. The steps are 1 s, 2 s, then 8 s: a failure of a scheduled attempt spends one more
+    // value of the ladder before `#scheduleReconnect`'s continuation sees the timer is already
+    // armed — the tree's own pre-existing shape, unchanged here (see `#scheduleReconnect`).
+    // What matters for this patch is that the ladder never ends: no state changes, no give-up.
+    const steps = [1_000, 2_000, 8_000];
+    for (let i = 0; i < steps.length; i++) {
       await Promise.resolve();
       await Promise.resolve();
-      last().drop(); // closed before it ever opened: retried quickly, not on the drop backoff
-      vi.advanceTimersByTime(250);
+      expect(FakeSocket.instances).toHaveLength(i + 1);
+      last().drop(); // closed before it ever opened
+      // Let the event loop's microtasks run, as they do between a real close event and the next
+      // timer: this is where the reconnect's continuation spends its value.
+      await Promise.resolve();
+      expect(socket.isUnavailable()).toBe(false);
+      expect(socket.isOpen()).toBe(false);
+      vi.advanceTimersByTime(steps[i]! - 1);
+      expect(FakeSocket.instances).toHaveLength(i + 1); // not before its backoff
+      vi.advanceTimersByTime(1);
     }
-    expect(socket.isUnavailable()).toBe(true);
-    expect(socket.isOpen()).toBe(false);
-    await expect(socket.ready()).resolves.toBe(false);
-    // A later stream waits too: no second transport, and nothing ever answers.
-    const late = handlers();
-    socket.stream("/api/events", late);
-    vi.advanceTimersByTime(60_000);
-    expect(late.errors).toEqual([]);
+    await Promise.resolve();
+    await Promise.resolve();
+    // The fourth attempt: made, on the ladder's next step, with no reload and no new state.
+    expect(FakeSocket.instances).toHaveLength(4);
+    expect(socket.isUnavailable()).toBe(false);
+    last().open();
+    expect(socket.isOpen()).toBe(true);
+    expect(last().frames()[0]).toEqual({
+      id: 1,
+      call: { method: "GET", path: "/api/events", headers: { accept: "text/event-stream" } },
+    });
+    last().receive({ id: 1, status: 200, stream: true, headers: {} });
+    expect(h.opens).toBe(1);
+    // One line per failed handshake, naming no count: nothing is being counted up.
+    const lines = warn.mock.calls
+      .map(([m]) => String(m))
+      .filter((m) => m.includes("the handshake did not open"));
+    expect(lines).toHaveLength(3);
+    expect(lines.some((m) => /\d+\/\d+/.test(m))).toBe(false);
+    expect(warn.mock.calls.some(([m]) => String(m).includes("giving up"))).toBe(false);
     conn.close();
+    warn.mockRestore();
   });
 });
 
@@ -411,7 +484,7 @@ describe("robustness", () => {
 });
 
 describe("deadlines", () => {
-  it("closes a handshake that neither opens nor fails, and counts it towards giving up", async () => {
+  it("closes a handshake that neither opens nor fails, and leaves the socket retryable", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const ready = socket.ready();
     await Promise.resolve();

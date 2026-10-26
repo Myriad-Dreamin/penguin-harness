@@ -3,11 +3,12 @@
  * same-origin cookie auth (credentials: same-origin; CSRF relies on SameSite=Lax + JSON
  * Content-Type, see server README).
  *
- * Two transports of the same API (PRFC-0011): while the page's socket is open, a call is a
- * frame on it and the answer is the endpoint's own response, framed; otherwise it is a fetch.
- * The two are handled by one code path below — status, error body, the 401 rule — so a caller
- * cannot tell which carried its request, and an answer the socket declines to carry (a
- * download: 415 `unsupported_transport`) is simply fetched.
+ * Two transports of the same API (PRFC-0011): a call is a frame on the page's socket — opened
+ * by the call itself when it is not open yet — and the answer is the endpoint's own response,
+ * framed. Only the paths the runtime answers over HTTP by contract are fetched. The two are
+ * handled by one code path below — status, error body, the 401 rule — so a caller cannot tell
+ * which carried its request, and an answer the socket declines to carry (a download: 415
+ * `unsupported_transport`) is simply fetched.
  *
  * When the session becomes invalid (server 401, e.g. database rebuilt, cookie expired),
  * notifies AuthProvider to clear the current user, letting the route guard redirect to the
@@ -222,19 +223,28 @@ export async function apiFetchWithMeta<T>(
   }
 
   const method = options.method ?? "GET";
-  // Over the socket when it is open, except what stays on HTTP by design: the auth routes
-  // and `/api/me` are the runtime's (the socket answers them 421), and `/api/me` is also
-  // where the cookie's own session facts come from — the socket knows only the user.
+  // Over the socket, except what stays on HTTP by design: the auth routes and `/api/me` are
+  // the runtime's (the socket answers them 421), and `/api/me` is also where the cookie's own
+  // session facts come from — the socket knows only the user.
   const wantsSocket = target !== null || !httpOnly(path);
-  // Only a socket that is ALREADY open carries a call. Deciding synchronously keeps the
-  // request on the tick it was made — a caller that stubs fetch reads it there — and a socket
-  // still coming is not waited on: the call goes out over HTTP at once, as it did before the
-  // socket. The page's streams open the socket (api/socket.ts ready()); once it is open the
-  // calls after ride it, and a page's first calls race it over HTTP rather than waiting.
-  const overSocket = wantsSocket && !apiSocket.isUnavailable() && apiSocket.isOpen();
-  let answer = overSocket ? await callOverSocket(method, url, options.body, target) : null;
-  if (answer === null || answer.status === 415 || answer.status === 421)
+  let answer: Answer | null;
+  if (wantsSocket) {
+    // Every path but the runtime's own goes on the socket, and no `isOpen()` test stands in
+    // front of it: a call made while the socket is down waits in api/socket.ts for the next
+    // handshake (call()) instead of opening a fetch beside it. That matters past the obvious:
+    // each such fetch is one of the browser's six connections to this origin, so a page that
+    // fell back per call queued on its own fallbacks — the stall a reconnecting socket left
+    // behind. What the call awaits is the answer, as before; nothing here waits on a handshake
+    // of its own.
+    answer = await callOverSocket(method, url, options.body, target);
+    // What the socket does not carry still goes by fetch: a download it declines (415), a
+    // route it answers 421 for, and a read the server never answered — callOverSocket's own
+    // retry rule, for a frame that was sent on a live socket that then went quiet.
+    if (answer === null || answer.status === 415 || answer.status === 421)
+      answer = await callOverHttp(method, url, options.body);
+  } else {
     answer = await callOverHttp(method, url, options.body);
+  }
 
   if (answer.status < 200 || answer.status >= 300) {
     let code = "http_error";
@@ -339,10 +349,10 @@ async function callOverSocket(
       if (retriesOverHttp(err, method, target !== null)) return null;
       if (isReadMethod(method)) throw new ApiError(0, "machine_no_answer", S.errors.networkError);
     }
-    // The socket closed under the call. A lost answer is a lost answer whichever transport
-    // lost it, so this is not retried blindly: the HTTP fallback is only for calls that never
-    // left (the socket rejects before sending when it is not open), which is the isOpen()
-    // check above. Here the frame may have been delivered — report it as a network error.
+    // The socket closed under the call, or there was no socket to be had at all (the call is
+    // refused then, before any frame goes out). A lost answer is a lost answer whichever
+    // transport lost it, so this is not retried blindly: the frame may have been delivered and
+    // acted on — report it as a network error.
     throw new ApiError(0, "network_error", S.errors.networkError);
   }
 }
@@ -382,17 +392,18 @@ async function callOverHttp(method: string, url: string, body: unknown): Promise
 
 /**
  * `fetch`, for the few callers that read the Response themselves (a status they act on, a
- * body they parse): the same request over the socket when it is open, handed back as a
- * Response, and a real fetch otherwise. Only the socket's own answers are carried — JSON
- * or empty bodies, no request body; anything else stays a plain fetch. Same-origin
- * credentials, as every API call here.
+ * body they parse): the same request over the socket — opened here when it is not open yet —
+ * handed back as a Response. Only the socket's own answers are carried — JSON or empty
+ * bodies, no request body; anything else stays a plain fetch. Same-origin credentials, as
+ * every API call here.
  */
 export async function apiRequest(url: string, init: { method?: string } = {}): Promise<Response> {
   const path = url.split("?")[0] ?? url;
   const local = !url.startsWith("/server/");
-  // The same synchronous open-socket rule as apiFetchWithMeta (see there).
-  const overSocket = !(local && httpOnly(path)) && !apiSocket.isUnavailable() && apiSocket.isOpen();
-  if (overSocket) {
+  // The same socket-first rule as apiFetchWithMeta (see there), and the same refusal when
+  // there is no socket to be had — api/socket.ts rejects that call, and a rejected call reads
+  // as the network error the fetch below never got to raise.
+  if (!(local && httpOnly(path))) {
     try {
       const res = await apiSocket.call(init.method ?? "GET", url);
       if (res.status !== 415 && res.status !== 421) {

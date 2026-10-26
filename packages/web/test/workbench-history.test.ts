@@ -73,5 +73,8 @@ it("retries a failed history request and displays saved versions", async () => {
   await click(button(en.workbenches.retryHistory));
   expect(document.querySelector('[role="alert"]')).toBeNull();
   expect(document.body.textContent).toContain("saved-revision");
-  expect(requests.requests.filter((request) => request.path.endsWith("/history"))).toHaveLength(2);
+  // Two attempts by the page. The first costs one more wire request than it used to: an empty
+  // proxy 500 is a body the socket cannot carry, so it answers 415 and the client fetches the
+  // same URL (test/helpers/carry.ts), which is what the HTTP rules for such an answer are about.
+  expect(requests.requests.filter((request) => request.path.endsWith("/history"))).toHaveLength(3);
 });
