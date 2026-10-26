@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 /**
- * Given an empty proxy 500, history shows a recoverable error instead of waiting forever.
+ * Given an empty 500, history shows a recoverable error instead of waiting forever.
  * When the user retries after service recovery, the saved versions replace that error.
  */
 import { createElement as h } from "react";
@@ -56,7 +56,9 @@ it("retries a failed history request and displays saved versions", async () => {
     ),
   );
   await click(button(en.workbenches.history));
-  expect(document.querySelector('[role="alert"]')?.textContent).toContain("500");
+  // An empty body is carried as its status with a null body (serve.ts answerOnce), so this is
+  // the server's status without an envelope: the generic failure, not a page/proxy message.
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe(en.common.unknownError);
   expect(document.body.textContent).not.toContain(en.workbenches.loadingHistory);
   requests.answer(() =>
     json({
@@ -73,8 +75,8 @@ it("retries a failed history request and displays saved versions", async () => {
   await click(button(en.workbenches.retryHistory));
   expect(document.querySelector('[role="alert"]')).toBeNull();
   expect(document.body.textContent).toContain("saved-revision");
-  // Two attempts by the page. The first costs one more wire request than it used to: an empty
-  // proxy 500 is a body the socket cannot carry, so it answers 415 and the client fetches the
-  // same URL (test/helpers/carry.ts), which is what the HTTP rules for such an answer are about.
-  expect(requests.requests.filter((request) => request.path.endsWith("/history"))).toHaveLength(3);
+  // Two attempts by the page, one request each: an empty body rides the socket as its own
+  // status with a null body (serve.ts answerOnce, simulated by test/helpers/carry.ts), so the
+  // failed attempt is not fetched again over HTTP the way a 415 would be.
+  expect(requests.requests.filter((request) => request.path.endsWith("/history"))).toHaveLength(2);
 });

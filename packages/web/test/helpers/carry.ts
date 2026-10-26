@@ -7,16 +7,26 @@
  * same credentials, same JSON body — against the `fetch` the test stubbed
  * (test/helpers/fetch.ts), and answers `{status, headers, body}` as a frame on the socket would.
  *
- * A body that is not JSON cannot ride a JSON frame. That is what the real socket says with 415
- * `unsupported_transport` for a download, and the client then fetches the same URL over HTTP —
- * so the test's handler sees that request twice, and the HTTP rules (a page instead of the
- * server, an empty answer) still apply to it.
+ * The frame is the one `answerOnce` in packages/server/src/socket/serve.ts frames, case for
+ * case: an empty body keeps its status with a `null` body; a `content-type` that contains `json`
+ * carries the parsed value, and the raw text when that parse fails; `text/*` carries the string;
+ * only a non-empty body of another type (a download) is refused — 415 `unsupported_transport`,
+ * the client then fetches the same URL over HTTP, and that HTTP answer follows the HTTP rules
+ * (a page instead of the server, an empty answer).
  */
 export interface CarriedAnswer {
   status: number;
   headers: Record<string, string>;
   body: unknown;
 }
+
+/** What the server answers a body the socket cannot carry (`reject` in serve.ts). */
+const UNSUPPORTED_TRANSPORT = {
+  error: {
+    code: "unsupported_transport",
+    message: "This response does not ride the socket; use HTTP.",
+  },
+} as const;
 
 export async function carryOverTestFetch(
   method: string,
@@ -36,13 +46,20 @@ export async function carryOverTestFetch(
         : {}),
   });
   const headers = Object.fromEntries(response.headers.entries());
-  if (response.status === 204) return { status: 204, headers, body: null };
-  const text = await response.text();
-  const type = (response.headers.get("content-type") ?? "").split(";")[0]!.trim();
-  if (text === "" || type !== "application/json") return { status: 415, headers: {}, body: null };
-  try {
-    return { status: response.status, headers, body: JSON.parse(text) as unknown };
-  } catch {
-    return { status: 415, headers: {}, body: null };
+  const text = await response.text().catch(() => "");
+  if (text === "") return { status: response.status, headers, body: null };
+  const type = response.headers.get("content-type") ?? "";
+  if (type.includes("json")) {
+    try {
+      return { status: response.status, headers, body: JSON.parse(text) as unknown };
+    } catch {
+      return { status: response.status, headers, body: text };
+    }
   }
+  if (type.startsWith("text/")) return { status: response.status, headers, body: text };
+  return {
+    status: 415,
+    headers: { date: new Date().toUTCString() },
+    body: UNSUPPORTED_TRANSPORT,
+  };
 }
