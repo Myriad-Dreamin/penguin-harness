@@ -831,22 +831,28 @@ export class ApiSocket {
     if (this.#waiting.size === 0 && this.#queued.length === 0) return; // nothing to carry: reopen lazily on the next ask
     // Every drop — a connection that was up and went away, a handshake that never opened, a
     // server that could not be reached — comes back on the one ladder. It never stops.
-    this.#scheduleReconnect(this.#backoff());
+    this.#scheduleReconnect();
   }
 
   /**
    * Comes back for the parked streams. One attempt per timer; an attempt that could not
    * even reach the server (ready() false without a handshake) books the next one itself,
    * so a server that is down keeps being tried on the backoff until it is back.
+   *
+   * The ladder's next step is taken here, after the one-timer guard, so one failed attempt
+   * costs exactly one step however many paths notice it: a handshake that reached the server
+   * and failed has already booked its next timer in `#dropped`, and the continuation below
+   * then finds that timer armed and spends nothing.
    */
-  #scheduleReconnect(delayMs: number): void {
+  #scheduleReconnect(): void {
     if (this.#reconnect !== null) return;
+    const delayMs = this.#backoff();
     this.#reconnect = setTimeout(() => {
       this.#reconnect = null;
       void this.ready().then((open) => {
         if (open || this.#state !== "closed") return;
         if (this.#waiting.size === 0 && this.#queued.length === 0) return;
-        this.#scheduleReconnect(this.#backoff());
+        this.#scheduleReconnect();
       });
     }, delayMs);
   }

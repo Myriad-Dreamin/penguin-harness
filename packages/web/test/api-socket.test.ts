@@ -495,16 +495,17 @@ describe("streams", () => {
     expect(last().frames()).toHaveLength(3); // fatal: no further attempt
   });
 
-  it("keeps trying after three handshakes that never opened: the fourth is a real attempt, one backoff step later", async () => {
+  it("keeps trying after four handshakes that never opened: the fifth is a real attempt, one backoff step later", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const h = handlers();
     const conn = socket.stream("/api/events", h);
-    // Three handshakes in a row that never opened, each one retried on the next step of the one
-    // ladder. The steps are 1 s, 2 s, then 8 s: a failure of a scheduled attempt spends one more
-    // value of the ladder before `#scheduleReconnect`'s continuation sees the timer is already
-    // armed — the tree's own pre-existing shape, unchanged here (see `#scheduleReconnect`).
+    // Four handshakes in a row that never opened, each one retried on the next step of the one
+    // ladder: 1 s, 2 s, 4 s, 8 s. A failed attempt costs exactly one step — a handshake that
+    // reached the server and failed books its next timer in `#dropped`, and
+    // `#scheduleReconnect`'s continuation then finds it armed and spends nothing (see
+    // `#scheduleReconnect`).
     // What matters for this patch is that the ladder never ends: no state changes, no give-up.
-    const steps = [1_000, 2_000, 8_000];
+    const steps = [1_000, 2_000, 4_000, 8_000];
     for (let i = 0; i < steps.length; i++) {
       await Promise.resolve();
       await Promise.resolve();
@@ -521,8 +522,8 @@ describe("streams", () => {
     }
     await Promise.resolve();
     await Promise.resolve();
-    // The fourth attempt: made, on the ladder's next step, with no reload and no new state.
-    expect(FakeSocket.instances).toHaveLength(4);
+    // The fifth attempt: made, on the ladder's next step, with no reload and no new state.
+    expect(FakeSocket.instances).toHaveLength(5);
     expect(socket.isUnavailable()).toBe(false);
     last().open();
     expect(socket.isOpen()).toBe(true);
@@ -536,7 +537,7 @@ describe("streams", () => {
     const lines = warn.mock.calls
       .map(([m]) => String(m))
       .filter((m) => m.includes("the handshake did not open"));
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4);
     expect(lines.some((m) => /\d+\/\d+/.test(m))).toBe(false);
     expect(warn.mock.calls.some(([m]) => String(m).includes("giving up"))).toBe(false);
     conn.close();
