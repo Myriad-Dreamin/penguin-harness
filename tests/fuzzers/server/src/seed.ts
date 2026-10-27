@@ -1,17 +1,18 @@
 /**
- * Write the API leg's seed corpus: one entry per endpoint, for each control-byte combination
+ * Write the API leg's seed corpus: one entry per spec, for each control-byte combination
  * worth starting from.
  *
- * The endpoint table is a seed source now, not a scheduler: these files give libFuzzer a
- * first input per handler, and from there it is the fuzzer's own mutation and coverage
- * feedback that decide which requests exist. An entry that is already on disk is left alone —
- * the corpus directory is where the fuzzer keeps what it found.
+ * The specs come from the route metadata (`specs/server/main.ts`), and they are a seed source
+ * now, not a scheduler: these files give libFuzzer a first input per handler, and from there
+ * it is the fuzzer's own mutation and coverage feedback that decide which requests exist. An
+ * entry that is already on disk is left alone — the corpus directory is where the fuzzer
+ * keeps what it found.
  *
  * Usage (from run.mjs): `node seed.js <corpus-dir>`.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { apiCorpus } from "./corpus.js";
+import { httpSpecs } from "../../specs/server/main.js";
 
 const dir = process.argv[2];
 if (dir === undefined) {
@@ -28,7 +29,7 @@ const SEEDS: ReadonlyArray<{ flags: number; suffix: string }> = [
   { flags: 0b100, suffix: "anon-bad" },
 ];
 
-const specs = apiCorpus("default_project", "default_agent");
+const specs = httpSpecs();
 let written = 0;
 for (const [index, spec] of specs.entries()) {
   for (const seed of SEEDS) {
@@ -39,4 +40,4 @@ for (const [index, spec] of specs.entries()) {
     written += 1;
   }
 }
-console.log(`[seed] ${specs.length} endpoints, ${written} new seed(s) in ${path.resolve(dir)}`);
+console.log(`[seed] ${specs.length} specs, ${written} new seed(s) in ${path.resolve(dir)}`);

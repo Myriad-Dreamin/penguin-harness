@@ -29,9 +29,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { openExistingDatabase } from "../../../../packages/server/src/db/database.js";
+import { captureIds, type Pools } from "../../specs/decode.js";
+import { httpSpecs } from "../../specs/server/main.js";
 import { ByteChoices } from "./choices.js";
 import { permitLoopback } from "./bug-detectors.js";
-import { apiCorpus, fillPath, type ApiGenCtx, type Pools } from "./corpus.js";
 import { installOutboundGuard } from "./guards.js";
 import { bootHarness } from "./harness.js";
 import { decodeApiControls, payloadText, withPayload, type ApiControls } from "./input.js";
@@ -41,6 +42,8 @@ import { withSoftTimeout } from "./timeout.js";
 const PROJECT_ID = "default_project";
 const AGENT_ID = "default_agent";
 const NEW_ADMIN_PASSWORD = "penguin-0000-changed";
+/** The route whose success moves the credential the driver logs in with. */
+const PASSWORD_ROUTE = "PUT /api/me/password";
 /** Per-call soft timeout: a request that outlives it is a finding, not a hang. */
 const STEP_TIMEOUT_MS = 5_000;
 /** Crossing the 30-day auth-session TTL is one of the inputs the fuzzer can pick. */
@@ -63,14 +66,20 @@ const stats = {
   auth: {} as Record<string, number>,
   specHits: new Set<string>(),
   signatures: new Set<string>(),
+  repairs: 0,
 };
 
 const guard = installOutboundGuard();
 const harness = await bootHarness();
 // The SSRF bug detector would otherwise report the harness's own loopback traffic.
 await permitLoopback(harness.app.listener.port);
-const specs = apiCorpus(PROJECT_ID, AGENT_ID);
-const pools: Pools = { projects: [], agents: [], sessions: [], schedules: [], users: [] };
+const specs = httpSpecs();
+/**
+ * The ids the run has seen, by the key the contract gives them. Filled from every answer
+ * (`captureIds`) and from the boot rows below, so a create → read sequence reaches a handler
+ * with an id that names a real row.
+ */
+const pools: Pools = {};
 
 /** Inserts the resume-path rows (the shape a restart finds in the index) and returns them. */
 function seedResumeSessions(): void {
@@ -94,11 +103,45 @@ function seedResumeSessions(): void {
   } finally {
     db.close();
   }
-  pools.sessions.push(...RESUME_SESSION_IDS);
+  pools.sessionId = [...(pools.sessionId ?? []), ...RESUME_SESSION_IDS];
 }
 
 function llmFailurePlays(): number {
   return harness.loader.loaded.reduce((total, entry) => total + entry.llm.failurePlays, 0);
+}
+
+/**
+ * Re-create the project and agent every spec's premise is: one project, one agent. A DELETE
+ * route that removes them is a call worth fuzzing, but a run without them is 404s, so the
+ * target repairs its own fixture and counts the repair. Best effort by design — a repair that
+ * fails is the target's bookkeeping, not a finding.
+ */
+async function ensureFixture(): Promise<void> {
+  const snapshot = readSnapshot(harness.app.dbPath);
+  if (snapshot.fixtureProject > 0 && snapshot.fixtureAgent > 0) return;
+  const headers = {
+    authorization: `Bearer ${harness.app.apiToken}`,
+    "content-type": "application/json",
+  };
+  try {
+    if (snapshot.fixtureProject === 0) {
+      await harness.app.app.request("/api/projects", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ projectId: PROJECT_ID, name: PROJECT_ID }),
+      });
+    }
+    if (snapshot.fixtureAgent === 0) {
+      await harness.app.app.request(`/api/projects/${PROJECT_ID}/agents`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ agentId: AGENT_ID, name: AGENT_ID }),
+      });
+    }
+    stats.repairs += 1;
+  } catch {
+    // Nothing to do: the next call sees the same missing row and tries again.
+  }
 }
 
 async function login(): Promise<void> {
@@ -184,8 +227,88 @@ const bootViolations = invariantViolations({
 if (bootViolations.length > 0) {
   throw new Error(`[api] the boot smoke itself broke an invariant: ${bootViolations.join("; ")}`);
 }
-/** Everything the fuzzing loop is measured against. */
-const baseline = bootSnapshot;
+
+interface SweepResult {
+  answered: number;
+  slowest: { id: string; ms: number } | null;
+  timeouts: string[];
+  serverErrors: string[];
+  threw: string[];
+}
+
+/** Reads first: they are what fills the id pools the writes then use. */
+const SWEEP_ORDER = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+/**
+ * One quiet, deterministic pass over every spec, before the fuzzing loop starts.
+ *
+ * It pays each route's first-call cost once — a cold `GET …/workbenches` loads the workbench
+ * runtime and costs more than a second, which inside the loop would read as a soft-timeout
+ * finding every cycle — and it turns the spec list into a reachability reading: how many
+ * specs answered, which ones refused to finish, which ones answered ≥500. Damage is recorded
+ * here rather than thrown; the loop is what reports findings.
+ */
+async function sweepSpecs(): Promise<SweepResult> {
+  const result: SweepResult = {
+    answered: 0,
+    slowest: null,
+    timeouts: [],
+    serverErrors: [],
+    threw: [],
+  };
+  const queue = [...specs].sort(
+    (a, b) => SWEEP_ORDER.indexOf(a.method) - SWEEP_ORDER.indexOf(b.method),
+  );
+  for (const spec of queue) {
+    // No payload: this pass warms the route, it does not explore it.
+    const rng = new ByteChoices(Buffer.alloc(0));
+    const url = spec.url("ok", rng, "", pools);
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${harness.app.apiToken}`,
+    };
+    let body: string | undefined;
+    if (spec.method !== "GET" && spec.method !== "HEAD" && spec.body !== undefined) {
+      headers["content-type"] = "application/json";
+      body = JSON.stringify(spec.body("ok", rng, "", pools));
+    }
+    const startedAt = performance.now();
+    const raced = await withSoftTimeout(
+      Promise.resolve(
+        harness.app.app.request(url, {
+          method: spec.method,
+          headers,
+          ...(body === undefined ? {} : { body }),
+        }),
+      ),
+      STEP_TIMEOUT_MS,
+    );
+    const ms = Math.round(performance.now() - startedAt);
+    if (result.slowest === null || ms > result.slowest.ms) result.slowest = { id: spec.id, ms };
+    if (!raced.ok) {
+      if (raced.threw !== null) result.threw.push(`${spec.id}: ${raced.threw.message}`);
+      else result.timeouts.push(`${spec.id} (${ms}ms)`);
+      if (spec.method !== "GET") await ensureFixture();
+      continue;
+    }
+    result.answered += 1;
+    if (raced.value.status >= 500) result.serverErrors.push(`${spec.id} ${raced.value.status}`);
+    const contentType = raced.value.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      try {
+        captureIds(await raced.value.json(), pools);
+      } catch {
+        // A 5xx body need not parse; the status line above is the reading that matters.
+      }
+    }
+    if (spec.method !== "GET") await ensureFixture();
+  }
+  return result;
+}
+
+const sweep = await sweepSpecs();
+/** Everything the fuzzing loop is measured against — taken after the sweep, so the sweep's own
+ * rows are the premise rather than a violation the loop would report on its first call. */
+const baseline = readSnapshot(harness.app.dbPath);
 
 function describeCall(controls: ApiControls, specId: string, request: string): string {
   const flags = [
@@ -211,13 +334,9 @@ export async function fuzz(data: Buffer): Promise<void> {
   if (controls.jump) harness.clock.jumpForwardDays(CLOCK_JUMP_DAYS);
   else harness.clock.step(1_000);
 
-  const ctx: ApiGenCtx = {
-    rng: new ByteChoices(controls.rest),
-    pools,
-    step: call,
-    password: adminPassword,
-  };
-  const filled = fillPath(spec, ctx, PROJECT_ID, AGENT_ID);
+  const rng = new ByteChoices(controls.rest);
+  const text = payloadText(controls.rest, 512);
+  const filled = spec.url(controls.variant, rng, text, pools);
   const headers: Record<string, string> = {};
   if (controls.auth === "bearer") headers.authorization = `Bearer ${harness.app.apiToken}`;
   if (controls.auth === "cookie") {
@@ -225,12 +344,24 @@ export async function fuzz(data: Buffer): Promise<void> {
     if (cookie !== null) headers.cookie = cookie;
   }
 
+  // A GET/HEAD request cannot carry a body at all (`new Request(...)` throws), so the raw-body
+  // flag only applies to methods that can: it stays the way a body-parsing failure is reached
+  // on a route whose contract declares no DTO.
+  const canCarryBody = spec.method !== "GET" && spec.method !== "HEAD";
   let body: string | undefined;
-  if (spec.body !== undefined) {
+  if (canCarryBody && (spec.body !== undefined || controls.rawBody)) {
     headers["content-type"] = "application/json";
-    body = controls.rawBody
-      ? payloadText(controls.rest, 512)
-      : JSON.stringify(withPayload(spec.body(controls.variant, ctx), payloadText(controls.rest)));
+    if (controls.rawBody) {
+      // Verbatim payload: the parse-error path of readJson.
+      body = text;
+    } else if (spec.id === PASSWORD_ROUTE && controls.variant === "ok") {
+      // The one body whose valid value is a state the driver itself holds: a password change
+      // only succeeds with the password currently in force, and the success is what moves it.
+      body = JSON.stringify({ oldPassword: adminPassword, newPassword: NEW_ADMIN_PASSWORD });
+    } else {
+      const generated = spec.body!(controls.variant, rng, text, pools);
+      body = JSON.stringify(controls.variant === "ok" ? withPayload(generated, text) : generated);
+    }
   }
 
   const where = describeCall(controls, spec.id, `${spec.method} ${filled}`);
@@ -270,11 +401,11 @@ export async function fuzz(data: Buffer): Promise<void> {
         `${where} answered ${res.status} as JSON but its body did not parse: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    spec.capture?.(json, pools);
+    captureIds(json, pools);
   }
   // The stateful feed: a successful password change moves the credential the driver uses.
   if (
-    spec.id === "me.password.put" &&
+    spec.id === PASSWORD_ROUTE &&
     controls.variant === "ok" &&
     res.status >= 200 &&
     res.status < 300
@@ -303,6 +434,11 @@ export async function fuzz(data: Buffer): Promise<void> {
   stats.signatures.add(
     `p${snapshot.projects}|a${snapshot.agents}|s${snapshot.sessions}|h${snapshot.scheduleState}|u${snapshot.usage}|e${snapshot.errTotal}|d=${harness.clock.iso().slice(0, 10)}`,
   );
+  // A route that deleted the fixture is still a call worth fuzzing; put the premise back so
+  // the rest of the run keeps reaching handlers instead of 404s.
+  if (spec.method !== "GET" && (snapshot.fixtureProject === 0 || snapshot.fixtureAgent === 0)) {
+    await ensureFixture();
+  }
 }
 
 /** Replay every corpus input once, in order — the reading a machine without Jazzer.js can take. */
@@ -339,6 +475,12 @@ process.on("exit", () => {
       `- Auth rotation: ${JSON.stringify(stats.auth)}`,
       `- Distinct state signatures: ${stats.signatures.size}`,
       `- Endpoint specs hit: ${stats.specHits.size}/${specs.length}`,
+      `- Spec sweep: ${sweep.answered}/${specs.length} answered, slowest ${sweep.slowest === null ? "-" : `${sweep.slowest.id} ${sweep.slowest.ms}ms`}, ` +
+        `${sweep.timeouts.length} timed out, ${sweep.serverErrors.length} answered ≥500, ${sweep.threw.length} threw`,
+      ...sweep.timeouts.slice(0, 10).map((entry) => `  - timeout: ${entry}`),
+      ...sweep.serverErrors.slice(0, 10).map((entry) => `  - server error: ${entry}`),
+      ...sweep.threw.slice(0, 10).map((entry) => `  - threw: ${entry}`),
+      `- Fixture repairs: ${stats.repairs}`,
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
       `- Boot SSE sample: status ${sseSample.status}, ${sseSample.chunks} chunks / ${sseSample.bytes}B`,
       `- Elapsed: ${Math.round(performance.now() - startedAt)}ms`,

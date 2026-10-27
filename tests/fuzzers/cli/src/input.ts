@@ -9,7 +9,7 @@
  * Same contract as the API leg's `input.ts`: seeds and crash files are this format, and
  * `--mode=regression` replays them.
  */
-import type { Variant } from "./corpus.js";
+import type { Variant } from "../../specs/decode.js";
 import { payloadText } from "../../server/src/input.js";
 
 export const FLAG_BAD_VARIANT = 0b1;

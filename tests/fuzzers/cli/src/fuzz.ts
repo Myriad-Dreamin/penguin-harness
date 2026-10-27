@@ -24,12 +24,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { captureStdout, cliSpecs, exitsFor } from "../../specs/cli/main.js";
+import type { Pools } from "../../specs/decode.js";
 import { ByteChoices } from "../../server/src/choices.js";
 import { permitLoopback } from "../../server/src/bug-detectors.js";
 import { installOutboundGuard } from "../../server/src/guards.js";
 import { bootHarness } from "../../server/src/harness.js";
 import { runOneCommand } from "./command.js";
-import { cliCorpus, type CliGenCtx, type CliPools } from "./corpus.js";
 import { decodeCliControls } from "./input.js";
 
 const PROJECT_ID = "default_project";
@@ -85,8 +86,13 @@ setEnv("TZ", "UTC");
 // Imported after the environment is in place: the CLI resolves its data root at module load.
 const { cli } = await import("../../../../packages/cli/src/index.js");
 
-const specs = cliCorpus();
-const pools: CliPools = { sessions: [], schedules: [] };
+const specs = cliSpecs();
+/**
+ * Ids the run has seen, by the key the contract gives them: the boot run's session, plus
+ * whatever the commands answer with (`captureStdout`). A `session show` therefore has a real
+ * id to name, and a mutation of the pool key reaches the "no such session" path instead.
+ */
+const pools: Pools = {};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -137,7 +143,7 @@ async function setup(): Promise<boolean> {
     if (step.id === "setup.run.first") {
       const parsed = lastJsonLine(outcome.stdout) as { sessionId?: string } | null;
       if (parsed !== null && typeof parsed.sessionId === "string") {
-        pools.sessions.push(parsed.sessionId);
+        pools.sessionId = [...(pools.sessionId ?? []), parsed.sessionId];
       }
     }
     harness.clock.step(1_000);
@@ -175,6 +181,51 @@ function lastJsonLine(stdout: string): unknown | null {
 
 const oracleVisible = await setup();
 
+interface SpecSweep {
+  inside: number;
+  total: number;
+  outside: string[];
+}
+
+/**
+ * One pass over the whole spec table before fuzzing: every command, both variants, drawn from a
+ * zero-byte input. This is the table's own premise check — a line outside its contract here is
+ * either a wrong expectation to correct or the first finding, and either way it is reported
+ * once at boot instead of surfacing later as an unexplained crash in the middle of a run.
+ */
+async function sweepSpecs(): Promise<SpecSweep> {
+  const sweep: SpecSweep = { inside: 0, total: 0, outside: [] };
+  for (const spec of specs) {
+    for (const variant of ["ok", "bad"] as const) {
+      const argv = spec.argv(variant, new ByteChoices(Buffer.alloc(0)), "", pools);
+      const outcome = await runOneCommand(cli, argv);
+      sweep.total += 1;
+      const exits = exitsFor(spec, variant);
+      const refused = outcome.exitCode !== null && exits.includes(outcome.exitCode);
+      if (outcome.threw === null && !outcome.timedOut && refused) {
+        sweep.inside += 1;
+      } else {
+        const why =
+          outcome.threw !== null
+            ? `threw out of cli(): ${outcome.threw.message}`
+            : outcome.timedOut
+              ? "exceeded the command soft timeout"
+              : `exited ${outcome.exitCode ?? "null"} outside {${exits.join(",")}} — ${outcome.stderr.slice(0, 140).replace(/\n/g, " ")}`;
+        sweep.outside.push(`${spec.id} (${variant}) \`${argv.join(" ")}\` ${why}`);
+      }
+      harness.clock.step(1_000);
+    }
+  }
+  console.log(
+    `[spec sweep] ${sweep.inside}/${sweep.total} lines inside their own contract` +
+      (sweep.outside.length === 0 ? "" : `, ${sweep.outside.length} outside:`),
+  );
+  for (const line of sweep.outside.slice(0, 20)) console.log(`  - ${line}`);
+  return sweep;
+}
+
+const sweep = await sweepSpecs();
+
 /**
  * One fuzz call: decode a command line, run it, check its contract. A throw is the finding.
  */
@@ -185,12 +236,8 @@ export async function fuzz(data: Buffer): Promise<void> {
   stats.calls = call;
   stats.specHits.add(spec.id);
 
-  const ctx: CliGenCtx = { rng: new ByteChoices(controls.rest), pools, step: call };
-  const argv = spec.argv(ctx, controls.variant);
-  if (controls.text !== "" && spec.textFlag !== undefined) {
-    const index = argv.indexOf(spec.textFlag);
-    if (index >= 0 && index + 1 < argv.length) argv[index + 1] = controls.text;
-  }
+  const rng = new ByteChoices(controls.rest);
+  const argv = spec.argv(controls.variant, rng, controls.text, pools);
 
   const outcome = await runOneCommand(cli, argv);
   const where = `[cli] ${spec.id} \`${argv.join(" ")}\``;
@@ -200,13 +247,16 @@ export async function fuzz(data: Buffer): Promise<void> {
   if (outcome.timedOut) {
     throw new Error(`${where} exceeded the command soft timeout`);
   }
-  if (outcome.exitCode === null || !spec.exits.includes(outcome.exitCode)) {
+  const exits = exitsFor(spec, controls.variant);
+  if (outcome.exitCode === null || !exits.includes(outcome.exitCode)) {
     throw new Error(
-      `${where} exited ${outcome.exitCode ?? "null"} outside {${spec.exits.join(",")}} — stderr: ${outcome.stderr.slice(0, 200).replace(/\n/g, " ")}`,
+      `${where} exited ${outcome.exitCode ?? "null"} outside {${exits.join(",")}} — stderr: ${outcome.stderr.slice(0, 200).replace(/\n/g, " ")}`,
     );
   }
   if (outcome.exitGuardCatch !== null) {
-    if (spec.id !== "run.approve.bogus") {
+    // The one hard-exit face the build knows: `run --approve <unparsable>` reaches
+    // resolveApprovalMode's own process.exit(1). Any other process.exit is the finding.
+    if (!(spec.id === "run" && argv.includes("--approve"))) {
       throw new Error(
         `${where} called process.exit(${outcome.exitGuardCatch.code ?? ""}) at ${outcome.exitGuardCatch.where}`,
       );
@@ -222,7 +272,7 @@ export async function fuzz(data: Buffer): Promise<void> {
   }
 
   stats.exits[String(outcome.exitCode)] = (stats.exits[String(outcome.exitCode)] ?? 0) + 1;
-  spec.capture?.(outcome.stdout, pools, controls.variant);
+  captureStdout(outcome.stdout, pools);
   harness.clock.step(1_000);
 }
 
@@ -256,6 +306,8 @@ process.on("exit", () => {
       "",
       `- Commands: ${stats.calls}`,
       `- Exit codes: ${JSON.stringify(stats.exits)}`,
+      `- Spec sweep: ${sweep.inside}/${sweep.total} lines inside their own contract, ${sweep.outside.length} outside`,
+      ...sweep.outside.slice(0, 10).map((line) => `  - outside: ${line}`),
       `- Commands hit: ${stats.specHits.size}/${specs.length}`,
       `- Exit-guard catches (process.exit intercepted): ${stats.exitGuardCatches}`,
       `- Config write-after-read oracle: ${oracleVisible ? "visible" : "NOT visible"}`,

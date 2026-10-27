@@ -13,7 +13,7 @@
  * Seeds under `out/corpus/` are written in this format (see seed.ts); the crashing inputs
  * Jazzer.js saves are the same format, so a finding replays with `--mode=regression`.
  */
-import type { Variant } from "./corpus.js";
+import type { Variant } from "../../specs/decode.js";
 
 export type AuthMode = "anon" | "bearer" | "cookie";
 

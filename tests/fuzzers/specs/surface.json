@@ -1,0 +1,5198 @@
+{
+  "source": {
+    "types": "packages/server/src/api/types.ts",
+    "endpoints": "packages/web/src/api/endpoints.ts",
+    "routes": "packages/server/src/**/module.ts (HttpModule.routes + @Bind)"
+  },
+  "endpoints": [
+    {
+      "fn": "login",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "params": [],
+      "bodyType": "AuthLoginRequest",
+      "fields": [
+        {
+          "name": "userId",
+          "kind": "string"
+        },
+        {
+          "name": "password",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "logout",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "params": [],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "getInstall",
+      "method": "GET",
+      "path": "/api/install",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getMe",
+      "method": "GET",
+      "path": "/api/me",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "changePassword",
+      "method": "PUT",
+      "path": "/api/me/password",
+      "params": [],
+      "bodyType": "PasswordChangeRequest",
+      "fields": [
+        {
+          "name": "oldPassword",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "newPassword",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "updateProfile",
+      "method": "PUT",
+      "path": "/api/me/profile",
+      "params": [],
+      "bodyType": "UpdateProfileRequest",
+      "fields": [
+        {
+          "name": "displayName",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "avatar",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getPrefs",
+      "method": "GET",
+      "path": "/api/me/prefs",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putPrefs",
+      "method": "PUT",
+      "path": "/api/me/prefs",
+      "params": [],
+      "bodyType": "UiPrefs",
+      "fields": [
+        {
+          "name": "theme",
+          "kind": "enum",
+          "values": [
+            "light",
+            "dark"
+          ],
+          "optional": true
+        },
+        {
+          "name": "lastProjectId",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "credentialGuideSeen",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "initialPasswordBannerDismissed",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "todoDismissed",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "noticesDismissed",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "draftShortcuts",
+          "kind": "array",
+          "fields": [
+            {
+              "name": "id",
+              "kind": "string"
+            },
+            {
+              "name": "title",
+              "kind": "string"
+            },
+            {
+              "name": "prompt",
+              "kind": "string"
+            }
+          ],
+          "optional": true
+        },
+        {
+          "name": "keybindings",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "v",
+              "kind": "number"
+            },
+            {
+              "name": "mac",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "windows",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "linux",
+              "kind": "string",
+              "optional": true
+            }
+          ],
+          "optional": true
+        },
+        {
+          "name": "companyMode",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "workMode",
+          "kind": "enum",
+          "values": [
+            "dev",
+            "company"
+          ],
+          "optional": true
+        },
+        {
+          "name": "lastOrgKey",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "pinnedBalance",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "browserBackend",
+          "kind": "enum",
+          "values": [
+            "builtin",
+            "chrome"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "adminListUsers",
+      "method": "GET",
+      "path": "/api/admin/users",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "adminCreateUser",
+      "method": "POST",
+      "path": "/api/admin/users",
+      "params": [],
+      "bodyType": "AdminUserCreateRequest",
+      "fields": [
+        {
+          "name": "userId",
+          "kind": "string"
+        },
+        {
+          "name": "password",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "adminResetPassword",
+      "method": "POST",
+      "path": "/api/admin/users/:userId/password",
+      "params": [
+        "userId"
+      ],
+      "bodyType": "AdminPasswordResetRequest",
+      "fields": [
+        {
+          "name": "password",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "adminDeleteUser",
+      "method": "DELETE",
+      "path": "/api/admin/users/:userId",
+      "params": [
+        "userId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "adminGetSettings",
+      "method": "GET",
+      "path": "/api/admin/settings",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "adminGetPluginConfig",
+      "method": "GET",
+      "path": "/api/admin/plugin-config",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "adminPutPluginConfig",
+      "method": "PUT",
+      "path": "/api/admin/plugin-config",
+      "params": [],
+      "bodyType": "PluginConfigUpdateRequest",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "string"
+        },
+        {
+          "name": "values",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "adminRunPluginConfigAction",
+      "method": "POST",
+      "path": "/api/admin/plugin-config/action",
+      "params": [],
+      "bodyType": "{ name: string; action: string }",
+      "fields": []
+    },
+    {
+      "fn": "adminPutSettings",
+      "method": "PUT",
+      "path": "/api/admin/settings",
+      "params": [],
+      "bodyType": "ServerSettingsUpdateRequest",
+      "fields": [
+        {
+          "name": "proxyForApp",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "proxyForAgent",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "companyMode",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "browserExtensionsEnabled",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "agentApiEnabled",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "proxyUrl",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "attachmentMaxMb",
+          "kind": "number",
+          "optional": true
+        },
+        {
+          "name": "attachmentTotalMb",
+          "kind": "number",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "adminGetProxyProbeTargets",
+      "method": "GET",
+      "path": "/api/admin/settings/proxy-probe",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "adminProbeProxy",
+      "method": "POST",
+      "path": "/api/admin/settings/proxy-probe/:provider",
+      "params": [
+        "provider"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listProjects",
+      "method": "GET",
+      "path": "/api/projects",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "createProject",
+      "method": "POST",
+      "path": "/api/projects",
+      "params": [],
+      "bodyType": "ProjectCreateRequest",
+      "fields": [
+        {
+          "name": "projectId",
+          "kind": "string"
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "updateProject",
+      "method": "PATCH",
+      "path": "/api/projects/:projectId",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ProjectUpdateRequest",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "deleteProject",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listMembers",
+      "method": "GET",
+      "path": "/api/projects/:projectId/members",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "addMember",
+      "method": "POST",
+      "path": "/api/projects/:projectId/members",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "MemberAddRequest",
+      "fields": [
+        {
+          "name": "userId",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "removeMember",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/members/:username",
+      "params": [
+        "projectId",
+        "username"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getChatDefaults",
+      "method": "GET",
+      "path": "/api/projects/:projectId/chat-defaults",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putChatDefaults",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/chat-defaults",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ChatDefaultsDto",
+      "fields": [
+        {
+          "name": "agentId",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "workspace",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "approvalMode",
+          "kind": "enum",
+          "values": [
+            "allow-all",
+            "deny-all",
+            "read-only",
+            "always-ask"
+          ],
+          "optional": true
+        },
+        {
+          "name": "thinkingLevel",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "sandbox",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "mode",
+              "kind": "enum",
+              "values": [
+                "read-only",
+                "workspace-write",
+                "danger-full-access"
+              ]
+            },
+            {
+              "name": "network",
+              "kind": "enum",
+              "values": [
+                "open",
+                "local",
+                "none"
+              ]
+            },
+            {
+              "name": "confinementSupported",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "noNetworkSupported",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "localNetworkSupported",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "maskPathsSupported",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "masksPaths",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "backendsInUse",
+              "kind": "array",
+              "optional": true
+            },
+            {
+              "name": "unavailableBackends",
+              "kind": "array",
+              "fields": [
+                {
+                  "name": "name",
+                  "kind": "string"
+                },
+                {
+                  "name": "reason",
+                  "kind": "string"
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "presets",
+              "kind": "array",
+              "fields": [
+                {
+                  "name": "id",
+                  "kind": "string"
+                },
+                {
+                  "name": "name",
+                  "kind": "string"
+                },
+                {
+                  "name": "nameZh",
+                  "kind": "string",
+                  "optional": true
+                },
+                {
+                  "name": "enabled",
+                  "kind": "string"
+                },
+                {
+                  "name": "mode",
+                  "kind": "string"
+                },
+                {
+                  "name": "network",
+                  "kind": "string"
+                },
+                {
+                  "name": "approvalMode",
+                  "kind": "string"
+                },
+                {
+                  "name": "aboveCeiling",
+                  "kind": "string",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "advanced",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "defaultApprovalMode",
+              "kind": "enum",
+              "values": [
+                "allow-all",
+                "deny-all",
+                "read-only",
+                "always-ask"
+              ],
+              "optional": true
+            },
+            {
+              "name": "switchOn",
+              "kind": "boolean",
+              "optional": true
+            }
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getCommandPolicy",
+      "method": "GET",
+      "path": "/api/projects/:projectId/command-policy",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putCommandPolicy",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/command-policy",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{ enabled: boolean; rules: CommandPolicyRuleDto[] }",
+      "fields": []
+    },
+    {
+      "fn": "getModels",
+      "method": "GET",
+      "path": "/api/projects/:projectId/models",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putModels",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/models",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ModelsUpdateRequest",
+      "fields": [
+        {
+          "name": "defaultModel",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "provider",
+              "kind": "string"
+            },
+            {
+              "name": "modelId",
+              "kind": "string"
+            }
+          ],
+          "optional": true
+        },
+        {
+          "name": "visionModel",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "provider",
+              "kind": "string"
+            },
+            {
+              "name": "modelId",
+              "kind": "string"
+            }
+          ],
+          "optional": true
+        },
+        {
+          "name": "providers",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "models",
+          "kind": "array",
+          "fields": [
+            {
+              "name": "provider",
+              "kind": "string"
+            },
+            {
+              "name": "modelId",
+              "kind": "string"
+            },
+            {
+              "name": "displayName",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "renamedFrom",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "provider",
+                  "kind": "string"
+                },
+                {
+                  "name": "modelId",
+                  "kind": "string"
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "contextWindow",
+              "kind": "number",
+              "optional": true
+            },
+            {
+              "name": "clientType",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "vision",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "maxTokens",
+              "kind": "number",
+              "optional": true
+            },
+            {
+              "name": "fastMode",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "pricing",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "cacheRead",
+                  "kind": "string"
+                },
+                {
+                  "name": "cacheWrite",
+                  "kind": "string"
+                },
+                {
+                  "name": "output",
+                  "kind": "string"
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "discount",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "apiKey",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "clearApiKey",
+              "kind": "boolean",
+              "optional": true
+            },
+            {
+              "name": "baseUrl",
+              "kind": "string",
+              "optional": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "putProviderConnection",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/models/providers/:provider",
+      "params": [
+        "projectId",
+        "provider"
+      ],
+      "bodyType": "ProviderConnectionUpdate",
+      "fields": [
+        {
+          "name": "baseUrl",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clientType",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "apiKey",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearApiKey",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "syncPresets",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/sync-presets",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "PresetSyncRequest",
+      "fields": [
+        {
+          "name": "mode",
+          "kind": "enum",
+          "values": [
+            "add",
+            "restore"
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "putDefaultModel",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/models/default",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "DefaultModelUpdateRequest",
+      "fields": [
+        {
+          "name": "provider",
+          "kind": "string"
+        },
+        {
+          "name": "modelId",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "getModelBalance",
+      "method": "GET",
+      "path": "/api/projects/:projectId/models/balance?provider=",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "testModel",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/test",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ModelTestRequest",
+      "fields": [
+        {
+          "name": "provider",
+          "kind": "string"
+        },
+        {
+          "name": "modelId",
+          "kind": "string"
+        },
+        {
+          "name": "apiKey",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearApiKey",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "speed",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "baseUrl",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clientType",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "fastMode",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "detectProtocol",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/detect",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ModelProtocolDetectRequest",
+      "fields": [
+        {
+          "name": "baseUrl",
+          "kind": "string"
+        },
+        {
+          "name": "apiKey",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearApiKey",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "provider",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "modelId",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "listEndpointModels",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/list",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "EndpointModelListRequest",
+      "fields": [
+        {
+          "name": "baseUrl",
+          "kind": "string"
+        },
+        {
+          "name": "clientType",
+          "kind": "string"
+        },
+        {
+          "name": "apiKey",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "detectVision",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/detect-vision",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ModelVisionDetectRequest",
+      "fields": [
+        {
+          "name": "provider",
+          "kind": "string"
+        },
+        {
+          "name": "modelId",
+          "kind": "string"
+        },
+        {
+          "name": "apiKey",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearApiKey",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "baseUrl",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clientType",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "startModelOAuth",
+      "method": "POST",
+      "path": "/api/projects/:projectId/model-oauth/start",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "ModelOAuthStartRequest",
+      "fields": [
+        {
+          "name": "provider",
+          "kind": "string"
+        },
+        {
+          "name": "mode",
+          "kind": "enum",
+          "values": [
+            "callback",
+            "manual"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getModelOAuthStatus",
+      "method": "GET",
+      "path": "/api/projects/:projectId/model-oauth/:flowId",
+      "params": [
+        "projectId",
+        "flowId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "submitModelOAuthCode",
+      "method": "POST",
+      "path": "/api/projects/:projectId/model-oauth/:flowId/code",
+      "params": [
+        "projectId",
+        "flowId"
+      ],
+      "bodyType": "{ code }",
+      "fields": []
+    },
+    {
+      "fn": "syncPlatformModels",
+      "method": "POST",
+      "path": "/api/projects/:projectId/platform-auth/sync",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "getVault",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/vault",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putVault",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/agents/:agentId/vault",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "VaultUpdateRequest",
+      "fields": [
+        {
+          "name": "entries",
+          "kind": "array",
+          "fields": [
+            {
+              "name": "key",
+              "kind": "string"
+            },
+            {
+              "name": "value",
+              "kind": "string",
+              "optional": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "insertVaultPlaceholder",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/vault/template-placeholder",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "insertSkillsPlaceholder",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/skills/template-placeholder",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "insertSchedulesPlaceholder",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/template-placeholder",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "listAgents",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "createAgent",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "AgentCreateRequest",
+      "fields": [
+        {
+          "name": "agentId",
+          "kind": "string"
+        },
+        {
+          "name": "name",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "plugins",
+          "kind": "array",
+          "optional": true
+        },
+        {
+          "name": "skillsDirectory",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "directorySkills",
+          "kind": "array",
+          "optional": true
+        },
+        {
+          "name": "dataBase64",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getAgentConfig",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/config",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putAgentConfig",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/agents/:agentId/config",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "AgentConfigUpdateRequest",
+      "fields": [
+        {
+          "name": "agentsMd",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "config",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "name",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "description",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "systemPrompt",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "maxTurns",
+              "kind": "number",
+              "optional": true
+            },
+            {
+              "name": "model",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "maxTokens",
+                  "kind": "number",
+                  "optional": true
+                },
+                {
+                  "name": "thinkingLevel",
+                  "kind": "string",
+                  "optional": true
+                },
+                {
+                  "name": "timeoutMs",
+                  "kind": "number",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "compaction",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "maxContextLength",
+                  "kind": "number",
+                  "optional": true
+                },
+                {
+                  "name": "maxSessionTurns",
+                  "kind": "number",
+                  "optional": true
+                },
+                {
+                  "name": "mode",
+                  "kind": "enum",
+                  "values": [
+                    "summarize",
+                    "discard"
+                  ],
+                  "optional": true
+                },
+                {
+                  "name": "prompt",
+                  "kind": "string",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "memory",
+              "kind": "string",
+              "optional": true
+            },
+            {
+              "name": "vault",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "enabled",
+                  "kind": "boolean",
+                  "optional": true
+                },
+                {
+                  "name": "prompt",
+                  "kind": "string",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "skills",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "enabled",
+                  "kind": "boolean",
+                  "optional": true
+                },
+                {
+                  "name": "prompt",
+                  "kind": "string",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "schedules",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "enabled",
+                  "kind": "boolean",
+                  "optional": true
+                },
+                {
+                  "name": "prompt",
+                  "kind": "string",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "hooks",
+              "kind": "object",
+              "fields": [
+                {
+                  "name": "enabled",
+                  "kind": "boolean",
+                  "optional": true
+                }
+              ],
+              "optional": true
+            },
+            {
+              "name": "toolsBuiltin",
+              "kind": "array",
+              "optional": true
+            },
+            {
+              "name": "mcpServers",
+              "kind": "array",
+              "optional": true
+            }
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "testAgentMcpServer",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/config/mcp-test",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "MCPServerConfig",
+      "fields": []
+    },
+    {
+      "fn": "resetAgentConfig",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/config/reset",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "kernelUpdateAgentConfig",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/config/kernel-update",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listSessions",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/sessions",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "batchSessions",
+      "method": "POST",
+      "path": "/api/projects/:projectId/sessions/batch",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{ requests } satisfies SessionsBatchRequest",
+      "fields": []
+    },
+    {
+      "fn": "listDirs",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines/:machineId/dirs?path=",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "requestDirAccess",
+      "method": "POST",
+      "path": "/api/projects/:projectId/dirs/access",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{ path }",
+      "fields": []
+    },
+    {
+      "fn": "listDirectorySkills",
+      "method": "GET",
+      "path": "/api/projects/:projectId/dir-skills?path=",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "createSession",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/sessions",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "SessionCreateRequest",
+      "fields": [
+        {
+          "name": "modelId",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "provider",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "workspace",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "approvalMode",
+          "kind": "enum",
+          "values": [
+            "allow-all",
+            "deny-all",
+            "read-only",
+            "always-ask"
+          ],
+          "optional": true
+        },
+        {
+          "name": "sandbox",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "client",
+          "kind": "enum",
+          "values": [
+            "web",
+            "cli",
+            "org"
+          ],
+          "optional": true
+        },
+        {
+          "name": "source",
+          "kind": "enum",
+          "values": [
+            "cli"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "forkSession",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/fork",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "SessionForkRequest",
+      "fields": [
+        {
+          "name": "position",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "fileIndex",
+              "kind": "number"
+            },
+            {
+              "name": "ordinal",
+              "kind": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "getSession",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "patchSession",
+      "method": "PATCH",
+      "path": "/api/sessions/:sessionId",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "SessionPatchRequest",
+      "fields": [
+        {
+          "name": "approvalMode",
+          "kind": "enum",
+          "values": [
+            "allow-all",
+            "deny-all",
+            "read-only",
+            "always-ask"
+          ],
+          "optional": true
+        },
+        {
+          "name": "sandbox",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "thinkingLevel",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "archived",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "title",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "deleteSession",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listArchivedSessionGroups",
+      "method": "GET",
+      "path": "/api/me/archived-sessions/groups",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listArchivedSessions",
+      "method": "GET",
+      "path": "/api/me/archived-sessions",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "unarchiveSessions",
+      "method": "POST",
+      "path": "/api/me/archived-sessions/unarchive",
+      "params": [],
+      "bodyType": "ArchivedSessionsBatch",
+      "fields": []
+    },
+    {
+      "fn": "deleteSessions",
+      "method": "POST",
+      "path": "/api/me/archived-sessions/delete",
+      "params": [],
+      "bodyType": "ArchivedSessionsBatch",
+      "fields": []
+    },
+    {
+      "fn": "getMessagingBinding",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/messaging",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "putFeishuBinding",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/feishu",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "FeishuBindingPutRequest",
+      "fields": [
+        {
+          "name": "appId",
+          "kind": "string"
+        },
+        {
+          "name": "appSecret",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "baseDomain",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearAppSecret",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "putTelegramBinding",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/telegram",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "TelegramBindingPutRequest",
+      "fields": [
+        {
+          "name": "botToken",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearBotToken",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "putQQBinding",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/qq",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "QQBindingPutRequest",
+      "fields": [
+        {
+          "name": "appId",
+          "kind": "string"
+        },
+        {
+          "name": "appSecret",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "clearAppSecret",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "putWeChatBinding",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/wechat",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "WeChatBindingPutRequest",
+      "fields": [
+        {
+          "name": "clearBotToken",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "setMessagingBindingState",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/:channel/state",
+      "params": [
+        "sessionId",
+        "channel"
+      ],
+      "bodyType": "{ enabled }",
+      "fields": []
+    },
+    {
+      "fn": "testFeishuBinding",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/feishu/test",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "FeishuTestRequest",
+      "fields": [
+        {
+          "name": "appId",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "appSecret",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "baseDomain",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "testTelegramBinding",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/telegram/test",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "TelegramTestRequest",
+      "fields": [
+        {
+          "name": "botToken",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "startQQScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/scan",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "pollQQScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/scan/poll",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{ taskId }",
+      "fields": []
+    },
+    {
+      "fn": "cancelQQScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/scan/cancel",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{ taskId }",
+      "fields": []
+    },
+    {
+      "fn": "startWeChatScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "pollWeChatScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/poll",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{ taskId }",
+      "fields": []
+    },
+    {
+      "fn": "verifyWeChatScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/verify",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{ taskId, verifyCode }",
+      "fields": []
+    },
+    {
+      "fn": "cancelWeChatScan",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/cancel",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{ taskId }",
+      "fields": []
+    },
+    {
+      "fn": "testWeChatBinding",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/test",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "testQQBinding",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/test",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "QQTestRequest",
+      "fields": [
+        {
+          "name": "appId",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "appSecret",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "sendMessagingTestMessage",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/:channel/test-message",
+      "params": [
+        "sessionId",
+        "channel"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "postTask",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/tasks",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "TaskCreateRequest",
+      "fields": [
+        {
+          "name": "input",
+          "kind": "array",
+          "variants": [
+            [
+              {
+                "name": "type",
+                "kind": "enum",
+                "values": [
+                  "text"
+                ]
+              },
+              {
+                "name": "text",
+                "kind": "string"
+              }
+            ],
+            [
+              {
+                "name": "type",
+                "kind": "enum",
+                "values": [
+                  "image_url"
+                ]
+              },
+              {
+                "name": "imageUrl",
+                "kind": "string"
+              }
+            ],
+            [
+              {
+                "name": "type",
+                "kind": "enum",
+                "values": [
+                  "file"
+                ]
+              },
+              {
+                "name": "fileName",
+                "kind": "string"
+              },
+              {
+                "name": "dataUrl",
+                "kind": "string"
+              }
+            ]
+          ]
+        },
+        {
+          "name": "queueIfBusy",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "goal",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "budget",
+              "kind": "number",
+              "optional": true
+            }
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getGoal",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/goal",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "postApproval",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/approvals/:toolCallId",
+      "params": [
+        "sessionId",
+        "toolCallId"
+      ],
+      "bodyType": "ApprovalDecisionRequest",
+      "fields": [
+        {
+          "name": "decision",
+          "kind": "enum",
+          "values": [
+            "allow",
+            "deny"
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "postToolCallBackground",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/tool-calls/:toolCallId/background",
+      "params": [
+        "sessionId",
+        "toolCallId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "postAbort",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/abort",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "postRetryNow",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/retry-now",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "postRetry",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/retry",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "getSessionProcesses",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/processes",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "killSessionProcess",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/processes/:processId/kill",
+      "params": [
+        "sessionId",
+        "processId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "removeSessionProcess",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/processes/:processId",
+      "params": [
+        "sessionId",
+        "processId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "postSteer",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/steer",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "SteerRequest",
+      "fields": [
+        {
+          "name": "text",
+          "kind": "string"
+        },
+        {
+          "name": "images",
+          "kind": "array",
+          "optional": true
+        },
+        {
+          "name": "files",
+          "kind": "array",
+          "fields": [
+            {
+              "name": "fileName",
+              "kind": "string"
+            },
+            {
+              "name": "dataUrl",
+              "kind": "string"
+            }
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "messageSubagent",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/subagents/:childSessionId/message",
+      "params": [
+        "sessionId",
+        "childSessionId"
+      ],
+      "bodyType": "{ text }",
+      "fields": []
+    },
+    {
+      "fn": "abortSubagent",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/subagents/:childSessionId/abort",
+      "params": [
+        "sessionId",
+        "childSessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "recallSteer",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/steer/:steerId",
+      "params": [
+        "sessionId",
+        "steerId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "recallFollowUp",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/follow-ups/:followUpId",
+      "params": [
+        "sessionId",
+        "followUpId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "postCompact",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/compact",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "switchSessionModel",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/switch-model",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "SessionSwitchModelRequest",
+      "fields": [
+        {
+          "name": "provider",
+          "kind": "string"
+        },
+        {
+          "name": "modelId",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "getSessionContext",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/context",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getSessionTraces",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/traces",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getTraceEvents",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/traces/:index",
+      "params": [
+        "sessionId",
+        "index"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getTraceAnalysis",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/traces/:index/analysis",
+      "params": [
+        "sessionId",
+        "index"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "importAgentTrace",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/traces/import",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "TraceImportRequest",
+      "fields": [
+        {
+          "name": "dataBase64",
+          "kind": "string"
+        }
+      ]
+    },
+    {
+      "fn": "getUsageErrors",
+      "method": "GET",
+      "path": "/api/projects/:projectId/usage/errors",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "clearUsageErrors",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/usage/errors",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getUsageModelTotals",
+      "method": "GET",
+      "path": "/api/projects/:projectId/usage/model-totals",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getUsage",
+      "method": "GET",
+      "path": "/api/projects/:projectId/usage",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "deleteAgent",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listWorkspaceFiles",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/files",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "revealWorkspaceFile",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/files/reveal",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "createWorkspaceEntry",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/files/create",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "FilesCreateRequest",
+      "fields": [
+        {
+          "name": "path",
+          "kind": "string"
+        },
+        {
+          "name": "kind",
+          "kind": "enum",
+          "values": [
+            "file",
+            "dir"
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "moveWorkspaceFile",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/files/move",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "FilesMoveRequest",
+      "fields": [
+        {
+          "name": "from",
+          "kind": "string"
+        },
+        {
+          "name": "to",
+          "kind": "string"
+        },
+        {
+          "name": "ifVersion",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "deleteWorkspaceFile",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/files/content",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "searchWorkspaceFiles",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/files/search",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "statSessionFiles",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/files/stat",
+      "params": [
+        "sessionId"
+      ],
+      "bodyType": "{ paths } satisfies FilesStatRequest",
+      "fields": []
+    },
+    {
+      "fn": "listSchedules",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listProjectSchedules",
+      "method": "GET",
+      "path": "/api/projects/:projectId/schedules",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "createSchedule",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "ScheduleUpsertRequest & { name: string }",
+      "fields": []
+    },
+    {
+      "fn": "getPluginLibrary",
+      "method": "GET",
+      "path": "/api/plugins",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getPluginFiles",
+      "method": "GET",
+      "path": "/api/plugins/:plugin/files",
+      "params": [
+        "plugin"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getLibraryPluginReadme",
+      "method": "GET",
+      "path": "/api/plugins/:plugin/readme",
+      "params": [
+        "plugin"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getAgentPlugins",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/plugins",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "installAgentPlugins",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/plugins",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "{ names } satisfies PluginInstallRequest",
+      "fields": []
+    },
+    {
+      "fn": "getPluginIndex",
+      "method": "GET",
+      "path": "/api/plugins/registry",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getLanguages",
+      "method": "GET",
+      "path": "/api/languages",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getPluginReadme",
+      "method": "GET",
+      "path": "/api/plugins/registry/readme?name=",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getAgentSkills",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/skills",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getAgentHooks",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/hooks",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getAgentMcpServers",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "listBenchmarks",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "createBenchmark",
+      "method": "POST",
+      "path": "/api/projects/:projectId/benchmarks",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "BenchmarkCreateRequest",
+      "fields": [
+        {
+          "name": "id",
+          "kind": "string"
+        },
+        {
+          "name": "title",
+          "kind": "string"
+        },
+        {
+          "name": "description",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "runs",
+          "kind": "number",
+          "optional": true
+        },
+        {
+          "name": "cases",
+          "kind": "array",
+          "fields": [
+            {
+              "name": "id",
+              "kind": "string"
+            },
+            {
+              "name": "title",
+              "kind": "string"
+            },
+            {
+              "name": "statement",
+              "kind": "string"
+            },
+            {
+              "name": "rubric",
+              "kind": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fn": "deleteBenchmark",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId",
+      "params": [
+        "projectId",
+        "benchmarkId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "importBenchmarkArchive",
+      "method": "POST",
+      "path": "/api/projects/:projectId/benchmarks/archive",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "BenchmarkArchiveImportRequest",
+      "fields": [
+        {
+          "name": "dataBase64",
+          "kind": "string"
+        },
+        {
+          "name": "overwrite",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "origin",
+          "kind": "object",
+          "fields": [
+            {
+              "name": "kind",
+              "kind": "enum",
+              "values": [
+                "git"
+              ]
+            },
+            {
+              "name": "url",
+              "kind": "string"
+            },
+            {
+              "name": "ref",
+              "kind": "string"
+            },
+            {
+              "name": "path",
+              "kind": "string"
+            }
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "importAgent",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/import",
+      "params": [
+        "projectId",
+        "agentId"
+      ],
+      "bodyType": "AgentImportRequest",
+      "fields": [
+        {
+          "name": "dataBase64",
+          "kind": "string"
+        },
+        {
+          "name": "confirm",
+          "kind": "boolean",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getMachines",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "probeMachines",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/probe",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "useMachines",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/use",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "replaceProgram\n      ? { machines: machineIds, replaceProgram: true }\n      : { machines: machineIds }",
+      "fields": []
+    },
+    {
+      "fn": "addMachines",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/add",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{ machines: machineIds }",
+      "fields": []
+    },
+    {
+      "fn": "getSshHosts",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines/ssh-hosts",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "addSshHost",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/ssh-hosts",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "SshHostRequest",
+      "fields": [
+        {
+          "name": "alias",
+          "kind": "string"
+        },
+        {
+          "name": "hostName",
+          "kind": "string"
+        },
+        {
+          "name": "user",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "port",
+          "kind": "number",
+          "optional": true
+        },
+        {
+          "name": "identityFile",
+          "kind": "string",
+          "optional": true
+        },
+        {
+          "name": "password",
+          "kind": "string",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getSshHost",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias",
+      "params": [
+        "projectId",
+        "alias"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "updateSshHost",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias",
+      "params": [
+        "projectId",
+        "alias"
+      ],
+      "bodyType": "Omit<SshHostRequest, \"alias\">",
+      "fields": []
+    },
+    {
+      "fn": "stopUsingMachines",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/stop-using",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "{ machines: machineIds }",
+      "fields": []
+    },
+    {
+      "fn": "installOnMachine",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/install",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": "replaceProgram ? { replaceProgram: true } : {}",
+      "fields": []
+    },
+    {
+      "fn": "connectMachine",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/connect",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "restartMachine",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/restart",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "stopMachine",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/stop",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "syncMachineConfig",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/sync",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "uninstallMachine",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/uninstall",
+      "params": [
+        "projectId",
+        "machineId"
+      ],
+      "bodyType": "{ removeData }",
+      "fields": []
+    },
+    {
+      "fn": "getVersion",
+      "method": "GET",
+      "path": "/api/version",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getVersionHistory",
+      "method": "GET",
+      "path": "/api/version/history",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "rollbackVersion",
+      "method": "POST",
+      "path": "/api/version/history/rollback",
+      "params": [],
+      "bodyType": "{ id }",
+      "fields": []
+    },
+    {
+      "fn": "getVersionIfacesTable",
+      "method": "GET",
+      "path": "/api/version/history/ifaces/:hash",
+      "params": [
+        "hash"
+      ],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getVersionHistoryDiff",
+      "method": "GET",
+      "path": "/api/version/history/diff?from=",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "checkUpdate",
+      "method": "GET",
+      "path": "/api/version/update-check",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "getUpdateJob",
+      "method": "GET",
+      "path": "/api/version/update",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "startUpdateJob",
+      "method": "POST",
+      "path": "/api/version/update",
+      "params": [],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "restartServer",
+      "method": "POST",
+      "path": "/api/version/restart",
+      "params": [],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "getDesktopUpdate",
+      "method": "GET",
+      "path": "/api/desktop/update",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "desktopUpdateCheck",
+      "method": "POST",
+      "path": "/api/desktop/update/check",
+      "params": [],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "desktopUpdateDownload",
+      "method": "POST",
+      "path": "/api/desktop/update/download",
+      "params": [],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "desktopUpdateInstall",
+      "method": "POST",
+      "path": "/api/desktop/update/install",
+      "params": [],
+      "bodyType": "{}",
+      "fields": []
+    },
+    {
+      "fn": "suggestSemanticId",
+      "method": "POST",
+      "path": "/api/projects/:projectId/suggest-id",
+      "params": [
+        "projectId"
+      ],
+      "bodyType": "SemanticIdSuggestRequest",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "string"
+        },
+        {
+          "name": "kind",
+          "kind": "enum",
+          "values": [
+            "org",
+            "channel",
+            "project",
+            "agent",
+            "benchmark"
+          ]
+        },
+        {
+          "name": "taken",
+          "kind": "array",
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "getDesktopTray",
+      "method": "GET",
+      "path": "/api/desktop/tray",
+      "params": [],
+      "bodyType": null,
+      "fields": []
+    },
+    {
+      "fn": "setDesktopTray",
+      "method": "PUT",
+      "path": "/api/desktop/tray",
+      "params": [],
+      "bodyType": "DesktopTrayPatch",
+      "fields": [
+        {
+          "name": "showTrayIcon",
+          "kind": "boolean",
+          "optional": true
+        },
+        {
+          "name": "locale",
+          "kind": "enum",
+          "values": [
+            "zh",
+            "en"
+          ],
+          "optional": true
+        }
+      ]
+    },
+    {
+      "fn": "openPrivacySettings",
+      "method": "POST",
+      "path": "/api/desktop/privacy-settings",
+      "params": [],
+      "bodyType": "{ pane }",
+      "fields": []
+    }
+  ],
+  "routes": [
+    {
+      "group": "AmspRoutes.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/amsp/v1/agents/:projectId/:agentId"
+    },
+    {
+      "group": "AmspRoutes.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/amsp/v1/agents/:projectId/:agentId/runs"
+    },
+    {
+      "group": "AmspRoutes.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/amsp/v1/sessions/:sessionId"
+    },
+    {
+      "group": "AmspRoutes.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/amsp/v1/sessions/:sessionId/abort"
+    },
+    {
+      "group": "AmspRoutes.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/amsp/v1/sessions/:sessionId/approvals/:toolCallId"
+    },
+    {
+      "group": "AmspRoutes.routes",
+      "auth": "none",
+      "method": "ALL",
+      "path": "/api/amsp/v1/*"
+    },
+    {
+      "group": "AmspRoutes.try",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/api/try"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/status"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/backend"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/builtin-browser/backend"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pairings"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/builtin-browser/extension/:id"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/tabs"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/session"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/claim"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/on-screen"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/activate"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/builtin-browser/tabs/:tab"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/navigate"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/scan"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/exec"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/click"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/type"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/screenshot"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/tabs/:tab/cdp"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/import/sources"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/import"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/settings"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/builtin-browser/settings"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/builtin-browser/history"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/builtin-browser/history"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser/clear-data"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/builtin-browser"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/status"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/backend"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "PUT",
+      "path": "/api/builtin-browser/extension/pair/backend"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/extension/pairings"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/extension"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "DELETE",
+      "path": "/api/builtin-browser/extension/pair/extension/:id"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/tabs"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/session"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/claim"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/on-screen"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/activate"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "DELETE",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/navigate"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/scan"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/exec"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/click"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/type"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/screenshot"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/cdp"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/import/sources"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/import"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/settings"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "PUT",
+      "path": "/api/builtin-browser/extension/pair/settings"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/builtin-browser/extension/pair/history"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "DELETE",
+      "path": "/api/builtin-browser/extension/pair/history"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair/clear-data"
+    },
+    {
+      "group": "BuiltinBrowserRoutes.pair",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/builtin-browser/extension/pair"
+    },
+    {
+      "group": "admin-api.users",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/admin/users"
+    },
+    {
+      "group": "admin-api.users",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/admin/users"
+    },
+    {
+      "group": "admin-api.users",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/admin/users/:userId/password"
+    },
+    {
+      "group": "admin-api.users",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/admin/users/:userId"
+    },
+    {
+      "group": "admin-api.settings",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/admin/settings"
+    },
+    {
+      "group": "admin-api.settings",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/admin/settings"
+    },
+    {
+      "group": "admin-api.settings",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/admin/settings/proxy-probe"
+    },
+    {
+      "group": "admin-api.settings",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/admin/settings/proxy-probe/:provider"
+    },
+    {
+      "group": "admin-api.plugin-config",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/admin/plugin-config"
+    },
+    {
+      "group": "admin-api.plugin-config",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/admin/plugin-config"
+    },
+    {
+      "group": "admin-api.plugin-config",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/admin/plugin-config/action"
+    },
+    {
+      "group": "AuthRoutes.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/auth/login"
+    },
+    {
+      "group": "AuthRoutes.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/auth/logout"
+    },
+    {
+      "group": "AuthRoutes.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/auth/claim"
+    },
+    {
+      "group": "AuthRoutes.routes",
+      "auth": "none",
+      "method": "ALL",
+      "path": "/api/auth/*"
+    },
+    {
+      "group": "DesktopRoutes.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/desktop"
+    },
+    {
+      "group": "DesktopUpdateRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/desktop/update"
+    },
+    {
+      "group": "DesktopTrayRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/desktop/tray"
+    },
+    {
+      "group": "DesktopPrivacySettingsRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/desktop/privacy-settings"
+    },
+    {
+      "group": "projects.dirs",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/dirs"
+    },
+    {
+      "group": "projects.dirs",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/dirs/access"
+    },
+    {
+      "group": "projects.dir-skills",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/dir-skills"
+    },
+    {
+      "group": "EventsRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/events"
+    },
+    {
+      "group": "InstallRoutes.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/install"
+    },
+    {
+      "group": "LanguageRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/languages"
+    },
+    {
+      "group": "LanguageRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/languages/:id/grammar"
+    },
+    {
+      "group": "MeRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/me"
+    },
+    {
+      "group": "MeRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/me/password"
+    },
+    {
+      "group": "MeRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/me/profile"
+    },
+    {
+      "group": "MeRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/me/prefs"
+    },
+    {
+      "group": "MeRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/me/prefs"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/organizations/:orgId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/organizations/:orgId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/chart"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/move"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/block"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/unblock"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/progress"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/start"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/attach"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "PATCH",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/read"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/finance"
+    },
+    {
+      "group": "OrgRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/organizations/:orgId/sessions"
+    },
+    {
+      "group": "InstalledPluginRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/plugins/installed"
+    },
+    {
+      "group": "InstalledPluginRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/plugins/installed"
+    },
+    {
+      "group": "InstalledPluginRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/plugins/installed/archive"
+    },
+    {
+      "group": "InstalledPluginRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/plugins/installed"
+    },
+    {
+      "group": "InstalledPluginRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/plugins/installed"
+    },
+    {
+      "group": "PluginRoutes.library",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins"
+    },
+    {
+      "group": "PluginRoutes.library",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins/:plugin/files"
+    },
+    {
+      "group": "PluginRoutes.library",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins/:plugin/readme"
+    },
+    {
+      "group": "PluginRoutes.library",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins/:plugin/archive"
+    },
+    {
+      "group": "PluginRoutes.agent-plugins",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/plugins"
+    },
+    {
+      "group": "PluginRoutes.agent-plugins",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/plugins"
+    },
+    {
+      "group": "PluginRoutes.agent-hooks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/hooks"
+    },
+    {
+      "group": "PluginRoutes.agent-hooks",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/hooks/archive"
+    },
+    {
+      "group": "PluginRoutes.agent-hooks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/hooks/:name/archive"
+    },
+    {
+      "group": "PluginRoutes.agent-hooks",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/hooks/:name"
+    },
+    {
+      "group": "PluginRoutes.agent-mcp-servers",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers"
+    },
+    {
+      "group": "PluginRoutes.agent-mcp-servers",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers/:name"
+    },
+    {
+      "group": "PluginRegistryRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins/registry"
+    },
+    {
+      "group": "PluginRegistryRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins/registry/readme"
+    },
+    {
+      "group": "PluginRegistryRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/plugins/registry/archive"
+    },
+    {
+      "group": "workspace.preview",
+      "auth": "none",
+      "method": "GET",
+      "path": "/preview/:token/*"
+    },
+    {
+      "group": "project-admin.projects",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects"
+    },
+    {
+      "group": "project-admin.projects",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects"
+    },
+    {
+      "group": "project-admin.projects",
+      "auth": "user",
+      "method": "PATCH",
+      "path": "/api/projects/:projectId"
+    },
+    {
+      "group": "project-admin.projects",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId"
+    },
+    {
+      "group": "project-admin.members",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/members"
+    },
+    {
+      "group": "project-admin.members",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/members"
+    },
+    {
+      "group": "project-admin.members",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/members/:userId"
+    },
+    {
+      "group": "RemoteRoutes.routes",
+      "auth": "token",
+      "method": "POST",
+      "path": "/api/remote/session"
+    },
+    {
+      "group": "SchedulerRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules"
+    },
+    {
+      "group": "SchedulerRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules"
+    },
+    {
+      "group": "SchedulerRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/template-placeholder"
+    },
+    {
+      "group": "SchedulerRoutes.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name"
+    },
+    {
+      "group": "SchedulerRoutes.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name"
+    },
+    {
+      "group": "SchedulerRoutes.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name"
+    },
+    {
+      "group": "SchedulerRoutes.projectRoutes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/schedules"
+    },
+    {
+      "group": "session-api.model-oauth-callback",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/projects/:projectId/model-oauth/callback"
+    },
+    {
+      "group": "session-api.model-oauth-callback",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/projects/:projectId/model-oauth/callback/start"
+    },
+    {
+      "group": "session-api.model-oauth-callback",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/projects/:projectId/model-oauth/callback/:flowId/code"
+    },
+    {
+      "group": "session-api.model-oauth-callback",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/projects/:projectId/model-oauth/callback/:flowId"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/models"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/models"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/models/providers/:provider"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/sync-presets"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/models/balance"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/models/default"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/test"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/detect"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/list"
+    },
+    {
+      "group": "session-api.models",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/models/detect-vision"
+    },
+    {
+      "group": "session-api.model-oauth",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/model-oauth"
+    },
+    {
+      "group": "session-api.model-oauth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/model-oauth/start"
+    },
+    {
+      "group": "session-api.model-oauth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/model-oauth/:flowId/code"
+    },
+    {
+      "group": "session-api.model-oauth",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/model-oauth/:flowId"
+    },
+    {
+      "group": "session-api.platform-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/platform-auth/start"
+    },
+    {
+      "group": "session-api.platform-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/platform-auth/sync"
+    },
+    {
+      "group": "session-api.platform-auth",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/platform-auth/:flowId/status"
+    },
+    {
+      "group": "session-api.platform-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/platform-auth/:flowId/retry"
+    },
+    {
+      "group": "session-api.platform-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/platform-auth/:flowId/cancel"
+    },
+    {
+      "group": "session-api.modelscope-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/modelscope-auth/start"
+    },
+    {
+      "group": "session-api.modelscope-auth",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/modelscope-auth/:flowId/status"
+    },
+    {
+      "group": "session-api.modelscope-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/modelscope-auth/:flowId/retry"
+    },
+    {
+      "group": "session-api.modelscope-auth",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/modelscope-auth/:flowId/cancel"
+    },
+    {
+      "group": "session-api.chat-defaults",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/chat-defaults"
+    },
+    {
+      "group": "session-api.chat-defaults",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/chat-defaults"
+    },
+    {
+      "group": "session-api.command-policy",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/command-policy"
+    },
+    {
+      "group": "session-api.command-policy",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/command-policy"
+    },
+    {
+      "group": "session-api.agents",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents"
+    },
+    {
+      "group": "session-api.agents",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents"
+    },
+    {
+      "group": "session-api.agents",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId"
+    },
+    {
+      "group": "session-api.agent-config",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/config"
+    },
+    {
+      "group": "session-api.agent-config",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/agents/:agentId/config"
+    },
+    {
+      "group": "session-api.agent-config",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/config/mcp-test"
+    },
+    {
+      "group": "session-api.agent-config",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/config/kernel-update"
+    },
+    {
+      "group": "session-api.agent-config",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/config/reset"
+    },
+    {
+      "group": "session-api.vault",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/vault"
+    },
+    {
+      "group": "session-api.vault",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/agents/:agentId/vault"
+    },
+    {
+      "group": "session-api.vault",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/vault/template-placeholder"
+    },
+    {
+      "group": "session-api.agent-sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/sessions"
+    },
+    {
+      "group": "session-api.agent-sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/sessions"
+    },
+    {
+      "group": "session-api.sessions-batch",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/sessions/batch"
+    },
+    {
+      "group": "session-api.usage",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/usage"
+    },
+    {
+      "group": "session-api.usage",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/usage/model-totals"
+    },
+    {
+      "group": "session-api.usage",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/usage/errors"
+    },
+    {
+      "group": "session-api.usage",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/usage/errors"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "PATCH",
+      "path": "/api/sessions/:sessionId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/fork"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/scratchpad/:fileName"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/trace-image"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/messages"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/stream"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/tasks"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/steer"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/steer/:steerId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/subagents/:childSessionId/message"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/subagents/:childSessionId/abort"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/follow-ups/:followUpId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/goal"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/approvals/:toolCallId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/tool-calls/:toolCallId/background"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/abort"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/processes"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/processes/:processId/kill"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/sessions/:sessionId/processes/:processId"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/retry-now"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/retry"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/compact"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/switch-model"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/files/preview-redirect"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/files/stat"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/context"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/traces"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/traces/:index"
+    },
+    {
+      "group": "session-api.sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/traces/:index/analysis"
+    },
+    {
+      "group": "session-api.archived-sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/me/archived-sessions/groups"
+    },
+    {
+      "group": "session-api.archived-sessions",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/me/archived-sessions"
+    },
+    {
+      "group": "session-api.archived-sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/me/archived-sessions/unarchive"
+    },
+    {
+      "group": "session-api.archived-sessions",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/me/archived-sessions/delete"
+    },
+    {
+      "group": "SuggestIdRoutes.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/suggest-id"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/use"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines/ssh-hosts"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/add"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/ssh-hosts"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/stop-using"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/probe"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/install"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/connect"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/machines/:machineId/dirs"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/release"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/restart"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/stop"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/uninstall"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/sync"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/diagnose"
+    },
+    {
+      "group": "MachinesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/machines/:machineId/disconnect"
+    },
+    {
+      "group": "MachinesModule.server-proxy",
+      "auth": "user",
+      "method": "ALL",
+      "path": "/server*"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/sessions/:sessionId/messaging"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/feishu"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/feishu/test"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/telegram"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/telegram/test"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/qq"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/scan"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/scan/poll"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/scan/cancel"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/qq/test"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/sessions/:sessionId/messaging/wechat"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/poll"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/verify"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/cancel"
+    },
+    {
+      "group": "messaging.session-routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/sessions/:sessionId/messaging/wechat/test"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/benchmarks"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/benchmarks/archive"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/archive"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files/content"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files"
+    },
+    {
+      "group": "agents.benchmarks",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files/content"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/memory"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/memory/template-placeholder"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/export"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/import"
+    },
+    {
+      "group": "agents.memory",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName"
+    },
+    {
+      "group": "agents.skills",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/skills"
+    },
+    {
+      "group": "agents.skills",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/skills/template-placeholder"
+    },
+    {
+      "group": "agents.skills",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/skills/archive"
+    },
+    {
+      "group": "agents.skills",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/skills/:name/archive"
+    },
+    {
+      "group": "agents.skills",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/skills/:name"
+    },
+    {
+      "group": "agents.api",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/api"
+    },
+    {
+      "group": "agents.api",
+      "auth": "user",
+      "method": "PUT",
+      "path": "/api/projects/:projectId/agents/:agentId/api"
+    },
+    {
+      "group": "agents.api",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/api/keys"
+    },
+    {
+      "group": "agents.api",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/api/keys/:keyId"
+    },
+    {
+      "group": "agents.transfer",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/export"
+    },
+    {
+      "group": "agents.transfer",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/import"
+    },
+    {
+      "group": "agents.traces",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/traces"
+    },
+    {
+      "group": "agents.traces",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index"
+    },
+    {
+      "group": "agents.traces",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/analysis"
+    },
+    {
+      "group": "agents.traces",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/download"
+    },
+    {
+      "group": "agents.traces",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/traces/import"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/version"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/version/history"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/version/history/ifaces/:hash"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/version/history/diff"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/version/history/rollback"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/version/update-check"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/version/update"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/version/update"
+    },
+    {
+      "group": "VersionModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/version/restart"
+    },
+    {
+      "group": "TerminalModule.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/terminals"
+    },
+    {
+      "group": "TerminalModule.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/terminals"
+    },
+    {
+      "group": "TerminalModule.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/terminals/:id"
+    },
+    {
+      "group": "TerminalModule.routes",
+      "auth": "none",
+      "method": "DELETE",
+      "path": "/api/terminals/:id"
+    },
+    {
+      "group": "TerminalModule.routes",
+      "auth": "none",
+      "method": "GET",
+      "path": "/api/terminals/:id/capture"
+    },
+    {
+      "group": "TerminalModule.routes",
+      "auth": "none",
+      "method": "POST",
+      "path": "/api/terminals/:id/keys"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/reload"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/history"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "POST",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/rollback"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "DELETE",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "GET",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/ui/*"
+    },
+    {
+      "group": "WorkbenchesModule.routes",
+      "auth": "user",
+      "method": "ALL",
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/api/*"
+    }
+  ],
+  "computed": [
+    "packages/server/src/http/routes/workspace-files.ts:63 GET at(\"\")",
+    "packages/server/src/http/routes/workspace-files.ts:68 GET at(\"/content\")",
+    "packages/server/src/http/routes/workspace-files.ts:126 PUT at(\"/content\")",
+    "packages/server/src/http/routes/workspace-files.ts:151 DELETE at(\"/content\")",
+    "packages/server/src/http/routes/workspace-files.ts:165 POST at(\"/create\")",
+    "packages/server/src/http/routes/workspace-files.ts:181 POST at(\"/move\")",
+    "packages/server/src/http/routes/workspace-files.ts:198 GET at(\"/search\")",
+    "packages/server/src/http/routes/workspace-files.ts:216 POST at(\"/reveal\")",
+    "packages/server/src/http/routes/messaging.ts:441 GET base",
+    "packages/server/src/http/routes/messaging.ts:446 POST `${base}/state`",
+    "packages/server/src/http/routes/messaging.ts:459 DELETE base",
+    "packages/server/src/http/routes/messaging.ts:469 POST `${base}/test-message`"
+  ]
+}

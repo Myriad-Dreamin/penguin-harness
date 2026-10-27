@@ -11,8 +11,39 @@ manager and its persistence.
 
 The fuzzing engine is libFuzzer through Jazzer.js: the target hands it one function that
 turns a byte buffer into one request (or one command line), and the engine's own coverage
-feedback decides which inputs to keep, mutate and schedule. There is no request generator and
-no step budget in this directory.
+feedback decides which inputs to keep, mutate and schedule. What a byte means comes from the
+specs below; there is no request generator and no step budget in this directory.
+
+## Specs: what a byte means
+
+Jazzer.js 4.0.0 offers no custom-mutator hook. libFuzzer's `LLVMFuzzerCustomMutator` is a
+symbol resolved when the binary is linked, and the Node addon exposes only `customHooks`, which
+wrap a run instead of replacing its mutation step. Mutation by spec is therefore realized one
+layer lower, in the decoder, and that is the stronger place for it.
+
+An input is still a plain byte string, so libFuzzer's own mutations, crossovers and scheduling
+stay intact. Two control bytes choose the spec (one endpoint, one command) and the shape of the
+call (credential mode, a valid or a damaged body); every remaining decision the engine flips
+lands on a named slot of that spec — one path parameter, one body field, one argv option — and
+the value is drawn from the slot's declared type. Changing one byte changes one field's value,
+which is what makes a mutation meaningful on a typed surface; arbitrary JSON bytes would rarely
+get past the parser.
+
+The specs are penguin's own declarations. `specs/extract.mjs` parses the sources with the
+TypeScript compiler API and writes `specs/surface.json`: every server route, taken from each
+`HttpModule.routes` contribution together with the `app.<method>("…")` call its factory makes;
+every client endpoint of the web client's endpoint table, with its request body; the shape of
+every DTO a body can name; and the paths a route builds at run time, which each extraction
+lists because no literal exists to extract. The CLI leg reads the commander tree that the CLI's
+own fifteen `register*Command` calls build, so a new command appears in the specs with no edit
+here.
+
+Regenerate the surface after adding or renaming a route, an endpoint or a DTO field:
+
+    node tests/fuzzers/specs/extract.mjs
+
+`specs/surface.json` is committed so a run needs no extraction step: both legs read it at load,
+and the seed corpus is written from the same specs.
 
 ## Why there is a build step
 
@@ -38,13 +69,15 @@ run the fuzzer on a newer base image or distribution.
 | --- | --- |
 | `server/` | The API surface: one request per input against the in-process server. |
 | `server/src/fuzz.ts` | The Jazzer.js entry: decode, send, check, throw on a violation. |
-| `server/src/corpus.ts` | The endpoint table: the target's alphabet, and the seed corpus' source. |
+| `specs/extract.mjs` | Reads penguin's route metadata, client endpoints and DTOs into `specs/surface.json`. |
+| `specs/decode.ts` | The slot decoder both legs share: bytes → one named slot of a spec, by the slot's type. |
+| `specs/server/main.ts` | The API leg's specs, built from `specs/surface.json` (routes, paths, body fields). |
+| `specs/cli/main.ts` | The CLI leg's specs, built from the commander tree the CLI itself registers. |
 | `server/src/input.ts` | The input format (two control bytes, then payload) and body payload injection. |
 | `server/src/invariants.ts` | The invariant checks, read off a second, read-only SQLite connection. |
 | `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`). |
 | `cli/` | The CLI surface: one command line per input, over the same harness. |
 | `cli/src/fuzz.ts` | The Jazzer.js entry: decode, run the command, check its exit contract. |
-| `cli/src/corpus.ts` | The command table: alphabet and seed source. |
 | `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
 | `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
 | `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |

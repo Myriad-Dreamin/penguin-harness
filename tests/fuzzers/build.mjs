@@ -111,6 +111,21 @@ for (const file of sources) {
   links += 1;
 }
 
+// A bare specifier imported from the fuzz tree itself (not from `packages/`) has no such
+// walk-up: `specs/cli/main.ts` reads the commander tree with the CLI's own `commander`, which
+// is installed under `packages/cli`. One link at the build root puts that package on the
+// walk-up path from `build/tests/fuzzers/…`, so the specs are built by the same commander
+// version the product parses argv with.
+for (const name of ["commander"]) {
+  const from = path.join(repo, "packages", "cli", "node_modules", name);
+  if (!fs.existsSync(from)) continue;
+  const link = path.join(outDir, "node_modules", name);
+  if (fs.existsSync(link)) continue;
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(from, link, "dir");
+  links += 1;
+}
+
 // Each package's manifest is part of the tree the product walks: the plugin library finds its
 // host package by reading `package.json` above the loader (`packages/core/…` does that on the
 // boot path), and a build without the manifest cannot resolve the plugins it declares.

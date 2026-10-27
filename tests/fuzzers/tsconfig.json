@@ -50,8 +50,9 @@
       "@prismshadow/penguin-server/secret-file": ["../../packages/server/src/secret-file.ts"],
       "@prismshadow/penguin-server/plugin": ["../../packages/server/src/plugin/index.ts"],
       "hono": ["../../packages/server/node_modules/hono"],
-      "hono/*": ["../../packages/server/node_modules/hono/*"]
+      "hono/*": ["../../packages/server/node_modules/hono/*"],
+      "commander": ["../../packages/cli/node_modules/commander"]
     }
   },
-  "include": ["server/src", "cli/src", "types"]
+  "include": ["server/src", "cli/src", "specs", "types"]
 }

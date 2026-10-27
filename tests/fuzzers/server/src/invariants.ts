@@ -29,6 +29,9 @@ export interface DbSnapshot {
   errUncaught: number;
   errUnhandled: number;
   errLlmUnexpected: number;
+  /** The fixture the target's own specs stand on, so a route that deletes it is visible. */
+  fixtureProject: number;
+  fixtureAgent: number;
 }
 
 const SNAPSHOT_SQL = `
@@ -44,7 +47,9 @@ SELECT
   (SELECT COUNT(*) FROM error_records WHERE source='process') AS errProcess,
   (SELECT COUNT(*) FROM error_records WHERE code='uncaught_exception') AS errUncaught,
   (SELECT COUNT(*) FROM error_records WHERE code='unhandled_rejection') AS errUnhandled,
-  (SELECT COUNT(*) FROM error_records WHERE source='llm' AND kind='unexpected') AS errLlmUnexpected
+  (SELECT COUNT(*) FROM error_records WHERE source='llm' AND kind='unexpected') AS errLlmUnexpected,
+  (SELECT COUNT(*) FROM projects WHERE project_id='default_project') AS fixtureProject,
+  (SELECT COUNT(*) FROM agents WHERE agent_id='default_agent') AS fixtureAgent
 `;
 
 /** Count the resource tables and the error rows, over a read-only connection. */

@@ -1,7 +1,7 @@
 /**
- * The choice surface a corpus entry draws from.
+ * The choice surface a spec draws from.
  *
- * `ApiCallSpec.body` and `path` filling were written against a seeded PRNG; under a
+ * A spec's body fields and path parameters are filled against a seeded PRNG; under a
  * coverage-guided fuzzer the same choices have to come from the input bytes, so a mutation
  * is what changes them. This is the one interface both sides agree on — the product code
  * never sees it.
