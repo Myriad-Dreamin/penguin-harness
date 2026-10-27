@@ -3,12 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "API-surface fuzzer: a fixed-seed, stateful request sequence against the in-process server, with per-step invariants and read-only state introspection.",
+  "description": "API-surface fuzz target for Jazzer.js: one request per input against the in-process server, with per-call invariants.",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "fuzz": "node ../run.mjs server",
+    "self-check": "node ../run.mjs server --self-check",
     "typecheck": "tsc -p ../tsconfig.json"
   }
 }

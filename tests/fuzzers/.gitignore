@@ -1,2 +1,4 @@
-# Fuzz runs write their artifacts here; only the sources are tracked.
+# Compiled tree the fuzzer instruments (build.mjs), and the run's own artifacts.
+build/
 */out/
+node_modules/

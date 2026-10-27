@@ -1,0 +1,21 @@
+{
+  "name": "@prismshadow/fuzzers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Coverage-guided fuzzers for the API and CLI surfaces, driven by Jazzer.js (libFuzzer + istanbul).",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "fuzz:server": "node run.mjs server",
+    "fuzz:cli": "node run.mjs cli",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@jazzer.js/core": "4.0.0",
+    "esbuild": "^0.28.1",
+    "istanbul-lib-coverage": "^3.2.2"
+  }
+}

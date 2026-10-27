@@ -1,8 +1,10 @@
 /**
- * CLI cross-section corpus (DESIGN.md §5.2): command-line specs distilled from the commander
- * declarations in packages/cli/src/commands/*. Every spec names the real command file it
- * drives. The serialization format for this leg is the command line itself (argv array),
- * which out/cli-sequence.jsonl records verbatim.
+ * CLI cross-section table: command-line specs distilled from the commander declarations in
+ * packages/cli/src/commands/*. Every spec names the real command file it drives.
+ *
+ * Like the API table, this is the fuzz target's *alphabet and seed corpus*: the command is
+ * read out of the fuzzer's bytes (see `input.ts`), `seed.ts` writes one starting input per
+ * command, and coverage feedback decides what runs. There is no order and no budget.
  *
  * 🔴-danger behaviors are absent by the §5.3 danger gate: no update (self-update job), no
  * auth token/login (writes cli-session.json), no config lang/vault set (writes secrets
@@ -10,7 +12,7 @@
  * exec/click/type/open (drives a real browser), no benchmark import, no org writes (they
  * open real desk sessions), no server stop / reset-admin-password / web / chat.
  */
-import type { Rng } from "../../server/src/rng.js";
+import type { Choices } from "../../server/src/choices.js";
 
 export type Variant = "ok" | "bad";
 
@@ -20,7 +22,7 @@ export interface CliPools {
 }
 
 export interface CliGenCtx {
-  rng: Rng;
+  rng: Choices;
   pools: CliPools;
   step: number;
 }
@@ -32,6 +34,11 @@ export interface CliCallSpec {
   exits: number[];
   /** Parse the captured stdout after the command (e.g. session id from `run --json`). */
   capture?: (stdout: string, pools: CliPools, variant: Variant) => void;
+  /**
+   * The flag whose value is free text (`-m`, `-t`): the fuzzer's payload replaces it, so a
+   * mutation reaches the message/title handling instead of only choosing a command.
+   */
+  textFlag?: "-m" | "-t";
   /** Real code this spec drives — file and action, for the coverage report. */
   note: string;
 }
@@ -97,6 +104,7 @@ export function cliCorpus(): CliCallSpec[] {
     },
     {
       id: "session.rename",
+      textFlag: "-t",
       argv: (ctx, v) => [
         "session",
         "rename",
@@ -109,6 +117,7 @@ export function cliCorpus(): CliCallSpec[] {
     },
     {
       id: "session.input",
+      textFlag: "-m",
       argv: (ctx, v) => [
         "session",
         "input",
@@ -129,12 +138,14 @@ export function cliCorpus(): CliCallSpec[] {
     },
     {
       id: "run.foreground",
+      textFlag: "-m",
       argv: (ctx) => ["run", "-m", `fuzz cli task ${ctx.step}`, "--timeout", "10s"],
       exits: [0],
       note: "commands/run.ts (create-or-reuse session, POST task, StreamRenderer watch)",
     },
     {
       id: "run.json",
+      textFlag: "-m",
       argv: (ctx) => ["run", "-m", `fuzz cli task ${ctx.step}`, "--json", "--timeout", "10s"],
       exits: [0],
       capture: (stdout, pools) => {
@@ -147,6 +158,7 @@ export function cliCorpus(): CliCallSpec[] {
     },
     {
       id: "run.background",
+      textFlag: "-m",
       argv: (ctx) => ["run", "-m", `fuzz background ${ctx.step}`, "--background", "--json"],
       exits: [0],
       note: "commands/run.ts --background (task keeps running server-side)",
@@ -261,6 +273,7 @@ export function cliCorpus(): CliCallSpec[] {
     },
     {
       id: "run.approve.bogus",
+      textFlag: "-m",
       argv: () => [
         "run",
         "-m",

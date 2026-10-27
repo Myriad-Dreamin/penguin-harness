@@ -26,6 +26,11 @@ specs/
 # vitest --coverage reports
 coverage/
 
+# the fuzzers' compiled tree (build.mjs) and the corpus/coverage a run writes
+tests/fuzzers/build/
+tests/fuzzers/server/out/
+tests/fuzzers/cli/out/
+
 # Playwright e2e artifacts
 test-results/
 playwright-report/

@@ -8,3 +8,16 @@
  * yields a value or reports the stream done, and a done read carries no value.
  */
 type ReadableStreamReadResult<T> = { done: false; value: T } | { done: true; value?: T };
+
+/**
+ * Jazzer.js's bug-detector configuration accessor.
+ *
+ * The package is a dependency of the fuzzer installed under `tests/fuzzers`, not of the
+ * workspace, so its declarations are not on this program's resolution path. Only what the
+ * targets call is spelled out — see `server/src/bug-detectors.ts` for why they call it.
+ */
+declare module "@jazzer.js/bug-detectors" {
+  export function getBugDetectorConfiguration(
+    name: string,
+  ): { addPermittedTCPConnection(hostname: string, port: number): unknown } | undefined;
+}

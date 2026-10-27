@@ -1,46 +1,72 @@
-# In-process fuzzers for the API and CLI surfaces
+# Coverage-guided fuzzers for the API and CLI surfaces
 
-Two small packages that drive the repository's own code with deterministic, reproducible
-sequences, and turn "the system never dies on any call" into something a machine checks.
+Two Jazzer.js fuzz targets that drive the repository's own server and CLI in one Node
+process, and turn "nothing may crash the harness" into a machine-checked property.
 
-They run in one Node process against a disposable data root: the real server (Hono routing,
-validation, services, session manager, SQLite) and the real CLI (commander over that same
-server), with only the LLM and the clock replaced. Nothing leaves the process — the model
-client is a scripted stub, and an outbound guard fails any non-loopback socket attempt into
-the run's findings.
+Each leg boots a disposable data root — a real SQLite database, the real Hono app, the real
+`cli(argv)` — with only the model client and the clock replaced. The model client is a
+scripted stub, and an outbound guard fails any non-loopback socket, so a run never reaches a
+network. What is fuzzed is the product code: routing, validation, services, the session
+manager and its persistence.
+
+The fuzzing engine is libFuzzer through Jazzer.js: the target hands it one function that
+turns a byte buffer into one request (or one command line), and the engine's own coverage
+feedback decides which inputs to keep, mutate and schedule. There is no request generator and
+no step budget in this directory.
+
+## Why there is a build step
+
+Jazzer.js instruments modules as it loads them, through a Babel pipeline that carries no
+TypeScript syntax plugin. A `.ts` target therefore loads uninstrumented: coverage stays
+empty and the fuzzer has no feedback to guide it (measured on Jazzer.js 4.0.0). `build.mjs`
+compiles the targets — and every product module they reach — to plain ESM under `build/`
+with esbuild, keeping one output file per input file and an inline source map.
+
+The compiled tree needs two resolutions an installed workspace does not give it on its own,
+and `build.mjs` supplies both: a `node_modules` symlink per package, so a dependency import
+from `build/packages/<pkg>/src/…` walks up into that package's installed dependencies, and
+`paths.json` — the tsconfig's `paths` table rewritten to compiled targets — which
+`resolve-hook.mjs` applies through `module.registerHooks`.
+
+The native fuzzer addon (`@jazzer.js/fuzzer`) needs glibc 2.38 or newer. On an older libc
+(e.g. Debian 12) the install succeeds and the first import fails with `ERR_DLOPEN_FAILED`;
+run the fuzzer on a newer base image or distribution.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
-| `server/` | The API surface: a stateful request sequence through `app.request()`, per-step invariants, read-only state introspection. |
-| `server/src/main.ts` | Entry point. |
-| `server/src/api-leg.ts`, `server/src/corpus.ts` | The sequence generator and its endpoint corpus. |
-| `cli/` | The CLI surface: the repository's own `cli(argv)` against the same harness. |
-| `cli/src/main.ts` | Entry point. |
-| `cli/src/cli-leg.ts`, `cli/src/corpus.ts` | The command generator and its command corpus. |
-| `server/src/harness.ts` | The boot both entries share (`bootAppDeps` → `seedAdmin` → `createApp`). |
-| `run.mjs` | Runs either entry with the repository's tsx and `tsconfig.run.json`. |
-| `tsconfig.json` | The checking view: the fuzzers plus everything they drive, typed against the installed MMSP client. |
+| `server/` | The API surface: one request per input against the in-process server. |
+| `server/src/fuzz.ts` | The Jazzer.js entry: decode, send, check, throw on a violation. |
+| `server/src/corpus.ts` | The endpoint table: the target's alphabet, and the seed corpus' source. |
+| `server/src/input.ts` | The input format (two control bytes, then payload) and body payload injection. |
+| `server/src/invariants.ts` | The invariant checks, read off a second, read-only SQLite connection. |
+| `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`). |
+| `cli/` | The CLI surface: one command line per input, over the same harness. |
+| `cli/src/fuzz.ts` | The Jazzer.js entry: decode, run the command, check its exit contract. |
+| `cli/src/corpus.ts` | The command table: alphabet and seed source. |
+| `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
+| `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
+| `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |
+| `report.mjs` | Rewrites the coverage keys back to source paths and writes the summary. |
+| `resolve-hook.mjs`, `resolve-hooks.mjs` | The `@prismshadow/*` mapping the compiled tree needs. |
+| `tsconfig.json` | The checking view: the targets and everything they drive, typed against the installed MMSP client. |
 | `tsconfig.run.json` | The running view: same, except `@prismshadow/mmsp` resolves to the scripted stub. |
-| `types/globals.d.ts` | One global the driven product code expects and this program would otherwise lack. |
 
-Neither package is a member of the pnpm workspace, so a type check or a run from here needs a
-few resolutions an installed tree does not provide on its own — the workspace packages
-resolve through `dist/`, which exists only after a build, and `hono` lives nested under
-`packages/server`. Both tsconfigs spell them out, pointing at sources.
+Neither leg is a member of the pnpm workspace, so a type check or a run from here needs a few
+resolutions an installed tree does not provide — the workspace packages resolve through
+`dist/`, which exists only after a build, and `hono` lives nested under `packages/server`.
+Both tsconfigs spell them out, pointing at sources; the build carries the same table into the
+compiled tree.
 
 `@prismshadow/mmsp` is the seam that matters: `tsconfig.run.json` maps it to the scripted
-stub under `server/src/stubs/mmsp/`, which is what keeps the LLM hermetic. That is why the
-entries are started through `run.mjs` — run one straight from the repository root and the
-root tsconfig lets the real client through.
+stub under `server/src/stubs/mmsp/`, which is what keeps the LLM hermetic.
 
 ## Running
 
 From the repository root, on Node 24, after the workspace is installed:
 
 ```sh
-pnpm install
 # The interface table the module-tree check reads (generated, not committed). Generate it
 # through THIS package's tsconfig, which resolves the workspace packages to their sources:
 # the root `pnpm gen:ifaces` projects through `packages/server/tsconfig.json`, where an
@@ -50,66 +76,89 @@ pnpm install
 # ("requires.runner: ambiguous ... name one with 'from'").
 node scripts/gen-ifaces.mjs --project tests/fuzzers/tsconfig.json --out packages/server/src/ifaces.json
 
-node tests/fuzzers/run.mjs server    # or: pnpm --dir tests/fuzzers/server fuzz
-node tests/fuzzers/run.mjs cli       # or: pnpm --dir tests/fuzzers/cli fuzz
+# Once: the fuzzer itself (pinned in package.json; not a workspace dependency).
+npm --prefix tests/fuzzers install
+
+node tests/fuzzers/run.mjs server              # API surface, 180 s
+node tests/fuzzers/run.mjs cli --max-total-time=60
 ```
 
-A type check runs over both packages at once:
+`run.mjs` accepts `--max-total-time=<seconds>` (default 180), `--runs=<n>` for a fixed number
+of executions, `--mode=regression` to replay the corpus without mutating it, `--no-build` to
+reuse the last build, and `--self-check` to replay the corpus through the target with no
+fuzzer at all (the fastest way to tell a harness problem from a fuzzer problem).
+
+A type check runs over both legs at once:
 
 ```sh
-node_modules/.bin/tsc -p tests/fuzzers/tsconfig.json    # or: pnpm --dir tests/fuzzers/server typecheck
+node_modules/.bin/tsc -p tests/fuzzers/tsconfig.json
 ```
 
-Both exit `0` when no finding was recorded, `1` when something was found (the findings are
-printed and written into the run summary), and `90` if the 180-second ceiling fires.
+## The input formats
 
-## What the runs produce
+Both targets read a request out of the bytes they are handed; the seed corpus and the crash
+files use the same format, so a finding replays with `--mode=regression`.
 
-Under the package's own `out/` (ignored by git):
+API — `server/src/input.ts`:
+
+| Bytes | Meaning |
+| --- | --- |
+| 0 | endpoint index, modulo the table length |
+| 1 | flags: bits 0-1 auth mode (anonymous / bearer / cookie), bit 2 bad body, bit 3 clock jump, bit 4 raw body |
+| 2… | payload: choice bytes for the body and `:param` fills, and the text a body's last string field receives |
+
+CLI — `cli/src/input.ts`:
+
+| Bytes | Meaning |
+| --- | --- |
+| 0 | command index, modulo the table length |
+| 1 | flags: bit 0 bad variant |
+| 2… | payload: choice bytes for the argv's slots, and the text a `-m`/`-t` value receives |
+
+The tables are not schedules: a step's endpoint or command is the input's first byte, so a
+mutation moves it, and libFuzzer keeps the inputs that reach new code. The payload lets a
+mutation reach a string field (a title, a path, a task text) rather than only the choice of
+call.
+
+## What a run produces
+
+Under the leg's own `out/` (ignored by git):
 
 | File | Contents |
 | --- | --- |
-| `api-sequence.jsonl` | One serialized request per line: `step`, `spec`, `request` (`method`/`path`/`auth`/`body`), `observed` (`status`/`note`). |
-| `cli-sequence.jsonl` | One command line per line: `step`, `spec`, `argv`, `observed` (`exitCode`/`output`/`phase`). |
-| `api-transcript.md`, `cli-transcript.md` | The same sequence as a table, plus the run's counters. |
-| `run-summary.md` | The run's own account — elapsed time, counters, outbound attempts, findings. |
+| `corpus/` | The seed inputs plus every input the fuzzer kept. |
+| `run.log` | The fuzzer's console output, final statistics included. |
+| `coverage/coverage-final.json` | The raw istanbul coverage Jazzer.js writes. |
+| `coverage/coverage-summary.md` | Lines/statements/functions/branches, in total and per source file. |
+| `summary.md` | The target's own account: requests or commands served, status/exit buckets, distinct state signatures, outbound attempts. |
+| `crash-*` | Any input that tripped an invariant, in the input format above. |
 
-## The sequences
+The process exits `0` when the fuzzer stopped on its own (time or run count), and `77` — the
+fuzzer's own code for a finding — when an input tripped something.
 
-Both are seeded and reproducible; the same seed gives the same `*.jsonl` byte for byte. That
-holds because the sequence records calls, not the machine: ids the run captured from an
-earlier response appear as their provenance (`$sessions[0]`) and the disposable root as
-`$root`, and the wall-clock `ms` a step took stays in the transcript and the run summary.
+## What counts as a finding
 
-**API.** The corpus is an endpoint table (method, path template, weight, body variant,
-pool, capture), every entry naming the handler it drives. A step picks a spec by weight,
-fills `:param` slots from pools captured out of earlier successful responses (so the
-sequence is stateful), sends an `ok` or a `bad` body, and rotates credentials between
-anonymous, bearer token and cookie session — the cookie comes from a real login, and a 401
-re-logs in. Every 40 steps the clock jumps 31 days, across the 30-day session TTL. One step
-samples the real loopback event stream. After each step a second, read-only SQLite
-connection counts the resource tables and the error rows; the resulting signature counts
-distinct states.
+API: an exception escaping a handler, a request that outlives its soft timeout, a JSON
+content type whose body does not parse, any process-level or unexpected error row in
+`error_records` beyond the failures the scripted stub actually played, or a non-loopback
+connection attempt.
 
-The invariants checked after every step: no exception escapes a handler, no process-level
-error row appears, and no `unexpected` error row shows up outside the LLM failures the
-stub actually played.
+CLI: a command that throws, hangs, exits outside the set its command allows, reaches
+`process.exit` where the table does not expect it (the one known hard-exit face is exercised
+on purpose), or makes a non-loopback connection.
 
-**CLI.** A setup pipeline (`config model add --set-default`, an agent create, one real run)
-followed by a deterministically shuffled corpus pass. Every command runs behind an exit
-guard, with stdout/stderr captured and a soft timeout, and its exit code is checked against
-the set the spec allows. The setup doubles as a write-after-read oracle: the CLI writes the
-project config file locally, and after the server's 2-second freshness window the same
-server must see that write.
+A finding is thrown from the target, which is how the fuzzer records it and saves the input.
 
-## Deliberately not generated
+## Deliberately not exercised
 
-Both corpora are cut by a danger gate: no self-update, no plugin install/remove, no browser
+Both tables are cut by a danger gate: no self-update, no plugin install/remove, no browser
 driving, no terminal pty spawn, no OAuth or balance network calls, no organisation writes
 that open real sessions, no server stop or password reset. Those behaviours need their own
-harness, not a shared in-process one.
+harness, not a shared in-process one. The SSE stream (`/api/events`) is sampled once at boot
+with a bounded read rather than fuzzed: a live stream only ends when its client stops, which
+is a fixed cost per call inside a fuzzing loop.
 
 ## Status
 
-These packages are not wired into CI yet: they are run by hand, and their artifacts are
-what a reviewer reads. Container packaging and CI wiring are separate work.
+These packages are not wired into CI yet: they are run by hand, and their artifacts are what
+a reviewer reads. Container packaging and CI wiring are separate work.

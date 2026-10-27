@@ -1,12 +1,17 @@
 /**
- * API cross-section corpus (DESIGN.md §5.1): endpoint specs distilled from the route files'
- * own validators (src/http/validate.ts + each route's readJson/requireString/… calls) and the
- * inventory's endpoint table. Every spec names the real handler it drives. 🔴-danger
- * behaviors (HMR push, terminals pty spawn, OAuth/balance network calls, plugin install,
- * update-check network, org writes that open real desk sessions) are absent from the corpus
- * by the §5.3 danger gate — the demo never generates them.
+ * API cross-section table: endpoint specs distilled from the route files' own validators
+ * (src/http/validate.ts + each route's readJson/requireString/… calls) and the inventory's
+ * endpoint table. Every spec names the real handler it drives.
+ *
+ * This table is the fuzz target's *alphabet and seed corpus*, not a schedule: the fuzzer
+ * picks the entry from its own bytes (see `input.ts`), and `seed.ts` writes one starting
+ * input per endpoint. There is no weight and no order — coverage feedback decides what runs.
+ *
+ * 🔴-danger behaviors (HMR push, terminals pty spawn, OAuth/balance network calls, plugin
+ * install, update-check network, org writes that open real desk sessions) are absent from the
+ * table by the §5.3 danger gate — the demo never generates them.
  */
-import type { Rng } from "./rng.js";
+import type { Choices } from "./choices.js";
 
 export type Variant = "ok" | "bad";
 
@@ -19,7 +24,7 @@ export interface Pools {
 }
 
 export interface ApiGenCtx {
-  rng: Rng;
+  rng: Choices;
   pools: Pools;
   step: number;
   /** The admin password as the driver currently believes it — the corpus's own password-change
@@ -31,7 +36,6 @@ export interface ApiCallSpec {
   id: string;
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   path: string;
-  weight: number;
   /** Which pool ids may fill the `:param` slots; a bogus id is injected instead sometimes. */
   pool?: keyof Omit<Pools, "users">;
   body?: (v: Variant, ctx: ApiGenCtx) => unknown;
@@ -42,7 +46,7 @@ export interface ApiCallSpec {
 
 // The harness's semantic-id pattern (services/ids.ts: /^[a-z][a-z0-9_]{1,63}$/) admits no
 // hyphens — every generated id follows it, so ok-variant creates actually succeed.
-const id = (rng: Rng): string => `fz_${rng.int(1000, 9999)}_${rng.int(100, 999)}`;
+const id = (rng: Choices): string => `fz_${rng.int(1000, 9999)}_${rng.int(100, 999)}`;
 const badId = (): string => "no/such id!";
 
 const poolOr = (ctx: ApiGenCtx, pool: keyof Pools | undefined, fallback: string): string =>
@@ -63,14 +67,12 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "install.get",
       method: "GET",
       path: "/api/install",
-      weight: 2,
       note: "http/routes/install.ts GET handler",
     },
     {
       id: "auth.login",
       method: "POST",
       path: "/api/auth/login",
-      weight: 3,
       body: (v, ctx) =>
         v === "bad"
           ? { userId: 123, password: null }
@@ -84,49 +86,42 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "auth.logout",
       method: "POST",
       path: "/api/auth/logout",
-      weight: 1,
       note: "http/routes/auth.ts POST /logout",
     },
     {
       id: "auth.claim",
       method: "GET",
       path: "/api/auth/claim",
-      weight: 1,
       note: "http/routes/auth.ts GET /claim",
     },
     {
       id: "version.get",
       method: "GET",
       path: "/api/version",
-      weight: 2,
       note: "http/routes/version.ts GET (hmr.currentImplId)",
     },
     {
       id: "version.history",
       method: "GET",
       path: "/api/version/history",
-      weight: 1,
       note: "harness-history.ts + http/routes/version.ts",
     },
     {
       id: "version.diff",
       method: "GET",
       path: "/api/version/history/diff",
-      weight: 1,
       note: "harness-history.ts diff",
     },
     {
       id: "me.get",
       method: "GET",
       path: "/api/me",
-      weight: 2,
       note: "http/routes/me.ts GET (auth middleware)",
     },
     {
       id: "me.password.put",
       method: "PUT",
       path: "/api/me/password",
-      weight: 2,
       body: (v, ctx) =>
         v === "bad"
           ? { newPassword: 42 }
@@ -137,7 +132,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "me.profile.put",
       method: "PUT",
       path: "/api/me/profile",
-      weight: 2,
       body: (v, ctx) =>
         v === "bad" ? {} : { displayName: ctx.rng.chance(0.3) ? 99 : "fuzz-display" },
       note: "http/routes/me.ts PUT /profile (parseDisplayName)",
@@ -146,14 +140,12 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "me.prefs.get",
       method: "GET",
       path: "/api/me/prefs",
-      weight: 1,
       note: "http/routes/me.ts GET /prefs (UiPrefsRepo)",
     },
     {
       id: "me.prefs.put",
       method: "PUT",
       path: "/api/me/prefs",
-      weight: 2,
       body: (v) => (v === "bad" ? { draftShortcuts: 5 } : { lastProjectId: "default_project" }),
       note: "http/routes/me.ts PUT /prefs (shallow merge)",
     },
@@ -161,14 +153,12 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "projects.list",
       method: "GET",
       path: "/api/projects",
-      weight: 3,
       note: "http/routes/projects.ts GET (projectService.listProjects)",
     },
     {
       id: "projects.create",
       method: "POST",
       path: "/api/projects",
-      weight: 4,
       body: (v, ctx) =>
         v === "bad"
           ? ctx.rng.pick([{ name: "x" }, { projectId: "" }, { projectId: 12 }, {}])
@@ -183,7 +173,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "projects.rename",
       method: "PATCH",
       path: "/api/projects/:x",
-      weight: 3,
       pool: "projects",
       body: (v, ctx) => (v === "bad" ? { name: "" } : { name: `renamed-${ctx.step}` }),
       note: "http/routes/projects.ts PATCH (trim + minLen, renameProject)",
@@ -192,7 +181,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "projects.delete",
       method: "DELETE",
       path: "/api/projects/:x",
-      weight: 2,
       pool: "projects",
       note: "http/routes/projects.ts DELETE (requireValidId, deleteProject)",
     },
@@ -200,7 +188,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "members.list",
       method: "GET",
       path: "/api/projects/:x/members",
-      weight: 2,
       pool: "projects",
       note: "http/routes/members.ts GET",
     },
@@ -208,7 +195,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "members.add",
       method: "POST",
       path: "/api/projects/:x/members",
-      weight: 2,
       pool: "projects",
       body: (v, ctx) =>
         v === "bad"
@@ -228,7 +214,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "members.remove",
       method: "DELETE",
       path: "/api/projects/:x/members/:u",
-      weight: 1,
       pool: "projects",
       body: undefined,
       note: "http/routes/members.ts DELETE",
@@ -237,7 +222,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "suggest-id",
       method: "POST",
       path: "/api/projects/:x/suggest-id",
-      weight: 1,
       pool: "projects",
       note: "http/routes/suggest-id.ts POST",
     },
@@ -245,7 +229,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "dirs.list",
       method: "GET",
       path: "/api/projects/:x/dirs",
-      weight: 1,
       pool: "projects",
       note: "http/routes/dirs.ts GET",
     },
@@ -253,7 +236,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agents.list",
       method: "GET",
       path: "/api/projects/:x/agents",
-      weight: 3,
       pool: "projects",
       note: "http/routes/agents.ts GET (agentService list)",
     },
@@ -261,7 +243,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agents.create",
       method: "POST",
       path: "/api/projects/:x/agents",
-      weight: 4,
       pool: "projects",
       body: (v, ctx) =>
         v === "bad"
@@ -277,7 +258,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.config.get",
       method: "GET",
       path: "/api/projects/:x/agents/:a/config",
-      weight: 2,
       pool: "agents",
       note: "http/routes/agent-config.ts GET (agentConfigService)",
     },
@@ -285,7 +265,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.config.put",
       method: "PUT",
       path: "/api/projects/:x/agents/:a/config",
-      weight: 2,
       pool: "agents",
       body: (v) => (v === "bad" ? { systemPrompt: 99 } : {}),
       note: "http/routes/agent-config.ts PUT (config patch validators)",
@@ -294,7 +273,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.delete",
       method: "DELETE",
       path: "/api/projects/:x/agents/:a",
-      weight: 1,
       pool: "agents",
       note: "http/routes/agents.ts DELETE (agentService.deleteAgent)",
     },
@@ -302,7 +280,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.memory",
       method: "GET",
       path: "/api/projects/:x/agents/:a/memory",
-      weight: 1,
       pool: "agents",
       note: "http/routes/memory.ts GET (memoryService)",
     },
@@ -310,7 +287,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.skills",
       method: "GET",
       path: "/api/projects/:x/agents/:a/skills",
-      weight: 1,
       pool: "agents",
       note: "http/routes/skills.ts GET (skill listing)",
     },
@@ -318,7 +294,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.hooks",
       method: "GET",
       path: "/api/projects/:x/agents/:a/hooks",
-      weight: 1,
       pool: "agents",
       note: "http/routes/hooks.ts GET",
     },
@@ -326,7 +301,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "agent.api",
       method: "GET",
       path: "/api/projects/:x/agents/:a/api",
-      weight: 1,
       pool: "agents",
       note: "http/routes/agent-api.ts GET",
     },
@@ -334,7 +308,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "sessions.agent-list",
       method: "GET",
       path: "/api/projects/:x/agents/:a/sessions",
-      weight: 2,
       pool: "agents",
       note: "http/routes/sessions.ts agentSessionsRoutes GET",
     },
@@ -342,7 +315,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "sessions.batch",
       method: "POST",
       path: "/api/projects/:x/sessions/batch",
-      weight: 2,
       pool: "projects",
       body: (v, ctx) =>
         v === "bad"
@@ -354,7 +326,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "sessions.create",
       method: "POST",
       path: "/api/projects/:x/agents/:a/sessions",
-      weight: 4,
       pool: "agents",
       body: (v, ctx) =>
         v === "bad"
@@ -374,14 +345,12 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "sessions.list",
       method: "GET",
       path: "/api/sessions",
-      weight: 1,
       note: "legacy sessions list route",
     },
     {
       id: "session.get",
       method: "GET",
       path: "/api/sessions/:s",
-      weight: 3,
       pool: "sessions",
       note: "http/routes/sessions.ts GET /:sessionId (resolveSession)",
     },
@@ -389,7 +358,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.rename",
       method: "PATCH",
       path: "/api/sessions/:s",
-      weight: 3,
       pool: "sessions",
       body: (v, ctx) =>
         v === "bad" ? { title: "x".repeat(200) } : { title: `fuzz title ${ctx.step}` },
@@ -399,7 +367,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.fork",
       method: "POST",
       path: "/api/sessions/:s/fork",
-      weight: 2,
       pool: "sessions",
       note: "http/routes/sessions.ts POST /fork (fork_count column)",
     },
@@ -407,7 +374,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.messages",
       method: "GET",
       path: "/api/sessions/:s/messages",
-      weight: 3,
       pool: "sessions",
       note: "http/routes/sessions.ts GET /messages (windowed history)",
     },
@@ -415,7 +381,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.task",
       method: "POST",
       path: "/api/sessions/:s/tasks",
-      weight: 5,
       pool: "sessions",
       body: (v, ctx) => taskBody(v, `fuzz task input ${ctx.step}`),
       note: "http/routes/sessions.ts POST /tasks (parseTaskInput; manager.startTask → FuzzerSessionLoader)",
@@ -424,7 +389,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.steer",
       method: "POST",
       path: "/api/sessions/:s/steer",
-      weight: 2,
       pool: "sessions",
       body: (v, ctx) => taskBody(v, `fuzz steer ${ctx.step}`),
       note: "http/routes/sessions.ts POST /steer (steer-or-task semantics)",
@@ -433,7 +397,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.abort",
       method: "POST",
       path: "/api/sessions/:s/abort",
-      weight: 2,
       pool: "sessions",
       note: "http/routes/sessions.ts POST /abort (manager abort path)",
     },
@@ -441,7 +404,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.approval",
       method: "POST",
       path: "/api/sessions/:s/approvals/no-such-toolcall",
-      weight: 2,
       pool: "sessions",
       body: (v) => (v === "bad" ? { decision: "maybe" } : { decision: "deny" }),
       note: "http/routes/sessions.ts POST /approvals/:toolCallId (approval validator, 404 on none pending)",
@@ -450,7 +412,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.compact",
       method: "POST",
       path: "/api/sessions/:s/compact",
-      weight: 1,
       pool: "sessions",
       note: "http/routes/sessions.ts POST /compact (compactability check)",
     },
@@ -458,7 +419,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.switch-model",
       method: "POST",
       path: "/api/sessions/:s/switch-model",
-      weight: 2,
       pool: "sessions",
       body: (v, ctx) =>
         v === "bad" ? { modelId: "half" } : { modelId: "fuzz-model", provider: "fuzz-group" },
@@ -468,7 +428,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.traces",
       method: "GET",
       path: "/api/sessions/:s/traces",
-      weight: 1,
       pool: "sessions",
       note: "http/routes/sessions.ts GET /traces (trace index)",
     },
@@ -476,7 +435,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "session.messaging",
       method: "GET",
       path: "/api/sessions/:s/messaging",
-      weight: 1,
       pool: "sessions",
       note: "runtime/messaging bridge GET (bindings list)",
     },
@@ -484,7 +442,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "schedules.list",
       method: "GET",
       path: `/api/projects/${projectId}/agents/:a/schedules`,
-      weight: 2,
       pool: "agents",
       note: "http/routes/schedules.ts GET (agent-level)",
     },
@@ -492,7 +449,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "schedules.create",
       method: "POST",
       path: `/api/projects/${projectId}/agents/:a/schedules`,
-      weight: 3,
       pool: "agents",
       body: (v, ctx) =>
         v === "bad"
@@ -516,7 +472,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "schedules.delete",
       method: "DELETE",
       path: `/api/projects/${projectId}/agents/:a/schedules/:n`,
-      weight: 2,
       pool: "schedules",
       note: "http/routes/schedules.ts DELETE /:name",
     },
@@ -524,7 +479,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "usage.get",
       method: "GET",
       path: "/api/projects/:x/usage",
-      weight: 2,
       pool: "projects",
       note: "http/routes/usage.ts GET (usageService aggregate)",
     },
@@ -532,7 +486,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "usage.errors",
       method: "GET",
       path: "/api/projects/:x/usage/errors",
-      weight: 1,
       pool: "projects",
       note: "http/routes/usage.ts GET /errors (ErrorsRepo)",
     },
@@ -540,7 +493,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "workspace-files.create",
       method: "POST",
       path: "/api/projects/:x/workspace-files/create",
-      weight: 2,
       pool: "projects",
       body: (v, ctx) =>
         v === "bad" ? { path: "../escape.txt" } : { path: `fuzz-${ctx.step}.txt` },
@@ -550,7 +502,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "workspace-files.content.put",
       method: "PUT",
       path: "/api/projects/:x/workspace-files/content?path=default_project%2ffuzz-ws.txt",
-      weight: 1,
       pool: "projects",
       body: (v, ctx) => (v === "bad" ? { content: 42 } : { content: `fuzz content ${ctx.step}` }),
       note: "http/routes/workspace-files.ts PUT /content",
@@ -559,7 +510,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "workspace-files.list",
       method: "GET",
       path: "/api/projects/:x/workspace-files",
-      weight: 1,
       pool: "projects",
       note: "http/routes/workspace-files.ts GET",
     },
@@ -567,35 +517,30 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "contributions.get",
       method: "GET",
       path: "/api/contributions",
-      weight: 1,
       note: "http/routes/contributions.ts GET",
     },
     {
       id: "languages.get",
       method: "GET",
       path: "/api/languages",
-      weight: 1,
       note: "http/routes/languages.ts GET",
     },
     {
       id: "plugins.library",
       method: "GET",
       path: "/api/plugins",
-      weight: 1,
       note: "http/routes/plugins.ts GET (library scan)",
     },
     {
       id: "plugins.installed",
       method: "GET",
       path: "/api/plugins/installed",
-      weight: 1,
       note: "http/routes/plugins-installed.ts GET",
     },
     {
       id: "machines.list",
       method: "GET",
       path: "/api/projects/:x/machines",
-      weight: 1,
       pool: "projects",
       note: "machines/service.ts routes GET (read-only)",
     },
@@ -603,7 +548,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "orgs.list",
       method: "GET",
       path: "/api/projects/:x/organizations",
-      weight: 1,
       pool: "projects",
       note: "http/routes/organizations.ts GET (org cache read)",
     },
@@ -611,14 +555,12 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "admin.users.list",
       method: "GET",
       path: "/api/admin/users",
-      weight: 1,
       note: "http/routes/admin.ts GET /users (admin gate)",
     },
     {
       id: "admin.users.create",
       method: "POST",
       path: "/api/admin/users",
-      weight: 2,
       body: (v, ctx) =>
         v === "bad"
           ? { userId: "UPPER BAD!" }
@@ -633,14 +575,12 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "admin.settings.get",
       method: "GET",
       path: "/api/admin/settings",
-      weight: 1,
       note: "admin-settings.ts GET (ServerSettingsRepo)",
     },
     {
       id: "admin.settings.put",
       method: "PUT",
       path: "/api/admin/settings",
-      weight: 1,
       body: (v) => (v === "bad" ? { attachmentLimitsMb: "huge" } : {}),
       note: "admin-settings.ts PUT (settings validators)",
     },
@@ -648,7 +588,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "models.get",
       method: "GET",
       path: "/api/projects/:x/models",
-      weight: 2,
       pool: "projects",
       note: "http/routes/models.ts GET (ProjectConfigService.getModels)",
     },
@@ -656,7 +595,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "models.providers.put",
       method: "PUT",
       path: "/api/projects/:x/models/providers/fuzz-group",
-      weight: 1,
       pool: "projects",
       body: (v) => (v === "bad" ? { baseUrl: "not-a-url" } : { baseUrl: "http://127.0.0.1:1/" }),
       note: "http/routes/models.ts PUT /providers/:provider (parseProviderUpdate)",
@@ -665,7 +603,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "chat-defaults.get",
       method: "GET",
       path: "/api/projects/:x/chat-defaults",
-      weight: 1,
       pool: "projects",
       note: "http/routes/chat-defaults.ts GET",
     },
@@ -673,7 +610,6 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "command-policy.get",
       method: "GET",
       path: "/api/projects/:x/command-policy",
-      weight: 1,
       pool: "projects",
       note: "http/routes/command-policy.ts GET",
     },
@@ -681,23 +617,17 @@ export function apiCorpus(projectId: string, agentId: string): ApiCallSpec[] {
       id: "amsp.agent.get",
       method: "GET",
       path: `/api/amsp/v1/agents/${projectId}/${agentId}`,
-      weight: 1,
       note: "amsp/routes.ts GET agent (public API read path)",
     },
     {
       id: "browser.status",
       method: "GET",
       path: "/api/builtin-browser/status",
-      weight: 1,
       note: "builtin-browser routes GET /status (autoStart:none group)",
     },
-    {
-      id: "events.sse",
-      method: "GET",
-      path: "/api/events",
-      weight: 1,
-      note: "http/routes/events.ts SSE (ChannelHub subscribe, bounded abort)",
-    },
+    // `/api/events` (the SSE stream) is deliberately not an entry: one read takes until the
+    // client stops, which is a fixed cost per call and pure waste inside a fuzzing loop. The
+    // target samples it once at boot instead — see `sampleEventStream` in fuzz.ts.
   ];
 }
 
