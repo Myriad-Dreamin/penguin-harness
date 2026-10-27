@@ -41,8 +41,11 @@ async function whoAmI(): Promise<string | null> {
 
 /** The stand-in: every call goes over the test's fetch, streams are silent, no identity to settle. */
 const standIn = {
-  call: (method: string, url: string, opts?: { headers?: Record<string, string>; body?: unknown }) =>
-    carryOverTestFetch(method, url, opts ?? {}),
+  call: (
+    method: string,
+    url: string,
+    opts?: { headers?: Record<string, string>; body?: unknown },
+  ) => carryOverTestFetch(method, url, opts ?? {}),
   ready: async (): Promise<boolean> => true,
   isOpen: (): boolean => true,
   isUnavailable: (): boolean => false,
