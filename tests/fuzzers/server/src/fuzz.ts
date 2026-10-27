@@ -8,7 +8,10 @@
  * does, from the bytes it hands `fuzz()`, and coverage feedback from the instrumented product
  * code decides which of them survive.
  *
- * One call is one request, decoded by `decodeApiControls`. After it:
+ * One input is a sequence of calls, cut at every newline byte (`splitRecords`), and each call
+ * is one request decoded by `decodeApiControls`. State bugs need more than one call — create
+ * then read, read then delete — so the sequence, not the single call, is the unit a mutation
+ * adds to and the unit a finding is saved as. After every call:
  *
  *  - an exception escaping a handler is rethrown here (invariant 1);
  *  - a read-only snapshot of SQLite is compared against the boot baseline (invariants 2-3,
@@ -29,7 +32,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { openExistingDatabase } from "../../../../packages/server/src/db/database.js";
-import { captureIds, type Pools } from "../../specs/decode.js";
+import { captureIds, splitRecords, type Pools } from "../../specs/decode.js";
 import { httpSpecs } from "../../specs/server/main.js";
 import { ByteChoices } from "./choices.js";
 import { permitLoopback } from "./bug-detectors.js";
@@ -46,6 +49,26 @@ const NEW_ADMIN_PASSWORD = "penguin-0000-changed";
 const PASSWORD_ROUTE = "PUT /api/me/password";
 /** Per-call soft timeout: a request that outlives it is a finding, not a hang. */
 const STEP_TIMEOUT_MS = 5_000;
+/**
+ * How many calls one input may run. A sequence of eight reaches the shapes that matter — create,
+ * read, update, list, delete, read again — while keeping one input cheap enough that the
+ * engine's exec/s stays a useful search rate. An input with more calls is cut here, not
+ * rejected: the earlier calls are still a sequence worth running.
+ */
+const MAX_CALLS = 8;
+/**
+ * No new call once this much of the input has been used. libFuzzer's own watchdog (30 s) aborts
+ * the process, while a cut sequence is merely a shorter input; eight slow-but-legal calls can
+ * otherwise add up past it.
+ */
+const SEQUENCE_BUDGET_MS = 6_000;
+/**
+ * A call worth naming in the run's account: under coverage instrumentation the first load of a
+ * heavy dependency (the TypeScript compiler, behind a workbench's own compile) costs seconds
+ * once per process, and a reader of a run needs to see that cost as a number rather than as a
+ * soft-timeout finding it has to explain.
+ */
+const SLOW_CALL_MS = 1_000;
 /** Crossing the 30-day auth-session TTL is one of the inputs the fuzzer can pick. */
 const CLOCK_JUMP_DAYS = 31;
 const SSE_READ_CAP_MS = 250;
@@ -62,6 +85,14 @@ const startedAt = performance.now();
 
 const stats = {
   calls: 0,
+  inputs: 0,
+  /** How many calls each input asked for, after the cap: `{1: 120, 2: 34, …}`. */
+  lengths: {} as Record<number, number>,
+  capped: 0,
+  budgetCuts: 0,
+  /** Calls at or over `SLOW_CALL_MS`, and the five slowest of them. */
+  slow: 0,
+  slowest: [] as { specId: string; ms: number }[],
   status: {} as Record<string, number>,
   auth: {} as Record<string, number>,
   specHits: new Set<string>(),
@@ -310,22 +341,39 @@ const sweep = await sweepSpecs();
  * rows are the premise rather than a violation the loop would report on its first call. */
 const baseline = readSnapshot(harness.app.dbPath);
 
-function describeCall(controls: ApiControls, specId: string, request: string): string {
+/** Keep the slow calls visible: a count for the summary, the five slowest by name. */
+function recordSlowCall(specId: string, ms: number): void {
+  if (ms < SLOW_CALL_MS) return;
+  stats.slow += 1;
+  stats.slowest.push({ specId, ms });
+  stats.slowest.sort((a, b) => b.ms - a.ms);
+  stats.slowest.length = Math.min(stats.slowest.length, 5);
+  console.log(`[api] slow call ${specId} took ${ms}ms`);
+}
+
+function describeCall(
+  controls: ApiControls,
+  position: number,
+  total: number,
+  specId: string,
+  request: string,
+): string {
   const flags = [
     `auth=${controls.auth}`,
     `variant=${controls.variant}`,
     controls.jump ? "clock-jump" : "clock-step",
     controls.rawBody ? "raw-body" : "json-body",
   ].join(" ");
-  return `[api] ${specId} ${request} (${flags}, payload ${controls.rest.length}B)`;
+  return `[api] call ${position}/${total} ${specId} ${request} (${flags}, payload ${controls.rest.length}B)`;
 }
 
 /**
- * One fuzz call: decode, send, check. A throw is the finding — Jazzer.js turns it into a
- * crash file and stops, so a report always names the input that broke the invariant.
+ * One call of a sequence: decode its record, send it, check the invariants. A throw is the
+ * finding — Jazzer.js turns it into a crash file and stops, so a report always names the whole
+ * input (every call that led here) that broke the invariant.
  */
-export async function fuzz(data: Buffer): Promise<void> {
-  const controls = decodeApiControls(data, specs.length);
+async function runOneCall(record: Buffer, position: number, total: number): Promise<void> {
+  const controls = decodeApiControls(record, specs.length);
   const spec = specs[controls.specIndex]!;
   const call = stats.calls + 1;
   stats.calls = call;
@@ -364,7 +412,8 @@ export async function fuzz(data: Buffer): Promise<void> {
     }
   }
 
-  const where = describeCall(controls, spec.id, `${spec.method} ${filled}`);
+  const where = describeCall(controls, position, total, spec.id, `${spec.method} ${filled}`);
+  const callStartedAt = performance.now();
   const raced = await withSoftTimeout(
     // Hono's `request()` is typed `Response | Promise<Response>`; the race needs a promise.
     Promise.resolve(
@@ -386,6 +435,7 @@ export async function fuzz(data: Buffer): Promise<void> {
   }
 
   const res = raced.value;
+  recordSlowCall(spec.id, Math.round(performance.now() - callStartedAt));
   stats.status[String(res.status)] = (stats.status[String(res.status)] ?? 0) + 1;
   if (controls.auth === "cookie" && res.status === 401) {
     // The TTL jump expired the auth session; the next cookie call logs in again.
@@ -441,6 +491,30 @@ export async function fuzz(data: Buffer): Promise<void> {
   }
 }
 
+/**
+ * One fuzz call: run the sequence of calls the input encodes.
+ *
+ * The input is `record (0x0a record)*` — see `splitRecords` for why a separator byte and not a
+ * length prefix. Two bounds keep one input's cost predictable: at most `MAX_CALLS` calls, and
+ * no new call once `SEQUENCE_BUDGET_MS` has gone by. An empty input asks for nothing.
+ */
+export async function fuzz(data: Buffer): Promise<void> {
+  const all = splitRecords(data);
+  if (all.length === 0) return;
+  const records = all.slice(0, MAX_CALLS);
+  if (all.length > MAX_CALLS) stats.capped += 1;
+  stats.inputs += 1;
+  stats.lengths[records.length] = (stats.lengths[records.length] ?? 0) + 1;
+  const deadline = performance.now() + SEQUENCE_BUDGET_MS;
+  for (const [index, record] of records.entries()) {
+    if (performance.now() > deadline) {
+      stats.budgetCuts += 1;
+      break;
+    }
+    await runOneCall(record, index + 1, records.length);
+  }
+}
+
 /** Replay every corpus input once, in order — the reading a machine without Jazzer.js can take. */
 async function selfCheck(): Promise<void> {
   const files = fs
@@ -464,13 +538,25 @@ async function selfCheck(): Promise<void> {
   process.exit(failed > 0 ? 1 : 0);
 }
 
+/** `{1: 120, 3: 8}` → `1:120, 3:8`, shortest sequence first. */
+function formatLengths(lengths: Record<number, number>): string {
+  const entries = Object.entries(lengths).sort((a, b) => Number(a[0]) - Number(b[0]));
+  if (entries.length === 0) return "-";
+  return entries.map(([length, count]) => `${length}:${count}`).join(", ");
+}
+
 process.on("exit", () => {
   try {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     const summary = [
       "# API fuzz run",
       "",
-      `- Requests: ${stats.calls}`,
+      `- Calls (requests): ${stats.calls} across ${stats.inputs} inputs, sequence lengths ${formatLengths(stats.lengths)}`,
+      `- Sequence bounds: ${stats.capped} input(s) cut at ${MAX_CALLS} calls, ${stats.budgetCuts} cut by the ${SEQUENCE_BUDGET_MS}ms budget`,
+      `- Slow calls (≥${SLOW_CALL_MS}ms): ${stats.slow}` +
+        (stats.slowest.length === 0
+          ? ""
+          : ` — ${stats.slowest.map((entry) => `${entry.specId} ${entry.ms}ms`).join(", ")}`),
       `- Status buckets: ${JSON.stringify(stats.status)}`,
       `- Auth rotation: ${JSON.stringify(stats.auth)}`,
       `- Distinct state signatures: ${stats.signatures.size}`,

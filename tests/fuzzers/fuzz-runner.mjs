@@ -10,14 +10,25 @@
  * harness and exits with libFuzzer's own code.
  *
  * Arguments, in order (run.mjs passes them):
- *   leg target corpusDir buildDir coverageDir mode maxTotalTime runs artifactPrefix
+ *   leg target corpusDir buildDir coverageDir mode maxTotalTime runs artifactPrefix dict
  */
 import path from "node:path";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { OptionSource, OptionsManager, startFuzzing } from "@jazzer.js/core";
 
-const [leg, target, corpusDir, buildDir, coverageDir, mode, maxTotalTime, runs, artifactPrefix] =
-  process.argv.slice(2);
+const [
+  leg,
+  target,
+  corpusDir,
+  buildDir,
+  coverageDir,
+  mode,
+  maxTotalTime,
+  runs,
+  artifactPrefix,
+  dict,
+] = process.argv.slice(2);
 if (leg === undefined || target === undefined) {
   console.error("usage: node fuzz-runner.mjs <leg> <target> <corpus> <build> <coverage> …");
   process.exit(2);
@@ -33,6 +44,9 @@ options.merge(
       "-print_final_stats=1",
       `-artifact_prefix=${artifactPrefix}`,
       ...(runs === undefined || runs === "" ? [] : [`-runs=${runs}`]),
+      // The call skeletons the seed step writes: the one mutation source that inserts a
+      // well-formed call instead of hoping a random byte lands on the separator.
+      ...(dict === undefined || dict === "" ? [] : [`-dict=${dict}`]),
     ],
     // Instrument the compiled tree only; `node_modules` stays out via the default excludes.
     includes: [`${buildDir}${path.sep}`],
@@ -48,8 +62,38 @@ options.merge(
   OptionSource.CommandLineArguments,
 );
 
+/**
+ * Load the dependencies the product reaches for lazily, before the fuzzer installs its hooks.
+ *
+ * The server loads its TypeScript compiler at run time (`packages/server/src/plugin/typescript.ts`)
+ * and only when something needs it — a workbench compile, an interface check. Behind Jazzer's
+ * instrumentation that first load means a nine-megabyte file parsed through Babel, and it lands
+ * inside a fuzz call: measured at 5.4 s and about a gigabyte of RSS, once per process, which is
+ * both a false soft-timeout finding and a large part of the fuzzer's memory limit. Loading it
+ * here makes the product's own first compile an ordinary one. Resolution starts where the
+ * product resolves it, so the module the fuzzer later asks for is already in the registry.
+ */
+async function warmLazyDependencies() {
+  const bases = [
+    path.join(buildDir, "packages", "server", "src", "plugin", "typescript.js"),
+    path.join(buildDir, "packages", "server", "src", "platform.js"),
+  ];
+  for (const base of bases) {
+    try {
+      const file = createRequire(base).resolve("typescript");
+      await import(pathToFileURL(file).href);
+      console.log(`[fuzz] ${leg}: warmed the TypeScript compiler (${file})`);
+      return;
+    } catch {
+      // Try the next base; the product itself has the same three-place fallback.
+    }
+  }
+  console.log(`[fuzz] ${leg}: no TypeScript compiler to warm, the run starts cold`);
+}
+
 let code = 1;
 let started = false;
+await warmLazyDependencies();
 try {
   const result = await startFuzzing(options);
   started = true;

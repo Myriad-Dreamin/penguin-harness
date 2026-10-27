@@ -1,17 +1,20 @@
 /**
- * The input format of the API leg: two control bytes, then free payload.
+ * The input format of the API leg: a sequence of calls, each one record of two control bytes
+ * and free payload.
  *
- * libFuzzer mutates bytes and knows nothing about HTTP, so the target has to read a request
- * out of them. The layout is deliberately thin — every remaining decision (which pool id,
- * which body shape) is taken from the same bytes through `ByteChoices`, so a mutation moves
- * a whole request, not just the endpoint:
+ * libFuzzer mutates bytes and knows nothing about HTTP, so the target has to read requests out
+ * of them. `splitRecords` cuts one input into calls at every newline (see `specs/decode.ts`);
+ * inside a call the layout is deliberately thin — every remaining decision (which pool id,
+ * which body shape) is taken from the same bytes through `ByteChoices`, so a mutation moves a
+ * whole request, not just the endpoint:
  *
  *     byte 0      endpoint index (`% specs.length`)
  *     byte 1      flags: bits 0-1 auth mode, bit 2 bad body, bit 3 clock jump, bit 4 raw body
  *     bytes 2…    payload: choice bytes, and the text a body field receives
  *
  * Seeds under `out/corpus/` are written in this format (see seed.ts); the crashing inputs
- * Jazzer.js saves are the same format, so a finding replays with `--mode=regression`.
+ * Jazzer.js saves are the same format, so a finding replays with `--mode=regression` — and
+ * because a finding is a whole sequence, the calls that led to it replay with it.
  */
 import type { Variant } from "../../specs/decode.js";
 
@@ -30,12 +33,12 @@ export interface ApiControls {
   jump: boolean;
   /** Send the payload as the body verbatim instead of a generated JSON body. */
   rawBody: boolean;
-  /** Bytes 2… — the corpus entry's own choices and text. */
+  /** Bytes 2… of this record — the call's own choices and text. */
   rest: Buffer;
 }
 
-export function decodeApiControls(data: Buffer, specCount: number): ApiControls {
-  const byte = (index: number): number => (index < data.length ? data[index]! : 0);
+export function decodeApiControls(record: Buffer, specCount: number): ApiControls {
+  const byte = (index: number): number => (index < record.length ? record[index]! : 0);
   const flags = byte(1);
   return {
     specIndex: byte(0) % specCount,
@@ -43,7 +46,7 @@ export function decodeApiControls(data: Buffer, specCount: number): ApiControls 
     variant: (flags & FLAG_BAD_BODY) !== 0 ? "bad" : "ok",
     jump: (flags & FLAG_CLOCK_JUMP) !== 0,
     rawBody: (flags & FLAG_RAW_BODY) !== 0,
-    rest: data.subarray(2),
+    rest: record.subarray(2),
   };
 }
 

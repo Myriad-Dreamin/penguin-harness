@@ -7,10 +7,11 @@
  * the hand-driven run is who picks the command line: libFuzzer does, from the bytes it hands
  * `fuzz()`, guided by coverage of the instrumented CLI and server code.
  *
- * One call is one command. Its exit code must be inside the set the command's spec allows;
- * a command that throws, hangs past the soft timeout, reaches `process.exit` where the table
- * does not expect it, or makes a non-loopback connection is thrown here — Jazzer.js records
- * that as a crash and saves the input.
+ * One input is a sequence of commands, cut at every newline byte (`splitRecords`), and each
+ * command's exit code must be inside the set its spec allows. A command that throws, hangs past
+ * the soft timeout, reaches `process.exit` where the table does not expect it, or makes a
+ * non-loopback connection is thrown here — Jazzer.js records that as a crash and saves the input,
+ * which is the whole sequence, so the commands that led to the finding replay with it.
  *
  * Boot also runs the setup pipeline the commands need (a project model, an agent, one real
  * run) and the write-after-read oracle: the CLI writes `.project_config.toml` locally, and
@@ -25,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { captureStdout, cliSpecs, exitsFor } from "../../specs/cli/main.js";
-import type { Pools } from "../../specs/decode.js";
+import { splitRecords, type Pools } from "../../specs/decode.js";
 import { ByteChoices } from "../../server/src/choices.js";
 import { permitLoopback } from "../../server/src/bug-detectors.js";
 import { installOutboundGuard } from "../../server/src/guards.js";
@@ -36,12 +37,30 @@ import { decodeCliControls } from "./input.js";
 const PROJECT_ID = "default_project";
 /** The I-11 oracle's wait: FRESH_MS (2000) + slack, so the server's read sees a stable mtime. */
 const CONFIG_FRESH_WAIT_MS = 2_200;
+/**
+ * How many commands one input may run. A command costs more than a request — process-level
+ * guards, stdio capture, and a few commands wait on their own timeout — so four keeps the search
+ * rate useful while still reaching the shapes that need a sequence: create, list, read, delete.
+ */
+const MAX_CALLS = 4;
+/** No new command once this much of the input has been used (libFuzzer's watchdog is 30 s). */
+const SEQUENCE_BUDGET_MS = 8_000;
+/** A command worth naming in the run's account — see the API leg's own slow-call reading. */
+const SLOW_CALL_MS = 1_000;
 const OUT_DIR = process.env.FUZZ_OUT_DIR ?? path.join(process.cwd(), "out");
 const CORPUS_DIR = process.env.FUZZ_CORPUS_DIR ?? path.join(OUT_DIR, "corpus");
 const startedAt = performance.now();
 
 const stats = {
   calls: 0,
+  inputs: 0,
+  /** How many commands each input asked for, after the cap: `{1: 120, 2: 34, …}`. */
+  lengths: {} as Record<number, number>,
+  capped: 0,
+  budgetCuts: 0,
+  /** Commands at or over `SLOW_CALL_MS`, and the five slowest of them. */
+  slow: 0,
+  slowest: [] as { specId: string; ms: number }[],
   exits: {} as Record<string, number>,
   specHits: new Set<string>(),
   exitGuardCatches: 0,
@@ -227,10 +246,11 @@ async function sweepSpecs(): Promise<SpecSweep> {
 const sweep = await sweepSpecs();
 
 /**
- * One fuzz call: decode a command line, run it, check its contract. A throw is the finding.
+ * One command of a sequence: decode its record, run it, check its contract. A throw is the
+ * finding, and the input Jazzer.js saves is the whole sequence.
  */
-export async function fuzz(data: Buffer): Promise<void> {
-  const controls = decodeCliControls(data, specs.length);
+async function runOneCall(record: Buffer, position: number, total: number): Promise<void> {
+  const controls = decodeCliControls(record, specs.length);
   const spec = specs[controls.specIndex]!;
   const call = stats.calls + 1;
   stats.calls = call;
@@ -240,7 +260,7 @@ export async function fuzz(data: Buffer): Promise<void> {
   const argv = spec.argv(controls.variant, rng, controls.text, pools);
 
   const outcome = await runOneCommand(cli, argv);
-  const where = `[cli] ${spec.id} \`${argv.join(" ")}\``;
+  const where = `[cli] call ${position}/${total} ${spec.id} \`${argv.join(" ")}\``;
   if (outcome.threw !== null) {
     throw new Error(`${where} threw out of cli(): ${outcome.threw.stack ?? outcome.threw.message}`);
   }
@@ -272,8 +292,45 @@ export async function fuzz(data: Buffer): Promise<void> {
   }
 
   stats.exits[String(outcome.exitCode)] = (stats.exits[String(outcome.exitCode)] ?? 0) + 1;
+  recordSlowCall(spec.id, outcome.ms);
   captureStdout(outcome.stdout, pools);
   harness.clock.step(1_000);
+}
+
+/**
+ * One fuzz call: run the sequence of commands the input encodes.
+ *
+ * The input is `record (0x0a record)*` — see `splitRecords` for why a separator byte and not a
+ * length prefix. Two bounds keep one input's cost predictable: at most `MAX_CALLS` commands, and
+ * no new command once `SEQUENCE_BUDGET_MS` has gone by. An empty input asks for nothing.
+ */
+export async function fuzz(data: Buffer): Promise<void> {
+  const all = splitRecords(data);
+  if (all.length === 0) return;
+  const records = all.slice(0, MAX_CALLS);
+  if (all.length > MAX_CALLS) stats.capped += 1;
+  stats.inputs += 1;
+  stats.lengths[records.length] = (stats.lengths[records.length] ?? 0) + 1;
+  const deadline = performance.now() + SEQUENCE_BUDGET_MS;
+  for (const [index, record] of records.entries()) {
+    if (performance.now() > deadline) {
+      stats.budgetCuts += 1;
+      break;
+    }
+    await runOneCall(record, index + 1, records.length);
+  }
+}
+
+/**
+ * Keep the slow commands visible: a count for the summary, the five slowest by name.
+ */
+function recordSlowCall(specId: string, ms: number): void {
+  if (ms < SLOW_CALL_MS) return;
+  stats.slow += 1;
+  stats.slowest.push({ specId, ms });
+  stats.slowest.sort((a, b) => b.ms - a.ms);
+  stats.slowest.length = Math.min(stats.slowest.length, 5);
+  console.log(`[cli] slow call ${specId} took ${ms}ms`);
 }
 
 /** Replay every corpus input once, in order — the reading a machine without Jazzer.js can take. */
@@ -298,13 +355,25 @@ async function selfCheck(): Promise<void> {
   process.exit(failed > 0 ? 1 : 0);
 }
 
+/** `{1: 120, 3: 8}` → `1:120, 3:8`, shortest sequence first. */
+function formatLengths(lengths: Record<number, number>): string {
+  const entries = Object.entries(lengths).sort((a, b) => Number(a[0]) - Number(b[0]));
+  if (entries.length === 0) return "-";
+  return entries.map(([length, count]) => `${length}:${count}`).join(", ");
+}
+
 process.on("exit", () => {
   try {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     const summary = [
       "# CLI fuzz run",
       "",
-      `- Commands: ${stats.calls}`,
+      `- Commands: ${stats.calls} across ${stats.inputs} inputs, sequence lengths ${formatLengths(stats.lengths)}`,
+      `- Sequence bounds: ${stats.capped} input(s) cut at ${MAX_CALLS} commands, ${stats.budgetCuts} cut by the ${SEQUENCE_BUDGET_MS}ms budget`,
+      `- Slow commands (≥${SLOW_CALL_MS}ms): ${stats.slow}` +
+        (stats.slowest.length === 0
+          ? ""
+          : ` — ${stats.slowest.map((entry) => `${entry.specId} ${entry.ms}ms`).join(", ")}`),
       `- Exit codes: ${JSON.stringify(stats.exits)}`,
       `- Spec sweep: ${sweep.inside}/${sweep.total} lines inside their own contract, ${sweep.outside.length} outside`,
       ...sweep.outside.slice(0, 10).map((line) => `  - outside: ${line}`),

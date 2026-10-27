@@ -10,9 +10,9 @@ network. What is fuzzed is the product code: routing, validation, services, the 
 manager and its persistence.
 
 The fuzzing engine is libFuzzer through Jazzer.js: the target hands it one function that
-turns a byte buffer into one request (or one command line), and the engine's own coverage
-feedback decides which inputs to keep, mutate and schedule. What a byte means comes from the
-specs below; there is no request generator and no step budget in this directory.
+turns a byte buffer into a sequence of requests (or of command lines), and the engine's own
+coverage feedback decides which inputs to keep, mutate and schedule. What a byte means comes
+from the specs below; there is no request generator and no step budget in this directory.
 
 ## Specs: what a byte means
 
@@ -22,12 +22,16 @@ wrap a run instead of replacing its mutation step. Mutation by spec is therefore
 layer lower, in the decoder, and that is the stronger place for it.
 
 An input is still a plain byte string, so libFuzzer's own mutations, crossovers and scheduling
-stay intact. Two control bytes choose the spec (one endpoint, one command) and the shape of the
-call (credential mode, a valid or a damaged body); every remaining decision the engine flips
-lands on a named slot of that spec — one path parameter, one body field, one argv option — and
-the value is drawn from the slot's declared type. Changing one byte changes one field's value,
-which is what makes a mutation meaningful on a typed surface; arbitrary JSON bytes would rarely
-get past the parser.
+stay intact. An input is a **sequence of calls**, one record per call, and a newline byte
+separates records: a mutation that inserts `0x0a` adds a call, one that erases across it drops a
+call, and a crossover splices two sequences — none of which a length-prefixed format would allow,
+because the engine cannot recompute a length it broke. Inside a record two control bytes choose
+the spec (one endpoint, one command) and the shape of the call (credential mode, a valid or a
+damaged body); every remaining decision the engine flips lands on a named slot of that spec — one
+path parameter, one body field, one argv option — and the value is drawn from the slot's declared
+type. Changing one byte changes one field's value, which is what makes a mutation meaningful on a
+typed surface; arbitrary JSON bytes would rarely get past the parser. A sequence is also the unit
+a finding is saved as, so a crash replays the calls that led to it.
 
 The specs are penguin's own declarations. `specs/extract.mjs` parses the sources with the
 TypeScript compiler API and writes `specs/surface.json`: every server route, taken from each
@@ -67,17 +71,17 @@ run the fuzzer on a newer base image or distribution.
 
 | Path | What it is |
 | --- | --- |
-| `server/` | The API surface: one request per input against the in-process server. |
-| `server/src/fuzz.ts` | The Jazzer.js entry: decode, send, check, throw on a violation. |
+| `server/` | The API surface: sequences of requests against the in-process server. |
+| `server/src/fuzz.ts` | The Jazzer.js entry: cut the input into calls, send each, check, throw on a violation. |
 | `specs/extract.mjs` | Reads penguin's route metadata, client endpoints and DTOs into `specs/surface.json`. |
 | `specs/decode.ts` | The slot decoder both legs share: bytes → one named slot of a spec, by the slot's type. |
 | `specs/server/main.ts` | The API leg's specs, built from `specs/surface.json` (routes, paths, body fields). |
 | `specs/cli/main.ts` | The CLI leg's specs, built from the commander tree the CLI itself registers. |
-| `server/src/input.ts` | The input format (two control bytes, then payload) and body payload injection. |
+| `server/src/input.ts` | One call's format (two control bytes, then payload) and body payload injection. |
 | `server/src/invariants.ts` | The invariant checks, read off a second, read-only SQLite connection. |
 | `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`). |
-| `cli/` | The CLI surface: one command line per input, over the same harness. |
-| `cli/src/fuzz.ts` | The Jazzer.js entry: decode, run the command, check its exit contract. |
+| `cli/` | The CLI surface: sequences of command lines, over the same harness. |
+| `cli/src/fuzz.ts` | The Jazzer.js entry: cut the input into commands, run each, check its exit contract. |
 | `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
 | `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
 | `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |
@@ -129,10 +133,19 @@ node_modules/.bin/tsc -p tests/fuzzers/tsconfig.json
 
 ## The input formats
 
-Both targets read a request out of the bytes they are handed; the seed corpus and the crash
-files use the same format, so a finding replays with `--mode=regression`.
+Both targets read a **sequence of calls** out of the bytes they are handed:
 
-API — `server/src/input.ts`:
+    input := record (0x0a record)*
+
+Each record is one call; the newline byte between records is the separator. That choice is what
+gives libFuzzer's own mutations meaning on a sequence — inserting a newline adds a call, erasing
+across one drops a call, copying a range or crossing two inputs splices calls together. A
+length-prefixed format would give none of that: one changed length byte hands the rest of the
+input to the wrong call. A record's choices come from its own payload only, so inserting a call
+never shifts what the other calls mean. Empty records are dropped, and an input without a
+newline is a sequence of one — every corpus entry written before this format still decodes.
+
+API — `server/src/input.ts`, one record:
 
 | Bytes | Meaning |
 | --- | --- |
@@ -140,7 +153,7 @@ API — `server/src/input.ts`:
 | 1 | flags: bits 0-1 auth mode (anonymous / bearer / cookie), bit 2 bad body, bit 3 clock jump, bit 4 raw body |
 | 2… | payload: choice bytes for the body and `:param` fills, and the text a body's last string field receives |
 
-CLI — `cli/src/input.ts`:
+CLI — `cli/src/input.ts`, one record:
 
 | Bytes | Meaning |
 | --- | --- |
@@ -148,10 +161,17 @@ CLI — `cli/src/input.ts`:
 | 1 | flags: bit 0 bad variant |
 | 2… | payload: choice bytes for the argv's slots, and the text a `-m`/`-t` value receives |
 
-The tables are not schedules: a step's endpoint or command is the input's first byte, so a
-mutation moves it, and libFuzzer keeps the inputs that reach new code. The payload lets a
-mutation reach a string field (a title, a path, a task text) rather than only the choice of
-call.
+The tables are not schedules: a record's endpoint or command is its first byte, so a mutation
+moves it, and libFuzzer keeps the inputs that reach new code. The payload lets a mutation reach a
+string field (a title, a path, a task text) rather than only the choice of call.
+
+A sequence is bounded: at most 8 calls on the API leg and 4 on the CLI leg, and no new call once
+the input's time budget (6 s, 8 s) has gone by. The fuzzer's own watchdog stays a hard abort that
+nothing should reach.
+
+The seed step also writes `out/dict.txt`: two bytes per spec — the separator, then that spec's
+index — which is the one mutation source that inserts a well-formed call instead of hoping a
+random byte lands on the separator. `run.mjs` passes it as libFuzzer's `-dict`.
 
 ## What a run produces
 
@@ -163,7 +183,7 @@ Under the leg's own `out/` (ignored by git):
 | `run.log` | The fuzzer's console output, final statistics included. |
 | `coverage/coverage-final.json` | The raw istanbul coverage Jazzer.js writes. |
 | `coverage/coverage-summary.md` | Lines/statements/functions/branches, in total and per source file. |
-| `summary.md` | The target's own account: requests or commands served, status/exit buckets, distinct state signatures, outbound attempts. |
+| `summary.md` | The target's own account: requests or commands served, how many calls each input asked for, slow calls by name, status/exit buckets, distinct state signatures, outbound attempts. |
 | `crash-*` | Any input that tripped an invariant, in the input format above. |
 
 The process exits `0` when the fuzzer stopped on its own (time or run count), and `77` — the

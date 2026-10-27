@@ -108,6 +108,9 @@ const child = spawn(
     String(options.maxTotalTime),
     options.runs ?? "",
     `${outDir}${path.sep}`,
+    // The per-spec skeletons that insert one call (see the legs' `seed.ts`); libFuzzer's
+    // dictionary turns "add a call" from a lucky byte into a mutation it can aim.
+    fs.existsSync(path.join(outDir, "dict.txt")) ? path.join(outDir, "dict.txt") : "",
   ],
   { cwd: outDir, env, stdio: ["inherit", "pipe", "pipe"] },
 );

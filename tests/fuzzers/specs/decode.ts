@@ -13,11 +13,52 @@
  * penguin's own declarations (see `specs/extract.mjs`) — the platform's `HttpModule.routes`
  * contributions plus each route factory's `app.<method>("…")` calls for the server, and the
  * commander tree for the CLI.
+ *
+ * One input is a **sequence of calls**, not a single call (`splitRecords`): "create, then read,
+ * then delete" is where state bugs live, and for a coverage-guided fuzzer to find such a
+ * sequence its byte-level mutations have to be able to add a call. A separator byte is what
+ * makes that possible; a length prefix would not, because the engine cannot recompute a length
+ * it broke.
  */
 import type { Choices } from "../server/src/choices.js";
 
 /** Which face of a spec an input asks for: the valid shape, or the one a handler must refuse. */
 export type Variant = "ok" | "bad";
+
+/** The byte between two calls of one input. See `splitRecords`. */
+export const RECORD_SEPARATOR = 0x0a;
+
+/**
+ * Split one input into the calls it asks for: `record (0x0a record)*`.
+ *
+ * The separator, not a length prefix, because the mutations that have to mean something on a
+ * sequence are libFuzzer's own byte operations:
+ *
+ *  - inserting a `0x0a` splits one call into two at the place it was inserted, leaving every
+ *    earlier call untouched — a new call appears out of nothing;
+ *  - erasing bytes across a separator drops a call; copying a range copies whole calls, so a
+ *    crossover between two inputs is a splice of two sequences;
+ *  - changing a record's first byte changes which endpoint or command that call is.
+ *
+ * A length prefix breaks all four: one changed length byte hands the rest of the input to the
+ * wrong call, and the engine has no way to recompute it. A record's own decisions come from its
+ * own payload, so inserting or deleting a call never shifts what the other calls mean.
+ *
+ * Empty records are dropped: a trailing or doubled newline is not a call.
+ */
+export function splitRecords(data: Buffer): Buffer[] {
+  const records: Buffer[] = [];
+  let start = 0;
+  for (;;) {
+    const end = data.indexOf(RECORD_SEPARATOR, start);
+    if (end === -1) {
+      if (start < data.length) records.push(data.subarray(start));
+      return records;
+    }
+    if (end > start) records.push(data.subarray(start, end));
+    start = end + 1;
+  }
+}
 
 /** Identifiers the server already knows, by the name the contract gives them. */
 export type Pools = Record<string, string[]>;
