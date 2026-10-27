@@ -93,8 +93,17 @@ export function hostCommandActions(
 /**
  * `extra` is what the mount point adds ahead of the standing actions — the full-page
  * workflow route registers its way out here, which is why it exists at all on that route.
+ * `suggest` is the same mount point's dynamic completions — the mount point passes the session
+ * completion; a mount point outside the app's providers passes nothing and the palette keeps
+ * its standing actions alone.
  */
-export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteAction[] }) {
+export function AppPalette({
+  extra = NO_EXTRA,
+  suggest,
+}: {
+  extra?: readonly PaletteAction[];
+  suggest?: (query: string) => readonly PaletteAction[];
+}) {
   const added = useAddedPaletteActions();
   const safe = useSafeMode();
   const [open, setOpen] = useState(false);
@@ -205,6 +214,7 @@ export function AppPalette({ extra = NO_EXTRA }: { extra?: readonly PaletteActio
         open={open}
         onClose={() => setOpen(false)}
         actions={actions}
+        suggest={suggest}
         title={S.commandPalette.title}
         placeholder={S.commandPalette.placeholder}
         emptyText={S.commandPalette.noResults}
