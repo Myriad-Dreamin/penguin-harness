@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The running view: `@prismshadow/mmsp` — the client core would use to reach a model API
+    // — resolves to the scripted stub under server/src/stubs/mmsp/ instead, so the LLM is
+    // hermetic by construction rather than by a network policy. run.mjs hands this file to
+    // tsx; a bare `node`/`tsx` would pick tsconfig.json and load the real client.
+    //
+    // TypeScript replaces `paths` wholesale on `extends` instead of merging it, so the
+    // checking view's block is repeated here. Keep the two in sync (tsconfig.json).
+    "paths": {
+      "@prismshadow/mmsp": ["./server/src/stubs/mmsp/index.ts"],
+      "@prismshadow/mmsp/credentials": ["./server/src/stubs/mmsp/credentials.ts"],
+      "@prismshadow/penguin-core": ["../../packages/core/src/index.ts"],
+      "@prismshadow/penguin-core/kernel": ["../../packages/core/src/kernel/index.ts"],
+      "@prismshadow/penguin-core/omnimessage": ["../../packages/core/src/omnimessage/index.ts"],
+      "@prismshadow/penguin-core/interfaces": ["../../packages/core/src/interfaces/index.ts"],
+      "@prismshadow/penguin-core/plugin": ["../../packages/core/src/plugin/index.ts"],
+      "@prismshadow/penguin-core/a2ui": ["../../packages/core/src/a2ui/index.ts"],
+      "@prismshadow/penguin-core/markers": ["../../packages/core/src/omnimessage/markers/index.ts"],
+      "@prismshadow/penguin-core/context-limits": ["../../packages/core/src/llm/context-limits.ts"],
+      "@prismshadow/penguin-core/model-catalog": ["../../packages/core/src/state/model-catalog.ts"],
+      "@prismshadow/penguin-core/*": [
+        "../../packages/core/src/*/index.ts",
+        "../../packages/core/src/*.ts"
+      ],
+      "@prismshadow/penguin-hmr": ["../../packages/hmr/src/index.ts"],
+      "@prismshadow/penguin-hmr/manifest": ["../../packages/hmr/src/manifest.ts"],
+      "@prismshadow/penguin-hmr/*": ["../../packages/hmr/src/*.ts"],
+      "@prismshadow/amsp": ["../../packages/amsp/src/index.ts"],
+      "@prismshadow/amsp/*": ["../../packages/amsp/src/*.ts"],
+      "@prismshadow/penguin-server": ["../../packages/server/src/index.ts"],
+      "@prismshadow/penguin-server/api": ["../../packages/server/src/api/types.ts"],
+      "@prismshadow/penguin-server/machine-status": ["../../packages/server/src/machine-status.ts"],
+      "@prismshadow/penguin-server/lock": ["../../packages/server/src/lock.ts"],
+      "@prismshadow/penguin-server/initial-password": [
+        "../../packages/server/src/initial-password.ts"
+      ],
+      "@prismshadow/penguin-server/reset-admin-password": [
+        "../../packages/server/src/reset-admin-password.ts"
+      ],
+      "@prismshadow/penguin-server/hmr/manifest": ["../../packages/server/src/hmr/manifest.ts"],
+      "@prismshadow/penguin-server/version-report": ["../../packages/server/src/version-report.ts"],
+      "@prismshadow/penguin-server/auth-token": ["../../packages/server/src/auth-token.ts"],
+      "@prismshadow/penguin-server/secret-file": ["../../packages/server/src/secret-file.ts"],
+      "@prismshadow/penguin-server/plugin": ["../../packages/server/src/plugin/index.ts"],
+      "hono": ["../../packages/server/node_modules/hono"],
+      "hono/*": ["../../packages/server/node_modules/hono/*"]
+    }
+  }
+}

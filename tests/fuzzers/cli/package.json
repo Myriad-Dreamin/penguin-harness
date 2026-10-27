@@ -1,0 +1,14 @@
+{
+  "name": "@prismshadow/fuzzer-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI-surface fuzzer: the repo's own cli(argv) driven against the in-process server, one argv array per step.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "fuzz": "node ../run.mjs cli",
+    "typecheck": "tsc -p ../tsconfig.json"
+  }
+}

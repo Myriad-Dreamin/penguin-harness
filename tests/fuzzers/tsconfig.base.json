@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // No DOM: the product's own configs (packages/{core,server,cli}) run without it too, and
+    // with it @types/node's `Blob`/web-stream types take their DOM shape instead, which the
+    // server's messaging code does not type against. What the one package that does want DOM
+    // (packages/amsp) needs globally lives in types/globals.d.ts.
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "noEmit": true
+  }
+}

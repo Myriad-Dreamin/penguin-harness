@@ -1,0 +1,2 @@
+# Fuzz runs write their artifacts here; only the sources are tracked.
+*/out/

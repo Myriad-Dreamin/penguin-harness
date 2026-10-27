@@ -1,0 +1,14 @@
+{
+  "name": "@prismshadow/fuzzer-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API-surface fuzzer: a fixed-seed, stateful request sequence against the in-process server, with per-step invariants and read-only state introspection.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "fuzz": "node ../run.mjs server",
+    "typecheck": "tsc -p ../tsconfig.json"
+  }
+}
