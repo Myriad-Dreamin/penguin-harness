@@ -310,10 +310,10 @@ function socketFrame(message) {
  * Installed before `goto`. Returns the frames seen, and the handles used below:
  * - `onCall(fn)` / `onAnswer(fn)` — called with each call frame, or each answer frame and its
  *   call, after registration;
- * - `hold(path, ms)` — hold the first call whose `path` is exactly `path` for `ms` before it
- *   reaches the server (`page.route(...)` + a delayed `route.continue()`, on this transport);
- * - `slowDown(fn)` — let every call reach the server `fn()` ms late (`page.route` over every
- *   `/api/` request, on this transport);
+ * - `hold(path, ms)` — hold the first call whose `path` is exactly `path` here for `ms`, then
+ *   forward its frame to the server;
+ * - `slowDown(fn)` — let every call reach the server `fn()` ms late: each call frame waits
+ *   `fn()` ms here before it is forwarded;
  * - `nextCall(test)` — a promise for the next call frame `test(call)` accepts;
  * - `nextAnswer(test)` — a promise for the next answer frame whose call `test(call)` accepts.
  */
