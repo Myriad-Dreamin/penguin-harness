@@ -150,13 +150,13 @@ describe("bindings", () => {
     let notified = 0;
     const unsubscribe = subscribeKeymap(() => notified++);
     const before = keymapVersion();
-    expect(bindingsOf("palette.toggle")).toEqual([parseChord("Mod+Alt+KeyP")]);
+    expect(bindingsOf("palette.toggle")).toEqual([parseChord("Mod+Shift+KeyP")]);
     addBinding("palette.toggle", parseChord("Mod+KeyP")!);
     expect(bindingsOf("palette.toggle")).toEqual([
-      parseChord("Mod+Alt+KeyP"),
+      parseChord("Mod+Shift+KeyP"),
       parseChord("Mod+KeyP"),
     ]);
-    expect(stored()).toEqual({ v: 1, linux: { "palette.toggle": ["Mod+Alt+KeyP", "Mod+KeyP"] } });
+    expect(stored()).toEqual({ v: 1, linux: { "palette.toggle": ["Mod+Shift+KeyP", "Mod+KeyP"] } });
     expect(notified).toBe(1);
     expect(keymapVersion()).toBeGreaterThan(before);
     unsubscribe();
@@ -164,7 +164,7 @@ describe("bindings", () => {
 
   it("adds an already-bound chord as a no-op", () => {
     const before = keymapVersion();
-    addBinding("palette.toggle", parseChord("Mod+Alt+KeyP")!); // the default itself
+    addBinding("palette.toggle", parseChord("Mod+Shift+KeyP")!); // the default itself
     expect(stored()).toBeNull(); // nothing written: no row, no mirror update
     expect(isOverridden("palette.toggle")).toBe(false);
     expect(keymapVersion()).toBe(before); // and nobody was told
@@ -173,20 +173,20 @@ describe("bindings", () => {
   it("removes an added binding and the row falls back to the default", () => {
     addBinding("palette.toggle", parseChord("Mod+KeyP")!);
     removeBinding("palette.toggle", parseChord("Mod+KeyP")!);
-    expect(bindingsOf("palette.toggle")).toEqual([parseChord("Mod+Alt+KeyP")]);
+    expect(bindingsOf("palette.toggle")).toEqual([parseChord("Mod+Shift+KeyP")]);
     expect(isOverridden("palette.toggle")).toBe(false);
     expect(stored()).toEqual({ v: 1 });
   });
 
   it("removes the default chord itself and keeps the added one", () => {
     addBinding("palette.toggle", parseChord("Mod+KeyP")!);
-    removeBinding("palette.toggle", parseChord("Mod+Alt+KeyP")!);
+    removeBinding("palette.toggle", parseChord("Mod+Shift+KeyP")!);
     expect(bindingsOf("palette.toggle")).toEqual([parseChord("Mod+KeyP")]);
     expect(stored()).toEqual({ v: 1, linux: { "palette.toggle": ["Mod+KeyP"] } });
   });
 
   it("removes every binding and the row stores the explicit unbind", () => {
-    removeBinding("palette.toggle", parseChord("Mod+Alt+KeyP")!);
+    removeBinding("palette.toggle", parseChord("Mod+Shift+KeyP")!);
     expect(bindingsOf("palette.toggle")).toEqual([]);
     expect(isOverridden("palette.toggle")).toBe(true);
     expect(stored()).toEqual({ v: 1, linux: { "palette.toggle": null } });

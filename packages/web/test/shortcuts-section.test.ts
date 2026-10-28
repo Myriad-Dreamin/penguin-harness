@@ -130,7 +130,7 @@ describe("ShortcutsSection", () => {
     );
     expect(count(clean, "<kbd>P</kbd>")).toBe(1); // the palette row's default chip
     configureKeybindingsStoreForTests({
-      storage: keybindings({ v: 1, linux: { "palette.toggle": ["Mod+Alt+KeyP", "Mod+KeyP"] } }),
+      storage: keybindings({ v: 1, linux: { "palette.toggle": ["Mod+Shift+KeyP", "Mod+KeyP"] } }),
     });
     const html = render();
     expect(count(html, `data-tooltip="${S.shortcuts.removeBinding}"`)).toBe(

@@ -28,6 +28,7 @@ import type { ComponentType } from "react";
 import { UnsavedPrompt } from "./lib/unsaved/unsaved-prompt";
 import { SafeModeMarker } from "./rescue/safe-mode-marker";
 import { AppPalette } from "./features/palette/app-palette";
+import { useSessionCompletion } from "./features/palette/session-completion";
 import { ErrorBoundary } from "./rescue/error-boundary";
 import { RescuePanel } from "./rescue/rescue-panel";
 import { writeClipboard } from "./lib/clipboard";
@@ -54,6 +55,7 @@ export function App({
       window.removeEventListener("drop", guardWindowDrop);
     };
   }, []);
+  const sessionCompletion = useSessionCompletion();
   return (
     <ClipboardWriterProvider write={writeClipboard}>
       <CodeHighlighterProvider highlight={highlightCode}>
@@ -66,7 +68,7 @@ export function App({
                     <Root {...(initialPath === undefined ? {} : { initialPath })} />
                   </ErrorBoundary>
                   <ErrorBoundary fallback={() => null}>
-                    <AppPalette />
+                    <AppPalette suggest={sessionCompletion} />
                   </ErrorBoundary>
                   <ErrorBoundary fallback={() => null}>
                     <SafeModeMarker />

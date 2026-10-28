@@ -204,8 +204,7 @@ export function AppPalette({
         },
       },
     ],
-    [added, safe, extra, offers, locale, newWindow],
-    [extra, offers, locale, isAdmin, newWindow],
+    [added, safe, extra, offers, locale, isAdmin, newWindow],
   );
 
   return (

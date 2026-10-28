@@ -31,6 +31,7 @@ import { S } from "../src/lib/strings";
 import { AuthProvider } from "../src/state/auth";
 import { CompanyProvider, useCompany } from "../src/state/company";
 import { LocaleProvider } from "../src/state/locale";
+import { SessionsProvider } from "../src/state/sessions";
 import { ProjectProvider } from "../src/state/project";
 import { ThemeProvider } from "../src/state/theme";
 import { ADMIN_ME } from "./helpers/admin-settings";
@@ -158,11 +159,15 @@ async function barInShell(rows: HarnessStatusSession[], enter: ReturnType<typeof
               ProjectProvider,
               null,
               h(
-                CompanyProvider,
+                SessionsProvider,
                 null,
-                h(Probe, { record: (entry) => seen.push(entry) }),
-                enter,
-                h(StatusBar),
+                h(
+                  CompanyProvider,
+                  null,
+                  h(Probe, { record: (entry) => seen.push(entry) }),
+                  enter,
+                  h(StatusBar),
+                ),
               ),
             ),
           ),
