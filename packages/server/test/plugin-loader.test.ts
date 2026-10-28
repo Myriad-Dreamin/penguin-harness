@@ -66,6 +66,8 @@ describe("plugin list", () => {
     expect(await loadPlugins(root, undefined, undefined, null, NONE)).toMatchObject({
       loaded: [],
       failed: new Map(),
+      importMs: new Map(),
+    });
     expect(await loadPlugins(root)).toMatchObject({
       loaded: [],
       failed: new Map(),

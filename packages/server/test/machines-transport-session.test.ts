@@ -33,7 +33,11 @@ import {
   connectionTo,
   heldSessionOf,
   sessionOf,
+  setTimingsSink,
+  useControlSockets,
 } from "../src/machines/transport/index.js";
+import { SshPasswords } from "../src/machines/ssh-passwords.js";
+import type { MachineSample } from "../src/machines/transport/index.js";
 import type { RemoteTarget } from "../src/machines/transport/index.js";
 import type { Machine } from "../src/mechanisms/machines.js";
 
@@ -64,11 +68,6 @@ const target = (name: string, machine: Machine = testMachine(name)): RemoteTarge
   machine,
   node: "node",
 });
-  setTimingsSink,
-  useControlSockets,
-} from "../src/machines/transport/index.js";
-import { SshPasswords } from "../src/machines/ssh-passwords.js";
-import type { MachineSample } from "../src/machines/transport/index.js";
 
 const posixOnly = process.platform === "win32" ? describe.skip : describe;
 
