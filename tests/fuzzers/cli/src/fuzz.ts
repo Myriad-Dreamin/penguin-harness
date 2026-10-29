@@ -38,6 +38,8 @@ import { ByteChoices } from "../../server/src/choices.js";
 import { permitLoopback } from "../../server/src/bug-detectors.js";
 import { installOutboundGuard } from "../../server/src/guards.js";
 import { bootHarness } from "../../server/src/harness.js";
+import { modelScriptFor } from "../../server/src/model-script.js";
+import { setModelPlan } from "../../server/src/stubs/mmsp/index.js";
 import { Quiescence, VirtualTime, driveToCompletion, realMs } from "../../server/src/virtual-time.js";
 import { runOneCommand, type CommandOutcome } from "./command.js";
 import { decodeCliControls } from "./input.js";
@@ -51,7 +53,7 @@ const CONFIG_FRESH_WAIT_MS = 2_200;
  * guards, stdio capture, and a few commands wait on their own timeout — so four keeps the search
  * rate useful while still reaching the shapes that need a sequence: create, list, read, delete.
  */
-const MAX_CALLS = 4;
+const MAX_CALLS = 8;
 /** No new command once this much of the input has been used (libFuzzer's watchdog is 30 s). */
 const SEQUENCE_BUDGET_MS = 8_000;
 /** A command worth naming in the run's account — see the API leg's own slow-call reading. */
@@ -353,6 +355,9 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
   stats.calls = call;
   stats.specHits.add(spec.id);
 
+  // The mocked model's turns come from the same bytes the command line does (model-script.ts),
+  // so a mutation that moves an argv moves what the model answers with it.
+  setModelPlan(modelScriptFor(record));
   const rng = new ByteChoices(controls.rest);
   const argv = spec.argv(controls.variant, rng, controls.text, pools);
 

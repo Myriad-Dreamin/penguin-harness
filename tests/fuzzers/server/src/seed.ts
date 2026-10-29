@@ -26,8 +26,16 @@ const outDir = path.dirname(path.resolve(dir));
 
 /** A spec index fits one dictionary byte (the table is far shorter than 256). */
 const hex = (value: number): string => `\\x${value.toString(16).padStart(2, "0")}`;
-/** One call: the two control bytes and no payload, so its choices come out of the id pools. */
-const call = (index: number, flags = 0): Buffer => Buffer.from([index, flags]);
+/**
+ * One call: the two control bytes, then the payload its choices and body text draw from.
+ *
+ * A payload-free call is degenerate — every `ByteChoices` decision reads 0, so a body is the
+ * "all optional fields present, first value" shape and nothing else. Every seed below therefore
+ * carries one: the first bytes drive the choice surface, the rest is the string a body field
+ * receives (`withPayload`).
+ */
+const call = (index: number, flags = 0, payload = "fuzz"): Buffer =>
+  Buffer.concat([Buffer.from([index, flags]), Buffer.from(payload, "utf8")]);
 /** A sequence: records joined by the byte a mutation inserts to add a call. */
 const sequence = (...calls: Buffer[]): Buffer =>
   Buffer.concat(
@@ -52,13 +60,26 @@ const SEEDS: ReadonlyArray<{ flags: number; suffix: string }> = [
   { flags: 0b001, suffix: "bearer-ok" },
   { flags: 0b010, suffix: "cookie-ok" },
   { flags: 0b100, suffix: "anon-bad" },
+  // Bit 3 jumps the clock; bit 4 sends the payload as the body verbatim.
+  { flags: 0b001000, suffix: "bearer-jump" },
+  { flags: 0b010001, suffix: "bearer-raw" },
 ];
+
+/** Deterministic filler, distinct per spec: a body field keeps a value it can validate. */
+const filler = (index: number, length: number): string => {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-_";
+  let out = "";
+  for (let step = 0; step < length; step += 1) {
+    out += alphabet[(index * 7 + step * 3) % alphabet.length];
+  }
+  return out;
+};
 
 for (const [index, spec] of specs.entries()) {
   for (const seed of SEEDS) {
     write(
       `seed-${String(index).padStart(3, "0")}-${seed.suffix}`,
-      Buffer.from([index, seed.flags]),
+      call(index, seed.flags, `${filler(index, 4 + (index % 5) * 6)} fuzz`),
     );
   }
 }
@@ -82,13 +103,20 @@ for (const [createdIndex, created] of specs.entries()) {
     if (read.path !== created.path && !isItem) continue;
     writeSequence(
       `seq-${createdIndex}-${readIndex}-create-read`,
-      sequence(call(createdIndex, AUTHED), call(readIndex, AUTHED)),
+      sequence(
+        call(createdIndex, AUTHED, `fuzz create ${created.path}`),
+        call(readIndex, AUTHED, `fuzz read ${read.path}`),
+      ),
     );
     const removedIndex = isItem ? indexOf.get(`DELETE ${read.path}`) : undefined;
     if (removedIndex !== undefined) {
       writeSequence(
         `seq-${createdIndex}-${readIndex}-${removedIndex}-create-read-delete`,
-        sequence(call(createdIndex, AUTHED), call(readIndex, AUTHED), call(removedIndex, AUTHED)),
+        sequence(
+          call(createdIndex, AUTHED, `fuzz create ${created.path}`),
+          call(readIndex, AUTHED, `fuzz read ${read.path}`),
+          call(removedIndex, AUTHED, `fuzz delete ${read.path}`),
+        ),
       );
     }
   }
@@ -101,7 +129,10 @@ for (const [readIndex, read] of specs.entries()) {
     if (changed.path !== read.path) continue;
     writeSequence(
       `seq-${readIndex}-${changedIndex}-read-${changed.method.toLowerCase()}`,
-      sequence(call(readIndex, AUTHED), call(changedIndex, AUTHED)),
+      sequence(
+        call(readIndex, AUTHED, `fuzz read ${read.path}`),
+        call(changedIndex, AUTHED, `fuzz ${changed.method.toLowerCase()} ${changed.path}`),
+      ),
     );
   }
 }

@@ -41,6 +41,13 @@ options.merge(
     fuzzerOptions: [
       corpusDir,
       `-max_total_time=${maxTotalTime}`,
+      // An input is a sequence of calls with payloads on each; the engine's own default starts
+      // at the longest seed it was given and raises that ceiling slowly (`len_control`), which
+      // on a small seed corpus means it never generates the payload-bearing calls a tool, an
+      // a2ui block or a validated body needs. Both are explicit here: 256 bytes is roughly
+      // eight four-command calls with a sentence each.
+      "-max_len=256",
+      "-len_control=0",
       "-print_final_stats=1",
       `-artifact_prefix=${artifactPrefix}`,
       ...(runs === undefined || runs === "" ? [] : [`-runs=${runs}`]),

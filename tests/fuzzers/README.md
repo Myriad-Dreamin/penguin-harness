@@ -82,7 +82,9 @@ run the fuzzer on a newer base image or distribution.
 | `specs/cli/main.ts` | The CLI leg's specs, built from the commander tree the CLI itself registers. |
 | `server/src/input.ts` | One call's format (two control bytes, then payload) and body payload injection. |
 | `server/src/invariants.ts` | The invariant checks, read off a second, read-only SQLite connection. |
-| `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`). |
+| `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`), with the production SessionLoader: every Session runs the real Agent, ContextEngine and Environment. |
+| `server/src/stubs/mmsp/index.ts` | The only mock: the model client. It plays a turn list instead of calling a provider, and every turn kind (text, tool call, provider failure, abort) is a shape the product handles. |
+| `server/src/model-script.ts` | Turns one input record's bytes into that model turn list — the model's behaviour is part of the input space, so a mutation moves the reply the way it moves a request or an argv. |
 | `cli/` | The CLI surface: sequences of command lines, over the same harness. |
 | `cli/src/fuzz.ts` | The Jazzer.js entry: cut the input into commands, run each, check its exit contract. |
 | `cli/src/command.ts` | One command behind the process-level guards: exit guard, stdio capture, soft timeout. |
@@ -231,9 +233,17 @@ Two consequences worth knowing when reading a run's output:
 The API leg drives `app.request()` directly and has no per-call waits to compress; it keeps the
 plain clock, and its own `clock.jumpForwardDays` steps across the session TTL.
 
-The seed step also writes `out/dict.txt`: two bytes per spec — the separator, then that spec's
-index — which is the one mutation source that inserts a well-formed call instead of hoping a
-random byte lands on the separator. `run.mjs` passes it as libFuzzer's `-dict`.
+Every seed carries a payload, and the sequences carry several commands: an input without bytes
+is degenerate — `ByteChoices` reads 0 for every decision, so the command line or body collapses
+into one fixed shape and the fuzzer explores nothing but that shape. The seeds also set the
+engine's starting length ceiling, which is why `fuzz-runner.mjs` passes `-max_len=256` with
+`-len_control=0`: libFuzzer normally starts mutating at the longest seed it was given and raises
+that ceiling very slowly.
+
+The seed step also writes `out/dict.txt`: for every spec the two bytes that insert one call of
+it — the separator, then its index — plus the value tokens a call is made of (`--json`,
+`--limit`, `-m`, `--approve`, `allow-all`, a path, a quote, an escape). `run.mjs` passes it as
+libFuzzer's `-dict`, so "insert a call" and "fill a slot" are mutations the engine can aim.
 
 ## What a run produces
 

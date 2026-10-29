@@ -4,12 +4,13 @@
  *
  *   bootAppDeps(config, replacements) → authService.seedAdmin() → createApp(boot)
  *
- * with the demo's three mocks mounted through existing seams only:
+ * with the demo's mocks mounted through existing seams only:
  *   - FuzzerClock replaces SystemClock through the replacements array;
- *   - the FuzzerSessionLoader replaces CoreSessionLoaders the same way (its create() is the
- *     documented "tests inject" point);
  *   - SQLite stays the real engine, redirected to a temp file via config.dbPath (§4.3
- *     option 1), so a second, read-only connection can introspect it (§6.1 R-5).
+ *     option 1), so a second, read-only connection can introspect it (§6.1 R-5);
+ *   - the SessionLoader is the production one, so every Session — created or loaded — runs the
+ *     real Agent, ContextEngine and Environment. The only mock left is the model client
+ *     (stubs/mmsp), which is where a mocked model belongs: one seam, below the whole runtime.
  *
  * The loopback listener is the same @hono/node-server serve() the production entry uses —
  * bound to an ephemeral port in-process. The CLI leg answers its own requests from the app in
@@ -22,16 +23,12 @@ import path from "node:path";
 import type { ServerConfig } from "../../../../packages/server/src/config.js";
 import { bootAppDeps, createApp } from "../../../../packages/server/src/app.js";
 import { ConsoleLog, SystemClock } from "../../../../packages/server/src/hmr/capabilities.js";
-import {
-  CoreSessionLoaders,
-  DefaultTitleGenerators,
-} from "../../../../packages/server/src/runtime/session-manager.js";
+import { DefaultTitleGenerators } from "../../../../packages/server/src/runtime/session-manager.js";
 import { ShippedBuiltinBenchmarkSeeds } from "../../../../packages/server/src/services/project-service.js";
 import { ScryptHasher, hashPassword } from "../../../../packages/server/src/auth/password.js";
 import type { ServerBoot } from "../../../../packages/server/src/app.js";
 import type { Hono } from "hono";
 import type { AppEnv } from "../../../../packages/server/src/auth/middleware.js";
-import type { SessionLoader } from "../../../../packages/server/src/runtime/session-manager.js";
 import { FuzzerClock } from "./fuzzer-clock.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -79,7 +76,7 @@ export function demoConfig(root: string, dbPath: string): ServerConfig {
   };
 }
 
-export async function assembleDemo(loader: SessionLoader, clock: FuzzerClock): Promise<DemoApp> {
+export async function assembleDemo(clock: FuzzerClock): Promise<DemoApp> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-fuzzer-demo-"));
   // Same shape as the probe that proved this boot: PENGUIN_HOME points at the temp root
   // before the platform boots, so every path that resolves through it lands inside the
@@ -97,7 +94,6 @@ export async function assembleDemo(loader: SessionLoader, clock: FuzzerClock): P
     [SystemClock, { now: () => clock.now() }],
     [ShippedBuiltinBenchmarkSeeds, { benchmarks: [] }],
     [ScryptHasher, { hash: (password: string) => hashPassword(password, 2) }],
-    [CoreSessionLoaders, { create: () => loader }],
     [DefaultTitleGenerators, { create: () => ({ maybeGenerate: () => {} }) }],
   ]);
 

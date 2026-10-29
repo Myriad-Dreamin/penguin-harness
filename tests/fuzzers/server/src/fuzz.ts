@@ -19,10 +19,10 @@
  *    and writes the input down;
  *  - a non-loopback network attempt is thrown as well.
  *
- * Beside the fuzzing loop the module also boots: it seeds the three session rows the fake
- * loader serves, drives them once (so the scripted LLM rotation — text, tool call, one
- * contract-visible failure — always plays, whatever the fuzzer hits), and samples the
- * loopback SSE stream once with a bounded read. Those three are setup, not findings.
+ * Beside the fuzzing loop the module also boots: it seeds the three session rows a restart
+ * finds, drives them once with a plan that carries a tool call and a provider failure (so those
+ * two paths always play, whatever the fuzzer hits), and samples the loopback SSE stream once
+ * with a bounded read. Those three are setup, not findings.
  *
  * Run it through `run.mjs server`, or replay the corpus without Jazzer.js:
  *
@@ -32,6 +32,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { openExistingDatabase } from "../../../../packages/server/src/db/database.js";
+import {
+  addModel,
+  loadProjectConfig,
+} from "../../../../packages/core/src/state/project-config.js";
 import { captureIds, splitRecords, type Pools } from "../../specs/decode.js";
 import { httpSpecs } from "../../specs/server/main.js";
 import { ByteChoices } from "./choices.js";
@@ -40,9 +44,14 @@ import { installOutboundGuard } from "./guards.js";
 import { bootHarness } from "./harness.js";
 import { decodeApiControls, payloadText, withPayload, type ApiControls } from "./input.js";
 import { invariantViolations, readSnapshot } from "./invariants.js";
+import { modelScriptFor } from "./model-script.js";
+import { plays as modelPlays, resetModelPlan, setModelPlan } from "./stubs/mmsp/index.js";
 import { withSoftTimeout } from "./timeout.js";
 
 const PROJECT_ID = "default_project";
+/** The (provider, modelId) pair every fuzz-made Session names; the model stub serves it. */
+const MODEL_PROVIDER = "fuzz-group";
+const MODEL_ID = "fuzz-model";
 const AGENT_ID = "default_agent";
 const NEW_ADMIN_PASSWORD = "penguin-0000-changed";
 /** The route whose success moves the credential the driver logs in with. */
@@ -137,8 +146,28 @@ function seedResumeSessions(): void {
   pools.sessionId = [...(pools.sessionId ?? []), ...RESUME_SESSION_IDS];
 }
 
+/** Provider failures the scripted model played so far (the invariant's own denominator). */
 function llmFailurePlays(): number {
-  return harness.loader.loaded.reduce((total, entry) => total + entry.llm.failurePlays, 0);
+  return modelPlays.fail;
+}
+
+/**
+ * The model every fuzz-made Session names: `fuzz-group` / `fuzz-model`. The stub serves it
+ * without a key, but a Session's rebuild reads the Project config to resolve it, so the config
+ * must carry the row before a loaded session can be rebuilt with the production loader.
+ */
+async function ensureModelConfig(): Promise<void> {
+  try {
+    const config = await loadProjectConfig(harness.app.root, PROJECT_ID);
+    if (config.models.some((m) => m.provider === MODEL_PROVIDER && m.model_id === MODEL_ID)) return;
+    await addModel(harness.app.root, PROJECT_ID, {
+      provider: MODEL_PROVIDER,
+      model_id: MODEL_ID,
+    });
+    stats.repairs += 1;
+  } catch {
+    // Best effort, like the fixture: a rebuild that still cannot resolve the model answers 409.
+  }
 }
 
 /**
@@ -229,7 +258,16 @@ async function sampleEventStream(): Promise<{
 let cookie: string | null = null;
 let adminPassword = harness.app.adminPassword;
 const bootBaseline = readSnapshot(harness.app.dbPath);
+await ensureFixture();
+await ensureModelConfig();
 seedResumeSessions();
+// One tool call and one provider failure before the loop: the two paths the model's own bytes
+// drive are ones the boot must prove reachable, so a run that never rolls them is still honest.
+setModelPlan([
+  { kind: "tool", name: "exec_command", args: { cmd: "true" } },
+  { kind: "fail", error: "fuzzer boot: scripted provider failure" },
+  { kind: "text", text: "fuzz boot drive" },
+]);
 for (const sessionId of RESUME_SESSION_IDS) {
   const res = await harness.app.app.request(
     `/api/sessions/${encodeURIComponent(sessionId)}/tasks`,
@@ -248,6 +286,7 @@ for (const sessionId of RESUME_SESSION_IDS) {
   harness.clock.step(1_000);
   if (res.status >= 500) throw new Error(`[api] boot drive on ${sessionId} answered ${res.status}`);
 }
+resetModelPlan();
 const sseSample = await sampleEventStream();
 const bootSnapshot = readSnapshot(harness.app.dbPath);
 const bootViolations = invariantViolations({
@@ -382,6 +421,9 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
   if (controls.jump) harness.clock.jumpForwardDays(CLOCK_JUMP_DAYS);
   else harness.clock.step(1_000);
 
+  // The mocked model's turns come from the same bytes the request does (model-script.ts), so
+  // a mutation that changes a request changes what the model answers.
+  setModelPlan(modelScriptFor(record));
   const rng = new ByteChoices(controls.rest);
   const text = payloadText(controls.rest, 512);
   const filled = spec.url(controls.variant, rng, text, pools);
