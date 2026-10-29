@@ -122,7 +122,7 @@ import { enabledMessagingChannel } from "../messaging/enabled-channel.js";
 import { latestSlotAt, nextSlotAfter, slotInWindow } from "../schedule-file.js";
 import type { ScheduleDefinition } from "../schedule-file.js";
 import { budgetLine, budgetRatio, computeSpend, pausedEmployees } from "./budget.js";
-import type { OrgSpend } from "./budget.js";
+import type { OrgSpend, TicketForSpend } from "./budget.js";
 import { machineApi } from "../../machines/machine-api.js";
 import { Machines } from "../../machines/service.js";
 import { DEFAULT_EMPLOYEE_PLUGINS, OrgRuns, OrgSessions, employeePlugins, runsOn } from "./deps.js";
@@ -231,6 +231,33 @@ export class OrganizationService {
 
   private now(): number {
     return this.deps.now?.() ?? Date.now();
+  }
+
+  /**
+   * Period spend per organization, kept for a few seconds. Computing it is one pass over the
+   * organization's usage records — the price of every chart, board and finance response — and
+   * a browser with the organization open asks for several of those at once, each of which used
+   * to pay that pass again on the server's single thread. Spend moves with usage and with the
+   * sessions attached to tickets, so a couple of seconds of it is the same answer a caller
+   * would have got a moment earlier; anything that writes and then reads its own number (a
+   * budget raised and shown) waits the same couple of seconds, which is what a page reload
+   * costs anyway.
+   */
+  private readonly spendCache = new Map<string, { at: number; value: OrgSpend }>();
+  private static readonly SPEND_TTL_MS = 3000;
+
+  private async spendOf(
+    org: LoadedOrg,
+    tickets: readonly TicketForSpend[],
+    period?: string,
+  ): Promise<OrgSpend> {
+    const key = `${org.projectId}\u0000${org.orgId}\u0000${period ?? ""}`;
+    const at = this.now();
+    const hit = this.spendCache.get(key);
+    if (hit !== undefined && at - hit.at < OrganizationService.SPEND_TTL_MS) return hit.value;
+    const value = await computeSpend(this.deps, org, tickets, period);
+    this.spendCache.set(key, { at, value });
+    return value;
   }
 
   /** The organization a session belongs to, for the `PENGUIN_ORG_ID` control variable. */
@@ -366,7 +393,7 @@ export class OrganizationService {
       const org = await loadOrg(this.deps, projectId, orgId);
       if (org === null) continue;
       const { tickets } = await listTickets(this.deps, org);
-      const spend = await computeSpend(this.deps, org, tickets);
+      const spend = await this.spendOf(org, tickets);
       const mirrored = this.summary(org, tickets, spend);
       const machineId = runsOn(this.deps, org.config);
       if (machineId === null) {
@@ -481,7 +508,7 @@ export class OrganizationService {
   async detail(projectId: string, orgId: string, userId: string): Promise<OrganizationDetail> {
     const org = await this.requireOrg(projectId, orgId);
     const { tickets } = await listTickets(this.deps, org);
-    const spend = await computeSpend(this.deps, org, tickets);
+    const spend = await this.spendOf(org, tickets);
     const summary = this.summary(org, tickets, spend);
     const board = Object.fromEntries(ORG_TICKET_COLUMNS.map((c) => [c, 0])) as Record<
       OrgTicketStatus,
@@ -939,7 +966,7 @@ export class OrganizationService {
   async chart(projectId: string, orgId: string): Promise<OrgChartResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const { tickets } = await listTickets(this.deps, org);
-    const spend = await computeSpend(this.deps, org, tickets);
+    const spend = await this.spendOf(org, tickets);
     return { ceoAgentId: ceoAgentId(orgId), employees: await this.employeeItems(org, spend) };
   }
 
@@ -1169,7 +1196,7 @@ export class OrganizationService {
           ctx: { projectId, agentId },
         });
       }
-      const spend = await computeSpend(this.deps, org, (await listTickets(this.deps, org)).tickets);
+      const spend = await this.spendOf(org, (await listTickets(this.deps, org)).tickets);
       const items = await this.employeeItems(org, spend);
       return items.find((i) => i.agentId === agentId)!;
     });
@@ -1207,7 +1234,7 @@ export class OrganizationService {
         image = parsed;
       }
       await writeAvatar(org.dir, agentId, image);
-      const spend = await computeSpend(this.deps, org, (await listTickets(this.deps, org)).tickets);
+      const spend = await this.spendOf(org, (await listTickets(this.deps, org)).tickets);
       return (await this.employeeItems(org, spend)).find((i) => i.agentId === agentId)!;
     });
   }
@@ -1255,7 +1282,7 @@ export class OrganizationService {
         org,
         org.chart.employees.map((e) => (e.agentId === agentId ? next : e)),
       );
-      const spend = await computeSpend(this.deps, org, (await listTickets(this.deps, org)).tickets);
+      const spend = await this.spendOf(org, (await listTickets(this.deps, org)).tickets);
       const items = await this.employeeItems(org, spend);
       return items.find((i) => i.agentId === agentId)!;
     });
@@ -1466,7 +1493,7 @@ export class OrganizationService {
   async calendar(projectId: string, orgId: string): Promise<OrgCalendarResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const { tickets } = await listTickets(this.deps, org);
-    const spend = await computeSpend(this.deps, org, tickets);
+    const spend = await this.spendOf(org, tickets);
     return this.calendarItems(org, spend);
   }
 
@@ -1511,7 +1538,7 @@ export class OrganizationService {
     });
     await this.scheduler.reconcile(projectId, orgId);
     const org = await this.requireOrg(projectId, orgId);
-    const spend = await computeSpend(this.deps, org, (await listTickets(this.deps, org)).tickets);
+    const spend = await this.spendOf(org, (await listTickets(this.deps, org)).tickets);
     const list = await this.calendarItems(org, spend);
     const item = list.events.find((e) => e.agentId === agentId && e.name === name);
     if (!item)
@@ -1581,7 +1608,7 @@ export class OrganizationService {
   async tickets(projectId: string, orgId: string): Promise<OrgTicketsResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const { tickets, invalid } = await listTickets(this.deps, org);
-    const spend = await computeSpend(this.deps, org, tickets);
+    const spend = await this.spendOf(org, tickets);
     const columns = Object.fromEntries(
       ORG_TICKET_COLUMNS.map((c) => [c, [] as OrgTicketItem[]]),
     ) as Record<OrgTicketStatus, OrgTicketItem[]>;
@@ -1591,7 +1618,7 @@ export class OrganizationService {
 
   private async ticketDetail(org: LoadedOrg, ticketId: string): Promise<OrgTicketDetail> {
     const { tickets } = await listTickets(this.deps, org);
-    const spend = await computeSpend(this.deps, org, tickets);
+    const spend = await this.spendOf(org, tickets);
     const t = tickets.find((x) => x.ticketId === ticketId);
     if (!t) throw ticketNotFound(ticketId);
     const item = this.ticketItem(t, spend, new Set(tickets.map((x) => x.ticketId)));
@@ -2130,7 +2157,7 @@ export class OrganizationService {
       }
       if (!org.byId.has(agentId))
         throw new HttpError(404, "employee_not_found", `${agentId} is not an employee.`);
-      const spend = await computeSpend(this.deps, org, (await listTickets(this.deps, org)).tickets);
+      const spend = await this.spendOf(org, (await listTickets(this.deps, org)).tickets);
       const r = await openTicketSession(this.deps, org, t, agentId, {
         ...(req.message !== undefined ? { message: req.message } : {}),
         ...(req.workspace !== undefined ? { workspace: req.workspace } : {}),
@@ -2980,7 +3007,7 @@ export class OrganizationService {
   async finance(projectId: string, orgId: string, period?: string): Promise<OrgFinanceResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const { tickets } = await listTickets(this.deps, org);
-    const spend = await computeSpend(this.deps, org, tickets, period);
+    const spend = await this.spendOf(org, tickets, period);
     const marks = new Map(
       this.deps.cache.listBudgetStates(projectId, orgId, spend.period).map((s) => [s.agentId, s]),
     );

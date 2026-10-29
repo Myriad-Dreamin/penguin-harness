@@ -123,6 +123,19 @@ export const TRASH_DIR = ".trash";
 export class OrgStore {
   constructor(readonly root: string) {}
 
+  /**
+   * Parsed ticket files keyed by absolute path, valid while the file's mtime and size are
+   * unchanged. `listTickets` stats every file it lists anyway (the listing carries
+   * `mtimeMs`), so a stat hit skips both the whole-file read and the frontmatter parse —
+   * the two costs that made a listing of hundreds of tickets re-read megabytes on every
+   * call. A write through this store (or by hand) changes mtime or size and simply misses;
+   * a deleted file stops being enumerated and its entry is pruned at the end of the pass.
+   */
+  private ticketCache = new Map<
+    string,
+    { mtimeMs: number; size: number; raw: string; parsed: ParseResult<TicketDoc> }
+  >();
+
   dir(projectId: string, orgId: string): string {
     return orgDir(this.root, projectId, orgId);
   }
@@ -382,17 +395,36 @@ export class OrgStore {
           if (!f.isFile() || !f.name.endsWith(".md")) continue;
           const ticketId = f.name.slice(0, -".md".length);
           const p = path.join(colDir, f.name);
-          const [raw, stat] = await Promise.all([fs.readFile(p, "utf8"), fs.stat(p)]);
-          out.push({
-            relPath: path.relative(dir, p),
-            ticketId,
-            column,
-            raw,
-            parsed: parseTicket(raw),
-            mtimeMs: stat.mtimeMs,
-          });
+          const stat = await fs.stat(p);
+          const cached = this.ticketCache.get(p);
+          const mtimeMs = stat.mtimeMs;
+          let raw: string;
+          let parsed: ParseResult<TicketDoc>;
+          if (cached !== undefined && cached.mtimeMs === mtimeMs && cached.size === stat.size) {
+            // Unchanged since the last listing: reuse the read-and-parsed result.
+            raw = cached.raw;
+            parsed = cached.parsed;
+          } else {
+            raw = await fs.readFile(p, "utf8");
+            parsed = parseTicket(raw);
+            // Re-stat after the read: if the file changed while it was being read, the
+            // cached mtime must not claim this raw/parsed pair — the next listing re-reads.
+            const after = await fs.stat(p).catch(() => null);
+            if (after !== null && after.mtimeMs === mtimeMs && after.size === stat.size) {
+              this.ticketCache.set(p, { mtimeMs, size: stat.size, raw, parsed });
+            } else {
+              this.ticketCache.delete(p);
+            }
+          }
+          out.push({ relPath: path.relative(dir, p), ticketId, column, raw, parsed, mtimeMs });
         }
       }
+    }
+    // Drop entries for files this listing no longer saw (deleted, moved, or under a
+    // directory that vanished) so the cache never outgrows the tree it mirrors.
+    if (this.ticketCache.size > 0) {
+      const seen = new Set(out.map((t) => path.join(dir, t.relPath)));
+      for (const p of this.ticketCache.keys()) if (!seen.has(p)) this.ticketCache.delete(p);
     }
     return out.sort((a, b) => a.ticketId.localeCompare(b.ticketId));
   }
