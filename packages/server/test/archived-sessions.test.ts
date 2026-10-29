@@ -39,6 +39,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { requestBegin, sessionMeta, subagentEvent, userText } from "@prismshadow/penguin-core";
+import { backgroundReconcile } from "../src/services/trace-index.js";
 import type { OmniMessage } from "@prismshadow/penguin-core";
 import type {
   ArchivedSessionGroupsResponse,
@@ -69,10 +70,23 @@ describe("the archive page", () => {
   // needs; each user brings a default Project.
   beforeEach(async () => {
     t = await createTestApp();
+    // Reads serve the trace index as it stands and catch up through one debounced
+    // background pass (the shared reconcile left the request path); these tests assert
+    // exact classifications, so each seed settles explicitly before it asserts.
+    backgroundReconcile.delayMs = 10;
   });
   afterEach(async () => {
+    backgroundReconcile.delayMs = 2500;
     await t.cleanup();
   });
+
+  /** Runs every pending background reconcile now; one read schedules the catch-up first. */
+  const settle = async (projectIds: string[]) => {
+    for (const projectId of projectIds) {
+      t.deps.traceIndex.scheduleReconcile(projectId, AGENT);
+    }
+    await t.deps.traceIndex.flushScheduled();
+  };
 
   /** The owner and its own Project P1; P3 is the admin's, which the owner cannot open. */
   async function world() {
@@ -213,6 +227,7 @@ describe("the archive page", () => {
   it("counts only the archived rows of the Projects the user can open, by Workspace under Project, newest first", async () => {
     const w = await worldWithPeer();
     await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const body = await groups(w.owner);
     expect(body.groups.map((g) => [g.projectId, g.projectName, g.workspace, g.count])).toEqual([
       [w.p2, w.names.peer, "/tmp/arch-ws-c", 1],
@@ -226,6 +241,7 @@ describe("the archive page", () => {
   it("pages a group's rows newest first by cursor, each row exactly once", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const group = `projectId=${w.p1}&workspace=${enc("/tmp/arch-ws-a")}`;
     const first = await rows(w.owner, `${group}&limit=1`);
     expect(first.sessions.map((s) => s.sessionId)).toEqual([ids.cliA]);
@@ -251,6 +267,7 @@ describe("the archive page", () => {
     for (let i = 0; i < 25; i += 1) {
       await seed(w.p1, { source: "cli", workspace: "/tmp/arch-ws-many" });
     }
+    await settle([w.p1, w.p2]);
     const toInfo = vi.spyOn(t.deps.sessionService, "toInfo");
     try {
       const counted = await groups(w.owner, `?projectId=${w.p1}`);
@@ -273,6 +290,7 @@ describe("the archive page", () => {
     const conversation = await seed(w.p1, { workspace: "/tmp/arch-ws-stamp" });
     const run = await seed(w.p1, { source: "cli", workspace: "/tmp/arch-ws-stamp" });
     const onlyRuns = await seed(w.p1, { source: "schedule", workspace: "/tmp/arch-ws-runs" });
+    await settle([w.p1, w.p2]);
     const list = await json<SessionsResponse>(
       w.owner.get(
         `/api/projects/${w.p1}/agents/${AGENT}/sessions?category=active&counts=1&order=activity&limit=11`,
@@ -289,6 +307,7 @@ describe("the archive page", () => {
   it("matches a stored title and a first-prompt title, and filters by source and by Project", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const counted = async (qs: string) =>
       (await groups(w.owner, qs)).groups.map((g) => [g.projectId, g.workspace, g.count]);
     expect(await counted("?q=QUARTERLY")).toEqual([[w.p1, "/tmp/arch-ws-a", 1]]);
@@ -310,6 +329,7 @@ describe("the archive page", () => {
   it("unarchives by id into the sidebar's list, for good; counts only archived rows and reports what the user cannot open", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const done = await batch(w.owner, "unarchive", {
       sessionIds: [ids.cliA, ids.active, ids.hidden, "session-nobody"],
     });
@@ -339,6 +359,7 @@ describe("the archive page", () => {
   it("files a kept Session away again when it is archived, and keeps it when PATCH unarchives it", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     expect((await w.owner.patch(`/api/sessions/${ids.cliB}`, { archived: false })).status).toBe(
       200,
     );
@@ -357,6 +378,7 @@ describe("the archive page", () => {
   it("unarchives every archived row of one Workspace through a filter, and nothing else", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const done = await batch(w.owner, "unarchive", {
       filter: { projectId: w.p1, workspace: "/tmp/arch-ws-b" },
     });
@@ -370,6 +392,7 @@ describe("the archive page", () => {
   it("deletes by id: the files, the row and the subagent children go; what the user cannot open is missing", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const child = await seed(w.p1, { source: "subagent" });
     const parent = await seed(w.p1, { extra: [subagentEvent(child)] });
     expect((await w.owner.patch(`/api/sessions/${parent}`, { archived: true })).status).toBe(200);
@@ -403,6 +426,7 @@ describe("the archive page", () => {
     await t.deps.manager.startTask(running, [userText("long job")]);
     await waitFor(() => t.deps.manager.statusOf(running) === "running");
     const laterByHand = await seed(w.p1, { workspace: ws, at: ago(90) });
+    await settle([w.p1, w.p2]);
 
     const snapshot = await groups(w.owner, `?projectId=${w.p1}`);
     expect(snapshot.groups.find((g) => g.workspace === ws)?.count).toBe(3);
@@ -445,6 +469,7 @@ describe("the archive page", () => {
     const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
     const unticked = await seed(w.p1, { source: "cli", workspace: ws, at: ago(60) });
     const chosen = await seed(w.p1, { source: "cli", workspace: ws, at: ago(50) });
+    await settle([w.p1]);
     const snapshot = await groups(w.owner, `?projectId=${w.p1}`);
     const filter = { projectId: w.p1, workspace: ws, until: snapshot.asOf, exclude: [unticked] };
     expect(await batch(w.owner, "unarchive", { filter })).toEqual({ done: 1, missing: [] });
@@ -480,6 +505,7 @@ describe("the archive page", () => {
     const w = await world();
     const subagent = await seed(w.p1, { source: "subagent" });
     const desk = await seed(w.p1, { source: "company", client: "org" });
+    await settle([w.p1]);
     for (const id of [subagent, desk]) {
       for (const archived of [true, false]) {
         const res = await w.owner.patch(`/api/sessions/${id}`, { archived });
@@ -502,6 +528,7 @@ describe("the archive page", () => {
     const cli = await seed(w.p1, { source: "cli" });
     const child = await seed(w.p1, { source: "subagent" });
     const parent = await seed(w.p1, { extra: [subagentEvent(child)] });
+    await settle([w.p1]);
     await w.owner.patch(`/api/sessions/${parent}`, { archived: true });
     await batch(w.owner, "unarchive", { sessionIds: [cli] });
     await batch(w.owner, "delete", { sessionIds: [parent] });
@@ -531,6 +558,7 @@ describe("the archive page", () => {
   it("refuses a malformed request with a 400, and an unknown Project with a 404, moving nothing", async () => {
     const w = await worldWithPeer();
     const ids = await seedEveryKind(w);
+    await settle([w.p1, w.p2]);
     const status = async (res: Response | Promise<Response>) => (await res).status;
     const group = `projectId=${w.p1}&workspace=${enc("/tmp/arch-ws-a")}`;
     expect(await status(w.owner.get(`/api/me/archived-sessions/groups?q=${"x".repeat(201)}`))).toBe(
