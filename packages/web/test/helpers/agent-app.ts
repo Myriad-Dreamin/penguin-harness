@@ -378,6 +378,14 @@ class SilentEventSource {
   }
 }
 
+/**
+ * The API socket must not come up under jsdom: there is no server behind it, and until its
+ * handshake retries give up, every API call queues behind a wait no test can wait out. With
+ * no WebSocket at all the socket starts unavailable at its first open attempt and every
+ * call rides HTTP, where the page's fetch stub answers.
+ */
+const NO_WEBSOCKET: typeof WebSocket | undefined = undefined;
+
 /** A media query that never matches, and never changes. */
 const unmatchedQuery = (media: string) => ({
   matches: false,
@@ -416,6 +424,7 @@ export async function mountAgentApp(
     { initialEntries: ["/chat", at] },
   );
   vi.stubGlobal("EventSource", SilentEventSource);
+  vi.stubGlobal("WebSocket", NO_WEBSOCKET);
   vi.stubGlobal("matchMedia", unmatchedQuery);
   await mount(
     h(LocaleProvider, null, h(AuthProvider, null, h(RouterProvider, { router }), h(UnsavedPrompt))),

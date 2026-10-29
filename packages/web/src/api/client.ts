@@ -397,7 +397,14 @@ async function callOverHttp(method: string, url: string, body: unknown): Promise
   const etag = response.headers.get("etag");
   if (response.status === 204) return { status: 204, body: null, date, retryAfterSeconds, etag };
   const text = await response.text();
-  if (!text) return { status: response.status, body: null, date, retryAfterSeconds, etag };
+  if (response.status < 200 || response.status >= 300) {
+    // An empty body from a failed request is not the server's error envelope either: the
+    // server's errors always carry one, so something between the page and the server
+    // (a dev server or a reverse proxy) answered in its place (notTheServer).
+    if (!text) throw notTheServer(response);
+  } else if (!text) {
+    return { status: response.status, body: null, date, retryAfterSeconds, etag };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
