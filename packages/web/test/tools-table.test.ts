@@ -58,6 +58,11 @@ const save = async () => buttonSoon(en.common.save);
 type ToolsBody = { config: { toolsBuiltin: typeof STORED_TOOLS } };
 const tableSent = (server: ReturnType<typeof agentServer>, i: number) =>
   (server.writes("/config")[i]!.body as ToolsBody).config.toolsBuiltin;
+/** The i-th config write once it has happened: a save's answer lands a settle after its click. */
+const tableSentSoon = async (server: ReturnType<typeof agentServer>, i: number) => {
+  await waitFor(() => server.writes("/config").length > i);
+  return tableSent(server, i);
+};
 
 describe("the built-in tools table", () => {
   beforeAll(() => setActiveStrings(en));
@@ -82,7 +87,7 @@ describe("the built-in tools table", () => {
     expect(server.writes()).toEqual([]);
     expect(button(`exec_command ${en.agent.toolPermission}`).textContent).toContain("Read-only");
     await click(await save());
-    expect(tableSent(server, 0).find((t) => t.name === "exec_command")?.permission).toBe("r");
+    expect((await tableSentSoon(server, 0)).find((t) => t.name === "exec_command")?.permission).toBe("r");
   });
 
   it("confirms each deletion, preserves another draft and never restores removed tools on Save", async () => {
@@ -94,17 +99,17 @@ describe("the built-in tools table", () => {
     expect(server.writes()).toEqual([]);
     await click(button(en.agent.deleteToolNamed("read_file")));
     await click(await buttonSoon(en.common.delete));
-    expect(tableSent(server, 0).map((t) => t.name)).toEqual(["exec_command"]);
+    expect((await tableSentSoon(server, 0)).map((t) => t.name)).toEqual(["exec_command"]);
     expect(tableSent(server, 0)[0]?.timeoutMs).toBe(60000);
     expect(timeout().value).toBe("90000");
     expect(hasUnsaved()).toBe(true);
     expect(hasButton(en.agent.deleteToolNamed("read_file"))).toBe(false);
     await click(await save());
-    expect(tableSent(server, 1).map((t) => t.name)).toEqual(["exec_command"]);
+    expect((await tableSentSoon(server, 1)).map((t) => t.name)).toEqual(["exec_command"]);
     expect(tableSent(server, 1)[0]?.timeoutMs).toBe(90000);
     await click(button(en.agent.deleteToolNamed("exec_command")));
     await click(await buttonSoon(en.common.delete));
-    expect(tableSent(server, 2)).toEqual([]);
+    expect(await tableSentSoon(server, 2)).toEqual([]);
     expect(hasUnsaved()).toBe(false);
   });
 
