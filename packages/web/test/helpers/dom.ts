@@ -203,12 +203,6 @@ export function hasButtonSoon(name: string): Promise<boolean> {
     .then(() => true)
     .catch(() => false);
 }
-  const found = [...document.querySelectorAll("button")].find(
-    (b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name,
-  );
-  if (found === undefined) throw new Error(`no button named ${JSON.stringify(name)}`);
-  return found;
-}
 
 /** Whether a button with that name is on screen. */
 export function hasButton(name: string): boolean {
