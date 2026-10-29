@@ -334,7 +334,13 @@ export class TraceService implements Traces {
     agentId: string,
     sessionId: string,
   ): Promise<LocatedFile[]> {
-    await this.index.reconcileAgent(projectId, agentId);
+    // Read path: one gate sample synchronously (stats only on a quiet tree — no readdir,
+    // no head-reads), a diff only when the tree moved, so a shard this read names is
+    // indexed this request without re-running the full reconcile per request. The
+    // whole-session miss retry below stays a forced diff: a stale index costs one extra
+    // scan, never a false 404.
+    await this.index.reconcileIfChanged(projectId, agentId);
+    this.index.scheduleReconcile(projectId, agentId);
     let rows = this.store.listFilesBySession(projectId, agentId, sessionId);
     if (rows.length === 0) {
       await this.index.reconcileAgent(projectId, agentId, { force: true });
@@ -351,13 +357,23 @@ export class TraceService implements Traces {
   /** All shard reads funnel through here (deps.observeShardRead is the windowed-read tests' proof of which files were touched). */
   private async readShard(path: string): Promise<OmniMessage[]> {
     this.observeShardRead?.(path);
-    return spanIn(
-      this.telemetry,
-      "trace.read",
-      {},
-      () => readTraceTolerant(path),
-      (m) => ({ attrs: { messages: m.length } }),
-    );
+    try {
+      return await spanIn(
+        this.telemetry,
+        "trace.read",
+        {},
+        () => readTraceTolerant(path),
+        (m) => ({ attrs: { messages: m.length } }),
+      );
+    } catch (err) {
+      // A shard the index still names but the disk has lost (external deletion between
+      // the last reconcile and this read — reads no longer run a gating reconcile first,
+      // so the window is one debounce wide) reads as empty: the row is stale, not the
+      // reader, and the next reconcile pass drops it. Tolerant of a vanished shard the
+      // same way subagentChildren's mid-walk read is; a real read error is rethrown.
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return [];
+      throw err;
+    }
   }
 
   /**
@@ -1666,7 +1682,11 @@ export class TraceService implements Traces {
     paging?: { offset: number; limit: number } | null,
     opts: { category?: SessionCategory } = {},
   ): Promise<AgentTracesResponse> {
-    await this.index.reconcileAgent(projectId, agentId);
+    // Read path: one gate sample (stats only on a quiet tree — see reconcileIfChanged) so
+    // the listing answers with shards written since the last pass; the background pass is
+    // scheduled on top. Paged slices re-stat only the returned files, unchanged below.
+    await this.index.reconcileIfChanged(projectId, agentId);
+    this.index.scheduleReconcile(projectId, agentId);
     const files = this.store.listFilesByAgent(projectId, agentId);
     if (paging) return this.agentTracesPage(projectId, agentId, files, paging, opts);
     const byDate = new Map<string, Map<string, { index: number; sizeBytes: number }[]>>();

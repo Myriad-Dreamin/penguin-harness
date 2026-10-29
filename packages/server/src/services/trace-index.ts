@@ -60,6 +60,14 @@ import { spanIn } from "../telemetry/measure.js";
 
 const TRACE_FILE_RE = /^(.+)_(\d{3})\.jsonl$/;
 
+/**
+ * Delay before a read-scheduled background reconcile runs: longer than mtime-gate's
+ * FRESH_MS, so a pass that follows a burst of writes samples a tree that has been quiet
+ * past the freshness window and can be gated as clean. An object so tests can shorten
+ * the wait without fake timers.
+ */
+export const backgroundReconcile = { delayMs: 2500 };
+
 /** Absolute path of an indexed shard (reconstructed — rows never store paths; the data root may move). */
 export function traceFilePath(root: string, row: TraceFileRow): string {
   const name = `${row.sessionId}_${String(row.fileIndex).padStart(3, "0")}.jsonl`;
@@ -131,6 +139,10 @@ interface SeenDirs {
 export class TraceIndexService implements TraceIndex {
   private readonly seen = new Map<string, SeenDirs>();
   private readonly inflight = new Map<string, Promise<void>>();
+  /** Agents with a scheduled background reconcile pending (see scheduleReconcile). */
+  private readonly scheduled = new Set<string>();
+  /** Background passes started but not settled (flushScheduled awaits them). */
+  private readonly pendingPasses = new Map<string, Promise<void>>();
   /**
    * Test observability (asserting the hot path stays readdir/head-read free):
    * gateStats = gate stat calls, dirScans = date-dir readdir passes, headReads =
@@ -176,6 +188,85 @@ export class TraceIndexService implements TraceIndex {
     });
     this.inflight.set(key, run);
     return run;
+  }
+
+  /**
+   * Schedules one background reconcile for the Agent (read paths' handshake): a read that
+   * serves from the index asks the index to catch up with disk afterwards instead of making
+   * the request wait for it. Debounced — a burst of reads costs one pass, settled after the
+   * writes' FRESH_MS window so the gate's freshness guard gets its quiet sample; single-
+   * flighted with, and through, reconcileAgent's inflight map. Nothing here gives up the
+   * mtime gate: the scheduled pass still stats before it scans, and a quiet tree costs
+   * stats only.
+   */
+  scheduleReconcile(projectId: string, agentId: string): void {
+    const key = `${projectId}\0${agentId}`;
+    if (this.scheduled.has(key)) return;
+    this.scheduled.add(key);
+    const timer = setTimeout(() => {
+      this.scheduled.delete(key);
+      const pass = this.reconcileAgent(projectId, agentId).catch(() => {
+        /* A failed background pass retries on the next read's schedule; a forced pass
+         * (miss-retry) surfaces its error to its caller as before. */
+      });
+      this.pendingPasses.set(key, pass);
+      void pass.finally(() => this.pendingPasses.delete(key));
+    }, backgroundReconcile.delayMs);
+    // A read path schedules; the server must not be kept alive by a pending pass.
+    timer.unref?.();
+  }
+
+  /**
+   * Test seam: runs every pending scheduled pass now (awaiting it — the scheduled call
+   * itself is fire-and-forget). Waits out any due timers first, so a test that schedules
+   * and immediately flushes is deterministic. Production never calls this.
+   */
+  async flushScheduled(): Promise<void> {
+    while (this.scheduled.size > 0) {
+      await new Promise((r) => setTimeout(r, 2));
+    }
+    const passes = [...this.pendingPasses.values()];
+    if (passes.length > 0) await Promise.all(passes);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  /**
+   * The correctness half of the read handshake (see scheduleReconcile): one gate sample
+   * NOW, and a synchronous diff only when the tree actually moved — shard reads and
+   * single-file lookups need the shard they name to be indexed this request, not after
+   * the debounce. Quiet tree: stats only (root + each known date dir), zero readdir;
+   * changed tree: one diff, exactly what the gate was going to cost the next pass anyway.
+   * A whole-session miss on top still takes the caller's forced retry.
+   */
+  async reconcileIfChanged(projectId: string, agentId: string): Promise<void> {
+    const cached = this.seen.get(`${projectId}\0${agentId}`);
+    if (cached === undefined) {
+      // Never looked: the read itself populates (first look per Agent, once per process).
+      return this.reconcileAgent(projectId, agentId);
+    }
+    // A fresh tree cannot be believed (FRESH_MS): pass through to the gate's slow path —
+    // cheap while writes continue, and it settles once the tree goes quiet.
+    for (const m of cached.dates.values()) if (m < 0) return this.reconcileAgent(projectId, agentId);
+    const rootMtime = await statMtime(tracesDir(this.root, projectId, agentId));
+    if (rootMtime === null || rootMtime !== cached.root) {
+      return this.reconcileAgent(projectId, agentId);
+    }
+    this.counters.gateStats += 1;
+    const dates = [...cached.dates.keys()].sort();
+    const newest = dates.at(-1);
+    if (newest !== undefined) {
+      const newestMtime = await statMtime(path.join(this.root, projectId, "agents", agentId, "traces", newest));
+      if (newestMtime === null || newestMtime !== cached.dates.get(newest)) {
+        return this.reconcileAgent(projectId, agentId);
+      }
+      this.counters.gateStats += 1;
+      for (const d of dates.slice(0, -1)) {
+        const m = await statMtime(path.join(this.root, projectId, "agents", agentId, "traces", d));
+        if (m === null || m !== cached.dates.get(d)) return this.reconcileAgent(projectId, agentId);
+        this.counters.gateStats += 1;
+      }
+    }
+    // Unchanged: nothing to do — the read serves the index as it stands.
   }
 
   /** Reconciles every Agent of a Project (the subagent-pointer resolver's miss path). */

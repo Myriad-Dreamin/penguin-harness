@@ -103,6 +103,16 @@ export abstract class TraceIndex {
     agentId: string,
     opts?: { force?: boolean },
   ): Promise<void>;
+  /**
+   * Read paths' handshake: serves from the index now, asks for one debounced background
+   * reconcile instead of blocking the request on one (see TraceIndexService.scheduleReconcile).
+   */
+  abstract scheduleReconcile(projectId: string, agentId: string): void;
+  /**
+   * One gate sample now, synchronously diffing only when the tree moved: the correctness
+   * half of the read handshake for reads that must find a named shard this request.
+   */
+  abstract reconcileIfChanged(projectId: string, agentId: string): Promise<void>;
   abstract reconcileProject(projectId: string, opts?: { force?: boolean }): Promise<void>;
   abstract registerImportedFile(args: {
     projectId: string;
