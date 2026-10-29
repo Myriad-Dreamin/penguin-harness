@@ -3,6 +3,7 @@
 - **Date:** 2026-10-29
 - **Type:** fix
 - **Scope:** `server`
+- **PR:** [#1382](https://github.com/Prism-Shadow/penguin-harness/pull/1382)
 
 [English](2026-10-29-org-endpoint-request-cost.md)
 
