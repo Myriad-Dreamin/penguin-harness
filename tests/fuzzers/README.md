@@ -91,7 +91,8 @@ run the fuzzer on a newer base image or distribution.
 | `cli/src/fetch-shim.ts` | The CLI↔server hop answered from the app in memory instead of a socket. |
 | `server/src/virtual-time.ts` | The jumpable clock: idle detection, timer jumping, the drive loop. |
 | `server/src/epoch.ts` | The bounded state epoch: when the rig is replaced, what a rotation costs, and the latency-against-state probe a rotation must not hide. |
-| `server/src/finding.ts` | The replay kit a leg writes before it rethrows: kind, input, the calls that led there, and a copy of the database they ran against. |
+| `server/src/finding.ts` | The replay kit a leg writes before it rethrows: kind, input, the calls that led there, and a copy of the database and file tree they ran against. |
+| `server/src/replay.ts` | The kit read back: boot from it, rebase the saved paths onto the new root, run the input once, say which face came back. |
 | `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
 | `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
 | `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |
@@ -299,12 +300,49 @@ Under the leg's own `out/` (ignored by git):
 | `summary.md` | The target's own account: requests or commands served, how many calls each input asked for, slow calls by name, status/exit buckets, distinct state signatures, outbound attempts, and the epoch + latency-against-state tables. |
 | `run-end.json` | How the run ended — `finding (soft-timeout\|invariant\|crash)`, `clean stop`, or an RSS stop at the ceiling — with the exit code, the peak RSS and the finding directory. |
 | `crash-*` | Any input that tripped a finding, in the input format above (libFuzzer's own artifact). |
-| `<leg>-finding-*/` | The replay kit for one finding: `kind.txt`, `input.bin`, `kit.json` (the calls that led there and the rig's own reading), and `web.db` with its write-ahead log — a copy of the database the input ran against, which is where the newest rows are. The kit is what survives a rotation: the input plus the state it meant something on. |
+| `<leg>-finding-*/` | The replay kit for one finding: `kind.txt`, `input.bin`, `kit.json` (the calls that led there, the rig's own reading, and the data root it was taken from), `web.db` with its write-ahead log — a copy of the database the input ran against, which is where the newest rows are — and `root/`, the files beside it (Trace shards, workspaces, the project config). The kit is what survives a rotation: the input plus the state it meant something on. |
+| `replay.md` | What a `--replay` run answered: the kit's expectation, the rig it booted, the state it found, and whether the same face came back. |
 
 The process exits `0` when the fuzzer stopped on its own (time or run count), and `77` — the
 fuzzer's own code for a finding — when an input tripped something. `run.mjs` prints the last line
 from `run-end.json`, so the answer sits at the bottom of a long log: a finding names its kind and
 directory, a memory stop says so instead of looking like a crash.
+
+## Replaying a finding
+
+```sh
+node tests/fuzzers/run.mjs cli --replay=cli/out/cli-finding-XXXX
+node tests/fuzzers/run.mjs server --no-build --replay=/path/to/server-finding-XXXX
+```
+
+A replay is one input against one state. The target reads the kit, boots a rig whose data root is
+planted with the kit's database and file tree, **rebases every absolute path in that database onto
+the new root** — a Session's `workspace` names the root it was created under, and that root was a
+temp directory the first rig's teardown removed — and runs the saved input once. Nothing else
+happens: no setup pipeline, no spec sweep, no rotation, because each of them would write over the
+state that is the point of the replay.
+
+The exit code is the answer:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The same kind of finding came back (`soft-timeout`, `invariant` or `crash`). |
+| `2` | The input passed: it does not reproduce against its own kit. |
+| `3` | A different kind came back — the input is still live, but not on the face the kit names. |
+
+`2` is a fact about the finding, not a harness failure, and the report says which of the three
+happened, with the message beside the one the kit recorded.
+
+Two limits, stated because a replay that hid them would be worse than none:
+
+- The kit carries one database, one tree and one input. State the *process* held in memory rather
+  than on disk — a warm index, a loaded workbench runtime, a timer that had not fired — comes back
+  the way a fresh boot leaves it. A finding that needs the warmth of a long-lived process can
+  therefore fail to reproduce here while being real; the coverage a re-run adds is the answer to
+  that, not this tool.
+- A kit written before the data root was recorded (`kit.json` without `state.root`) cannot have
+  its paths rebased. It is replayed on an empty rig, and the report says so: the input runs, but
+  the state does not.
 
 ## What counts as a finding
 

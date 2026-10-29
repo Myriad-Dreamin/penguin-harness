@@ -40,6 +40,8 @@ import { permitLoopback } from "../../server/src/bug-detectors.js";
 import { Epochs, databaseBytes, settleQuiet } from "../../server/src/epoch.js";
 import { writeFindingKit } from "../../server/src/finding.js";
 import { installOutboundGuard } from "../../server/src/guards.js";
+import { readKit, replayAndExit, seedPools, type Kit } from "../../server/src/replay.js";
+import type { DemoSeed } from "../../server/src/assemble.js";
 import { bootHarness } from "../../server/src/harness.js";
 import { modelScriptFor } from "../../server/src/model-script.js";
 import { resetModelPlan, setModelPlan } from "../../server/src/stubs/mmsp/index.js";
@@ -131,8 +133,37 @@ for (const key of [
 setEnv("NO_PROXY", "127.0.0.1,localhost,::1");
 setEnv("TZ", "UTC");
 
+/** `--name value` or `--name=value`, from this process's own argv. */
+function optionValue(name: string): string | undefined {
+  const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
+  if (inline !== undefined) return inline.slice(name.length + 1);
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (value === undefined) throw new Error(`${name} needs a value`);
+  return value;
+}
+
+/**
+ * `--replay <kit>`: run one finding kit's input against the state it was saved with (see
+ * replay.ts). Read before any rig exists, because the *first* rig is the one that has to boot out
+ * of the kit — a replay on a fresh rig would answer about a different state.
+ *
+ * `null` for a fuzzing run, which is every other way this module is started.
+ */
+const replayDir = optionValue("--replay");
+const kit: Kit | null = replayDir === undefined ? null : readKit(replayDir);
+/**
+ * What the first rig is planted with. A kit written before the root was recorded cannot have its
+ * paths rebased, so it replays on an empty rig and says so rather than booting rows that point at
+ * a directory nothing will ever create.
+ */
+const seed: DemoSeed | undefined =
+  kit === null || kit.oldRoot === null ? undefined : { dir: kit.dir, oldRoot: kit.oldRoot };
+
 type Rig = Awaited<ReturnType<typeof bootHarness>>;
-let harness: Rig;
+/** Definite assignment: `bootRig` is its only writer and runs before the first read. */
+let harness!: Rig;
 /** The CLI↔server hop, in memory (see fetch-shim.ts) — one per rig. */
 let shim: ReturnType<typeof installFetchShim> | undefined;
 /** Hops answered by rigs already torn down: the summary reads the run's total. */
@@ -158,7 +189,9 @@ async function bootRig(): Promise<void> {
     servedBefore += shim.served;
     shim.uninstall();
   }
-  harness = await bootHarness({ vtime });
+  // `seed` is the replay's kit and nothing else: a fuzzing run's every rig starts empty, and a
+  // rotation inside a replay never happens (the epoch budget is 0 there).
+  harness = await bootHarness(seed === undefined ? { vtime } : { vtime, seed });
   // The SSRF bug detector would otherwise report the harness's own loopback traffic.
   await permitLoopback(harness.app.listener.port);
   shim = installFetchShim(
@@ -360,8 +393,17 @@ async function probeRig(): Promise<Record<string, number>> {
   }
 }
 
+/**
+ * The calls that led to whatever this leg throws next — the finding kit's own record. Declared
+ * before the epoch controller because a replay runs `fuzz` before anything below it executes.
+ */
+const recent: { spec: string; argv: string[]; ms: number; exit: string }[] = [];
+const RECENT_CALLS = 16;
+
 const epochs = new Epochs({
-  budget: EPOCH_CALLS,
+  // A replay runs one input on one rig: the state it is replaying is the whole point, and a
+  // rotation would replace it halfway through the sequence.
+  budget: kit === null ? EPOCH_CALLS : 0,
   boot: bootRig,
   setup: async () => {
     // The rig boots on real time (the same order the first one always used); from its first
@@ -380,11 +422,24 @@ const epochs = new Epochs({
   settle: () => settleQuiet(quiet),
   probe: probeRig,
 });
-await epochs.start();
 
-/** The calls that led to whatever this leg throws next — the finding kit's own record. */
-const recent: { spec: string; argv: string[]; ms: number; exit: string }[] = [];
-const RECENT_CALLS = 16;
+if (kit !== null) {
+  // The kit is the state, so none of the fuzzing run's own premises may run: the setup pipeline
+  // would write over the saved rows, the spec sweep would run every command before the one being
+  // replayed, and a rotation would replace the rig mid-input. The pools come from the saved
+  // database for the same reason — an input's argv is drawn from them (specs/decode.ts), and an
+  // empty pool would decode a different command line than the kit recorded.
+  seedPools(harness.app.dbPath, pools);
+  await replayAndExit(kit, {
+    run: fuzz,
+    probe: probeRig,
+    root: harness.app.root,
+    ...(harness.app.seed === undefined ? {} : { seed: harness.app.seed }),
+    cleanup: shutdown,
+  });
+}
+
+await epochs.start();
 
 interface SpecSweep {
   inside: number;
@@ -545,6 +600,9 @@ export async function fuzz(data: Buffer): Promise<void> {
         (call) => `${call.spec} \`${call.argv.join(" ")}\` → ${call.exit} (${call.ms}ms)`,
       ),
       state: {
+        // The root every absolute path in the saved database names: a replay rebases them onto
+        // its own root, and without it the rows would point at a directory nothing created.
+        root: harness.app.root,
         epoch: epochs.epoch,
         epochCommands: epochs.spent,
         commands: stats.calls,
@@ -605,6 +663,9 @@ function formatLengths(lengths: Record<number, number>): string {
 }
 
 process.on("exit", () => {
+  // A replay answers with its own report (replay.ts writes `replay.md`); the summary belongs to
+  // the fuzzing run that shares this directory, and a replay must not overwrite it.
+  if (kit !== null) return;
   try {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     const summary = [

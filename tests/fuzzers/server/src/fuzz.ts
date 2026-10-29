@@ -47,6 +47,8 @@ import { bootHarness } from "./harness.js";
 import { decodeApiControls, payloadText, withPayload, type ApiControls } from "./input.js";
 import { invariantViolations, readSnapshot, type DbSnapshot } from "./invariants.js";
 import { modelScriptFor } from "./model-script.js";
+import { readKit, replayAndExit, seedPools, type Kit } from "./replay.js";
+import type { DemoSeed } from "./assemble.js";
 import { plays as modelPlays, resetModelPlan, setModelPlan } from "./stubs/mmsp/index.js";
 import { withSoftTimeout } from "./timeout.js";
 import { Quiescence } from "./virtual-time.js";
@@ -114,6 +116,31 @@ const stats = {
 
 const guard = installOutboundGuard();
 
+/** `--name value` or `--name=value`, from this process's own argv. */
+function optionValue(name: string): string | undefined {
+  const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
+  if (inline !== undefined) return inline.slice(name.length + 1);
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (value === undefined) throw new Error(`${name} needs a value`);
+  return value;
+}
+
+/**
+ * `--replay <kit>`: run one finding kit's input against the state it was saved with (see
+ * replay.ts). Read before any rig exists, because the first rig is the one that has to boot out of
+ * the kit. `null` for a fuzzing run, which is every other way this module is started.
+ */
+const replayDir = optionValue("--replay");
+const kit: Kit | null = replayDir === undefined ? null : readKit(replayDir);
+/**
+ * The kit's state, planted into the first rig. A kit written before the root was recorded cannot
+ * have its paths rebased, so it replays on an empty rig and says so.
+ */
+const seed: DemoSeed | undefined =
+  kit === null || kit.oldRoot === null ? undefined : { dir: kit.dir, oldRoot: kit.oldRoot };
+
 type Rig = Awaited<ReturnType<typeof bootHarness>>;
 /**
  * The rig the loop is driving — replaced by `epoch.ts` whenever its state has grown. Definite
@@ -144,16 +171,23 @@ let quiet = new Quiescence();
  * nothing, so the pools are emptied here.
  */
 async function bootRig(): Promise<void> {
-  harness = await bootHarness();
+  harness = await bootHarness(seed === undefined ? {} : { seed });
   // The SSRF bug detector would otherwise report the harness's own loopback traffic.
   await permitLoopback(harness.app.listener.port);
   cookie = null;
-  adminPassword = harness.app.adminPassword;
+  // A seeded rig's admin row is the one the finding ran against, and a `PUT /api/me/password`
+  // during that run moved the credential: the kit carries it, the boot's own default would log in
+  // with a password the saved database rejects.
+  adminPassword = kit?.adminPassword ?? harness.app.adminPassword;
   for (const key of Object.keys(pools)) delete pools[key as keyof Pools];
+  quiet = new Quiescence();
+  // Below this line a rig gets its premises written into it. A replay must not: the kit IS the
+  // state, and `INSERT OR REPLACE` of the resume rows, a re-created fixture or a rewritten model
+  // config would overwrite exactly the rows the input has to meet again.
+  if (kit !== null) return;
   seedResumeSessions();
   await ensureFixture();
   await ensureModelConfig();
-  quiet = new Quiescence();
 }
 await bootRig();
 
@@ -365,8 +399,17 @@ async function probeRig(): Promise<Record<string, number>> {
   return { sessions: snapshot.sessions, dbBytes: databaseBytes(harness.app.dbPath) };
 }
 
+/**
+ * The calls that led to whatever this leg throws next — the finding kit's own record. Declared
+ * before the epoch controller because a replay runs `fuzz` before anything below it executes.
+ */
+const recent: { spec: string; request: string; status: number; ms: number }[] = [];
+const RECENT_CALLS = 16;
+
 const epochs = new Epochs({
-  budget: EPOCH_CALLS,
+  // A replay runs one input on one rig: the saved state is what is being replayed, and a rotation
+  // would replace it halfway through the sequence.
+  budget: kit === null ? EPOCH_CALLS : 0,
   boot: bootRig,
   setup: bootDrive,
   teardown: async () => {
@@ -375,6 +418,21 @@ const epochs = new Epochs({
   settle: () => settleQuiet(quiet),
   probe: probeRig,
 });
+
+if (kit !== null) {
+  // No boot drive, no spec sweep: both would run a few hundred calls over the saved state before
+  // the one being replayed. The pools come from the saved database, so an input that names a row
+  // decodes to the same request the kit recorded.
+  seedPools(harness.app.dbPath, pools);
+  await replayAndExit(kit, {
+    run: fuzz,
+    probe: probeRig,
+    root: harness.app.root,
+    ...(harness.app.seed === undefined ? {} : { seed: harness.app.seed }),
+    cleanup: shutdown,
+  });
+}
+
 await epochs.start();
 
 interface SweepResult {
@@ -458,10 +516,6 @@ const sweep = await sweepSpecs();
 /** Everything the fuzzing loop is measured against — taken after the sweep, so the sweep's own
  * rows are the premise rather than a violation the loop would report on its first call. */
 baseline = readSnapshot(harness.app.dbPath);
-/** The calls that led to whatever this leg throws next — the finding kit's own record. */
-const recent: { spec: string; request: string; status: number; ms: number }[] = [];
-const RECENT_CALLS = 16;
-
 /** Keep the slow calls visible: a count for the summary, the five slowest by name. */
 function recordSlowCall(specId: string, ms: number): void {
   if (ms < SLOW_CALL_MS) return;
@@ -671,6 +725,12 @@ export async function fuzz(data: Buffer): Promise<void> {
         (call) => `${call.spec} \`${call.request}\` → ${call.status} (${call.ms}ms)`,
       ),
       state: {
+        // The root every absolute path in the saved database names: a replay rebases them onto
+        // its own root, and without it the rows would point at a directory nothing created.
+        root: harness.app.root,
+        // The credential the driver logs in with at this moment: a `PUT /api/me/password` that
+        // succeeded earlier in the run moved it, and the saved database only accepts the new one.
+        adminPassword,
         epoch: epochs.epoch,
         epochCommands: epochs.spent,
         calls: stats.calls,
@@ -714,6 +774,9 @@ function formatLengths(lengths: Record<number, number>): string {
 }
 
 process.on("exit", () => {
+  // A replay answers with its own report (replay.ts writes `replay.md`); the summary belongs to
+  // the fuzzing run that shares this directory, and a replay must not overwrite it.
+  if (kit !== null) return;
   try {
     fs.mkdirSync(OUT_DIR, { recursive: true });
     const summary = [

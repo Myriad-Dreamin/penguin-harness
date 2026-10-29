@@ -12,8 +12,12 @@
  *               message, so a reader does not have to guess from a stack
  *   input.bin   the input bytes, beside libFuzzer's own copy (the two cannot drift apart)
  *   kit.json    the calls that led here, in order, and the rig's own reading: epoch, counters,
- *               clock, pending timers
- *   web.db      a copy of the live SQLite file — the state the input was run against
+ *               clock, pending timers, and the data root the state was taken from
+ *   web.db      a copy of the live SQLite file, with its write-ahead log — the state the input
+ *               was run against, and the authority a replay boots from
+ *   root/       the files beside that database: Trace shards, Session workspaces, the project
+ *               config a Session's rebuild reads. Rows that name a workspace nothing wrote are
+ *               half a state, so the tree travels too (never `web.db*`: that has its own copy)
  *
  * Writing the kit must never be the reason a finding is lost: every step is best effort, and a
  * failure leaves a directory with whatever made it.
@@ -82,16 +86,45 @@ export function writeFindingKit(outDir: string, kit: FindingKit): string {
       "utf8",
     ),
   );
-  if (kit.dbPath !== undefined) {
+  const dbPath = kit.dbPath;
+  if (dbPath !== undefined) {
     // The write-ahead log is where the newest rows are: copying the main file alone would hand
     // the next person a database that stops before the finding.
     for (const suffix of ["", "-wal", "-shm"] as const) {
-      const from = `${kit.dbPath}${suffix}`;
+      const from = `${dbPath}${suffix}`;
       if (!fs.existsSync(from)) continue;
       attempt(`web.db${suffix}`, () =>
         fs.copyFileSync(from, path.join(dir, `web.db${suffix}`)),
       );
     }
+    // The files the rows point at (Trace shards, workspaces, the project config). Copied entry by
+    // entry: a socket or a lock file the platform keeps open must not cost the rest of the tree.
+    attempt("root/", () => copyTree(path.dirname(dbPath), path.join(dir, "root")));
   }
   return dir;
+}
+
+/**
+ * Copy a rig's data root into the kit, minus the database (which has its own copy beside it).
+ *
+ * A root holds no `node_modules` and no build output — it is the platform's own data layout, so
+ * the copy is the rig's Trace and workspace files and nothing else. Each top-level entry is its
+ * own attempt: an unreadable one is one line in a log, not a kit without state.
+ */
+function copyTree(root: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (/^web\.db(-wal|-shm)?$/.test(entry.name)) continue;
+    try {
+      fs.cpSync(path.join(root, entry.name), path.join(dest, entry.name), {
+        recursive: true,
+        force: true,
+        dereference: false,
+      });
+    } catch (err) {
+      console.error(
+        `[finding] could not copy ${entry.name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 }

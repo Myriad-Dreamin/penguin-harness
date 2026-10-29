@@ -18,7 +18,7 @@
  * (cli/src/fetch-shim.ts), and the listener stays the way in for anything that reaches for a
  * socket instead of the global fetch.
  */
-import { assembleDemo, type DemoApp } from "./assemble.js";
+import { assembleDemo, type DemoApp, type DemoSeed } from "./assemble.js";
 import { FuzzerClock } from "./fuzzer-clock.js";
 import type { VirtualTime } from "./virtual-time.js";
 
@@ -33,6 +33,12 @@ export interface HarnessOptions {
    * a jump the leg makes is 2026-10-26 plus the same jump on the server side.
    */
   vtime?: VirtualTime;
+  /**
+   * A finding kit to boot out of instead of an empty root: `--replay` passes the kit it read, and
+   * every other boot leaves this out. The rig is otherwise the same one — the difference is the
+   * state it starts with, which is the whole point of a replay.
+   */
+  seed?: DemoSeed;
 }
 
 /** Boot a disposable server the two fuzzers share the shape of; `app.cleanup()` when done. */
@@ -42,6 +48,6 @@ export async function bootHarness(options: HarnessOptions = {}): Promise<Harness
     "2026-10-26T00:00:00Z",
     vtime === undefined ? undefined : () => vtime.now(),
   );
-  const app = await assembleDemo(clock);
+  const app = await assembleDemo(clock, options.seed);
   return { app, clock };
 }

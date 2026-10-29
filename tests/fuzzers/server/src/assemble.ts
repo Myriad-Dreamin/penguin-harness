@@ -30,8 +30,28 @@ import type { ServerBoot } from "../../../../packages/server/src/app.js";
 import type { Hono } from "hono";
 import type { AppEnv } from "../../../../packages/server/src/auth/middleware.js";
 import { FuzzerClock } from "./fuzzer-clock.js";
+import { rebaseDatabase } from "./replay.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A finding kit's state, planted into the rig this assembly is about to boot: the database is the
+ * authority, the file tree beside it is the Trace and workspace files it refers to.
+ */
+export interface DemoSeed {
+  /** The kit directory: `web.db` (+ `-wal`) and, from kits that carry it, `root/`. */
+  dir: string;
+  /** The data root the kit was taken from — every absolute path in the database names it. */
+  oldRoot: string;
+}
+
+/** What a seeded boot actually planted — the reading a replay report states as evidence. */
+export interface SeedReading {
+  /** Whether the kit carried a file tree and it was copied in. */
+  tree: boolean;
+  /** The database was copied; `columns`/`rows` say how much of it named the old root. */
+  rebased: { columns: number; rows: number };
+}
 
 export interface DemoApp {
   boot: ServerBoot;
@@ -44,6 +64,8 @@ export interface DemoApp {
   lines: string[];
   /** The in-process loopback listener serving the same app the API section drives directly. */
   listener: { port: number; close(): Promise<void> };
+  /** Present only when the rig booted out of a finding kit; a fuzzing run's rig has no seed. */
+  seed?: SeedReading;
   cleanup(): Promise<void>;
 }
 
@@ -76,13 +98,14 @@ export function demoConfig(root: string, dbPath: string): ServerConfig {
   };
 }
 
-export async function assembleDemo(clock: FuzzerClock): Promise<DemoApp> {
+export async function assembleDemo(clock: FuzzerClock, seed?: DemoSeed): Promise<DemoApp> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-fuzzer-demo-"));
   // Same shape as the probe that proved this boot: PENGUIN_HOME points at the temp root
   // before the platform boots, so every path that resolves through it lands inside the
   // demo's own disposable root.
   process.env.PENGUIN_HOME = root;
   const dbPath = path.join(root, "web.db");
+  const seedReading = seed === undefined ? undefined : await plantSeed(root, dbPath, seed);
   const config = demoConfig(root, dbPath);
   const lines: string[] = [];
   const log = (line: string): void => {
@@ -143,6 +166,7 @@ export async function assembleDemo(clock: FuzzerClock): Promise<DemoApp> {
     adminPassword: "penguin-0000",
     lines,
     listener,
+    ...(seedReading === undefined ? {} : { seed: seedReading }),
     async cleanup() {
       await listener.close().catch(() => {});
       boot.hmr.dispose();
@@ -150,4 +174,42 @@ export async function assembleDemo(clock: FuzzerClock): Promise<DemoApp> {
       await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     },
   };
+}
+
+/**
+ * Plant a finding kit into a rig's data root before the platform boots: its file tree, then its
+ * database, then every path the database holds rebased onto this root.
+ *
+ * The rebase is what makes the state usable at all. A Session's `workspace` names the root it was
+ * created under, and that root was a temp directory that the rig's own teardown removed: without
+ * the rewrite the first tool call either writes into a directory nothing will clean up or fails
+ * on one that is gone, and a finding that depends on what the call did becomes unreproducible for
+ * a reason that has nothing to do with the product.
+ *
+ * `-shm` is deliberately not copied: it is the shared-memory index of the connection that wrote
+ * the log, and SQLite rebuilds it from the `-wal` it finds. Copying a stale one only invites the
+ * rebuild to trust it.
+ */
+async function plantSeed(root: string, dbPath: string, seed: DemoSeed): Promise<SeedReading> {
+  const exists = async (file: string): Promise<boolean> => {
+    try {
+      await fs.stat(file);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const tree = path.join(seed.dir, "root");
+  const planted = await exists(tree);
+  if (planted) await fs.cp(tree, root, { recursive: true, force: true });
+  const from = path.join(seed.dir, "web.db");
+  if (!(await exists(from))) {
+    throw new Error(
+      `the kit at ${seed.dir} carries no web.db — its state cannot be replayed ` +
+        `(an input-only kit is run with --replay after removing nothing: see replay.ts)`,
+    );
+  }
+  await fs.copyFile(from, dbPath);
+  if (await exists(`${from}-wal`)) await fs.copyFile(`${from}-wal`, `${dbPath}-wal`);
+  return { tree: planted, rebased: rebaseDatabase(dbPath, seed.oldRoot, root) };
 }

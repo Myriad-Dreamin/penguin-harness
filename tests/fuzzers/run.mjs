@@ -5,6 +5,12 @@
  *   node tests/fuzzers/run.mjs server            # API surface, 180 s by default
  *   node tests/fuzzers/run.mjs cli --max-total-time=60
  *   node tests/fuzzers/run.mjs server --self-check   # no Jazzer.js: replay the corpus once
+ *   node tests/fuzzers/run.mjs cli --replay=<kit>    # one finding, against its own state
+ *
+ * `--replay` hands one finding kit (see replay.ts) back to the leg it came from: the input is run
+ * once against the saved database and file tree, and the exit code says what came back — 0 the
+ * same kind of finding, 2 no finding, 3 a different kind. It skips seeding and Jazzer.js; the
+ * report is printed and filed as `<leg>/out/replay.md`.
  *
  * The run is coverage-guided end to end: libFuzzer owns the mutation, the scheduling and the
  * decision when to stop (`-max_total_time`), and every module under `build/` is instrumented.
@@ -30,13 +36,21 @@ if (leg !== "server" && leg !== "cli") {
   process.exit(2);
 }
 
-const options = { build: true, selfCheck: false, mode: "fuzzing", maxTotalTime: 180, runs: null };
+const options = {
+  build: true,
+  selfCheck: false,
+  mode: "fuzzing",
+  maxTotalTime: 180,
+  runs: null,
+  replay: undefined,
+};
 for (const arg of process.argv.slice(3)) {
   if (arg === "--no-build") options.build = false;
   else if (arg === "--self-check") options.selfCheck = true;
   else if (arg === "--mode=regression") options.mode = "regression";
   else if (arg.startsWith("--max-total-time=")) options.maxTotalTime = Number(arg.split("=")[1]);
   else if (arg.startsWith("--runs=")) options.runs = arg.slice("--runs=".length);
+  else if (arg.startsWith("--replay=")) options.replay = arg.slice("--replay=".length);
   else {
     console.error(`[fuzz] unknown option ${arg}`);
     process.exit(2);
@@ -72,6 +86,19 @@ function step(command, args, what, childEnv = env) {
 // The build runs without the resolve hook: it reads the tsconfig itself, and the hook would
 // only report the paths.json this very step is about to write.
 if (options.build) step(process.execPath, [path.join(here, "build.mjs")], "build", process.env);
+
+// A replay is one input against one kit: no corpus to seed and no Jazzer.js to start. Its exit
+// code is the answer (0 reproduced, 2 not, 3 a different face), so it is passed through instead
+// of going through `step`, which would read 2 as a failure.
+if (options.replay !== undefined) {
+  const replay = spawnSync(process.execPath, [target, "--replay", options.replay], {
+    stdio: "inherit",
+    cwd: here,
+    env,
+  });
+  process.exit(replay.status ?? 1);
+}
+
 step(process.execPath, [seed, corpusDir], "seed corpus");
 
 if (options.selfCheck) {
