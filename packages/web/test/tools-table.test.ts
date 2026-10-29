@@ -65,7 +65,12 @@ describe("the built-in tools table", () => {
 
   it("presents semantic permissions and saves their wire values with the table", async () => {
     const { server } = await openTools();
-    await click(button(`exec_command ${en.agent.toolPermission}`));
+    await click(await buttonSoon(`exec_command ${en.agent.toolPermission}`));
+    await waitFor(() =>
+      [...document.querySelectorAll<HTMLElement>('[role="option"]')].some((el) =>
+        el.textContent?.includes(en.agent.permissionReadLabel),
+      ),
+    );
     const pick = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((el) =>
       el.textContent?.includes(en.agent.permissionReadLabel),
     )!;
