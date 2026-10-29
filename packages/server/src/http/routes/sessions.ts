@@ -840,8 +840,11 @@ export function sessionsRoutes(deps: SessionsRouteDeps): Hono<AppEnv> {
     const info = await deps.sessionService.toInfo(row, hasTrace);
     // Single-session GET only: the latest Trace file's absolute path (a directory walk per
     // call — too costly for list rows). The web's /model switch hands it to the new session's
-    // [model_switch_from] block so the model can read the source history itself.
-    const tracePath = hasTrace ? await deps.sessionService.latestTracePath(row) : undefined;
+    // [model_switch_from] block so the model can read the source history itself. Asked
+    // regardless of the hasTrace snapshot: reads serve the index as it stands and catch up
+    // in the background, so a trace written between passes is found here (locate's gate
+    // sample and miss-retry) and only a genuinely traceless session gets no path.
+    const tracePath = await deps.sessionService.latestTracePath(row);
     return c.json({
       session: { ...info, ...(tracePath !== undefined ? { tracePath } : {}) },
     } satisfies SessionResponse);

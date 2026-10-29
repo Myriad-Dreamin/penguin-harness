@@ -120,7 +120,7 @@ describe("telemetry probes", () => {
     for (const content of [INPUT, ANSWER]) expect(dump).not.toContain(content);
   });
 
-  it("records the session list's segments, and one reconcile per pass however many callers joined it", async () => {
+  it("records the session list's segments; reads schedule instead of await the reconcile, and one pass serves however many callers joined it", async () => {
     await turn(true);
     // The row was inserted behind the registry's back, so the list runs a hydration pass.
     expect((await admin.get(`/api/projects/${P}/agents/${A}/sessions`)).status).toBe(200);
@@ -129,9 +129,11 @@ describe("telemetry probes", () => {
       (s) => s.probe === "http.request" && String(s.attrs?.route).endsWith("/sessions"),
     );
     const inside = all.filter((s) => s.keys.request === list?.keys.request).map((s) => s.probe);
-    expect(inside).toEqual(
-      expect.arrayContaining(["sessions.list.sql", "sessions.list.reconcile", "trace.reconcile"]),
-    );
+    // The list no longer AWAITS the reconcile (it schedules one background pass and
+    // serves from the index — the shared scan left the request path), so its segments
+    // are the SQL walk and the hydration classification only.
+    expect(inside).toEqual(expect.arrayContaining(["sessions.list.sql", "sessions.list.reconcile"]));
+    expect(inside).not.toContain("trace.reconcile");
     await admin.delete("/api/telemetry");
     await Promise.all([
       t.deps.traceIndex.reconcileAgent(P, A),

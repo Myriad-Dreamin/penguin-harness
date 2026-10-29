@@ -91,6 +91,23 @@ describe("session source", () => {
   const ids = (body: SessionsResponse) => body.sessions.map((s) => s.sessionId);
   const sourceIn = (body: SessionsResponse, sessionId: string) =>
     body.sessions.find((s) => s.sessionId === sessionId)?.source;
+  /**
+   * Reads serve the trace index as it stands and catch up with disk through one debounced
+   * background pass (the shared reconcile left the request path), so a trace written just
+   * now classifies on the list one pass later. This waits out that pass — bounded, and the
+   * settled answers are what every later request serves.
+   */
+  const settled = async (...sessionIds: string[]): Promise<SessionsResponse> => {
+    const start = Date.now();
+    for (;;) {
+      const all = await list("");
+      const unknown = sessionIds.filter(
+        (id) => all.sessions.find((s) => s.sessionId === id)?.source === undefined,
+      );
+      if (unknown.length === 0 || Date.now() - start > 10_000) return all;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
 
   /**
    * A Session created by an earlier process: its index row, and a Trace whose head carries
@@ -166,6 +183,19 @@ describe("session source", () => {
 
   it("files user rows under active, programs' and archived rows under archived, and subagent and company rows under neither", async () => {
     const rows = await seedEverySource();
+    await settled(
+      rows.user,
+      rows.legacyUser,
+      rows.api,
+      rows.schedule,
+      rows.cli,
+      rows.legacyBenchmark,
+      rows.archivedUser,
+      rows.archivedSchedule,
+      rows.company,
+      rows.archivedCompany,
+      rows.companyOnly,
+    );
     expect(new Set(ids(await list("?category=active")))).toEqual(
       new Set([rows.user, rows.legacyUser]),
     );
@@ -198,7 +228,21 @@ describe("session source", () => {
   });
 
   it("counts=1 totals active and archived over the whole list, broken down by Workspace, counting no subagent or company row", async () => {
-    await seedEverySource();
+    const rows = await seedEverySource();
+    await settled(
+      rows.user,
+      rows.legacyUser,
+      rows.api,
+      rows.schedule,
+      rows.subagent,
+      rows.cli,
+      rows.legacyBenchmark,
+      rows.archivedUser,
+      rows.archivedSchedule,
+      rows.company,
+      rows.archivedCompany,
+      rows.companyOnly,
+    );
     const counted = await list("?category=active&counts=1&limit=1");
     expect(counted.sessions).toHaveLength(1);
     expect(counted.counts).toEqual({ active: 2, archived: 6 });
@@ -226,6 +270,7 @@ describe("session source", () => {
       if (n % 3 === 0) await seed(n, "user");
       else archived.push(await seed(n, n % 2 === 0 ? "schedule" : "cli"));
     }
+    await settled(...archived);
     const served: string[] = [];
     let below: { lastActiveAt: string; sessionId: string } | undefined;
     for (;;) {
@@ -263,7 +308,7 @@ describe("session source", () => {
   it("reads an old Trace head after a restart: no source lists as active user, benchmark as archived cli", async () => {
     const legacyUser = await seed(1, undefined);
     const legacyBenchmark = await seed(2, "benchmark");
-    const all = await list("");
+    const all = await settled(legacyUser, legacyBenchmark);
     expect(sourceIn(all, legacyUser)).toBe("user");
     expect(sourceIn(all, legacyBenchmark)).toBe("cli");
     expect(ids(await list("?category=active"))).toEqual([legacyUser]);

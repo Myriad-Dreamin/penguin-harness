@@ -756,10 +756,13 @@ export class SessionService {
       byDate.set(date, set);
     };
 
-    // Trace activity from the index (one mtime-gated reconcile, then a pure DB read —
-    // this used to walk the Agent's ENTIRE trace history on every agents-list request):
-    // the date is the shard's date directory (local yyyy-mm-dd, core's writing convention).
-    await this.deps.traceIndex.reconcileAgent(projectId, agentId);
+    // Trace activity from the index — WITHOUT a gate-blocking reconcile on the request path
+    // (this used to walk the Agent's ENTIRE trace history on every agents-list request, and
+    // under continuous writes every read re-ran the slow diff): serve what the index holds,
+    // and let one debounced background pass bring it in step with disk. The list endpoint
+    // is a read, not a writer: a just-created session lands in the counts a pass later,
+    // like every other cached read on this service.
+    this.deps.traceIndex.scheduleReconcile(projectId, agentId);
     for (const f of this.deps.traceStore.listFilesByAgent(projectId, agentId)) {
       mark(f.date, f.sessionId);
     }
@@ -942,7 +945,12 @@ export class SessionService {
    * source history itself when it needs it.
    */
   async latestTracePath(row: SessionRow): Promise<string | undefined> {
-    await this.deps.traceIndex.reconcileAgent(row.projectId, row.agentId);
+    // Read path: serve from the index, one background pass keeps it in step. The gate
+    // sample here stays synchronous (stats only on a quiet tree) so a resume shard this
+    // read names is indexed this request; the miss retry below stays a forced diff —
+    // a missing resume shard costs one extra scan, never a false absence.
+    await this.deps.traceIndex.reconcileIfChanged(row.projectId, row.agentId);
+    this.deps.traceIndex.scheduleReconcile(row.projectId, row.agentId);
     let files = this.deps.traceStore.listFilesBySession(row.projectId, row.agentId, row.sessionId);
     if (files.length === 0) {
       // Index miss with disk possibly ahead: one forced diff, then retry (the consumers'
@@ -959,9 +967,22 @@ export class SessionService {
    * whose head carries the original session_meta). Discovery (which Sessions have
    * records) and the meta-read location come out of a single pass, so classifying every
    * row (`counts=1`) costs one directory walk total instead of one per Session.
+   * `force` runs the reconcile synchronously and un-gated: the boot-time adoption sweep
+   * must see the whole tree on its one walk (an empty first look would skip every
+   * unmanaged Session); read paths use the default, which schedules the catch-up.
    */
-  private async discoverTraces(projectId: string, agentId: string): Promise<Set<string>> {
-    await this.deps.traceIndex.reconcileAgent(projectId, agentId);
+  private async discoverTraces(
+    projectId: string,
+    agentId: string,
+    opts: { force?: boolean } = {},
+  ): Promise<Set<string>> {
+    if (opts.force === true) {
+      await this.deps.traceIndex.reconcileAgent(projectId, agentId, { force: true });
+    } else {
+      // Read path: the index answers as it stands, one background pass catches up (the
+      // hydration pass in walkRows still backfills the has_trace cache from this set).
+      this.deps.traceIndex.scheduleReconcile(projectId, agentId);
+    }
     const out = new Set<string>();
     for (const f of this.deps.traceStore.listFilesByAgent(projectId, agentId)) {
       out.add(f.sessionId);
@@ -988,7 +1009,7 @@ export class SessionService {
         const known = new Set(
           this.deps.sessions.listByAgent(projectId, agentId).map((r) => r.sessionId),
         );
-        for (const sessionId of await this.discoverTraces(projectId, agentId)) {
+        for (const sessionId of await this.discoverTraces(projectId, agentId, { force: true })) {
           if (known.has(sessionId)) continue;
           if (this.adoptTraceSession(projectId, agentId, sessionId) !== null) adopted += 1;
         }

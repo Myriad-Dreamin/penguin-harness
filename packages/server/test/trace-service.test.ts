@@ -45,6 +45,7 @@ import { SessionSources } from "../src/runtime/session-sources.js";
 import { UsageService } from "../src/services/usage-service.js";
 import type { PricingLookup } from "../src/services/usage-service.js";
 import { makeTempRoot, makeTraceHarness, writeTraceFile } from "./helpers.js";
+import { backgroundReconcile } from "../src/services/trace-index.js";
 
 const P = "project-t";
 const A = "agent-t";
@@ -107,8 +108,12 @@ describe("trace-service", () => {
     root = await makeTempRoot();
     harness = makeTraceHarness(root);
     service = harness.service;
+    // Traces listing reads serve the index and schedule the background catch-up; these
+    // tests assert exact listings, so each converges explicitly (see flush-schedule).
+    backgroundReconcile.delayMs = 5;
   });
   afterEach(async () => {
+    backgroundReconcile.delayMs = 2500;
     harness.close();
     await fs.rm(root, { recursive: true, force: true });
   });
