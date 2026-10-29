@@ -157,7 +157,7 @@ exec /bin/sh
   });
 
   it("with a sink set, every command is a sample — exit code, a timeout as such, never its text", async () => {
-    const conn = connectionTo({ alias: "nas", user: "deploy" });
+    const conn = connectionTo(target("nas"));
     const samples: MachineSample[] = [];
     setTimingsSink((sample) => samples.push(sample));
     try {
