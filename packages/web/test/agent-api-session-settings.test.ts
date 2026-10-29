@@ -66,8 +66,13 @@ async function open(
   await waitFor(() => {
     const model = document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]');
     const level = document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]');
-    return model !== null && (model as HTMLButtonElement).disabled === false &&
-      level !== null && (level as HTMLButtonElement).disabled === false;
+    if (isOwner) {
+      return model !== null && (model as HTMLButtonElement).disabled === false &&
+        level !== null && (level as HTMLButtonElement).disabled === false;
+    }
+    // A member's tab is disabled by design; it is live once the pickers stopped loading
+    // (a loading picker is disabled too, but shows the "…" of a tier still being resolved).
+    return model !== null && level !== null && level.textContent !== "…";
   });
   const level = await buttonSoon(en.chat.thinkingLevel);
   await waitFor(() => level.textContent !== "…");
