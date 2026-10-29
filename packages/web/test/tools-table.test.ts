@@ -42,8 +42,12 @@ async function openTools() {
   const router = await mountAgentApp(h(AgentSettingsPage), {
     at: `/agents/${AGENT_ID}?tab=tools`,
   });
+  // Every row is live once its switch AND its timeout field are drawn: the rows mount across
+  // several effect edges, and a table half-drawn answers clicks on tools that are not there.
   await waitFor(
-    () => document.querySelectorAll('button[role="switch"]').length === STORED_TOOLS.length,
+    () =>
+      document.querySelectorAll('button[role="switch"]').length === STORED_TOOLS.length &&
+      document.querySelector(`input[aria-label="${en.agent.toolTimeout}"]`) !== null,
   );
   return { server, router };
 }
