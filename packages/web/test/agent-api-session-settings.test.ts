@@ -93,7 +93,8 @@ describe("API Session settings", () => {
 
   it("uses the shared pickers, persists each choice alone, and clears back to defaults", async () => {
     const { server, router } = await open();
-    await click(button(en.chat.chooseModel));
+    await click(await buttonSoon(en.chat.chooseModel));
+    await waitFor(() => option("API test model") !== null);
     await click(option("API test model").querySelector("button")!);
     await click(await thinking());
     await click(await buttonSoon("high"));
