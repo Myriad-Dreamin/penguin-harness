@@ -419,7 +419,14 @@ export function machinesRoutes(deps: MachinesRouteDeps): Hono<AppEnv> {
    * the page says each in a sentence of its own.
    */
   const refuseOnInstalled = (
-    why: "busy" | "unknown-machine" | "not-installed" | "self" | "unsupported" | "not-connected",
+    why:
+      | "busy"
+      | "unknown-machine"
+      | "not-installed"
+      | "self"
+      | "unsupported"
+      | "not-connected"
+      | "kind-unavailable",
   ): HttpError => {
     if (why === "busy") return new HttpError(409, "job_running", "A job is already running there.");
     if (why === "unknown-machine") {
@@ -435,6 +442,13 @@ export function machinesRoutes(deps: MachinesRouteDeps): Hono<AppEnv> {
         409,
         "connect_unsupported",
         "A Windows machine's server is not started or stopped from here, and its program is not removed from here.",
+      );
+    }
+    if (why === "kind-unavailable") {
+      return new HttpError(
+        409,
+        "machine_kind_unavailable",
+        "That machine's kind is not loaded here: enable its plugin, or check why it failed to load.",
       );
     }
     return new HttpError(409, "not_installed", "Nothing is installed on that machine.");

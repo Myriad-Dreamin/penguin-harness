@@ -71,7 +71,9 @@ describe("machine event relay", () => {
     const relay = new MachineEventRelay({
       dial: async () => {
         const at = port();
-        return at === null ? null : { agent: new http.Agent(), port: at, cookie };
+        return at === null
+          ? null
+          : { agent: new http.Agent(), port: at, cookie, session: process.pid };
       },
       publish: (machineId, event) => published.push({ machineId, event }),
       lost: (address) => hooks.lost?.(address),

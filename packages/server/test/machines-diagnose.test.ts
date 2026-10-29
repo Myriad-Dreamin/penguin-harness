@@ -2,9 +2,10 @@
  * The connection check (machines/diagnose.ts, `MachinesService.diagnose`): what would stop an
  * install or a connect on a machine, asked over ssh with nothing written there.
  *
- * The machine is faked at the transport's edge — `runOn`, the one command channel — answering
- * the probe and the check command the way a machine's shell does. One case runs the real check
- * command in a local `sh`, because its shell text is what every machine runs.
+ * The machine is one a test kind discovers, and what reaches it is faked at the transport's
+ * edge — `runOn`, the one command channel — answering the probe and the check command the way a
+ * machine's shell does. One case runs the real check command in a local `sh`, because its shell
+ * text is what every machine runs.
  *
  * Scenarios:
  * - Given a Linux machine that has everything, every check passes and names who signed in.
@@ -36,7 +37,8 @@ import type { MachineCheck } from "../src/api/types.js";
 import { openDatabase } from "../src/db/database.js";
 import { MachinesRepo } from "../src/db/repos/machines.js";
 import { MachinesService } from "../src/machines/service.js";
-import type { MachinesEffects } from "../src/machines/service.js";
+import type { MachineKindEntry, MachinesEffects } from "../src/machines/service.js";
+import type { Machine } from "../src/mechanisms/machines.js";
 import { remoteLayoutFor } from "../src/machines/layout.js";
 import {
   INSTALL_NEEDS_MB,
@@ -80,6 +82,35 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
+/** A machine of the test kind: nothing in it is reached — `runOn` is where the reaching-out is faked. */
+const inertMachine: Machine = {
+  launch: async () => {
+    throw new Error("the test kind launches nothing");
+  },
+  up: async () => {},
+  ready: async () => ({ ok: true }),
+  dial: async () => {
+    throw new Error("the test kind dials nothing");
+  },
+  oneShot: async () => ({ code: 1, stdout: "", stderr: "", timedOut: false }),
+  copyTo: async () => ({ code: 1, stdout: "", stderr: "", timedOut: false }),
+  diagnose: () => null,
+  forwards: () => null,
+};
+
+/** The ssh kind as a plugin delivers it, discovering the one host these cases check. */
+const sshKind: MachineKindEntry = {
+  kind: "ssh",
+  title: "SSH",
+  impl: {
+    discover: () => ["box"],
+    form: () => null,
+    define: async () => ({ ok: false, field: null, message: "not here" }),
+    read: () => null,
+    connect: () => inertMachine,
+  },
+};
+
 /** A service whose machine answers through `runOn`; the commands it was sent are returned. */
 async function serviceFor(
   runOn: (command: string) => ExecResult,
@@ -93,7 +124,6 @@ async function serviceFor(
     "TESTlocalID00000",
     new MachinesRepo(openDatabase(":memory:")),
     {
-      listAliases: () => ["box"],
       resolvePlan: () => ({
         baseVersion: "0.2.13",
         harness: null,
@@ -109,6 +139,7 @@ async function serviceFor(
     },
     undefined,
     DEV,
+    [sshKind],
   );
   return { service, sent };
 }
