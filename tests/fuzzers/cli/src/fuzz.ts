@@ -3,9 +3,16 @@
  *
  * It boots the same in-process harness the API leg uses (a disposable data root, the real
  * server, the scripted LLM) and drives the repository's own `cli(argv)` — commander over that
- * server, reached through `PENGUIN_API_URL` on the harness's loopback port. What changed from
- * the hand-driven run is who picks the command line: libFuzzer does, from the bytes it hands
- * `fuzz()`, guided by coverage of the instrumented CLI and server code.
+ * server, reached through `PENGUIN_API_URL` exactly as the CLI's own client resolves it, with
+ * the hop itself answered in memory (fetch-shim.ts). What changed from the hand-driven run is
+ * who picks the command line: libFuzzer does, from the bytes it hands `fuzz()`, guided by
+ * coverage of the instrumented CLI and server code.
+ *
+ * Time is virtual (server/src/virtual-time.ts): each command runs inside a clock that jumps to
+ * the next pending timer whenever the process has nothing in flight. A `--timeout 3s` wait and
+ * a recoverable LLM failure's backoff then cost no wall time, while the soft timeout below
+ * keeps its meaning — deadlines are still observed in order, and a command that never becomes
+ * ready is still a finding; it only takes a moment to say so.
  *
  * One input is a sequence of commands, cut at every newline byte (`splitRecords`), and each
  * command's exit code must be inside the set its spec allows. A command that throws, hangs past
@@ -31,8 +38,10 @@ import { ByteChoices } from "../../server/src/choices.js";
 import { permitLoopback } from "../../server/src/bug-detectors.js";
 import { installOutboundGuard } from "../../server/src/guards.js";
 import { bootHarness } from "../../server/src/harness.js";
-import { runOneCommand } from "./command.js";
+import { Quiescence, VirtualTime, driveToCompletion, realMs } from "../../server/src/virtual-time.js";
+import { runOneCommand, type CommandOutcome } from "./command.js";
 import { decodeCliControls } from "./input.js";
+import { installFetchShim } from "./fetch-shim.js";
 
 const PROJECT_ID = "default_project";
 /** The I-11 oracle's wait: FRESH_MS (2000) + slack, so the server's read sees a stable mtime. */
@@ -66,14 +75,39 @@ const stats = {
   exitGuardCatches: 0,
 };
 
+/**
+ * `FUZZ_DRIVE_TRACE=<path>`: append what the clock's driver and the in-memory hop see on every
+ * turn. A file, not stderr — the command under test owns stderr here (the stdio capture takes
+ * it over).
+ */
+const tracePath = process.env.FUZZ_DRIVE_TRACE;
+const traceLine =
+  tracePath === undefined
+    ? undefined
+    : (line: string): void => {
+        fs.appendFileSync(tracePath, `${line}\n`);
+      };
+const traceDrive =
+  traceLine === undefined ? undefined : (line: string): void => traceLine(`[drive] ${line}`);
+
 const guard = installOutboundGuard();
-const harness = await bootHarness();
+// The leg's clock: created before boot, so the server's Clock seam follows it from the first
+// read; installed further down, so the boot's own startup work keeps real timers.
+const vtime = new VirtualTime(realMs());
+const harness = await bootHarness({ vtime });
 // The SSRF bug detector would otherwise report the harness's own loopback traffic.
 await permitLoopback(harness.app.listener.port);
+// The CLI↔server hop, in memory (see fetch-shim.ts): over a real socket an open stream keeps
+// the process looking busy for as long as it lives, and the clock would never jump.
+const shim = installFetchShim(
+  harness.app.app,
+  harness.app.listener.port,
+  traceLine === undefined ? undefined : (line) => traceLine(`[shim] ${line}`),
+);
 
-// The CLI leg's environment: the data root is the server's, the API URL points at the
-// in-process loopback listener (client.ts's resolution step 2 — the lock and auto-start are
-// never reached), the proxy never applies to loopback, and dates are UTC.
+// The CLI leg's environment: the data root is the server's, the API URL names the harness's
+// own origin (client.ts's resolution step 2 — the lock and auto-start are never reached — and
+// fetch-shim.ts answers it), the proxy never applies to loopback, and dates are UTC.
 //
 // SCRUBBED FIRST: running inside a server-driven Session injects PENGUIN_API_TOKEN /
 // PENGUIN_PROJECT_ID / PENGUIN_AGENT_ID / PENGUIN_SESSION_ID into tool subprocesses, and the
@@ -117,6 +151,59 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// From here on time is the leg's: every timer the CLI and the server arm is on `vtime`, and the
+// driver below is what moves it.
+vtime.install();
+/** What an idle process looks like: the listener and this process's stdio, nothing else. */
+const quiet = new Quiescence();
+quiet.observe();
+
+/** How long one command may take in real time before the driver calls it stuck. */
+const DRIVE_WATCHDOG_MS = 20_000;
+/**
+ * Run one command to completion on the clock. Its own deadlines — `--timeout`, the 15 s soft
+ * timeout — fire in virtual order; the real watchdog only catches a wait no timer will end.
+ */
+async function runDriven(argv: string[]): Promise<CommandOutcome> {
+  const driven = await driveToCompletion(
+    vtime,
+    runOneCommand(cli, argv, { onDeadlineArmed: (handle) => vtime.markHarnessDeadline(handle) }),
+    {
+      watchdogMs: DRIVE_WATCHDOG_MS,
+      quiet,
+      ...(traceDrive !== undefined ? { trace: traceDrive } : {}),
+    },
+  );
+  if (!driven.ok) {
+    throw new Error(
+      `[cli] harness: \`${argv.join(" ")}\` did not settle (${driven.why}: ` +
+        `${driven.realMs}ms real, ${driven.advancedMs}ms virtual, ${driven.timers} timers fired)`,
+    );
+  }
+  return driven.value;
+}
+
+/** Sleep on the clock, which jumps it: no wall time is spent. */
+async function sleepVirtual(ms: number): Promise<void> {
+  const driven = await driveToCompletion(vtime, sleep(ms), {
+    watchdogMs: DRIVE_WATCHDOG_MS,
+    quiet,
+    ...(traceDrive !== undefined ? { trace: traceDrive } : {}),
+  });
+  if (!driven.ok) {
+    throw new Error(`[cli] harness: a ${ms}ms virtual sleep did not settle (${driven.why})`);
+  }
+}
+
+/**
+ * Between commands: take the idle baseline again, so a stream or a child a command left behind
+ * cannot keep every later jump from happening. The calendar needs no nudge — the clock runs
+ * with real time (see virtual-time.ts), unlike the hand-stepped server clock this leg kept.
+ */
+function betweenCalls(): void {
+  quiet.observe();
+}
+
 /** The setup pipeline every command's premise rests on; a failure here stops the run. */
 async function setup(): Promise<boolean> {
   const steps = [
@@ -150,7 +237,7 @@ async function setup(): Promise<boolean> {
     },
   ];
   for (const step of steps) {
-    const outcome = await runOneCommand(cli, step.argv);
+    const outcome = await runDriven(step.argv);
     if (outcome.threw !== null) {
       throw new Error(`[cli] setup ${step.id} threw: ${outcome.threw.message}`);
     }
@@ -165,14 +252,24 @@ async function setup(): Promise<boolean> {
         pools.sessionId = [...(pools.sessionId ?? []), parsed.sessionId];
       }
     }
-    harness.clock.step(1_000);
+    betweenCalls();
   }
 
   // The oracle: the file the CLI just wrote must become the server's answer.
-  await sleep(CONFIG_FRESH_WAIT_MS);
-  const res = await harness.app.app.request(`/api/projects/${PROJECT_ID}/models`, {
-    headers: { authorization: `Bearer ${harness.app.apiToken}` },
-  });
+  await sleepVirtual(CONFIG_FRESH_WAIT_MS);
+  const answered = await driveToCompletion(
+    vtime,
+    Promise.resolve(
+      harness.app.app.request(`/api/projects/${PROJECT_ID}/models`, {
+        headers: { authorization: `Bearer ${harness.app.apiToken}` },
+      }),
+    ),
+    { watchdogMs: DRIVE_WATCHDOG_MS, quiet },
+  );
+  if (!answered.ok) {
+    throw new Error(`[cli] harness: the config oracle's read did not settle (${answered.why})`);
+  }
+  const res = answered.value;
   const body = JSON.stringify(await res.json().catch(() => null));
   const visible = body.includes("fuzz-model");
   if (!visible) {
@@ -217,7 +314,7 @@ async function sweepSpecs(): Promise<SpecSweep> {
   for (const spec of specs) {
     for (const variant of ["ok", "bad"] as const) {
       const argv = spec.argv(variant, new ByteChoices(Buffer.alloc(0)), "", pools);
-      const outcome = await runOneCommand(cli, argv);
+      const outcome = await runDriven(argv);
       sweep.total += 1;
       const exits = exitsFor(spec, variant);
       const refused = outcome.exitCode !== null && exits.includes(outcome.exitCode);
@@ -232,7 +329,7 @@ async function sweepSpecs(): Promise<SpecSweep> {
               : `exited ${outcome.exitCode ?? "null"} outside {${exits.join(",")}} — ${outcome.stderr.slice(0, 140).replace(/\n/g, " ")}`;
         sweep.outside.push(`${spec.id} (${variant}) \`${argv.join(" ")}\` ${why}`);
       }
-      harness.clock.step(1_000);
+      betweenCalls();
     }
   }
   console.log(
@@ -259,7 +356,7 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
   const rng = new ByteChoices(controls.rest);
   const argv = spec.argv(controls.variant, rng, controls.text, pools);
 
-  const outcome = await runOneCommand(cli, argv);
+  const outcome = await runDriven(argv);
   const where = `[cli] call ${position}/${total} ${spec.id} \`${argv.join(" ")}\``;
   if (outcome.threw !== null) {
     throw new Error(`${where} threw out of cli(): ${outcome.threw.stack ?? outcome.threw.message}`);
@@ -294,7 +391,7 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
   stats.exits[String(outcome.exitCode)] = (stats.exits[String(outcome.exitCode)] ?? 0) + 1;
   recordSlowCall(spec.id, outcome.ms);
   captureStdout(outcome.stdout, pools);
-  harness.clock.step(1_000);
+  betweenCalls();
 }
 
 /**
@@ -342,6 +439,8 @@ async function selfCheck(): Promise<void> {
   let failed = 0;
   for (const name of files) {
     const bytes = fs.readFileSync(path.join(CORPUS_DIR, name));
+    // The driver's trace is a flat log; name the input it belongs to.
+    traceLine?.(`### ${name}`);
     try {
       await fuzz(bytes);
     } catch (err) {
@@ -381,6 +480,8 @@ process.on("exit", () => {
       `- Exit-guard catches (process.exit intercepted): ${stats.exitGuardCatches}`,
       `- Config write-after-read oracle: ${oracleVisible ? "visible" : "NOT visible"}`,
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
+      `- Clock: ${Math.round(vtime.jumpedMs)}ms jumped past real time, ${vtime.pending()} timer(s) pending`,
+      `- CLI↔server hop answered in memory: ${shim.served}`,
       `- Elapsed: ${Math.round(performance.now() - startedAt)}ms`,
       "",
     ];
@@ -392,6 +493,10 @@ process.on("exit", () => {
 
 /** Close the harness — the runner calls this once the fuzzer has stopped (see fuzz-runner.mjs). */
 export async function shutdown(): Promise<void> {
+  // The clock and the hop come out first: closing the listener and removing the data root are
+  // real I/O, and their own timers belong to real time again.
+  vtime.uninstall();
+  shim.uninstall();
   await harness.app.cleanup().catch(() => {});
   for (const [key, value] of Object.entries(savedEnv)) {
     if (value === undefined) delete process.env[key];

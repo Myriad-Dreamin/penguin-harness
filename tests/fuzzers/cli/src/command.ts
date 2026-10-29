@@ -28,6 +28,7 @@ export interface CommandOutcome {
 export async function runOneCommand(
   cli: (argv: string[]) => Promise<number>,
   argv: string[],
+  options: { onDeadlineArmed?: (handle: unknown) => void } = {},
 ): Promise<CommandOutcome> {
   const guard = installExitGuard();
   const io = captureStdio();
@@ -37,7 +38,11 @@ export async function runOneCommand(
   let threw: Error | null = null;
   let timedOut = false;
   try {
-    const raced = await withSoftTimeout(cli(argv), COMMAND_SOFT_TIMEOUT_MS);
+    const raced = await withSoftTimeout(cli(argv), COMMAND_SOFT_TIMEOUT_MS, {
+      ...(options.onDeadlineArmed !== undefined
+        ? { onArm: options.onDeadlineArmed }
+        : {}),
+    });
     if (raced.ok) {
       exitCode = raced.value;
     } else if (raced.threw instanceof DemoProcessExit) {

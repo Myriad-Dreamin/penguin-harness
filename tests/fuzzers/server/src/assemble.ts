@@ -12,8 +12,9 @@
  *     option 1), so a second, read-only connection can introspect it (§6.1 R-5).
  *
  * The loopback listener is the same @hono/node-server serve() the production entry uses —
- * bound to an ephemeral port in-process, so the CLI section exercises the real HTTP
- * serialization path (fetch → loopback → Hono) without any external listener.
+ * bound to an ephemeral port in-process. The CLI leg answers its own requests from the app in
+ * memory (cli/src/fetch-shim.ts) because a live socket would keep the harness's clock from
+ * moving; the listener stays the way in for anything that reaches for a socket instead.
  */
 import fs from "node:fs/promises";
 import os from "node:os";

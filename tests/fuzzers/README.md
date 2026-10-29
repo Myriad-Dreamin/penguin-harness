@@ -9,6 +9,9 @@ scripted stub, and an outbound guard fails any non-loopback socket, so a run nev
 network. What is fuzzed is the product code: routing, validation, services, the session
 manager and its persistence.
 
+The CLI leg answers its own requests from the app in memory (one process holds both ends) and
+runs on a jumpable clock, so a command's waits cost no wall time — see [Time](#time).
+
 The fuzzing engine is libFuzzer through Jazzer.js: the target hands it one function that
 turns a byte buffer into a sequence of requests (or of command lines), and the engine's own
 coverage feedback decides which inputs to keep, mutate and schedule. What a byte means comes
@@ -82,6 +85,9 @@ run the fuzzer on a newer base image or distribution.
 | `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`). |
 | `cli/` | The CLI surface: sequences of command lines, over the same harness. |
 | `cli/src/fuzz.ts` | The Jazzer.js entry: cut the input into commands, run each, check its exit contract. |
+| `cli/src/command.ts` | One command behind the process-level guards: exit guard, stdio capture, soft timeout. |
+| `cli/src/fetch-shim.ts` | The CLI↔server hop answered from the app in memory instead of a socket. |
+| `server/src/virtual-time.ts` | The jumpable clock: idle detection, timer jumping, the drive loop. |
 | `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
 | `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
 | `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |
@@ -168,6 +174,62 @@ string field (a title, a path, a task text) rather than only the choice of call.
 A sequence is bounded: at most 8 calls on the API leg and 4 on the CLI leg, and no new call once
 the input's time budget (6 s, 8 s) has gone by. The fuzzer's own watchdog stays a hard abort that
 nothing should reach.
+
+## Time
+
+The CLI leg's commands wait: `session input --timeout 3s` watches a turn, a poll prints the last
+answer, a recoverable LLM failure backs off before its next attempt. Those waits are real
+behaviour and belong in the test. Spending their duration as wall time is what turns a fuzzing
+loop into a machine for finding its own timeouts, and that is what the leg was doing before
+this: the slow units it collected were its own waiting, and the 15 s soft timeout that ended
+them was measured on the same clock.
+
+`server/src/virtual-time.ts` is the answer, shaped like Go's `testing/synctest`. Each command
+runs inside `driveToCompletion`, which lets real work — a file read, a request answered in
+memory — run to completion and, whenever the process has nothing in flight, moves the clock to
+the earliest pending timer and fires it. Deadlines keep their order (a 3 s `--timeout` still
+expires only after every timer before it), but they cost no wall time. A promise no timer can
+settle is reported as a deadlock in 250 ms instead of waiting out a watchdog.
+
+Three details make that safe rather than merely fast. Only **one-shot** timers are jumped to: an
+interval — an SSE heartbeat, a sweep — is background, firing it settles nothing the command is
+waiting for, and a stream that outlived its command leaves its heartbeat armed as the earliest
+timer in the process, so a jump to one would step the clock a whole period at a time. Second,
+"nothing in flight" has to hold for fifty milliseconds: a file read is a chain of its own
+callbacks (open, read, close) with sub-millisecond gaps, and a jump taken inside one of those
+gaps fires deadlines the code was nowhere near. Third — and this is the one the leg learned the
+hard way — the harness's *own* deadline is believed last. A product timer has to fire when it is
+due; that is the behaviour under test. The 15 s soft timeout is only a claim that the command
+stopped making progress, and the idle census licensing a jump is a sample, so a jump whose only
+purpose is to reach it waits a full second of stillness first. Without that, ordinary
+`session ls` / `session rename` calls were reported stuck, with their response arriving right
+after the jump and the same input passing on a rerun.
+
+The census subtracts *handles that live between commands* (the harness's listener, stdio pipes,
+a socket a timed-out command leaked) and never work in flight: a read that is running is the
+process making progress, and absorbing those counts once cost every later jump its sight of a
+module load. Set `FUZZ_DRIVE_TRACE=<path>` to get the driver's own account — every jump with the
+timer it fired and the delay it was armed with.
+
+A second of stillness is a judgement, not a proof: Node offers no "durably blocked" of its own,
+and work that happens off the main thread registers nothing at all. A command reported as
+exceeding its soft timeout is therefore still one of two things — a wait on a deadline nobody
+will release, or a step that went quiet for longer than that second. Replaying the saved input is
+what tells them apart, and the trace says which timer the clock was moving to when it gave up.
+
+Two consequences worth knowing when reading a run's output:
+
+- The hop between the CLI and the server is answered by `app.fetch()`
+  (`cli/src/fetch-shim.ts`), not over the loopback listener. An open socket keeps the process
+  "busy" for as long as a stream lives, and the clock would never jump. undici's socket
+  handling is the one thing the leg no longer exercises; the product's own client, its framing
+  and its SSE parsing still run.
+- Real time still passes, and the clock jumps ahead of it. `Date.now()` stays close to the wall
+  clock, so the product's mtime freshness checks keep their meaning, and the run's summary
+  records how far the clock had to jump.
+
+The API leg drives `app.request()` directly and has no per-call waits to compress; it keeps the
+plain clock, and its own `clock.jumpForwardDays` steps across the session TTL.
 
 The seed step also writes `out/dict.txt`: two bytes per spec — the separator, then that spec's
 index — which is the one mutation source that inserts a well-formed call instead of hoping a

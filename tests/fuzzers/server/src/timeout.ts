@@ -9,6 +9,7 @@
 export function withSoftTimeout<T>(
   promise: Promise<T>,
   ms: number,
+  options: { onArm?: (handle: unknown) => void } = {},
 ): Promise<{ ok: true; value: T } | { ok: false; threw: Error | null }> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const guarded = promise.then(
@@ -21,6 +22,9 @@ export function withSoftTimeout<T>(
   );
   const timeout = new Promise<{ ok: false; value: undefined; threw: null }>((resolve) => {
     timer = setTimeout(() => resolve({ ok: false, value: undefined, threw: null }), ms);
+    // The caller may need to know which timer is this one — the CLI leg's driver does, so a
+    // jump never reaches the harness's own deadline before the code under test had its say.
+    options.onArm?.(timer);
   });
   return Promise.race([guarded, timeout]).finally(() => clearTimeout(timer));
 }
