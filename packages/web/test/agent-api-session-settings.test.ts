@@ -60,9 +60,15 @@ async function open(
     ),
     { at: `/agents/${AGENT_ID}?tab=api` },
   );
-  await waitFor(
-    () => document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') !== null,
-  );
+  // The pickers' catalog rides the second wave of loads (models, the Agent's config, the
+  // chat defaults); a trigger that is mounted but still loading is disabled, and a click on
+  // it would be the flake this suite once was. Wait for the tab to be live, not just drawn.
+  await waitFor(() => {
+    const model = document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]');
+    const level = document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]');
+    return model !== null && (model as HTMLButtonElement).disabled === false &&
+      level !== null && (level as HTMLButtonElement).disabled === false;
+  });
   const level = await buttonSoon(en.chat.thinkingLevel);
   await waitFor(() => level.textContent !== "…");
   await buttonSoon(en.chat.workspace);
