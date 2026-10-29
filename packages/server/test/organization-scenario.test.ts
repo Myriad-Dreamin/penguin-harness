@@ -399,6 +399,8 @@ describe("scenario: the DeepSeek Harness plugin Marketplace company", () => {
     h.costs.set(siteWork, 40);
     h.costs.set(mktWork, 30);
     h.costs.set(devDesk, 2);
+    // Spend is kept for three seconds: move past the window so the writes are what is read.
+    h.clock.nowMs += 4_000;
     const finance = await service.finance(P, ORG);
     const byId = new Map(finance.employees.map((e) => [e.agentId, e]));
     expect(byId.get(DEV)).toMatchObject({ own: 42, cumulative: 42, budget: 100 });

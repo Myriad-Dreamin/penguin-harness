@@ -1850,6 +1850,8 @@ describe("organization runtime", () => {
       ]);
       // The desk's cost is now the ticket's cost too — that is what the booking is for.
       costs.set(desk.sessionId, 4);
+      // Spend is kept for three seconds: move past the window so the write is what is read.
+      nowMs += 4_000;
       expect((await service.ticket(P, ORG, t.ticketId)).cost).toBe(4);
       const finance = await service.finance(P, ORG);
       expect(finance.tickets.find((x) => x.ticketId === t.ticketId)?.cost).toBe(4);
@@ -3093,6 +3095,8 @@ describe("organization runtime", () => {
       events.length = 0;
 
       costs.set(desk.sessionId, 9);
+      // Spend is kept for three seconds: move past the window so the write is what is read.
+      nowMs += 4_000;
       await scheduler.tickOnce();
       expect(
         events.filter((e) => e.type === "org_budget").map((e) => (e as { state: string }).state),
@@ -3211,6 +3215,8 @@ describe("organization runtime", () => {
       });
       const desk = await service.desk(P, ORG, HR, {});
       costs.set(desk.sessionId, 3);
+      // Spend is kept for three seconds: move past the window so the write is what is read.
+      nowMs += 4_000;
       // Zero is a budget everything is already over, so the marks written against it and the
       // meter the row carries have to agree: a `ratio` missing beside warned and paused is a
       // paused employee the finance page cannot explain.
