@@ -25,7 +25,7 @@ import { ApiTab } from "../src/features/agents/api-tab";
 import { setActiveStrings, zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import { AGENT_ID, PROJECT_ID, agentConfig, agentServer, mountAgentApp } from "./helpers/agent-app";
-import { button, click, field, type, run, unmountAll, waitFor } from "./helpers/dom";
+import { button, buttonSoon, click, field, type, run, unmountAll, waitFor } from "./helpers/dom";
 
 const model: ModelInfo = {
   provider: "custom",
@@ -63,11 +63,13 @@ async function open(
   await waitFor(
     () => document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') !== null,
   );
-  await waitFor(() => button(en.chat.thinkingLevel).textContent !== "…");
+  const level = await buttonSoon(en.chat.thinkingLevel);
+  await waitFor(() => level.textContent !== "…");
+  await buttonSoon(en.chat.workspace);
   return { server, router, copied };
 }
 
-const thinking = () => button(en.chat.thinkingLevel);
+const thinking = async () => buttonSoon(en.chat.thinkingLevel);
 const option = (value: string) =>
   [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((el) =>
     el.textContent?.startsWith(value),
@@ -82,11 +84,12 @@ describe("API Session settings", () => {
     const { server, router } = await open();
     await click(button(en.chat.chooseModel));
     await click(option("API test model").querySelector("button")!);
-    await click(thinking());
-    await click(button("high"));
+    await click(await thinking());
+    await click(await buttonSoon("high"));
     await click(button(en.chat.workspace));
-    await waitFor(() => !button(en.chat.finder.choose).disabled);
-    await click(button(en.chat.finder.choose));
+    const choose = await buttonSoon(en.chat.finder.choose);
+    await waitFor(() => !choose.disabled);
+    await click(choose);
     expect(server.writes("/api").map((r) => r.body)).toEqual([
       { model: { provider: model.provider, modelId: model.modelId } },
       { thinkingLevel: "high" },
@@ -97,19 +100,19 @@ describe("API Session settings", () => {
     await waitFor(
       () => document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') !== null,
     );
-    expect(button(en.chat.chooseModel).textContent).toContain("API test model");
-    expect(thinking().textContent).toContain("high");
-    expect(button(en.chat.workspace).textContent).toContain("work");
+    expect((await buttonSoon(en.chat.chooseModel)).textContent).toContain("API test model");
+    expect((await thinking()).textContent).toContain("high");
+    expect((await buttonSoon(en.chat.workspace)).textContent).toContain("work");
     expect(hasUnsaved()).toBe(false);
-    await click(button(en.company.modelClear));
+    await click(await buttonSoon(en.company.modelClear));
     await click(
       [...document.querySelectorAll<HTMLButtonElement>("button")].find(
         (el) => el.textContent === en.common.reset && !el.disabled,
       )!,
     );
-    expect(thinking().textContent).toContain("medium");
-    await click(button(en.chat.workspace));
-    await click(button(en.chat.workspaceClear));
+    expect((await thinking()).textContent).toContain("medium");
+    await click(await buttonSoon(en.chat.workspace));
+    await click(await buttonSoon(en.chat.workspaceClear));
     expect(
       server
         .writes("/api")
@@ -134,26 +137,26 @@ describe("API Session settings", () => {
         config,
         project === undefined ? {} : { thinkingLevel: project },
       );
-      expect(thinking().textContent).toContain(expected);
+      expect((await thinking()).textContent).toContain(expected);
       expect(server.writes()).toEqual([]);
-      await click(thinking());
-      await click(button("high"));
-      expect(thinking().textContent).toContain("high");
+      await click(await thinking());
+      await click(await buttonSoon("high"));
+      expect((await thinking()).textContent).toContain("high");
       await click(
         [...document.querySelectorAll<HTMLButtonElement>("button")].find(
           (el) => el.textContent === en.common.reset && !el.disabled,
         )!,
       );
-      expect(thinking().textContent).toContain(expected);
+      expect((await thinking()).textContent).toContain(expected);
     },
   );
 
   it("rolls back a refused choice and displays the failure", async () => {
     const { server } = await open();
     server.refuseNext(400, "bad_request", "Cannot save this choice.");
-    await click(thinking());
-    await click(button("high"));
-    expect(thinking().textContent).toContain("medium");
+    await click(await thinking());
+    await click(await buttonSoon("high"));
+    expect((await thinking()).textContent).toContain("medium");
     expect(document.body.textContent).toContain("Cannot save this choice.");
     expect(hasUnsaved()).toBe(false);
   });
@@ -215,7 +218,7 @@ describe("API Session settings", () => {
   it("disables every picker for a member who is not the owner", async () => {
     const { server } = await open(false);
     expect(button(en.chat.chooseModel).disabled).toBe(true);
-    expect(thinking().disabled).toBe(true);
+    expect((await thinking()).disabled).toBe(true);
     expect(button(en.chat.workspace).disabled).toBe(true);
     expect(field(en.agent.apiConcurrency).disabled).toBe(true);
     expect(button(en.common.save).disabled).toBe(true);

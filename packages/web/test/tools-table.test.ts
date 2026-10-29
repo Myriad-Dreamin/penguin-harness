@@ -25,6 +25,7 @@ import { AgentSettingsPage } from "../src/features/agents/agent-settings-page";
 import { AGENT_ID, agentConfig, agentServer, mountAgentApp, whereIs } from "./helpers/agent-app";
 import {
   button,
+  buttonSoon,
   click,
   field,
   hasButton,
@@ -41,13 +42,15 @@ async function openTools() {
   const router = await mountAgentApp(h(AgentSettingsPage), {
     at: `/agents/${AGENT_ID}?tab=tools`,
   });
-  await waitFor(() => document.querySelector('button[role="switch"]') !== null);
+  await waitFor(
+    () => document.querySelectorAll('button[role="switch"]').length === STORED_TOOLS.length,
+  );
   return { server, router };
 }
 
 const timeout = () => field(`exec_command ${en.agent.toolTimeout}`);
 const readFileSwitch = () => switchNamed(`read_file ${en.agent.toolCallDescription}`);
-const save = () => button(en.common.save);
+const save = async () => buttonSoon(en.common.save);
 type ToolsBody = { config: { toolsBuiltin: typeof STORED_TOOLS } };
 const tableSent = (server: ReturnType<typeof agentServer>, i: number) =>
   (server.writes("/config")[i]!.body as ToolsBody).config.toolsBuiltin;
@@ -69,7 +72,7 @@ describe("the built-in tools table", () => {
     await click(pick);
     expect(server.writes()).toEqual([]);
     expect(button(`exec_command ${en.agent.toolPermission}`).textContent).toContain("Read-only");
-    await click(save());
+    await click(await save());
     expect(tableSent(server, 0).find((t) => t.name === "exec_command")?.permission).toBe("r");
   });
 
@@ -78,20 +81,20 @@ describe("the built-in tools table", () => {
     await type(timeout(), "90000");
     await click(button(en.agent.deleteToolNamed("read_file")));
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain("can no longer use");
-    await click(button(en.common.cancel));
+    await click(await buttonSoon(en.common.cancel));
     expect(server.writes()).toEqual([]);
     await click(button(en.agent.deleteToolNamed("read_file")));
-    await click(button(en.common.delete));
+    await click(await buttonSoon(en.common.delete));
     expect(tableSent(server, 0).map((t) => t.name)).toEqual(["exec_command"]);
     expect(tableSent(server, 0)[0]?.timeoutMs).toBe(60000);
     expect(timeout().value).toBe("90000");
     expect(hasUnsaved()).toBe(true);
     expect(hasButton(en.agent.deleteToolNamed("read_file"))).toBe(false);
-    await click(save());
+    await click(await save());
     expect(tableSent(server, 1).map((t) => t.name)).toEqual(["exec_command"]);
     expect(tableSent(server, 1)[0]?.timeoutMs).toBe(90000);
     await click(button(en.agent.deleteToolNamed("exec_command")));
-    await click(button(en.common.delete));
+    await click(await buttonSoon(en.common.delete));
     expect(tableSent(server, 2)).toEqual([]);
     expect(hasUnsaved()).toBe(false);
   });
@@ -101,11 +104,11 @@ describe("the built-in tools table", () => {
     await type(timeout(), "90000");
     server.refuseNext(400, "invalid_config");
     await click(button(en.agent.deleteToolNamed("exec_command")));
-    await click(button(en.common.delete));
+    await click(await buttonSoon(en.common.delete));
     expect(server.config().config.toolsBuiltin).toEqual(STORED_TOOLS);
     expect(timeout().value).toBe("90000");
     expect(hasUnsaved()).toBe(true);
-    await click(button(en.common.delete));
+    await click(await buttonSoon(en.common.delete));
     expect(server.config().config.toolsBuiltin.map((t) => t.name)).toEqual(["read_file"]);
     expect(hasUnsaved()).toBe(false);
   });
@@ -120,7 +123,7 @@ describe("the built-in tools table", () => {
     );
     await waitFor(() => readFileSwitch().getAttribute("aria-checked") === "true");
     expect(timeout().value).toBe("90000");
-    expect(save().disabled).toBe(false);
+    expect((await save()).disabled).toBe(false);
     expect(hasUnsaved()).toBe(true);
   });
 
@@ -139,12 +142,12 @@ describe("the built-in tools table", () => {
     await type(timeout(), "90000");
     await click(readFileSwitch());
     await waitFor(() => server.writes("/config").length === 1);
-    await click(save());
+    await click(await save());
     await waitFor(() => server.writes("/config").length === 2);
     const sent = tableSent(server, 1);
     expect(sent.find((t) => t.name === "exec_command")?.timeoutMs).toBe(90000);
     expect(sent.find((t) => t.name === "read_file")?.call_description).toBe(true);
-    await waitFor(() => save().disabled);
+    await waitFor(async () => (await save()).disabled);
     expect(hasUnsaved()).toBe(false);
   });
 
@@ -161,14 +164,14 @@ describe("the built-in tools table", () => {
   it("names a refused number and holds Save; a cleared override is a valid change", async () => {
     const { server } = await openTools();
     await type(timeout(), "0");
-    expect(save().disabled).toBe(true);
+    expect((await save()).disabled).toBe(true);
     expect(document.body.textContent).toContain(
       en.agent.toolFieldInvalid("exec_command", en.agent.toolTimeout),
     );
 
     await type(timeout(), "");
-    expect(save().disabled).toBe(false);
-    await click(save());
+    expect((await save()).disabled).toBe(false);
+    await click(await save());
     await waitFor(() => server.writes("/config").length === 1);
     expect(tableSent(server, 0).find((t) => t.name === "exec_command")).not.toHaveProperty(
       "timeoutMs",

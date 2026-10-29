@@ -99,11 +99,19 @@ export async function run(work: () => unknown): Promise<void> {
   await settle();
 }
 
-/** Settles until `ready` holds (a request chain answering), failing after a bounded number of rounds. */
+/**
+ * Settles until `ready` holds (a request chain answering), failing after a bounded number of
+ * rounds. One round is three settles: a portal mounting its panel and the panel's place-then-focus
+ * effects land on successive microtask edges, so a single settle can stop between two of them and
+ * a page that reaches the state a settle later would read as never — a flake by timing, not by
+ * behaviour.
+ */
 export async function waitFor(ready: () => boolean, rounds = 20): Promise<void> {
   for (let i = 0; i < rounds; i++) {
-    if (ready()) return;
-    await settle();
+    for (let j = 0; j < 3; j++) {
+      if (ready()) return;
+      await settle();
+    }
   }
   if (!ready()) throw new Error("the page never reached the awaited state");
 }
@@ -166,8 +174,35 @@ export async function pickFile(input: HTMLInputElement, file: File): Promise<voi
   });
 }
 
+/**
+ * The button whose visible text or accessible name is `name`, anywhere in the document, waiting a
+ * bounded number of settles for it to appear. For a button that is on screen the moment the page
+ * has settled — a static trigger, one a synchronous read follows — use {@link button}.
+ */
+export async function buttonSoon(name: string): Promise<HTMLButtonElement> {
+  await waitFor(() => findButton(name) !== undefined);
+  return findButton(name)!;
+}
+
+function findButton(name: string): HTMLButtonElement | undefined {
+  return [...document.querySelectorAll("button")].find(
+    (b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name,
+  );
+}
+
 /** The button whose visible text or accessible name is `name`, anywhere in the document. */
 export function button(name: string): HTMLButtonElement {
+  const found = findButton(name);
+  if (found === undefined) throw new Error(`no button named ${JSON.stringify(name)}`);
+  return found;
+}
+
+/** Whether a button with that name is on screen right now. */
+export function hasButtonSoon(name: string): Promise<boolean> {
+  return waitFor(() => findButton(name) !== undefined)
+    .then(() => true)
+    .catch(() => false);
+}
   const found = [...document.querySelectorAll("button")].find(
     (b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name,
   );
@@ -177,9 +212,7 @@ export function button(name: string): HTMLButtonElement {
 
 /** Whether a button with that name is on screen. */
 export function hasButton(name: string): boolean {
-  return [...document.querySelectorAll("button")].some(
-    (b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name,
-  );
+  return findButton(name) !== undefined;
 }
 
 /** The text field named `label` (its `aria-label`, or the label it is associated with). */
