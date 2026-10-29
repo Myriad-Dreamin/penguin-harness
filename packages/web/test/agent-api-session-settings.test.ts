@@ -102,6 +102,7 @@ describe("API Session settings", () => {
     const choose = await buttonSoon(en.chat.finder.choose);
     await waitFor(() => !choose.disabled);
     await click(choose);
+    await waitFor(() => server.writes("/api").length === 3);
     expect(server.writes("/api").map((r) => r.body)).toEqual([
       { model: { provider: model.provider, modelId: model.modelId } },
       { thinkingLevel: "high" },
