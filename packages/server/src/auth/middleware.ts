@@ -303,6 +303,9 @@ const ALLOWED_WRITE_CONTENT_TYPES = [
  */
 const WORKFLOW_API = /^\/api\/projects\/[^/]+\/agents\/[^/]+\/workflows\/[^/]+\/api(\/|$)/;
 
+/** The same shape for a workbench handler (`…/workbenches/:id/api/*`). */
+const WORKBENCH_API = /^\/api\/projects\/[^/]+\/agents\/[^/]+\/workbenches\/[^/]+\/api(\/|$)/;
+
 function fromThisOrigin(header: (name: string) => string | undefined): boolean {
   const site = header("sec-fetch-site");
   if (site !== undefined) return site === "same-origin";
@@ -319,36 +322,51 @@ const crossOrigin = () =>
   new HttpError(
     403,
     "cross_origin_write",
-    "A request to a workflow's handler must come from this app's own pages.",
+    "A request to a workbench's handler must come from this app's own pages.",
   );
 
 export const jsonOnlyWrites: MiddlewareHandler = async (c, next) => {
-  // A workflow's handler answers every method, so its GET is whatever the workflow made it
-  // — not the read every other route's GET is. A `SameSite=Lax` cookie rides along on a
-  // cross-site top-level navigation, so `window.open` on another site would otherwise run
-  // that handler as the signed-in user. Its write takes any body, so the content-type rule
-  // below cannot judge that either: on this path the browser's own account of where the
-  // request came from is what settles both.
+  // A workflow's or a workbench's handler answers every method, so its GET is whatever the
+  // handler made it — not the read every other route's GET is. A `SameSite=Lax` cookie rides
+  // along on a cross-site top-level navigation, so `window.open` on another site would
+  // otherwise run that handler as the signed-in user. Its write takes any body, so the
+  // content-type rule below cannot judge that either: on this path the browser's own account
+  // of where the request came from is what settles both.
   if (WORKFLOW_API.test(c.req.path) && !fromThisOrigin((name) => c.req.header(name))) {
     throw crossOrigin();
+  }
+  // A workbench's handler is the other shape: the base rule settles it on reads only; its
+  // writes are settled below, where a wrong content type falls to the origin check.
+  if (!WRITE_METHODS.has(c.req.method) && WORKBENCH_API.test(c.req.path)) {
+    if (!fromThisOrigin((name) => c.req.header(name))) throw crossOrigin();
   }
   if (WRITE_METHODS.has(c.req.method)) {
     const contentType = c.req.header("content-type")?.toLowerCase();
     const hasBody =
       Number(c.req.header("content-length") ?? 0) > 0 ||
       c.req.header("transfer-encoding") !== undefined;
-    // A workflow's own handler takes any body; the origin rule above is its whole defense.
-    const refused = WORKFLOW_API.test(c.req.path)
-      ? false
-      : contentType
-        ? !ALLOWED_WRITE_CONTENT_TYPES.some((t) => contentType.startsWith(t))
-        : hasBody;
-    if (refused) {
-      throw new HttpError(
-        415,
-        "unsupported_media_type",
-        "Write requests only accept application/json (or, for the hot-update web push, a gzip artifact).",
-      );
+    const forgeable =
+      contentType !== undefined &&
+      contentType !== "" &&
+      !ALLOWED_WRITE_CONTENT_TYPES.some((t) => contentType.startsWith(t));
+    // A workbench's own handler takes any body; a wrong content type falls to the origin check.
+    if (forgeable && WORKBENCH_API.test(c.req.path)) {
+      if (!fromThisOrigin((name) => c.req.header(name))) throw crossOrigin();
+    } else {
+      // A workflow's own handler takes any body; the origin rule above is its whole defense.
+      const refused =
+        WORKFLOW_API.test(c.req.path) || WORKBENCH_API.test(c.req.path)
+          ? false
+          : contentType
+            ? !ALLOWED_WRITE_CONTENT_TYPES.some((t) => contentType.startsWith(t))
+            : hasBody;
+      if (refused) {
+        throw new HttpError(
+          415,
+          "unsupported_media_type",
+          "Write requests only accept application/json (or, for the hot-update web push, a gzip artifact).",
+        );
+      }
     }
   }
   await next();

@@ -110,7 +110,7 @@ describe("mergePages", () => {
         {
           key: "wf",
           path: "/wf",
-          renderer: { iframe: { src: "/workflow/a/wf/", namespace: "wf" } },
+          renderer: { iframe: { src: "/workbench/a/wf/", namespace: "wf" } },
         },
       ],
       known,

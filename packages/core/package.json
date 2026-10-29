@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-core",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -77,6 +77,7 @@
     "@penguinharness/humanizer": "workspace:*",
     "@penguinharness/model-development": "workspace:*",
     "@penguinharness/opro-rsi-toolkit": "workspace:*",
+    "@penguinharness/penguin-support": "workspace:*",
     "@penguinharness/skill-porting": "workspace:*",
     "@penguinharness/software-development": "workspace:*",
     "@penguinharness/use-bento-slides": "workspace:*",

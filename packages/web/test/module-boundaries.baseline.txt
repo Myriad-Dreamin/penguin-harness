@@ -65,7 +65,7 @@ cycle: features/chat -> features/schedules
 cycle: features/chat -> features/settings
 cycle: features/chat -> features/skills
 cycle: features/chat -> features/terminal
-cycle: features/chat -> features/workflows
+cycle: features/chat -> features/workbenches
 cycle: features/company -> features/chat
 cycle: features/company -> features/models
 cycle: features/company -> features/plugins
@@ -96,7 +96,7 @@ cycle: features/terminal -> features/dock
 cycle: features/todos -> features/models
 cycle: features/todos -> features/usage
 cycle: features/usage -> features/todos
-cycle: features/workflows -> features/chat
+cycle: features/workbenches -> features/chat
 features/agents/agent-settings-page.tsx -> features/chat/thinking-level.ts
 features/agents/agents-page.tsx -> features/ai-create/ai-create-buttons.tsx
 features/agents/agents-page.tsx -> features/chat/chat-page.tsx
@@ -155,7 +155,7 @@ features/chat/chat-page.tsx -> features/dock/dock-terminal.ts
 features/chat/chat-page.tsx -> features/dock/use-dock-mount.ts
 features/chat/chat-page.tsx -> features/models/model-grouping.ts
 features/chat/chat-page.tsx -> features/schedules/schedule-store.ts
-features/chat/chat-page.tsx -> features/workflows/workflow-tabs.tsx
+features/chat/chat-page.tsx -> features/workbenches/workbench-tabs.tsx
 features/chat/dock-toggles.tsx -> features/dock/dock-state.ts
 features/chat/dock-toggles.tsx -> features/dock/panel-meta.tsx
 features/chat/draft-view.tsx -> features/agents/agent-employment.ts
@@ -251,8 +251,8 @@ features/terminal/terminal-view-pool.tsx -> features/dock/dock-state.ts
 features/todos/todo-badges.ts -> features/models/catalog-sync.ts
 features/todos/use-project-todos.ts -> features/usage/usage-controls.ts
 features/todos/use-update-badges.ts -> features/models/catalog-sync.ts
-features/workflows/workflow-app-page.tsx -> features/palette/app-palette.tsx
-features/workflows/workflow-tabs.tsx -> features/chat/skill-use.ts
+features/workbenches/workbench-app-page.tsx -> features/palette/app-palette.tsx
+features/workbenches/workbench-tabs.tsx -> features/chat/skill-use.ts
 lib/strings-en.ts -> features/terminal/strings.ts
 lib/strings.ts -> features/models/model-sort.ts
 lib/strings.ts -> features/terminal/strings.ts
@@ -279,7 +279,7 @@ router.tsx -> features/ports/machine-ports-page.tsx
 router.tsx -> features/proposals/proposals-page.tsx
 router.tsx -> features/terminal/index.ts
 router.tsx -> features/usage/usage-page.tsx
-router.tsx -> features/workflows/workflow-app-page.tsx
+router.tsx -> features/workbenches/workbench-app-page.tsx
 state/company.tsx -> features/company/channel-list.ts
 state/company.tsx -> features/company/company-beta.tsx
 state/company.tsx -> features/company/company-nav.ts

@@ -12,9 +12,9 @@
  * room, moderator, items and their owners) and one roadmap's record and body.
  *
  * It looks like the app because it is dressed in the app's own values rather than a palette of
- * its own: it links the app's base stylesheet for framed pages (`/workflow-ui.css`), copies the
+ * its own: it links the app's base stylesheet for framed pages (`/workbench-ui.css`), copies the
  * app's resolved theme values from its parent's root (dark or light, the gray scale, the accent,
- * the font, the root font size — the list workflow pages get), copies them again whenever the
+ * the font, the root font size — the list workbench pages get), copies them again whenever the
  * parent's root changes, and lays itself out the way the app's company-mode pages are: a header
  * with its one primary action, rows in a bordered list with a status pill, an empty state in the
  * middle, and a dialog for opening a roadmap.
@@ -62,7 +62,7 @@ export const PAGE_TIMEOUT_MS = 15_000;
 
 /**
  * The app's resolved theme values the page copies from its parent: the same list
- * packages/web's lib/workflow-theme.ts copies into a workflow's frame (a plugin cannot import the
+ * packages/web's lib/workbench-theme.ts copies into a workbench's frame (a plugin cannot import the
  * web app, so the list is repeated here). Read RESOLVED, so light/dark, the accent and the font
  * size the person chose are already applied; the page recomputes none of it.
  */
@@ -84,22 +84,22 @@ export const THEME_VARS = [
 ] as const;
 
 /** The app's base stylesheet for a page in a frame (packages/web/public), linked first so the rules below win. */
-export const THEME_HREF = "/workflow-ui.css";
+export const THEME_HREF = "/workbench-ui.css";
 
-// Every colour is the app's: the `--wf-*` tokens workflow-ui.css derives from the copied values,
+// Every colour is the app's: the `--wb-*` tokens workbench-ui.css derives from the copied values,
 // and, for the status pills and strips, the same Tailwind shades tone.ts spells (success = emerald,
 // attention = amber, danger = red, muted = gray). Sizes follow the app's rungs in rem, so the
 // person's font-size setting (copied onto the root) moves the whole page.
 const STYLE = `
 :root {
-  --rm-bg: var(--wf-bg, #ffffff);
-  --rm-fg: var(--wf-fg, #111827);
-  --rm-muted: var(--wf-muted, #6b7280);
-  --rm-line: var(--wf-border, #e5e7eb);
-  --rm-hover: var(--wf-hover, #f3f4f6);
-  --rm-surface: var(--wf-surface, #f9fafb);
-  --rm-accent: var(--wf-accent, #111827);
-  --rm-accent-fg: var(--wf-accent-fg, #ffffff);
+  --rm-bg: var(--wb-bg, #ffffff);
+  --rm-fg: var(--wb-fg, #111827);
+  --rm-muted: var(--wb-muted, #6b7280);
+  --rm-line: var(--wb-border, #e5e7eb);
+  --rm-hover: var(--wb-hover, #f3f4f6);
+  --rm-surface: var(--wb-surface, #f9fafb);
+  --rm-accent: var(--wb-accent, #111827);
+  --rm-accent-fg: var(--wb-accent-fg, #ffffff);
   --rm-gray-bg: var(--color-gray-100, #f3f4f6); --rm-gray-fg: var(--color-gray-600, #4b5563);
   --rm-ok-bg: #ecfdf5; --rm-ok-fg: #047857; --rm-ok-line: #5ee9b5;
   --rm-warn-bg: #fffbeb; --rm-warn-fg: #b45309; --rm-warn-line: #ffd236;
@@ -126,7 +126,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 a:hover, a:focus-visible { text-decoration: underline; }
 .muted { color: var(--rm-muted); }
 .small { font-size: 0.6875rem; }
-.mono, code { font-family: var(--wf-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.mono, code { font-family: var(--wb-mono, ui-monospace, SFMono-Regular, Menlo, monospace); }
 code { font-size: 0.75rem; background: none; border: 0; padding: 0; }
 button { font: inherit; font-size: 0.75rem; font-weight: 500; line-height: 1.5; padding: 0.25rem 0.625rem; border-radius: 0.375rem; border: 1px solid var(--rm-line); background: var(--rm-bg); color: var(--rm-fg); cursor: pointer; transition: background-color 150ms, opacity 150ms; }
 button:hover:not(:disabled) { background: var(--rm-hover); }

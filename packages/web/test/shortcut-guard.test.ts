@@ -19,7 +19,7 @@ const ALLOWED_DIR = "lib/shortcuts";
  * Files that read the modifiers for something other than a chord of their own, and are
  * therefore excused: the Workspace picker's fixed file-browser keys (Finder's ⌘↑ / ⌘[ / ⌘],
  * Explorer's Alt+←) and its type-to-select, the model picker's Alt+digit group jump and its
- * type-to-focus (both "is this a bare key" tests), the workflow frame's key forwarding, which
+ * type-to-focus (both "is this a bare key" tests), the workbench frame's key forwarding, which
  * copies an event to re-raise it on the app's window, and the hosted browser's input, which
  * copies every key pressed in a page's picture to that page (and leaves the paste chord to the
  * browser). None is an app command a user would rebind. A new entry here needs a reason of the
@@ -30,7 +30,7 @@ const EXCUSED_FILES = new Set([
   "features/chat/workspace-finder-model.ts",
   "features/chat/model-picker-logic.ts",
   "features/chat/model-picker-modal.tsx",
-  "lib/workflow-theme.ts",
+  "lib/workbench-theme.ts",
 ]);
 
 /** Every `.ctrlKey` / `.metaKey` read outside a comment, as `file:line`. */

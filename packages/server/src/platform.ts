@@ -167,10 +167,11 @@ import {
   SessionIndex,
   SessionOrigins,
 } from "./mechanisms/sessions.js";
-import { WorkflowLoader, Workflows } from "./mechanisms/workflows.js";
-import { WorkflowService } from "./workflows/service.js";
+import { WorkflowLoader } from "./mechanisms/workflows.js";
 import { WorkflowLoaderService } from "./workflows/loader.js";
-import { WorkflowRoutes } from "./workflows/routes.js";
+import { Workbenches } from "./mechanisms/workbenches.js";
+import { WorkbenchService } from "./workbenches/service.js";
+import { WorkbenchRoutes } from "./workbenches/routes.js";
 import { AgentPackages } from "./mechanisms/packages.js";
 import { AgentPackageService } from "./packages/service.js";
 import { PackageRoutes } from "./packages/routes.js";
@@ -500,10 +501,16 @@ export class CompanyModule {}
 export class ApiModule {}
 
 @Module({
-  children: [WorkflowLoaderService, WorkflowService, WorkflowRoutes],
-  exports: [Workflows, WorkflowLoader],
+  children: [WorkflowLoaderService],
+  exports: [WorkflowLoader],
 })
 export class WorkflowsModule {}
+
+@Module({
+  children: [WorkbenchService, WorkbenchRoutes],
+  exports: [Workbenches],
+})
+export class WorkbenchesModule {}
 
 @Module({
   children: [GhCliRunner, AgentPackageService, PackageRoutes],
@@ -535,6 +542,7 @@ export class PackagesModule {}
     PortForwardsModule,
     TerminalRelay,
     WorkflowsModule,
+    WorkbenchesModule,
     BuiltinBrowserModule,
     AgentApiModule,
     PackagesModule,

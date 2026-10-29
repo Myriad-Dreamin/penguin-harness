@@ -134,7 +134,7 @@ Agents can also write and optimize their own Skills ([docs](https://penguin.ooo/
 | Category             | Plugins                                                                       |
 | -------------------- | ----------------------------------------------------------------------------- |
 | Agent Self-Evolution | `default-rsi-toolkit`, `opro-rsi-toolkit`, `ape-rsi-toolkit`, `ace-rsi-toolkit`, `awm-rsi-toolkit` |
-| Office Productivity  | `a2ui`, `data-analysis`, `use-firecrawl`, `browser-automation`, `use-bento-slides`, `humanizer`, `goal`, `continual-learning`, `agent-company`, `agent-company-proposals` |
+| Office Productivity  | `a2ui`, `data-analysis`, `use-firecrawl`, `browser-automation`, `use-bento-slides`, `humanizer`, `goal`, `continual-learning`, `agent-company`, `agent-company-proposals`, `penguin-support` |
 | Software Development | `software-development`, `use-claude-code`                              |
 | AI App Development   | `agent-development`, `agent-evaluation`, `model-development`, `skill-porting` |
 
@@ -185,7 +185,7 @@ Then run `penguin web`. It serves the Web App at `http://127.0.0.1:7364` and pri
 ### Docker
 
 ```bash
-docker run -d --name penguin -p 127.0.0.1:7364:7364 -v penguin-data:/data hiyouga/penguinharness:latest
+docker run -d --name penguin -p 127.0.0.1:7364:7364 -v penguin-data:/data hiyouga/penguinharness:0.2.16
 docker logs penguin       # the first-login link, openable as it stands on this machine
 ```
 

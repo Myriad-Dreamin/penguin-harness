@@ -43,8 +43,8 @@
 
 @layer base {
   :root {
-    /* The body font stack under a name of the app's own, which the workflow frame reads off the
-       document (lib/workflow-theme.ts). An alias of the theme's token, so the two cannot drift. */
+    /* The body font stack under a name of the app's own, which the workbench frame reads off the
+       document (lib/workbench-theme.ts). An alias of the theme's token, so the two cannot drift. */
     --font-app-sans: var(--ui-font-sans);
   }
   html,
@@ -86,13 +86,6 @@
   .overflow-x-scroll,
   .overflow-y-scroll {
     position: relative;
-  }
-  /* Consistent pointer cursor for clickable buttons: Tailwind 4 preflight reverted button to the browser's
-     default arrow cursor (v3 used pointer); disabled state keeps the default. Explicit cursor-* utility
-     classes (e.g. cursor-zoom-in) take precedence. */
-  button:not(:disabled),
-  [role="button"]:not(:disabled) {
-    cursor: pointer;
   }
   /* Hide the native scrollbar (replaced with custom controls, e.g. zoom/pan sliders in trace viewing). */
   .no-scrollbar {

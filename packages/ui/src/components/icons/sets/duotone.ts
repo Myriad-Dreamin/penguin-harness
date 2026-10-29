@@ -145,6 +145,8 @@ export const DUOTONE: Readonly<Partial<Record<GlyphKey, string>>> = {
   zap: ICONS.zap,
   /** The disc inside the rays. */
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
+  /** The crescent body behind its outline. */
+  moon: "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z",
   /** The half disc, closed across its foot above the horizon. */
   sunrise: "M6 18a6 6 0 0 1 12 0z",
 
@@ -211,6 +213,7 @@ export const DUOTONE: Readonly<Partial<Record<GlyphKey, string>>> = {
   panelLeft: "M4 5h6v14H4z",
   panelLeftText: "M5 4h4v16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   /** The chrome bar above the rule, which is what makes the frame a window. */
+  anvil: "M3 7h5V4h13v5l-4 3H8c-3 0-5-2-5-5Z",
   appWindow: "M3 9V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3z",
   /** All four tiles, as drawn (and so for `dashboard`). */
   tiles: ICONS.tiles,
@@ -326,6 +329,7 @@ export const ICON_TINTS: Readonly<Record<IconName, IconTint>> = {
   puzzle: "green",
   fishHook: "green",
   wrench: "green",
+  anvil: "green",
   shieldAlert: "green",
   shieldHalf: "green",
   shieldCheck: "green",
@@ -347,6 +351,7 @@ export const ICON_TINTS: Readonly<Record<IconName, IconTint>> = {
   lightbulb: "amber",
   zap: "amber",
   sun: "amber",
+  moon: "slate",
   sunrise: "amber",
   percent: "amber",
   barChart: "amber",

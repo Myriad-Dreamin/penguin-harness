@@ -92,7 +92,7 @@ export function hostCommandActions(
 
 /**
  * `extra` is what the mount point adds ahead of the standing actions — the full-page
- * workflow route registers its way out here, which is why it exists at all on that route.
+ * workbench route registers its way out here, which is why it exists at all on that route.
  * `suggest` is the same mount point's dynamic completions — the mount point passes the session
  * completion; a mount point outside the app's providers passes nothing and the palette keeps
  * its standing actions alone.

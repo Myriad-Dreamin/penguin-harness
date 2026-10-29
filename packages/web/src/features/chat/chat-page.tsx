@@ -59,7 +59,7 @@ import { conversationMode } from "../company/company-nav";
 import { useCompany } from "../../state/company";
 import { ApiError } from "../../api/client";
 import { S } from "../../lib/strings";
-import { useWorkflowTabs, WorkflowFrame, WorkflowTabStrip } from "../workflows/workflow-tabs";
+import { useWorkbenchTabs, WorkbenchFrame, WorkbenchTabStrip } from "../workbenches/workbench-tabs";
 import { apiErrorText } from "../../lib/api-error";
 import type { PermissionPick } from "../../lib/permission-level";
 import { configuredCompactionLimit } from "../../lib/context";
@@ -501,15 +501,46 @@ export function ChatPage() {
    * is never in it, so going by the current Agent alone left that conversation on the
    * placeholder for good, with nothing to say why.
    */
-  const pageAgentId = selected?.agentId ?? agentId;
+  const draftOwnerKey = `${projectId}:${parkedDraftId ?? location.key}`;
+  const [draftOwner, setDraftOwner] = useState<{
+    key: string;
+    agentId: string | null;
+    machineId: string | null;
+  } | null>(null);
+  const onDraftAgent = useCallback(
+    (agentId: string | null, machineId: string | null) => {
+      setDraftOwner({ key: draftOwnerKey, agentId, machineId });
+    },
+    [draftOwnerKey],
+  );
+  const resolvedDraftOwner = draftOwner?.key === draftOwnerKey ? draftOwner : null;
+  const pageAgentId = draft
+    ? (resolvedDraftOwner?.agentId ?? null)
+    : (selected?.agentId ?? agentId);
+  const pageMachineId = draft
+    ? (resolvedDraftOwner?.machineId ?? null)
+    : selected === null
+      ? null
+      : machineForSession(selected.sessionId);
+  const returnWorkbench = (
+    location.state as {
+      workbench?: { projectId: string; agentId: string; tabId: string; machineId: string | null };
+    } | null
+  )?.workbench;
   // The tabs beside a conversation are its OWN Agent's, asked of the server that Agent's
-  // workflows live on: a Session on a machine runs a copy of the Agent there, and the workflows
+  // workbenches live on: a Session on a machine runs a copy of the Agent there, and the workbenches
   // it built are in that copy. The current Agent is always one of this server's, so going by
-  // it listed the wrong Agent's workflows (or none) for every Session on a machine.
-  const workflowTabs = useWorkflowTabs(
+  // it listed the wrong Agent's workbenches (or none) for every Session on a machine.
+  const workbenchTabs = useWorkbenchTabs(
     projectId,
     pageAgentId,
-    selected === null ? null : machineForSession(selected.sessionId),
+    pageMachineId,
+    location.key,
+    returnWorkbench?.projectId === projectId &&
+      returnWorkbench.agentId === pageAgentId &&
+      returnWorkbench.machineId === pageMachineId
+      ? returnWorkbench.tabId
+      : null,
   );
   // `?file=<Workspace path>` on arrival — a proposal's scope row, a link from another page —
   // brings the Files tab up on that file, once; the parameter is consumed so a reload does
@@ -2109,7 +2140,7 @@ export function ChatPage() {
     prefillComposer,
   };
 
-  if (!projectId || !pageAgentId) {
+  if (!projectId || (!draft && !pageAgentId)) {
     return (
       <div className="p-6">
         <Skeleton className="h-6 w-64" />
@@ -2245,28 +2276,28 @@ export function ChatPage() {
     // gray-950 in Primer, exactly what it painted before; paper in Console, the sheet in Frost —
     // and the transcript's sticky rows, painted in the same token, sit on it without a seam.
     <WallpaperSurface data-dock-host className="relative flex h-full flex-col bg-canvas">
-      {/* Workflow tabs: the Agent's own pages beside the chat. A workflow tab covers the
+      {/* Workbench tabs: the Agent's own pages beside the chat. A workbench tab covers the
           chat (which stays mounted, so its state survives a look at the page) below the
-          strip; the strip is absent when the Agent has no workflow with a UI. */}
-      <WorkflowTabStrip
-        tabs={workflowTabs.tabs}
-        notices={workflowTabs.notices}
-        active={workflowTabs.active}
-        onSelect={workflowTabs.setActive}
+          strip; the strip is absent when the Agent has no workbench with a UI. */}
+      <WorkbenchTabStrip
+        tabs={workbenchTabs.tabs}
+        notices={workbenchTabs.notices}
+        active={workbenchTabs.active}
+        onSelect={workbenchTabs.setActive}
       />
-      {workflowTabs.activeTab !== null && projectId !== null && pageAgentId !== null && (
+      {workbenchTabs.activeTab !== null && projectId !== null && pageAgentId !== null && (
         <div className="absolute inset-x-0 bottom-0 top-9 z-10">
-          <WorkflowFrame
-            // Per tab: the frame keeps this workflow's history fold, its error and its
+          <WorkbenchFrame
+            // Per tab: the frame keeps this workbench's history fold, its error and its
             // armed Remove, and none of that belongs to the next tab.
-            key={workflowTabs.activeTab.tabId}
+            key={workbenchTabs.activeTab.tabId}
             projectId={projectId}
             agentId={pageAgentId}
-            tab={workflowTabs.activeTab}
-            onChanged={() => void workflowTabs.refresh()}
+            tab={workbenchTabs.activeTab}
+            onChanged={() => void workbenchTabs.refresh()}
             onRemoved={() => {
-              workflowTabs.setActive(null);
-              void workflowTabs.refresh();
+              workbenchTabs.setActive(null);
+              void workbenchTabs.refresh();
             }}
           />
         </div>
@@ -2503,7 +2534,7 @@ export function ChatPage() {
                         data-tooltip-extra
                         disabled={procBusy !== null}
                         onClick={() => void onClearExitedProcesses()}
-                        className="shrink-0 cursor-pointer whitespace-nowrap text-xs text-gray-400 transition-colors duration-150 hover:text-gray-600 disabled:cursor-default disabled:opacity-60 dark:text-gray-500 dark:hover:text-gray-300"
+                        className="shrink-0 whitespace-nowrap text-xs text-gray-400 transition-colors duration-150 hover:text-gray-600 disabled:cursor-default disabled:opacity-60 dark:text-gray-500 dark:hover:text-gray-300"
                       >
                         {S.chat.processClearExited}
                       </button>
@@ -2624,6 +2655,7 @@ export function ChatPage() {
                   {...(parkedDraftId !== null ? { draftId: parkedDraftId } : {})}
                   composerRef={composerRef}
                   onWorkspaceChange={onDraftWorkspace}
+                  onAgentChange={onDraftAgent}
                 />
               ) : (
                 // Keyed by Session: the whole block does a light fade-in when switching sessions.
