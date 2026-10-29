@@ -13,6 +13,7 @@
  *   leg target corpusDir buildDir coverageDir mode maxTotalTime runs artifactPrefix dict
  */
 import path from "node:path";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { OptionSource, OptionsManager, startFuzzing } from "@jazzer.js/core";
@@ -35,6 +36,13 @@ if (leg === undefined || target === undefined) {
 }
 
 const options = new OptionsManager(OptionSource.DefaultCLIOptions);
+/**
+ * The memory ceiling libFuzzer enforces, stated instead of inherited: its own default is 2048 MB,
+ * the CLI leg reached 1.7 GB before the state epochs existed, and an RSS stop has to be
+ * distinguishable in the log from a crash. 3072 leaves a 4 GB container room to write the
+ * artifact and still be read; override with FUZZ_RSS_LIMIT_MB.
+ */
+const rssLimitMb = Number(process.env.FUZZ_RSS_LIMIT_MB ?? 3072);
 options.merge(
   {
     fuzzTarget: pathToFileURL(target).href,
@@ -48,6 +56,7 @@ options.merge(
       // eight four-command calls with a sentence each.
       "-max_len=256",
       "-len_control=0",
+      `-rss_limit_mb=${rssLimitMb}`,
       "-print_final_stats=1",
       `-artifact_prefix=${artifactPrefix}`,
       ...(runs === undefined || runs === "" ? [] : [`-runs=${runs}`]),
@@ -100,6 +109,14 @@ async function warmLazyDependencies() {
 
 let code = 1;
 let started = false;
+const startedAt = Date.now();
+/** The peak RSS this run reached — the reading an OOM would otherwise take with it. */
+let peakRssBytes = process.memoryUsage().rss;
+const rssSampler = setInterval(() => {
+  const rss = process.memoryUsage().rss;
+  if (rss > peakRssBytes) peakRssBytes = rss;
+}, 500);
+rssSampler.unref();
 await warmLazyDependencies();
 try {
   const result = await startFuzzing(options);
@@ -124,4 +141,79 @@ if (started) {
     // The target is already loaded; a failure here leaves the process exiting anyway.
   }
 }
+
+/**
+ * What the run ended as, beside the target's own `summary.md`. The code alone cannot tell a
+ * finding from an RSS stop from a clean stop when the process was killed, so the peak memory
+ * that was measured here goes next to it — `createRunEnd`'s classification is what a reader
+ * (and the report) uses.
+ */
+const peakRssMb = Math.round(peakRssBytes / (1024 * 1024));
+const ended = createRunEnd({
+  leg,
+  returnCode: code,
+  seconds: Math.round((Date.now() - startedAt) / 1000),
+  peakRssMb,
+  rssLimitMb,
+  maxTotalTimeSeconds: Number(maxTotalTime),
+  runs: runs === "" || runs === undefined ? null : Number(runs),
+  findingDir: findRecentFinding(artifactPrefix, startedAt),
+});
+try {
+  fs.writeFileSync(
+    path.join(artifactPrefix, "run-end.json"),
+    `${JSON.stringify(ended, null, 2)}\n`,
+    "utf8",
+  );
+} catch {
+  // The run's outcome still goes to the console below.
+}
+console.log(
+  `[fuzz] ${leg}: ${ended.outcome}, exit ${code}, peak RSS ${peakRssMb} MB (limit ${rssLimitMb} MB)`,
+);
 process.exit(code);
+
+/** The finding directory THIS run wrote (`<leg>-finding-*`), told apart by its mtime. */
+function findRecentFinding(outDir, since) {
+  try {
+    let newest = null;
+    for (const name of fs.readdirSync(outDir)) {
+      if (!name.startsWith(`${leg}-finding-`)) continue;
+      const full = path.join(outDir, name);
+      try {
+        if (fs.statSync(full).mtimeMs < since) continue;
+      } catch {
+        continue;
+      }
+      if (newest === null || full > newest) newest = full;
+    }
+    return newest;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Classify how the run ended, from what was measured rather than from libFuzzer's exit codes
+ * alone: a finding writes a `kind.txt` of its own (`soft-timeout`, `invariant`, `crash`), an RSS
+ * stop is a peak at the ceiling, a clean stop is exit 0 with neither.
+ */
+function createRunEnd(input) {
+  let kind = null;
+  if (input.findingDir !== null) {
+    try {
+      kind = fs.readFileSync(path.join(input.findingDir, "kind.txt"), "utf8").split("\n")[0];
+    } catch {
+      kind = null;
+    }
+  }
+  const outcome =
+    kind !== null
+      ? `finding (${kind})`
+      : input.returnCode === 0
+        ? "clean stop"
+        : input.peakRssMb >= input.rssLimitMb
+          ? "out of memory (peak RSS at the ceiling)"
+          : `nonzero exit ${input.returnCode} (not a finding this leg wrote)`;
+  return { ...input, outcome, findingKind: kind };
+}

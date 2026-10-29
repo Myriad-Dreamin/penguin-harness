@@ -90,6 +90,8 @@ run the fuzzer on a newer base image or distribution.
 | `cli/src/command.ts` | One command behind the process-level guards: exit guard, stdio capture, soft timeout. |
 | `cli/src/fetch-shim.ts` | The CLI↔server hop answered from the app in memory instead of a socket. |
 | `server/src/virtual-time.ts` | The jumpable clock: idle detection, timer jumping, the drive loop. |
+| `server/src/epoch.ts` | The bounded state epoch: when the rig is replaced, what a rotation costs, and the latency-against-state probe a rotation must not hide. |
+| `server/src/finding.ts` | The replay kit a leg writes before it rethrows: kind, input, the calls that led there, and a copy of the database they ran against. |
 | `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
 | `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
 | `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |
@@ -245,6 +247,45 @@ it — the separator, then its index — plus the value tokens a call is made of
 `--limit`, `-m`, `--approve`, `allow-all`, a path, a quote, an escape). `run.mjs` passes it as
 libFuzzer's `-dict`, so "insert a call" and "fill a slot" are mutations the engine can aim.
 
+## State epochs: a bounded rig
+
+A run keeps one rig — one data root, one server — unless it is told otherwise, and a rig's state
+only grows: every `run` a CLI input drives without `--session` creates a Session, every request a
+worked-on one, and the commands that read the collection pay for all of it. Measured on the CLI
+leg before this bound existed: `session ls` at 1.4–1.8 s after a few thousand `run` calls, peak
+RSS 1.7 GB, and an exec/s that fell from 131 to 15 over the run. That is the engine paying for
+state instead of exploring it.
+
+So the rig is replaced: after `FUZZ_EPOCH_CALLS` calls (1000 on the CLI leg, 3000 on the API leg)
+the target tears the rig down and boots a fresh one — **between two calls**, never inside one, so
+no input is half-run on one rig and half on the next. What the search learned survives: the corpus
+and the coverage feedback live in libFuzzer, not in the rig. The budgets are where rotation costs
+under a tenth of the run (a rig's boot is about a second under instrumentation) while still keeping
+the state bounded; `summary.md` states the share it actually took.
+
+- `FUZZ_EPOCH_CALLS=0` turns rotation off: one rig for the whole run, which is the state-growth
+  probe's own configuration.
+- `summary.md` carries a per-epoch table (commands, wall time, p50/p95/max, quiet) and, after it,
+  **latency against state size**: every call of every epoch filed under the Session count it ran
+  at. A rotation bounds the state a single epoch reaches; it must not hide that a command gets
+  slower as Sessions accumulate, so that reading is kept across rotations and the table says it at
+  every size the run reached.
+- A rotation waits for work the last call left in flight (a soft timeout ends the wait, it does
+  not cancel the run behind it) and drops the old rig's pending timers, so nothing fires into the
+  new one. A rotation that never saw the rig go quiet is counted in the summary rather than
+  swallowed.
+
+`FUZZ_RSS_LIMIT_MB` (default 3072) is libFuzzer's own RSS ceiling, stated instead of inherited:
+its default is 2048 MB, which the harness can reach on its own, and an RSS stop has to be
+distinguishable from a crash in the log.
+
+Measured on the CLI leg, two 120-second runs over the same corpus, rotation on and off: **6,949
+commands at 34.0% statements and 1.4 GB peak RSS** against **6,244 commands at 33.5% and 1.7 GB** —
+and the probe's table is why. With rotation off, the slow commands start once the rig passes a
+hundred Sessions: six of them above 64, four of those in the 128–255 bucket, the worst at 4.4 s
+(`session rename`), and none below 32. Rotation costs 3.3% of that run's wall time; the API leg,
+whose calls never grow the collection, pays about 6% for the same bound.
+
 ## What a run produces
 
 Under the leg's own `out/` (ignored by git):
@@ -255,11 +296,15 @@ Under the leg's own `out/` (ignored by git):
 | `run.log` | The fuzzer's console output, final statistics included. |
 | `coverage/coverage-final.json` | The raw istanbul coverage Jazzer.js writes. |
 | `coverage/coverage-summary.md` | Lines/statements/functions/branches, in total and per source file. |
-| `summary.md` | The target's own account: requests or commands served, how many calls each input asked for, slow calls by name, status/exit buckets, distinct state signatures, outbound attempts. |
-| `crash-*` | Any input that tripped an invariant, in the input format above. |
+| `summary.md` | The target's own account: requests or commands served, how many calls each input asked for, slow calls by name, status/exit buckets, distinct state signatures, outbound attempts, and the epoch + latency-against-state tables. |
+| `run-end.json` | How the run ended — `finding (soft-timeout\|invariant\|crash)`, `clean stop`, or an RSS stop at the ceiling — with the exit code, the peak RSS and the finding directory. |
+| `crash-*` | Any input that tripped a finding, in the input format above (libFuzzer's own artifact). |
+| `<leg>-finding-*/` | The replay kit for one finding: `kind.txt`, `input.bin`, `kit.json` (the calls that led there and the rig's own reading), and `web.db` with its write-ahead log — a copy of the database the input ran against, which is where the newest rows are. The kit is what survives a rotation: the input plus the state it meant something on. |
 
 The process exits `0` when the fuzzer stopped on its own (time or run count), and `77` — the
-fuzzer's own code for a finding — when an input tripped something.
+fuzzer's own code for a finding — when an input tripped something. `run.mjs` prints the last line
+from `run-end.json`, so the answer sits at the bottom of a long log: a finding names its kind and
+directory, a memory stop says so instead of looking like a crash.
 
 ## What counts as a finding
 
@@ -272,7 +317,9 @@ CLI: a command that throws, hangs, exits outside the set its command allows, rea
 `process.exit` where the table does not expect it (the one known hard-exit face is exercised
 on purpose), or makes a non-loopback connection.
 
-A finding is thrown from the target, which is how the fuzzer records it and saves the input.
+A finding is thrown from the target, which is how the fuzzer records it and saves the input; before
+rethrowing, the target writes the replay kit above, because the state the input meant something on
+would otherwise be gone with the next rotation.
 
 ## Deliberately not exercised
 

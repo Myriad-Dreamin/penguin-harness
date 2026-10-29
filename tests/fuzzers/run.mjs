@@ -128,8 +128,36 @@ for (const stream of [child.stdout, child.stderr]) {
 
 // `close`, not `exit`: the child's stdio may still carry its last lines when it exits, and
 // this handler closes the log file.
+// The runner (fuzz-runner.mjs) writes how the run ended beside the target's summary: a finding
+// it wrote, a clean stop, or an RSS stop. Printing it last keeps the answer at the bottom of the
+// console, where a person looks after a long log.
+function reportOutcome() {
+  const endFile = path.join(outDir, "run-end.json");
+  if (!fs.existsSync(endFile)) return;
+  let ended;
+  try {
+    ended = JSON.parse(fs.readFileSync(endFile, "utf8"));
+  } catch {
+    console.error("[fuzz] run-end.json did not parse");
+    return;
+  }
+  console.log(
+    `[fuzz] ${leg}: ${ended.outcome} — ${ended.seconds}s, ${ended.runs ?? "time-bounded"} runs, ` +
+      `peak RSS ${ended.peakRssMb} MB of ${ended.rssLimitMb} MB`,
+  );
+  if (ended.findingDir === null) return;
+  try {
+    const kind = fs.readFileSync(path.join(ended.findingDir, "kind.txt"), "utf8").split("\n");
+    console.log(`[fuzz] finding ${kind[0]} in ${ended.findingDir}`);
+    console.log(`[fuzz]   ${kind[1]}`);
+  } catch {
+    console.log(`[fuzz] finding directory ${ended.findingDir} could not be read`);
+  }
+}
+
 child.on("close", (code, signal) => {
   fs.closeSync(logFd);
+  reportOutcome();
   if (fs.existsSync(path.join(coverageDir, "coverage-final.json"))) {
     const report = spawnSync(process.execPath, [path.join(here, "report.mjs"), leg], {
       stdio: "inherit",

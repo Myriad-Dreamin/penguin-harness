@@ -32,14 +32,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { openDatabaseReadOnly } from "../../../../packages/server/src/db/database.js";
 import { captureStdout, cliSpecs, exitsFor } from "../../specs/cli/main.js";
 import { splitRecords, type Pools } from "../../specs/decode.js";
 import { ByteChoices } from "../../server/src/choices.js";
 import { permitLoopback } from "../../server/src/bug-detectors.js";
+import { Epochs, databaseBytes, settleQuiet } from "../../server/src/epoch.js";
+import { writeFindingKit } from "../../server/src/finding.js";
 import { installOutboundGuard } from "../../server/src/guards.js";
 import { bootHarness } from "../../server/src/harness.js";
 import { modelScriptFor } from "../../server/src/model-script.js";
-import { setModelPlan } from "../../server/src/stubs/mmsp/index.js";
+import { resetModelPlan, setModelPlan } from "../../server/src/stubs/mmsp/index.js";
 import { Quiescence, VirtualTime, driveToCompletion, realMs } from "../../server/src/virtual-time.js";
 import { runOneCommand, type CommandOutcome } from "./command.js";
 import { decodeCliControls } from "./input.js";
@@ -96,32 +99,25 @@ const guard = installOutboundGuard();
 // The leg's clock: created before boot, so the server's Clock seam follows it from the first
 // read; installed further down, so the boot's own startup work keeps real timers.
 const vtime = new VirtualTime(realMs());
-const harness = await bootHarness({ vtime });
-// The SSRF bug detector would otherwise report the harness's own loopback traffic.
-await permitLoopback(harness.app.listener.port);
-// The CLI↔server hop, in memory (see fetch-shim.ts): over a real socket an open stream keeps
-// the process looking busy for as long as it lives, and the clock would never jump.
-const shim = installFetchShim(
-  harness.app.app,
-  harness.app.listener.port,
-  traceLine === undefined ? undefined : (line) => traceLine(`[shim] ${line}`),
-);
 
-// The CLI leg's environment: the data root is the server's, the API URL names the harness's
-// own origin (client.ts's resolution step 2 — the lock and auto-start are never reached — and
-// fetch-shim.ts answers it), the proxy never applies to loopback, and dates are UTC.
-//
-// SCRUBBED FIRST: running inside a server-driven Session injects PENGUIN_API_TOKEN /
-// PENGUIN_PROJECT_ID / PENGUIN_AGENT_ID / PENGUIN_SESSION_ID into tool subprocesses, and the
-// CLI prefers PENGUIN_API_TOKEN over the token file — the parent's token would be sent to the
-// demo's server and 401 with a misleading "rotated" message.
+/**
+ * The leg's environment, each key saved once so `shutdown()` puts back what it found. Every
+ * rotation writes these again — `resolveRoot()` and `resolveConnection()` read them per command
+ * (`packages/core/src/state/paths.ts`, `packages/cli/src/client.ts`), so a new rig needs no
+ * re-import.
+ *
+ * SCRUBBED FIRST: running inside a server-driven Session injects PENGUIN_API_TOKEN /
+ * PENGUIN_PROJECT_ID / PENGUIN_AGENT_ID / PENGUIN_SESSION_ID into tool subprocesses, and the
+ * CLI prefers PENGUIN_API_TOKEN over the token file — the parent's token would be sent to the
+ * demo's server and 401 with a misleading "rotated" message.
+ */
 const savedEnv: Record<string, string | undefined> = {};
 const setEnv = (key: string, value: string): void => {
-  savedEnv[key] = process.env[key];
+  if (!(key in savedEnv)) savedEnv[key] = process.env[key];
   process.env[key] = value;
 };
 const clearEnv = (key: string): void => {
-  savedEnv[key] = process.env[key];
+  if (!(key in savedEnv)) savedEnv[key] = process.env[key];
   delete process.env[key];
 };
 for (const key of [
@@ -132,11 +128,54 @@ for (const key of [
 ]) {
   clearEnv(key);
 }
-setEnv("PENGUIN_HOME", harness.app.root);
-// localhost, not 127.0.0.1: the canonical-host guard treats 127.0.0.1 as the preview host.
-setEnv("PENGUIN_API_URL", `http://localhost:${harness.app.listener.port}`);
 setEnv("NO_PROXY", "127.0.0.1,localhost,::1");
 setEnv("TZ", "UTC");
+
+type Rig = Awaited<ReturnType<typeof bootHarness>>;
+let harness: Rig;
+/** The CLI↔server hop, in memory (see fetch-shim.ts) — one per rig. */
+let shim: ReturnType<typeof installFetchShim> | undefined;
+/** Hops answered by rigs already torn down: the summary reads the run's total. */
+let servedBefore = 0;
+/**
+ * What an idle process looks like: the listener and this process's stdio, nothing else. One per
+ * rig — a rotation brings a new listener, which would otherwise count as work in flight forever
+ * and stop the clock from ever jumping (`bootRig` re-takes the baseline for exactly that reason).
+ */
+let quiet = new Quiescence();
+
+/**
+ * Boot one rig and point this leg at it: a disposable data root, the real server on an ephemeral
+ * loopback port, and the in-memory hop the CLI's requests go through (over a real socket an open
+ * stream keeps the process looking busy for as long as it lives, and the clock would never jump).
+ *
+ * The first call is the run's first rig; `epoch.ts` calls it again whenever a rig's own history
+ * has grown past the budget. Booting happens on real time — the clock is installed after, the
+ * same order the first boot has always used.
+ */
+async function bootRig(): Promise<void> {
+  if (shim !== undefined) {
+    servedBefore += shim.served;
+    shim.uninstall();
+  }
+  harness = await bootHarness({ vtime });
+  // The SSRF bug detector would otherwise report the harness's own loopback traffic.
+  await permitLoopback(harness.app.listener.port);
+  shim = installFetchShim(
+    harness.app.app,
+    harness.app.listener.port,
+    traceLine === undefined ? undefined : (line) => traceLine(`[shim] ${line}`),
+  );
+  // The data root is the server's, and the API URL names the harness's own origin (client.ts's
+  // resolution step 2 — the lock and auto-start are never reached, and fetch-shim answers it).
+  setEnv("PENGUIN_HOME", harness.app.root);
+  // localhost, not 127.0.0.1: the canonical-host guard treats 127.0.0.1 as the preview host.
+  setEnv("PENGUIN_API_URL", `http://localhost:${harness.app.listener.port}`);
+  // The new listener and hop are this rig's idle state, not work in flight.
+  quiet.observe();
+}
+
+await bootRig();
 
 // Imported after the environment is in place: the CLI resolves its data root at module load.
 const { cli } = await import("../../../../packages/cli/src/index.js");
@@ -156,9 +195,6 @@ function sleep(ms: number): Promise<void> {
 // From here on time is the leg's: every timer the CLI and the server arm is on `vtime`, and the
 // driver below is what moves it.
 vtime.install();
-/** What an idle process looks like: the listener and this process's stdio, nothing else. */
-const quiet = new Quiescence();
-quiet.observe();
 
 /** How long one command may take in real time before the driver calls it stuck. */
 const DRIVE_WATCHDOG_MS = 20_000;
@@ -208,6 +244,9 @@ function betweenCalls(): void {
 
 /** The setup pipeline every command's premise rests on; a failure here stops the run. */
 async function setup(): Promise<boolean> {
+  // The setup runs a real Session, so it must not play the turn list the last fuzz call
+  // installed: an `abort` there ends this run empty and the premise never gets built.
+  resetModelPlan();
   const steps = [
     {
       id: "setup.config.model.add",
@@ -245,7 +284,9 @@ async function setup(): Promise<boolean> {
     }
     if (outcome.exitCode === null || !step.exits.includes(outcome.exitCode)) {
       throw new Error(
-        `[cli] setup ${step.id} exited ${outcome.exitCode ?? "null"} outside {${step.exits.join(",")}} — ${outcome.stderr.slice(0, 200)}`,
+        `[cli] setup ${step.id} exited ${outcome.exitCode ?? "null"} outside {${step.exits.join(",")}} — ` +
+          `stdout: ${outcome.stdout.slice(0, 300).replace(/\n/g, " ")} ` +
+          `stderr: ${outcome.stderr.slice(0, 300).replace(/\n/g, " ")}`,
       );
     }
     if (step.id === "setup.run.first") {
@@ -297,7 +338,53 @@ function lastJsonLine(stdout: string): unknown | null {
   return null;
 }
 
-const oracleVisible = await setup();
+/** What the config write-after-read oracle said on the rig that ran last; a rotation re-proves it. */
+let oracleVisible = false;
+
+/** Commands per rig; 0 runs the whole curve on one rig (the state-growth probe's own run). */
+const EPOCH_CALLS = (() => {
+  const raw = Number(process.env.FUZZ_EPOCH_CALLS ?? 1_000);
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 1_000;
+})();
+
+/** The rig's size, for the growth probe: Session rows are what the commands pay for. */
+async function probeRig(): Promise<Record<string, number>> {
+  const db = openDatabaseReadOnly(harness.app.dbPath);
+  try {
+    const row = db.prepare("SELECT COUNT(*) AS sessions FROM sessions").get() as
+      | { sessions?: number }
+      | undefined;
+    return { sessions: row?.sessions ?? 0, dbBytes: databaseBytes(harness.app.dbPath) };
+  } finally {
+    db.close();
+  }
+}
+
+const epochs = new Epochs({
+  budget: EPOCH_CALLS,
+  boot: bootRig,
+  setup: async () => {
+    // The rig boots on real time (the same order the first one always used); from its first
+    // command on, time is the leg's again — a rotation's teardown uninstalled it.
+    vtime.install();
+    // The new rig's ids are the only ones that name a real row: the old rig's rows are gone.
+    for (const key of Object.keys(pools)) delete pools[key as keyof Pools];
+    oracleVisible = await setup();
+  },
+  teardown: async () => {
+    // The old rig's timers must not fire into the new one: uninstalling the clock drops them,
+    // and the teardown itself then runs on real time.
+    vtime.uninstall();
+    await harness.app.cleanup().catch(() => {});
+  },
+  settle: () => settleQuiet(quiet),
+  probe: probeRig,
+});
+await epochs.start();
+
+/** The calls that led to whatever this leg throws next — the finding kit's own record. */
+const recent: { spec: string; argv: string[]; ms: number; exit: string }[] = [];
+const RECENT_CALLS = 16;
 
 interface SpecSweep {
   inside: number;
@@ -397,6 +484,29 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
   recordSlowCall(spec.id, outcome.ms);
   captureStdout(outcome.stdout, pools);
   betweenCalls();
+  recent.push({
+    spec: spec.id,
+    argv,
+    ms: outcome.ms,
+    exit: outcome.exitCode === null ? "null" : String(outcome.exitCode),
+  });
+  if (recent.length > RECENT_CALLS) recent.shift();
+
+  // Between calls, never inside one: the rig is only replaced where the last command has
+  // already settled, so no input is half-run on one rig and half on the next.
+  if (await epochs.afterCall(outcome.ms, outcome.ms >= SLOW_CALL_MS)) {
+    // The calls before the rotation ran on a rig that no longer exists; a finding's kit names
+    // only the rig it happened on.
+    recent.length = 0;
+    const sample = epochs.lastRotation;
+    if (sample !== null) {
+      console.log(
+        `[cli] epoch ${sample.index} closed: ${sample.commands} commands in ${sample.wallMs}ms ` +
+          `(p50 ${sample.p50}ms, ${sample.slow} slow, ` +
+          `${sample.quiet ? "quiet" : "STILL BUSY"}, ${sample.state.sessions ?? 0} Sessions)`,
+      );
+    }
+  }
 }
 
 /**
@@ -414,12 +524,40 @@ export async function fuzz(data: Buffer): Promise<void> {
   stats.inputs += 1;
   stats.lengths[records.length] = (stats.lengths[records.length] ?? 0) + 1;
   const deadline = performance.now() + SEQUENCE_BUDGET_MS;
-  for (const [index, record] of records.entries()) {
-    if (performance.now() > deadline) {
-      stats.budgetCuts += 1;
-      break;
+  try {
+    for (const [index, record] of records.entries()) {
+      if (performance.now() > deadline) {
+        stats.budgetCuts += 1;
+        break;
+      }
+      await runOneCall(record, index + 1, records.length);
     }
-    await runOneCall(record, index + 1, records.length);
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    // The replay kit (see finding.ts): the input, the calls that led here and the database they
+    // ran against. Without the last of those a finding stops being reproducible the moment an
+    // epoch replaces the rig — which is why it is written before anything else runs.
+    writeFindingKit(OUT_DIR, {
+      leg: "cli",
+      error,
+      input: data,
+      calls: recent.map(
+        (call) => `${call.spec} \`${call.argv.join(" ")}\` → ${call.exit} (${call.ms}ms)`,
+      ),
+      state: {
+        epoch: epochs.epoch,
+        epochCommands: epochs.spent,
+        commands: stats.calls,
+        inputs: stats.inputs,
+        clock: {
+          now: new Date(vtime.now()).toISOString(),
+          jumpedMs: Math.round(vtime.jumpedMs),
+          pendingTimers: vtime.pending(),
+        },
+      },
+      dbPath: harness.app.dbPath,
+    });
+    throw error;
   }
 }
 
@@ -486,7 +624,8 @@ process.on("exit", () => {
       `- Config write-after-read oracle: ${oracleVisible ? "visible" : "NOT visible"}`,
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
       `- Clock: ${Math.round(vtime.jumpedMs)}ms jumped past real time, ${vtime.pending()} timer(s) pending`,
-      `- CLI↔server hop answered in memory: ${shim.served}`,
+      `- CLI↔server hop answered in memory: ${servedBefore + (shim?.served ?? 0)}`,
+      ...epochs.report(),
       `- Elapsed: ${Math.round(performance.now() - startedAt)}ms`,
       "",
     ];
@@ -501,7 +640,7 @@ export async function shutdown(): Promise<void> {
   // The clock and the hop come out first: closing the listener and removing the data root are
   // real I/O, and their own timers belong to real time again.
   vtime.uninstall();
-  shim.uninstall();
+  shim?.uninstall();
   await harness.app.cleanup().catch(() => {});
   for (const [key, value] of Object.entries(savedEnv)) {
     if (value === undefined) delete process.env[key];
