@@ -45,6 +45,7 @@ import {
   packageFromTree,
   parsePackage,
 } from "./format.js";
+import { migrateWorkbenches } from "../workbenches/migrate.js";
 import { fetchSource, parseSource, type SourceKind } from "./sources.js";
 import { GhCli, GhError } from "./gh.js";
 
@@ -310,6 +311,10 @@ export class AgentPackageService implements AgentPackages {
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, Buffer.from(file.content, file.encoding));
       }
+      // A package from before the Workflow → Workbench rename carries `workflows/`; convert
+      // it once here, so the installed Agent looks like one built after the rename. For a
+      // package that already carries `workbenches/` this is a no-op.
+      await migrateWorkbenches(dir);
     } catch (err) {
       // A half-written Agent is worse than none: undo the creation and report the failure.
       await this.agents.deleteAgent(projectId, agentId).catch(() => undefined);

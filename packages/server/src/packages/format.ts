@@ -24,16 +24,19 @@ export const MAX_PACKAGE_BYTES = 5 * 1024 * 1024;
 
 /**
  * What a package carries, as prefixes inside the Agent directory. `agent_state` is the
- * Agent itself (system config, prompt, skills, tools); `workflows` is the code and pages
- * it wrote for itself. Everything else in the directory is state or scratch.
+ * Agent itself (system config, prompt, skills, tools); `workbenches` is the code and pages
+ * it wrote for itself. `workflows` is the same folder under its name before the rename:
+ * packages published before it carry those paths, so they stay readable, and installing
+ * converts them (see migrateWorkbenches). Everything else in the directory is state or
+ * scratch.
  */
-const INCLUDED_PREFIXES = ["agent_state/", "workflows/"] as const;
+const INCLUDED_PREFIXES = ["agent_state/", "workbenches/", "workflows/"] as const;
 
 /**
  * What never leaves, even under an included prefix:
  * - `.vault.toml` — the Agent's secrets (already excluded from snapshots).
  * - `agent_state/memory/` — what the Agent has learned; a package is a definition.
- * - `workflows/*` `state.json` — a workflow's data, not its code.
+ * - `workbenches/*` and `workflows/*` `state.json` — a workbench's data, not its code.
  * - dotfiles and `node_modules` — machine-local, and never part of the definition.
  */
 export function isPackagedPath(rel: string): boolean {
@@ -42,7 +45,11 @@ export function isPackagedPath(rel: string): boolean {
   const segments = p.split("/");
   if (segments.some((s) => s.startsWith(".") || s === "node_modules")) return false;
   if (p.startsWith("agent_state/memory/")) return false;
-  if (p.startsWith("workflows/") && segments.at(-1) === "state.json") return false;
+  if (
+    (p.startsWith("workbenches/") || p.startsWith("workflows/")) &&
+    segments.at(-1) === "state.json"
+  )
+    return false;
   return true;
 }
 

@@ -157,12 +157,12 @@ describe("agent packages", () => {
     // Definition …
     await fs.mkdir(path.join(dir, "agent_state", "skills", "demo"), { recursive: true });
     await fs.writeFile(path.join(dir, "agent_state", "skills", "demo", "SKILL.md"), "# demo\n");
-    await fs.mkdir(path.join(dir, "workflows", "todo", "ui"), { recursive: true });
-    await fs.writeFile(path.join(dir, "workflows", "todo", "package.json"), "{}\n");
-    await fs.writeFile(path.join(dir, "workflows", "todo", "ui", "index.html"), "<h1>todo</h1>\n");
+    await fs.mkdir(path.join(dir, "workbenches", "todo", "ui"), { recursive: true });
+    await fs.writeFile(path.join(dir, "workbenches", "todo", "package.json"), "{}\n");
+    await fs.writeFile(path.join(dir, "workbenches", "todo", "ui", "index.html"), "<h1>todo</h1>\n");
     // … and state, which must not travel.
     await fs.writeFile(
-      path.join(dir, "workflows", "todo", "state.json"),
+      path.join(dir, "workbenches", "todo", "state.json"),
       '{"items":["SENTINEL_STATE_9f3"]}',
     );
     await fs.mkdir(path.join(dir, "agent_state", "memory"), { recursive: true });
@@ -186,7 +186,7 @@ describe("agent packages", () => {
     const paths = manifest.files.map((f) => f.path);
     expect(paths).toContain("agent_state/system_config.yaml");
     expect(paths).toContain("agent_state/skills/demo/SKILL.md");
-    expect(paths).toContain("workflows/todo/ui/index.html");
+    expect(paths).toContain("workbenches/todo/ui/index.html");
     expect(paths.some((p) => p.includes("state.json"))).toBe(false);
     expect(paths.some((p) => p.startsWith("agent_state/memory/"))).toBe(false);
     expect(paths.some((p) => p.includes("vault"))).toBe(false);
@@ -217,7 +217,7 @@ describe("agent packages", () => {
     const files = github.gists.get(published.gistId)!;
     // Flattened names, and the manifest that maps them back.
     expect(Object.keys(files)).toContain("penguin-agent.json");
-    expect(Object.keys(files)).toContain("workflows\\todo\\ui\\index.html");
+    expect(Object.keys(files)).toContain("workbenches\\todo\\ui\\index.html");
     expect(JSON.stringify(files)).not.toContain("SENTINEL_STATE_9f3");
 
     // Republishing updates the same gist rather than making a second one — with no id from
@@ -241,14 +241,14 @@ describe("agent packages", () => {
     });
     expect(installed.status).toBe(201);
     const copy = agentDir(t.root, PROJECT, "copy_agent");
-    expect(await fs.readFile(path.join(copy, "workflows/todo/ui/index.html"), "utf8")).toBe(
+    expect(await fs.readFile(path.join(copy, "workbenches/todo/ui/index.html"), "utf8")).toBe(
       "<h1>todo</h1>\n",
     );
     expect(await fs.readFile(path.join(copy, "agent_state/skills/demo/SKILL.md"), "utf8")).toBe(
       "# demo\n",
     );
     // The copy starts empty: no state, no memory, no vault.
-    await expect(fs.stat(path.join(copy, "workflows/todo/state.json"))).rejects.toThrow();
+    await expect(fs.stat(path.join(copy, "workbenches/todo/state.json"))).rejects.toThrow();
     await expect(fs.stat(path.join(copy, "agent_state/memory/note.md"))).rejects.toThrow();
     await expect(fs.stat(path.join(copy, "agent_state/.vault.toml"))).rejects.toThrow();
   });
@@ -491,6 +491,8 @@ describe("agent packages", () => {
         expect(preview.kind, source).toBe(kind);
         expect(preview.source, source).toBe(origin);
         const paths = preview.manifest.files.map((f) => f.path);
+        // A source tree still using the pre-rename `workflows/` name reads as a package;
+        // installing converts it (asserted below on the installed copy).
         expect(paths, source).toContain("workflows/todo/ui/index.html");
         expect(paths, source).not.toContain("workflows/todo/state.json");
         expect(paths, source).not.toContain("README.md");
@@ -505,7 +507,14 @@ describe("agent packages", () => {
       expect(await fs.readFile(path.join(copy, "agent_state/AGENTS.md"), "utf8")).toBe(
         "# packaged\n",
       );
-      await expect(fs.stat(path.join(copy, "workflows/todo/state.json"))).rejects.toThrow();
+      // The pre-rename `workflows/` tree was converted on install: the workbench lives at
+      // its new name, the old folder is gone (backed up inside the migration journal), and
+      // the workbench's data never traveled.
+      expect(await fs.readFile(path.join(copy, "workbenches/todo/ui/index.html"), "utf8")).toBe(
+        "<h1>todo</h1>\n",
+      );
+      await expect(fs.stat(path.join(copy, "workflows/todo/package.json"))).rejects.toThrow();
+      await expect(fs.stat(path.join(copy, "workbenches/todo/state.json"))).rejects.toThrow();
     } finally {
       await fs.rm(repoDir, { recursive: true, force: true });
     }
