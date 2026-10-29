@@ -47,7 +47,7 @@ async function openTools() {
   await waitFor(
     () =>
       document.querySelectorAll('button[role="switch"]').length === STORED_TOOLS.length &&
-      document.querySelector(`input[aria-label="${en.agent.toolTimeout}"]`) !== null,
+      document.querySelector(`input[aria-label="exec_command ${en.agent.toolTimeout}"]`) !== null,
   );
   return { server, router };
 }
