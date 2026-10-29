@@ -40,6 +40,12 @@ const BACKPRESSURE_POLL_MS = 250;
 export interface TerminalWebSocketDeps {
   /** The booted platform owns the terminals; the runtime asks it per upgrade. */
   hmr: ServerHmrHost;
+  /**
+   * The current App's auth service, read per handshake — the runtime's wiring resolves
+   * the App of the moment behind the read, so a tree mid-swap or a generation without
+   * one throws out of it, and the listener answers from the generation it captured
+   * instead (see attachTerminalWebSocket).
+   */
   authService: Auth;
   log: (line: string) => void;
   /** PENGUIN_TRUST_PROXY: whether the upgrade's forwarded scheme and host name the browser's origin. */
@@ -48,6 +54,24 @@ export interface TerminalWebSocketDeps {
 
 export function attachTerminalWebSocket(server: HttpServer, deps: TerminalWebSocketDeps): void {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+
+  // The last-good shape the app face already gives its per-call resolutions (app.ts's
+  // `current`): the auth service of the generation that last answered is held here, taken
+  // once at attach and re-taken by every handshake the tree of the moment resolves. A
+  // handshake that lands in the window between one generation's dispose and the next
+  // generation's first answer is authenticated by that captured generation — its modules
+  // are gone, but the singletons behind them (the db, the channels) are the runtime's
+  // and still answer. Nothing captured and nothing live (a bare kernel) is the 503 below.
+  let captured: Auth | undefined;
+  const resolveAuth = (): Auth | null => {
+    try {
+      captured = deps.authService;
+    } catch {
+      // The tree is mid-swap or belongs to a generation without one: the capture stands.
+    }
+    return captured ?? null;
+  };
+  resolveAuth();
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = upgradeUrl(req, deps.trustProxy === true);
@@ -58,10 +82,31 @@ export function attachTerminalWebSocket(server: HttpServer, deps: TerminalWebSoc
 
     if (!isAllowedOrigin(req)) return refuse(socket, 403, "Forbidden");
 
-    const authed =
-      sessionCookies(parseCookieHeader(req.headers.cookie), req.headers.host)
-        .map(({ token }) => deps.authService.authenticateWithMeta(token))
-        .find((a) => a !== null) ?? null;
+    // This origin's own cookie first, then the plain one (auth/middleware.ts): a browser
+    // holds the port-named one, a non-browser client the plain one, and either may be the
+    // token this handshake is signed in with.
+    const tokens = sessionCookies(parseCookieHeader(req.headers.cookie), req.headers.host).map(
+      ({ token }) => token,
+    );
+    if (tokens.length === 0) return refuse(socket, 401, "Unauthorized");
+
+    // Request-time authentication of the handshake: nothing here may throw — an escape
+    // out of an `upgrade` listener is an uncaughtException that takes the whole process
+    // down, which one handshake in a swap window was enough to do. No auth face to
+    // authenticate with (nothing live, nothing captured) is the designed 503, the same
+    // refusal the extension's gate gives for a generation without one.
+    let authed: ReturnType<Auth["authenticateWithMeta"]> | null = null;
+    try {
+      const auth = resolveAuth();
+      if (auth === null) return refuse(socket, 503, "Service Unavailable");
+      authed =
+        tokens.map((token) => auth.authenticateWithMeta(token)).find((a) => a !== null) ?? null;
+    } catch (err: unknown) {
+      deps.log(
+        `[terminal] stream handshake could not authenticate: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return refuse(socket, 503, "Service Unavailable");
+    }
     if (!authed) return refuse(socket, 401, "Unauthorized");
 
     // The platform may be mid-swap; ensure() resolves the instance that owns the

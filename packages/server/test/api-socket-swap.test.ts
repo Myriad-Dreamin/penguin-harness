@@ -6,6 +6,12 @@
  * closes them (1012) once it is up, and the browser's client comes back to it. Left open
  * across a push, a socket kept dispatching into the replaced shell — local routes still
  * answered, every call through a machine hung without a word.
+ *
+ * Through the window between one generation's dispose and the next generation's first
+ * answer, the shell serves its open sockets from the `http` it captured while the tree was
+ * alive: the old generation answers instead of every call turning into a request-time
+ * error. The capture is re-taken at every boot the shell runs, so a window after a
+ * re-assembly is answered by the generation that re-assembly landed.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import type { WebSocket } from "ws";
@@ -87,5 +93,47 @@ describe("the API socket across a swap", () => {
     expect(ws.closed).toEqual({ code: 1012, reason: "the harness was updated; reconnect" });
     // A closed socket is off the shell's list: closing again touches nothing.
     handle!.close();
+  });
+
+  it("answers from the captured generation while the tree behind the call is disposed", async () => {
+    t = await createTestApp();
+    const platform = await t.deps.hmr.ensure();
+    const ws = fakeSocket();
+    platform.api.attachStream(ws as unknown as WebSocket, REF as never, URL_, () => undefined);
+    ws.call(1, "/api/projects");
+    await waitFor(() => ws.sent.some((f) => f.id === 1));
+    expect(ws.sent.find((f) => f.id === 1)?.status).toBe(200);
+
+    // The swap window, as the sockets a push replaces live it: the tree the shell
+    // forwards to is disposed, and the shell keeps serving its open sockets through it.
+    // The resolution into the disposed tree throws; the captured `http` answers instead,
+    // so the window is served by the old generation rather than erroring per call.
+    platform.dispose();
+    ws.call(2, "/api/projects");
+    await waitFor(() => ws.sent.some((f) => f.id === 2));
+    const answer = ws.sent.find((f) => f.id === 2);
+    expect(answer?.status).toBe(200);
+    expect(answer?.error).toBeUndefined();
+    expect(ws.closed).toBeNull();
+  });
+
+  it("a re-assembly refreshes the capture, and a disposed window is still answered", async () => {
+    t = await createTestApp();
+    const platform = await t.deps.hmr.ensure();
+    const ws = fakeSocket();
+    platform.api.attachStream(ws as unknown as WebSocket, REF as never, URL_, () => undefined);
+
+    // The capture follows the App of the moment: a re-assembly that lands re-takes it,
+    // so a window opened after the re-assembly is answered by that generation, not by
+    // the one the shell first booted.
+    const ok = await t.deps.tree.api<Reassembly>("RuntimeModule", "Reassembly").reassemble();
+    expect(ok).toBe(true);
+    platform.dispose();
+    ws.call(3, "/api/projects");
+    await waitFor(() => ws.sent.some((f) => f.id === 3));
+    const answer = ws.sent.find((f) => f.id === 3);
+    expect(answer?.status).toBe(200);
+    expect(answer?.error).toBeUndefined();
+    expect(ws.closed).toBeNull();
   });
 });

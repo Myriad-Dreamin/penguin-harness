@@ -5,7 +5,10 @@
  * What is pinned: the handshake's gate (cookie, origin, the id's owner), that a call answers
  * exactly as its HTTP twin, which paths never ride the socket, that a stream endpoint arrives
  * as frames and a cancel releases it, and that a malformed frame closes the socket rather
- * than being guessed at.
+ * than being guessed at. And the gate across a swap window: a handshake that lands while the
+ * tree behind it is disposed is authenticated by the generation the listener captured — or
+ * refused as the designed 503 when no generation offers an auth face — never by a resolution
+ * throw escaping the upgrade listener.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { serve } from "@hono/node-server";
@@ -14,7 +17,9 @@ import { WebSocket } from "ws";
 import { createTestApp, loginAdmin } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 import { attachTerminalWebSocket } from "../src/terminal/ws.js";
+import type { TerminalWebSocketDeps } from "../src/terminal/ws.js";
 import { apiSocketPath } from "../src/socket/ref.js";
+import type { Auth } from "../src/mechanisms/identity.js";
 
 let t: TestApp;
 let port: number;
@@ -49,6 +54,7 @@ type Frame = Record<string, unknown>;
 async function open(
   headers: Record<string, string>,
   path: string = apiSocketPath("admin"),
+  at: number = port,
 ): Promise<
   | {
       ws: WebSocket;
@@ -59,8 +65,8 @@ async function open(
 > {
   // Canonical App host, as a browser targets it: 127.0.0.1 is the preview host, where /api
   // answers 401 over HTTP and therefore over the socket too.
-  const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`, {
-    headers: { host: `localhost:${port}`, ...headers },
+  const ws = new WebSocket(`ws://127.0.0.1:${at}${path}`, {
+    headers: { host: `localhost:${at}`, ...headers },
   });
   const queue: Frame[] = [];
   const waiters: ((f: Frame) => void)[] = [];
@@ -270,5 +276,89 @@ describe("streams", () => {
     expect(first.event).toBe("server_event");
     expect(JSON.parse(first.data as string).type).toBe("resync_required");
     s.ws.close();
+  });
+});
+
+describe("the handshake across a swap window", () => {
+  /** The window poisons an App's tree for good, so each test stands up its own listener. */
+  interface OwnListener {
+    t: TestApp;
+    cookie: string;
+    server: ReturnType<typeof serve>;
+    port: number;
+  }
+  const ownListener = async (deps: (t: TestApp) => TerminalWebSocketDeps): Promise<OwnListener> => {
+    const t = await createTestApp();
+    const cookie = (await loginAdmin(t.app)).cookie;
+    let bound = 0;
+    const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
+      const s = serve({ fetch: t.app.fetch, hostname: "127.0.0.1", port: 0 }, (info) => {
+        bound = info.port;
+        resolve(s);
+      });
+    });
+    attachTerminalWebSocket(server as unknown as HttpServer, deps(t));
+    return { t, cookie, server, port: bound };
+  };
+  const stopListener = async (own: OwnListener): Promise<void> => {
+    (own.server as unknown as HttpServer).closeAllConnections();
+    await new Promise<void>((resolve) => own.server.close(() => resolve()));
+    await own.t.cleanup();
+  };
+
+  it("a handshake during a disposed window is authenticated by the captured generation", async () => {
+    const own = await ownListener((t) => ({
+      hmr: t.deps.hmr,
+      // The production resolution, per handshake: the App of the moment's auth service —
+      // a disposed tree throws out of this read.
+      get authService() {
+        return t.boot.tree.api<Auth>("IdentityModule", "Auth");
+      },
+      log: () => undefined,
+    }));
+    try {
+      // The window between one generation's dispose and the next generation's first
+      // answer, as a push's handshakes live it: the platform's tree is disposed, and
+      // the read above throws from here on.
+      const platform = await own.t.deps.hmr.ensure();
+      platform.dispose();
+      expect(() => own.t.boot.tree.api<Auth>("IdentityModule", "Auth")).toThrow();
+
+      // The reconnect a client makes the moment its socket drops — landing in the
+      // window. It is authenticated by the captured generation, and it opens: before
+      // the capture, this very handshake's throw escaped the upgrade listener and
+      // took the process down.
+      const s = await open(
+        { cookie: own.cookie, origin: `http://localhost:${own.port}` },
+        apiSocketPath("admin"),
+        own.port,
+      );
+      expect("ws" in s).toBe(true);
+      if ("ws" in s) s.ws.close();
+    } finally {
+      await stopListener(own);
+    }
+  });
+
+  it("a handshake with no captured generation yet is refused as a 503", async () => {
+    const own = await ownListener((t) => ({
+      hmr: t.deps.hmr,
+      // A generation with no auth face to offer (a bare kernel): the read never
+      // resolves, so there is nothing captured to fall back to either.
+      get authService(): Auth {
+        throw new Error("no api 'Auth' on module 'IdentityModule'");
+      },
+      log: () => undefined,
+    }));
+    try {
+      const s = await open(
+        { cookie: own.cookie, origin: `http://localhost:${own.port}` },
+        apiSocketPath("admin"),
+        own.port,
+      );
+      expect(s).toEqual({ refused: 503 });
+    } finally {
+      await stopListener(own);
+    }
   });
 });

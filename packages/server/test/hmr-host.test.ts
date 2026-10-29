@@ -701,7 +701,10 @@ describe("upgrade boot failure: the previous version is re-booted, not left half
 
     const res = await pushPlatform(t.app, cookie, BOOM_PLATFORM);
     expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toMatch(/failed to boot.*boom/);
+    const refusal = (await res.json()) as { error?: { recovered?: unknown } };
+    expect(JSON.stringify(refusal)).toMatch(/failed to boot.*boom/);
+    // The receipt says what the receiver did: cleanly back on its previous platform.
+    expect(refusal.error?.recovered).toBe(true);
 
     // Recovery is a fresh boot of the previous version — a NEW instance, not the
     // disposed old one limping on through its closures (whose manager is closed and
@@ -1000,8 +1003,12 @@ describe("double fault: the upgrade channel survives a failed push whose recover
     // previous version refusing to come back — is reported on the machine's own log, which
     // is the operator's only signal that the App behind the routes is stopped.
     expect(bad.status).toBe(400);
-    expect(JSON.stringify(await bad.json())).toMatch(/failed to boot.*boom/);
+    const refusal = (await bad.json()) as { error?: { recovered?: unknown } };
+    expect(JSON.stringify(refusal)).toMatch(/failed to boot.*boom/);
     expect(warnings.join("")).toMatch(/boot-failure recovery failed too/);
+    // The receipt says the recovery failed too: the receiver is the half-stopped App
+    // the warning names, not cleanly back on its previous platform.
+    expect(refusal.error?.recovered).toBe(false);
 
     // The claim under test: the upgrade channel is the platform's now, but a platform whose
     // recovery failed is left in place, disposed, and its routes still answer out of their

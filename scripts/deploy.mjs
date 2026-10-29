@@ -16,6 +16,13 @@
  * `--force` is how a run that cannot be asked says yes up front. Pushed that way, the target
  * runs without those plugins and says so on its Plugins page, where they can be repaired.
  *
+ * Before anything is sent, a static compatibility gate compares the tree this push compiles
+ * from with the target's serving tree (scripts/check-push-compat.mjs): the runtime interface
+ * needs the push claims, its platform member face, and its migration ledger. A violation
+ * refuses the push (`--force` pushes anyway), and the resource groups this swap will not
+ * integrate are listed up front. A target whose serving tree cannot be read from this
+ * checkout's git objects says so and is not blocked on it.
+ *
  * `--out <file>` builds the same version and writes the push body to a file instead of
  * pushing it: the body POST /api/hmr/upgrade takes, every part inline. That is how a server
  * running from a checkout builds the install image it puts on machines
@@ -65,6 +72,7 @@ import { typescriptPayload } from "./typescript-payload.mjs";
 import { libraryPayload } from "./library-payload.mjs";
 import { createHash } from "node:crypto";
 import { buildPointers, committedBuildMatches } from "./deploy-same-build.mjs";
+import { checkPushCompat, recoveredFromRefusal, targetTreeCommit } from "./check-push-compat.mjs";
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -122,7 +130,7 @@ function usage(problem) {
       "  <port>  a port on this machine (an ssh -L tunnel to the target runtime, or a local server)\n" +
       "  <url>   a full origin, when the target is not reached over loopback\n" +
       "  <file>  where to write the version instead of pushing it (gzipped upgrade body)\n" +
-      "  --force push even if the target has this build or has plugins it cannot run; unsupported plugins are left out\n",
+      "  --force push even if the target has this build, has plugins it cannot run, or fails the static compatibility gate; unsupported plugins are left out\n",
   );
   process.exit(1);
 }
@@ -266,6 +274,75 @@ async function targetRunsThisBuild(auth, build) {
     return { same: false, reason: "GET /api/version answered something that is not JSON" };
   }
   return committedBuildMatches(report, buildPointers(build));
+}
+
+/** One file of the pushed checkout — the tree this push compiles from. */
+const pushTreeRead = (rel) => {
+  try {
+    return fs.readFileSync(path.join(ROOT, rel), "utf8");
+  } catch {
+    return null;
+  }
+};
+
+/** One file of a committed tree, out of this checkout's git object store. */
+const committedTreeRead = (commit) => (rel) => {
+  try {
+    return execFileSync("git", ["-C", ROOT, "show", `${commit}:${rel}`], {
+      encoding: "utf8",
+      // git's own "fatal: path … does not exist" is noise here: the null IS the answer.
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The static compatibility gate (scripts/check-push-compat.mjs): the tree this push
+ * compiles from against the target's SERVING tree, before anything is sent. The serving
+ * tree is identified by the target's version report — the pushed platform's provenance
+ * when there is one, the runtime's own build commit otherwise — and read out of this
+ * checkout's git objects: a target whose tree is not readable here is announced as not
+ * run, never a silent pass or a silent block.
+ */
+async function runPushCompatGate(auth) {
+  let res;
+  try {
+    res = await request(`${baseUrl}/api/version`, { headers: auth });
+  } catch (err) {
+    return {
+      ran: false,
+      why: `GET /api/version failed: ${err instanceof Error ? err.message : err}`,
+    };
+  }
+  if (res.status !== 200) return { ran: false, why: `GET /api/version → ${res.status}` };
+  let report;
+  try {
+    report = JSON.parse(res.body.toString("utf8"));
+  } catch {
+    return { ran: false, why: "GET /api/version answered something that is not JSON" };
+  }
+  const { sha, why } = targetTreeCommit(report);
+  if (sha === null) return { ran: false, why };
+  let commit = null;
+  try {
+    commit = execFileSync("git", ["-C", ROOT, "rev-parse", "--verify", `${sha}^{commit}`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    /* fall through */
+  }
+  if (commit === null || commit === "") {
+    return {
+      ran: false,
+      why: `the serving tree's commit ${sha} is not in this checkout's git objects — fetch it and re-run for the gate`,
+    };
+  }
+  return checkPushCompat({ readPush: pushTreeRead, readTarget: committedTreeRead(commit) });
 }
 
 /**
@@ -469,6 +546,32 @@ async function main() {
   }
 
   const auth = await authHeaders();
+  // The static compatibility gate, before anything is sent: its verdicts are printed
+  // here and a violation stops the push (unless --force said yes up front).
+  const gate = await runPushCompatGate(auth);
+  if (!gate.ran) {
+    log(`static compatibility gate not run: ${gate.why}`);
+  } else {
+    for (const line of gate.doomed) log(`[compat] ${line}`);
+    if (gate.doomed.length > 0) {
+      log(
+        "[compat] the groups above are what this swap will NOT integrate — their objects " +
+          "are disposed and the machinery behind them starts fresh; structural shape " +
+          "checks stay at boot.",
+      );
+    }
+    if (gate.violations.length > 0) {
+      for (const line of gate.violations) console.error(`[compat] ${line}`);
+      if (!force) {
+        console.error("[deploy] not pushed. Run again with --force to push anyway.");
+        process.exitCode = 1;
+        return;
+      }
+      log("--force: pushing past the static compatibility gate");
+    } else if (gate.doomed.length === 0) {
+      log("static compatibility gate: clean (interfaces, platform member face, migration ledger)");
+    }
+  }
   if (force) {
     log("--force: pushing without asking what the target runs");
   } else {
@@ -595,6 +698,19 @@ async function main() {
   }
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (res.status < 200 || res.status >= 300) {
+    // A failed push says what the receiver did about it: `recovered: true` — the previous
+    // platform is serving again (the machine the push failed on keeps working); `false` —
+    // the recovery failed too, and the receiver's own log warns about the half-stopped
+    // App it is now serving.
+    const recovered = recoveredFromRefusal(text);
+    if (recovered !== null) {
+      log(
+        recovered
+          ? "the target refused the push and is back on its previous platform (recovered: true)"
+          : "WARNING: the target's boot-failure recovery failed too (recovered: false) — " +
+              "it serves a half-stopped App until a successful push or a restart",
+      );
+    }
     throw new Error(`/api/hmr/upgrade → ${res.status}: ${text}`);
   }
   const outcome = JSON.parse(text);
