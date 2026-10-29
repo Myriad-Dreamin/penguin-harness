@@ -6,10 +6,19 @@
  *
  * Pure core plus a hook: `sessionCompletionActions` builds the actions from rows the caller
  * passes (the hook reads the store; the tests pass literals), and `useSessionCompletion` is the
- * function AppLayout hands the palette. The palette calls it with the raw query on every
- * keystroke; it answers nothing at all until the query's first token starts a session id.
+ * completion a mount inside the providers publishes for the palette. The palette calls it with
+ * the raw query on every keystroke; it answers nothing at all until the query's first token
+ * starts a session id.
+ *
+ * The palette itself is mounted at the App root, outside the providers, because the pages
+ * outside the shell share it (the terminal, a workflow's full-page app, the login screen). So a
+ * mount that has the sessions — the layout — publishes its completion here for the palette to
+ * read, the same in-memory publication lib/terminal-machines.ts uses: rebuilt by the mount that
+ * owns it, absent while nothing is mounted. Reading the store at the root instead threw
+ * `useSessions must be used within a SessionsProvider` and took the whole App down through the
+ * error boundary (2026-10-28).
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import type { PaletteAction } from "@prismshadow/penguin-ui";
 import type { SessionInfo, SessionStatus } from "@prismshadow/penguin-server/api";
@@ -90,4 +99,31 @@ export function useSessionCompletion(): (query: string) => readonly PaletteActio
     () => (query: string) => sessionCompletionActions(sessions, query, goTo),
     [sessions, goTo],
   );
+}
+
+/** The completion the mounted shell publishes for the palette; null while nothing publishes. */
+let published: ((query: string) => readonly PaletteAction[]) | null = null;
+
+/**
+ * Publishes this mount's completion for the palette while it is mounted — call it inside
+ * `SessionsProvider` (the layout), never at the App root, which is outside every provider.
+ */
+export function usePublishedSessionCompletion(): void {
+  const completion = useSessionCompletion();
+  useEffect(() => {
+    published = completion;
+    return () => {
+      // A newer mount's publication is not ours to clear.
+      if (published === completion) published = null;
+    };
+  }, [completion]);
+}
+
+/**
+ * The palette's `suggest`: whatever the mounted shell published, or nothing while no mount
+ * holds the sessions (the login screen, the terminal, a workflow's full-page app) — a palette
+ * with its standing actions alone, which is what those pages had before completions existed.
+ */
+export function paletteSessionCompletion(query: string): readonly PaletteAction[] {
+  return published === null ? [] : published(query);
 }

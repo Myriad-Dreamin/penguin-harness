@@ -30,6 +30,7 @@ import { S } from "../../lib/strings";
 import { onCommand } from "../../lib/shortcuts/dispatcher";
 import { useShortcutTitle } from "../../lib/shortcuts/use-keymap";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
+import { usePublishedSessionCompletion } from "../../features/palette/session-completion";
 import { navKeysFor } from "../../lib/nav-group-collapse";
 import { navNoteFor, useUpdateBadges } from "../../features/todos";
 import { backgroundStyle, useBackground } from "../../state/background";
@@ -358,6 +359,10 @@ export function AppLayout() {
   // browser session, so a dot can be there on a fresh load instead of waiting for someone to
   // open the sidebar menu. Every other anchor reads the same caches passively.
   const badges = useUpdateBadges(true);
+  // The palette is mounted at the App root, outside the providers; this layout is the mount
+  // that holds the sessions, so it publishes its `session-…` completion for it (the palette
+  // reads it through lib-free module state, the way lib/terminal-machines.ts publishes).
+  usePublishedSessionCompletion();
   // The drawer holds the sidebar, so the drawer button is named after what the sidebar lists:
   // conversations in development mode, channels in company mode.
   const company = useCompany();
