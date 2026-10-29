@@ -67,13 +67,27 @@ const deskRows = [
   { sessionId: "session-previous", agentId: CEO, current: false },
 ];
 
+/**
+ * A harness with one organization already created and its CEO's desk session in hand. The
+ * clock is moved past the window of the spend the creation's own detail read cached, so every
+ * test below starts from a cold key rather than from the creation's zero.
+ */
+async function openedOrg(): Promise<{
+  h: Awaited<ReturnType<typeof makeOrgHarness>>;
+  desk: { sessionId: string };
+}> {
+  const h = await makeOrgHarness({ nowMs: T0 });
+  await h.service.create(P, { orgId: ORG, name: ORG, mission: "Ship it" }, "alice");
+  const desk = h.cache.deskSessions(P, ORG).find((r) => r.current);
+  if (desk === undefined) throw new Error("the CEO's desk should be in the session cache");
+  h.clock.nowMs = T0 + 4 * SECOND;
+  return { h, desk };
+}
+
 describe("period spend cache", () => {
   it("aggregates once for the same organization and period inside three seconds, and again after them", async () => {
-    const h = await makeOrgHarness({ nowMs: T0 });
+    const { h, desk } = await openedOrg();
     const count = countAggregations(h.service);
-    await h.service.create(P, { orgId: ORG, name: ORG, mission: "Ship it" }, "alice");
-    const desk = h.cache.deskSessions(P, ORG).find((r) => r.current);
-    if (desk === undefined) throw new Error("the CEO's desk should be in the session cache");
     count.reset();
 
     h.costs.set(desk.sessionId, 5);
@@ -83,23 +97,20 @@ describe("period spend cache", () => {
 
     // Inside the window the answer of a moment ago stands, however the usage moved meanwhile.
     h.costs.set(desk.sessionId, 9);
-    h.clock.nowMs = T0 + SECOND;
+    h.clock.nowMs += SECOND;
     const second = await h.service.finance(P, ORG);
     expect(second.total).toBe(5);
     expect(count.calls).toBe(1);
 
-    h.clock.nowMs = T0 + 4 * SECOND;
+    h.clock.nowMs += 3 * SECOND;
     const third = await h.service.finance(P, ORG);
     expect(third.total).toBe(9);
     expect(count.calls).toBe(2);
   });
 
   it("keys the cache by period, so another period is aggregated on its own", async () => {
-    const h = await makeOrgHarness({ nowMs: T0 });
+    const { h, desk } = await openedOrg();
     const count = countAggregations(h.service);
-    await h.service.create(P, { orgId: ORG, name: ORG, mission: "Ship it" }, "alice");
-    const desk = h.cache.deskSessions(P, ORG).find((r) => r.current);
-    if (desk === undefined) throw new Error("the CEO's desk should be in the session cache");
     count.reset();
 
     h.costs.set(desk.sessionId, 5);
@@ -119,9 +130,8 @@ describe("period spend cache", () => {
   });
 
   it("aggregates on every call that passes an empty ticket set, and neither reads nor writes the cache", async () => {
-    const h = await makeOrgHarness({ nowMs: T0 });
+    const { h } = await openedOrg();
     const count = countAggregations(h.service);
-    await h.service.create(P, { orgId: ORG, name: ORG, mission: "Ship it" }, "alice");
     await h.service.hire(P, ORG, { newAgent: { agentId: HR }, title: "HR", reportsTo: CEO });
     // A session that belongs to a ticket and to nobody's desk: a reader holding the tickets
     // counts it, a reader holding none cannot see it.
@@ -143,6 +153,9 @@ describe("period spend cache", () => {
       userId: "alice",
     });
     h.costs.set("session-ticket-1", 4);
+    // Hiring and attaching each answer a read of their own, which cached the spend of that
+    // moment; move past their window so this test starts from a cold key.
+    h.clock.nowMs += 4 * SECOND;
     count.reset();
 
     expect((await h.service.finance(P, ORG)).total).toBe(4);
