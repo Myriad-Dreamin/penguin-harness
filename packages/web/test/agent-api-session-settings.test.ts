@@ -114,6 +114,11 @@ describe("API Session settings", () => {
       () => document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') !== null,
     );
     expect((await buttonSoon(en.chat.chooseModel)).textContent).toContain("API test model");
+    await waitFor(
+      () =>
+        (document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]') as HTMLButtonElement | null)
+          ?.disabled === false,
+    );
     expect((await thinking()).textContent).toContain("high");
     expect((await buttonSoon(en.chat.workspace)).textContent).toContain("work");
     expect(hasUnsaved()).toBe(false);
