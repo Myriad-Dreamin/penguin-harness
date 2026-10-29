@@ -967,11 +967,22 @@ export class SessionService {
    * whose head carries the original session_meta). Discovery (which Sessions have
    * records) and the meta-read location come out of a single pass, so classifying every
    * row (`counts=1`) costs one directory walk total instead of one per Session.
+   * `force` runs the reconcile synchronously and un-gated: the boot-time adoption sweep
+   * must see the whole tree on its one walk (an empty first look would skip every
+   * unmanaged Session); read paths use the default, which schedules the catch-up.
    */
-  private async discoverTraces(projectId: string, agentId: string): Promise<Set<string>> {
-    // Read path: the index answers as it stands, one background pass catches up (the
-    // hydration pass in walkRows still backfills the has_trace cache from this set).
-    this.deps.traceIndex.scheduleReconcile(projectId, agentId);
+  private async discoverTraces(
+    projectId: string,
+    agentId: string,
+    opts: { force?: boolean } = {},
+  ): Promise<Set<string>> {
+    if (opts.force === true) {
+      await this.deps.traceIndex.reconcileAgent(projectId, agentId, { force: true });
+    } else {
+      // Read path: the index answers as it stands, one background pass catches up (the
+      // hydration pass in walkRows still backfills the has_trace cache from this set).
+      this.deps.traceIndex.scheduleReconcile(projectId, agentId);
+    }
     const out = new Set<string>();
     for (const f of this.deps.traceStore.listFilesByAgent(projectId, agentId)) {
       out.add(f.sessionId);
@@ -998,7 +1009,7 @@ export class SessionService {
         const known = new Set(
           this.deps.sessions.listByAgent(projectId, agentId).map((r) => r.sessionId),
         );
-        for (const sessionId of await this.discoverTraces(projectId, agentId)) {
+        for (const sessionId of await this.discoverTraces(projectId, agentId, { force: true })) {
           if (known.has(sessionId)) continue;
           if (this.adoptTraceSession(projectId, agentId, sessionId) !== null) adopted += 1;
         }
