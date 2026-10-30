@@ -288,7 +288,7 @@ plain clock, and its own `clock.jumpForwardDays` steps across the session TTL.
 Every seed carries a payload, and the sequences carry several commands: an input without bytes
 is degenerate — `ByteChoices` reads 0 for every decision, so the command line or body collapses
 into one fixed shape and the fuzzer explores nothing but that shape. The seeds also set the
-engine's starting length ceiling, which is why `fuzz-runner.mjs` passes `-max_len=256` with
+engine's starting length ceiling, which is why `fuzz-runner.mjs` passes `-max_len=10240` with
 `-len_control=0`: libFuzzer normally starts mutating at the longest seed it was given and raises
 that ceiling very slowly.
 
