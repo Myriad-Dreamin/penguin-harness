@@ -86,6 +86,29 @@ const option = (value: string) =>
     el.textContent?.startsWith(value),
   )!;
 
+/** The trigger named `name` reads open. */
+const expanded = (name: string) =>
+  (document.querySelector('button[aria-label="' + name + '"]') as HTMLButtonElement | null)
+    ?.getAttribute("aria-expanded") === "true";
+
+/**
+ * Opens the picker whose trigger is named `name`: a click racing the previous panel's
+ * outside-click close can lose to it and leave the picker shut, so the open read is waited
+ * for and a lost click is clicked again.
+ */
+const openPicker = async (name: string, attempts = 3) => {
+  for (let i = 0; i < attempts; i++) {
+    await click(await buttonSoon(name));
+    try {
+      await waitFor(() => expanded(name));
+      return;
+    } catch {
+      // shut again: the close before won this round; click once more
+    }
+  }
+  throw new Error("the picker " + JSON.stringify(name) + " never opened");
+};
+
 describe("API Session settings", () => {
   beforeAll(() => setActiveStrings(en));
   afterAll(() => setActiveStrings(zh));
@@ -93,30 +116,14 @@ describe("API Session settings", () => {
 
   it("uses the shared pickers, persists each choice alone, and clears back to defaults", async () => {
     const { server, router } = await open();
-    await click(await buttonSoon(en.chat.chooseModel));
+    await openPicker(en.chat.chooseModel);
     await waitFor(() => option("API test model") !== null);
     await click(option("API test model").querySelector("button")!);
-    // A pick's outside-click closes the dialog from the window's mousedown, a settle after
-    // the pick itself; the next picker's click waits for the closed read, or its trigger
-    // belongs to a tree the close is about to re-render and the menu never opens.
-    await waitFor(
-      () =>
-        (document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') as HTMLButtonElement)
-          .getAttribute("aria-expanded") === "false",
-    );
-    await click(await buttonSoon(en.chat.thinkingLevel));
-    await waitFor(
-      () =>
-        (document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]') as HTMLButtonElement)
-          .getAttribute("aria-expanded") === "true",
-    );
+    await waitFor(() => !expanded(en.chat.chooseModel));
+    await openPicker(en.chat.thinkingLevel);
     await click(await buttonSoon("high"));
-    await waitFor(
-      () =>
-        (document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]') as HTMLButtonElement)
-          .getAttribute("aria-expanded") === "false",
-    );
-    await click(await buttonSoon(en.chat.workspace));
+    await waitFor(() => !expanded(en.chat.thinkingLevel));
+    await openPicker(en.chat.workspace);
     const choose = await buttonSoon(en.chat.finder.choose);
     await waitFor(() => !choose.disabled);
     await click(choose);
