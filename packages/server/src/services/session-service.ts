@@ -155,6 +155,13 @@ export function applySandboxPick(
 
 const SESSION_ID_TS_RE = /^session-(\d{4})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-[0-9a-f]{8}$/;
 
+/**
+ * How far past `session-` a prefix filter may reach: a completion asks by the keystrokes its
+ * user typed, not by whole ids, so the bound is a guard against absurd requests rather than a
+ * shape rule — every real query is far shorter.
+ */
+export const SESSION_ID_PREFIX_EXTRA_MAX = 64;
+
 /** Stands in for the organization map when company mode is not wired in (tests, older assemblies). */
 const EMPTY_ORG_IDS: ReadonlyMap<string, string> = new Map();
 
@@ -566,6 +573,13 @@ export class SessionService {
    * stays `user`, and a row the organization caches name before the reconcile pass stamps it
    * reads as `user`. Without the flag every row is served, whichever client created it, but
    * for that rule.
+   *
+   * `sessionIdPrefix` narrows the same stream to the rows whose id starts it, before the sort,
+   * the classification and the paging — one walk over a filtered map instead of a page taken
+   * from an unfiltered order. The command palette's session completion asks with the prefix
+   * the user has typed, and an answer cut at a page boundary would leave a session one page
+   * below permanently unnameable. Not a countable filter: counts describe the list a caller
+   * pages, and a prefix query pages nothing.
    */
   async listSessions(
     projectId: string,
@@ -577,6 +591,7 @@ export class SessionService {
       workspaceGroup?: string;
       withCounts?: boolean;
       excludeOrg?: boolean;
+      sessionIdPrefix?: string;
     } = {},
   ): Promise<{
     sessions: SessionInfo[];
@@ -585,8 +600,13 @@ export class SessionService {
     workspaceLatest?: Record<string, string>;
     workspaceLatestActive?: Record<string, string>;
   }> {
-    const { paging, order = "created", category, workspaceGroup, withCounts, excludeOrg } = opts;
+    const { paging, order = "created", category, workspaceGroup, withCounts, excludeOrg, sessionIdPrefix } = opts;
     const { rows, orgIds, traces } = await this.walkRows(projectId, agentId, excludeOrg === true);
+
+    if (sessionIdPrefix !== undefined) {
+      const lower = sessionIdPrefix.toLowerCase();
+      for (const [id] of rows) if (!id.toLowerCase().startsWith(lower)) rows.delete(id);
+    }
 
     const sorted = [...rows.values()].sort(
       order === "activity" ? compareActivityDesc : compareCreatedDesc,

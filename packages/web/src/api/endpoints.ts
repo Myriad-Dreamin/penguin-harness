@@ -835,6 +835,29 @@ export const tryAgentApi = (
 
 // Session ---------------------------------------------------------------------
 
+/** Paging and filters of {@link listSessions}. */
+export interface ListSessionsOptions {
+  /** Rows to skip, in creation order. Exclusive with `before`. */
+  offset?: number;
+  limit: number;
+  /** `activity`: last activity first, ties by id descending (code-point order) — the sidebar's order. Omitted: creation order. */
+  order?: "created" | "activity";
+  /** Activity order only: rows strictly below this key — the last row of the previous page. */
+  before?: ActivityKey;
+  category?: SessionCategory;
+  /** One Workspace group's rows only: its path, or the merged temporary group's sentinel (session-grouping.ts). */
+  workspaceGroup?: string;
+  withCounts?: boolean;
+  /** The user's own rows only: an organization's desk, ticket and sub-sessions leave the page and the totals together (the development list's contract). */
+  excludeOrg?: boolean;
+  /**
+   * Only the rows whose id starts this — the command palette's session completion asks with the
+   * prefix its user typed. The server requires the `session-` head and caps the length; paging
+   * applies within the filter.
+   */
+  sessionIdPrefix?: string;
+}
+
 /**
  * Optional paging (absent = full unfiltered list): the store requests `limit+1` per page to
  * detect "has more". `category` filters server-side (paging applies within the category);
@@ -879,7 +902,8 @@ export const listSessions = (
       (opts.category ? `&category=${opts.category}` : "") +
       (opts.workspaceGroup ? `&workspaceGroup=${encodeURIComponent(opts.workspaceGroup)}` : "") +
       (opts.withCounts ? "&counts=1" : "") +
-      (opts.excludeOrg ? "&excludeOrg=1" : "")
+      (opts.excludeOrg ? "&excludeOrg=1" : "") +
+      (opts.sessionIdPrefix ? `&sessionIdPrefix=${encodeURIComponent(opts.sessionIdPrefix)}` : "")
     : "";
   return apiFetch<SessionsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/sessions${qs}`,
