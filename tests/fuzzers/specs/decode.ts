@@ -5,14 +5,13 @@
  * link-time symbol, and the Node addon exposes only `customHooks`. So "mutate by spec" cannot
  * be a mutator plugged into the engine — it has to be the **decoder**: the input stays a byte
  * string libFuzzer knows how to mutate, but every decision the engine flips (a byte) lands on
- * a named slot of a spec (a path parameter, one body field, one argv option), and the value
- * comes from that slot's own type. A one-byte change therefore changes one field's value
- * instead of turning a JSON body into garbage the parser rejects.
+ * a named argument of a described call (a path parameter, one body field, one argv option),
+ * and the value comes from that argument's declared type. A one-byte change therefore changes
+ * one argument's value instead of turning a JSON body into garbage the parser rejects.
  *
- * The spec side is metadata, not a table in the fuzzer: `specs/surface.json` is generated from
- * penguin's own declarations (see `specs/extract.mjs`) — the platform's `HttpModule.routes`
- * contributions plus each route factory's `app.<method>("…")` calls for the server, and the
- * commander tree for the CLI.
+ * What a call is comes from the description text (`specs/server/http.txt`,
+ * `specs/cli/cli.txt`) through `specs/generate.ts`; this module holds only the two things the
+ * text does not state — how an input splits into calls, and how a free-text value is shaped.
  *
  * One input is a **sequence of calls**, not a single call (`splitRecords`): "create, then read,
  * then delete" is where state bugs live, and for a coverage-guided fuzzer to find such a
@@ -20,9 +19,10 @@
  * makes that possible; a length prefix would not, because the engine cannot recompute a length
  * it broke.
  */
+
 import type { Choices } from "../server/src/choices.js";
 
-/** Which face of a spec an input asks for: the valid shape, or the one a handler must refuse. */
+/** Which face of a call an input asks for: the valid shape, or the one a handler must refuse. */
 export type Variant = "ok" | "bad";
 
 /** The byte between two calls of one input. See `splitRecords`. */
@@ -60,270 +60,40 @@ export function splitRecords(data: Buffer): Buffer[] {
   }
 }
 
-/** Identifiers the server already knows, by the name the contract gives them. */
+/** Identifiers the run has seen, by the resource name the description gives them. */
 export type Pools = Record<string, string[]>;
 
-/** Field names that are ids: their value shape is chosen by the pool, not by free text. */
-const ID_NAMES = new Set([
-  "projectId",
-  "agentId",
-  "sessionId",
-  "ticketId",
-  "orgId",
-  "ownerUserId",
-  "userId",
-  "benchmarkId",
-  "caseId",
-  "scheduleId",
-  "toolCallId",
-  "tabId",
-  "keyId",
-  "tokenId",
-  "channelId",
-  "messageId",
-  "fileId",
-  "skillId",
-  "pluginId",
-  "serverId",
-  "machineId",
-  "name",
-]);
-
-/** ids whose "valid" value the harness knows before any capture has happened. */
-const LITERALS: Record<string, string> = {
-  projectId: "default_project",
-  agentId: "default_agent",
-  ownerUserId: "admin",
-  userId: "admin",
-  channelId: "default_channel",
-  scheduleId: "fuzz_sched",
-};
-
 /**
- * Values a handler has to survive: empty, traversal, a 65-char id (the contract's own limit
- * is 64), a NUL, a multi-byte character, a very long string. Drawn on purpose rather than
- * reached by luck.
+ * Values a handler has to survive: empty, traversal, a 65-char id (the contract's own limit is
+ * 64), a NUL, a multi-byte character, a very long string. Drawn on purpose rather than reached
+ * by luck.
  */
-const HOSTILE = ["", "..", "../../etc/passwd", "%2e%2e%2f", "\u0000", "😀", "x".repeat(300)];
-
-export function isIdName(name: string): boolean {
-  return ID_NAMES.has(name);
-}
-
-/**
- * An id the contract has to accept: one the run has seen, else the declaration's own literal.
- * The `ok` variant draws only from here — a command line the CLI is allowed to refuse is not an
- * `ok` line, and an empty id would make `config vault list` (exit 0 only) look like a finding.
- */
-export function validIdValue(name: string, choices: Choices, pools: Pools): string {
-  const pool = pools[name] ?? [];
-  if (pool.length > 0 && choices.chance(0.75)) return choices.pick(pool);
-  const literal = LITERALS[name];
-  if (literal !== undefined) return literal;
-  return `fuzz-${name}-${choices.int(0, 99)}`;
-}
-
-/** An id-shaped value: usually one the handler accepts, one in eight a value it must reject. */
-export function idValue(name: string, choices: Choices, pools: Pools, hostile = false): string {
-  // One in eight draws a value the handler must reject — the error path is as interesting as
-  // the happy one, and libFuzzer cannot reach a NUL by mutating an ASCII id.
-  if (hostile || choices.chance(1 / 8)) return choices.pick(HOSTILE);
-  return validIdValue(name, choices, pools);
-}
-
-/**
- * One query-string value, by the name the route reads it under; `null` means "do not send this
- * knob".
- *
- * Every route that lists, pages or filters reads its knobs from the query string, and until this
- * existed no request ever carried one: the default page, the default order and the unfiltered
- * list were the only paths any run could take, and the parse-and-refuse branch of each knob was
- * unreachable by construction. The names come from the route source (`c.req.query("limit")`), so
- * a route grows a knob the day it reads one.
- *
- * The value is shaped by the name, not by a type: these are `string | undefined` at the boundary
- * and the handler parses them. Two rules follow from that:
- *
- * - The `ok` variant only draws a value the parser accepts, and a name whose accepted set is an
- *   enum the decoder cannot know (`order` is `created|activity`, `category` a closed list) is not
- *   sent at all. A guess is not free: the route answers 400 and the call never reaches the code
- *   the bare request would have run, which measured worse than sending no knob.
- * - The `bad` variant sends every value a parser exists to reject — that is where the refusing
- *   branch, and the 500 a refusal path can turn into, actually is.
- */
-export function queryValue(
-  name: string,
-  variant: Variant,
-  choices: Choices,
-  text: string,
-): string | null {
-  if (variant === "bad") {
-    return choices.pick([
-      "",
-      "abc",
-      "-1",
-      "999999999999999999999",
-      "%00",
-      "null",
-      "[]",
-      "x".repeat(300),
-    ]);
-  }
-  // A closed set the route defines; a value from outside it is refused before anything runs.
-  if (/^(category|kind|flow|granularity|groupBy|order|sort|direction|mode)$/i.test(name)) {
-    return null;
-  }
-  if (
-    /^(counts|download|excludeOrg|force|include|exclude|archived|all|group|only|places|preview)$/i.test(
-      name,
-    )
-  ) {
-    return "1";
-  }
-  if (name === "period") return "2026-10"; // yyyy-mm
-  if (/^(date|from|to|start|end)$/i.test(name)) return "2026-10-26"; // yyyy-mm-dd
-  if (/(Ts)$/.test(name)) return "1761408000000";
-  if (name === "utcOffsetMinutes") return "0";
-  if (name === "limit") return String(choices.pick([2, 5, 20, 100])); // 1–1000
-  if (name === "offset") return "0";
-  if (/(index|count|page|size|tail)/i.test(name)) return String(choices.pick([1, 2, 5]));
-  if (/(path|file|dir)$/i.test(name)) {
-    return choices.pick(["note.txt", "sub/note.txt", "."]);
-  }
-  if (name === "q") return choices.pick(["fuzz", "note", "a"]);
-  if (/sessionId$/.test(name)) return "session-2026-10-26-00-00-00-fuzz";
-  if (/agentId$/.test(name)) return "default_agent";
-  if (/machineId$/.test(name)) return "fuzz-machine";
-  if (/modelId$/.test(name)) return "fuzz-model";
-  // The Activity cursor the Session list pages by: `<lastActiveAt>,<sessionId>`.
-  if (/^(before|after|cursor|since|until)$/i.test(name)) {
-    return "2026-10-26T00:00:00.000Z,session-2026-10-26-00-00-00-fuzz";
-  }
-  if (/^(specifier|name)$/i.test(name)) return "fuzz-plugin";
-  if (/^(token|code)$/i.test(name)) return "fuzz-token";
-  if (name === "provider") return "custom";
-  if (name === "workspaceGroup") return "default";
-  return text === "" ? null : text;
-}
+export const HOSTILE: readonly string[] = [
+  "",
+  "..",
+  "../../etc/passwd",
+  "%2e%2e%2f",
+  "\u0000",
+  "😀",
+  "x".repeat(300),
+];
 
 /** A free-text value: the input's own payload, sometimes with a boundary shape around it. */
-export function textValue(name: string, choices: Choices, text: string): string {
+export function textValue(choices: Choices, text: string): string {
   if (text === "") return "";
   if (choices.chance(1 / 6)) return choices.pick(HOSTILE);
   if (choices.chance(0.2)) return `${text}${choices.pick([" ", "/", "\n", "\\", "'", '"'])}`;
   if (choices.chance(0.2)) return text.slice(0, choices.int(0, text.length));
-  return name === "" ? text : text;
-}
-
-export type FieldKind = "string" | "number" | "boolean" | "enum" | "array" | "object";
-
-/**
- * One field (or one array element, or one union variant) of a request body, as the declaration
- * states it. `fields` is what makes a nested body reachable at all: `input: TaskInputPart[]`
- * is only a usable slot if the element's own members came along.
- */
-export interface FieldSpec {
-  name: string;
-  kind: FieldKind;
-  /** enum: the string literals the declaration allows. */
-  values?: string[];
-  /** object: the declared members; an array of objects: the element's members. */
-  fields?: FieldSpec[];
-  /** a discriminated union: one of these member lists is drawn. */
-  variants?: FieldSpec[][];
-  optional?: boolean;
+  return text;
 }
 
 /**
- * A value the declared type forbids: what a handler's own validator exists to reject. Chosen
- * by kind, so a "bad" draw lands on the type check for that field instead of on random JSON.
+ * Pool every id the response carries, by the resource name it carries it under. One rule
+ * instead of a per-endpoint capture function: whatever a call answers with becomes input for
+ * the next call, and a new endpoint needs no code here — only a `resource` line in the
+ * description when it serves an id nothing else has named yet.
  */
-function wrongOf(field: FieldSpec, choices: Choices): unknown {
-  switch (field.kind) {
-    case "string":
-      return choices.pick([0, -1, true, null, [], {}]);
-    case "number":
-      return choices.pick(["not-a-number", "", null, true, []]);
-    case "boolean":
-      return choices.pick(["yes", 0, null, {}]);
-    case "enum":
-      return choices.pick(["not-in-the-declared-set", 0, null]);
-    case "array":
-      return choices.pick([{}, "not-an-array", 0, null]);
-    case "object":
-      return choices.pick([0, "not-an-object", [], null]);
-  }
-}
-
-/** One object from the nearest member list: a union variant when there is one. */
-function objectFrom(
-  field: FieldSpec,
-  choices: Choices,
-  text: string,
-  pools: Pools,
-): Record<string, unknown> {
-  const variants = field.variants;
-  const members =
-    variants !== undefined && variants.length > 0 ? choices.pick(variants) : (field.fields ?? []);
-  return objectOf(members, "ok", choices, text, pools);
-}
-
-/** One field's value, by the type the contract declares for it. */
-export function scalarOf(
-  field: FieldSpec,
-  variant: Variant,
-  choices: Choices,
-  text: string,
-  pools: Pools,
-): unknown {
-  if (variant === "bad") return wrongOf(field, choices);
-  switch (field.kind) {
-    case "number":
-      return choices.chance(0.2)
-        ? choices.pick([0, -1, 2 ** 31, 1e9, -0])
-        : choices.int(0, 1000);
-    case "boolean":
-      return choices.chance(0.5);
-    case "enum":
-      return choices.pick(field.values === undefined || field.values.length === 0 ? ["x"] : field.values);
-    case "object":
-      return objectFrom(field, choices, text, pools);
-    case "array":
-      if (choices.chance(0.35)) return [];
-      // A declared element shape is what puts a real message/attachment inside the list.
-      if (field.variants !== undefined || field.fields !== undefined) {
-        return [objectFrom(field, choices, text, pools)];
-      }
-      return [textValue(field.name, choices, text)];
-    default:
-      return isIdName(field.name)
-        ? idValue(field.name, choices, pools)
-        : textValue(field.name, choices, text);
-  }
-}
-
-/** A body from the DTO's own field list: optional fields are skipped sometimes. */
-export function objectOf(
-  fields: readonly FieldSpec[],
-  variant: Variant,
-  choices: Choices,
-  text: string,
-  pools: Pools,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
-  for (const field of fields) {
-    if (field.optional === true && choices.chance(0.4)) continue;
-    body[field.name] = scalarOf(field, variant, choices, text, pools);
-  }
-  return body;
-}
-
-/**
- * Pool every id the response carries, by the key it carries it under. One rule instead of a
- * per-endpoint capture function: whatever a route answers with becomes input for the next
- * call, and a new endpoint needs no code here.
- */
-export function captureIds(value: unknown, pools: Pools): void {
+export function captureIds(value: unknown, pools: Pools, resources: ReadonlySet<string>): void {
   const seen = new Set<unknown>();
   const visit = (node: unknown): void => {
     if (node === null || typeof node !== "object" || seen.has(node)) return;
@@ -333,7 +103,7 @@ export function captureIds(value: unknown, pools: Pools): void {
       return;
     }
     for (const [key, item] of Object.entries(node as Record<string, unknown>)) {
-      if (typeof item === "string" && isIdName(key) && item.length > 0 && item.length <= 128) {
+      if (typeof item === "string" && resources.has(key) && item.length > 0 && item.length <= 128) {
         const pool = (pools[key] ??= []);
         if (!pool.includes(item) && pool.length < 64) pool.push(item);
       } else {

@@ -83,9 +83,18 @@ function step(command, args, what, childEnv = env) {
   }
 }
 
+// The descriptions are the source of truth and the build compiles what they generate, so they
+// are compiled first: a line that does not parse fails here, with its file and line number,
+// instead of inside a fuzzing process.
+step(process.execPath, [path.join(here, "specs", "generate.ts")], "spec descriptions", process.env);
+
 // The build runs without the resolve hook: it reads the tsconfig itself, and the hook would
 // only report the paths.json this very step is about to write.
 if (options.build) step(process.execPath, [path.join(here, "build.mjs")], "build", process.env);
+
+// Now that the product is compiled, the descriptions are held against it: a route or command
+// the text neither describes nor skips stops the run here, by name (see specs/generate.ts).
+step(process.execPath, [path.join(here, "specs", "generate.ts"), "--check"], "spec check", env);
 
 // A replay is one input against one kit: no corpus to seed and no Jazzer.js to start. Its exit
 // code is the answer (0 reproduced, 2 not, 3 a different face), so it is passed through instead

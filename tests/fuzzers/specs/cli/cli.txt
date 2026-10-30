@@ -1,0 +1,84 @@
+# The CLI surface, described.
+#
+# One line per command: `a.b.c(arguments) [exits 0,1] [together --x,--y]`. An argument is
+# `name type`; one spelled with leading dashes is an option (`-m|--message text`), and the
+# rest are positionals, filled in order. A trailing `opt` marks a value a well-formed line may
+# leave out; a trailing `never` declares an option this leg does not pass — `--root`, `--server`
+# and `--workspace` name where the command works and the leg owns all three, and a command whose
+# wait the leg keeps out of the table says why at its own line.
+# `exits` lists the codes a valid line may produce — 0,1 unless the command's contract is a
+# clean exit. `together` names options that only mean something as a set.
+#
+# A type decides the value: `text` is the input's own bytes (and marks the slot they land in),
+# a resource name draws an id the run has collected, `int32[lo:hi]` draws inside its range,
+# `enum[...]` draws a value the product's own validator accepts, `array[T]` repeats one, and
+# `string` is free text. No value is chosen by looking at a name: what a command accepts is
+# stated here, and a command the text lacks is not run.
+#
+# The list is checked against the commander tree the CLI itself builds (`specs/cli/tree.ts`):
+# a command, argument or option the product adds and this file lacks fails
+# `specs/generate.ts --check`, and `--draft` prints the line to add. Commands the leg must not
+# drive live in `skipped.txt`, with the reason.
+
+include "../common.txt"
+
+# ---- types this leg's own fixture makes true
+
+# The leg's setup registers one model row (`cli/src/fuzz.ts`): naming it here is what lets a
+# call reach the path that uses a model instead of the one that refuses an unknown id.
+type fixtureModel enum["fuzz-model"]
+type fixtureProvider enum["fuzz-group"]
+
+# `--timeout` accepts `30s`, `5m`, `2h` or a bare integer of seconds (`cli/src/duration.ts`).
+type duration enum["0", "1s", "30s", "5m"]
+# `--start-at` takes `now` or an ISO 8601 instant (`cli/src/commands/schedule.ts`).
+type instant enum["now", "2026-10-01T00:00:00Z"]
+# A schedule period looks like `30m` / `12h` / `7d`, with 5m the floor (`packages/server/src/runtime/schedule-file.ts`).
+type schedulePeriod enum["30m", "12h", "7d"]
+# A goal budget is a positive number with an optional `k`/`m` suffix (`cli/src/goal-command.ts`).
+type tokenBudget enum["500k", "1m", "120"]
+# The thinking levels core offers (`DEFAULT_CHAT_THINKING_LEVELS`).
+type thinkingLevel enum["low", "medium", "high", "xhigh", "max"]
+# The approval modes `--approve` accepts (`cli/src/approval.ts`).
+type approvalMode enum["allow-all", "deny-all", "read-only", "always-ask"]
+
+# ---- the commands the leg drives
+
+version(--json bool opt, --root string never) exits 0
+
+# `run` waits for the task it posts, and `--goal` puts the goal loop behind that wait: one goal
+# run measured ~10 s on this leg's clock and has crossed its 15 s command budget, which reports a
+# working command as a soft timeout. The option is declared and not drawn — the leg waits for the
+# task itself.
+run(-m|--message text, --project-id projectId opt, --agent-id agentId opt, --workspace string never, --model-id fixtureModel opt, --provider fixtureProvider opt, --approve approvalMode opt, --thinking thinkingLevel opt, --session sessionId opt, --title text opt, --source enum["benchmark"] opt, --background bool opt, --timeout duration opt, --goal tokenBudget never, --json bool opt, --server string never) together --model-id,--provider
+
+session.ls(--project-id projectId opt, --agent-id agentId opt, -a|--all bool opt, --days int32[1:365] opt, --json bool opt, --server string never) exits 0
+session.log(sessionId sessionId opt, --tail int32[1:1000] opt, -f|--follow bool never, --timeout duration opt, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never)
+session.input(sessionId sessionId opt, -m|--message text opt, --timeout duration opt, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never)
+session.rename(sessionId sessionId opt, -t|--title text, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never)
+
+agent.ls(--project-id projectId opt, --json bool opt, --server string never) exits 0
+
+project.ls(--json bool opt, --server string never) exits 0
+
+plugin.list(--project-id projectId opt, --json bool opt, --server string never) exits 0
+
+cost(--days int32[1:365] opt, --from date opt, --to date opt, --by enum["date", "agent", "model", "session"] opt, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never) exits 0 together --from,--to
+
+schedule.ls(--project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never)
+schedule.add(name string, --prompt text, --start-at instant, --period schedulePeriod opt, --end-at instant opt, --session-id sessionId opt, --workspace string never, --model-id fixtureModel opt, --provider fixtureProvider opt, --disabled bool opt, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never) together --model-id,--provider
+schedule.update(name string, --prompt text opt, --start-at instant opt, --period schedulePeriod opt, --end-at instant opt, --session-id sessionId opt, --workspace string never, --model-id fixtureModel opt, --provider fixtureProvider opt, --enable bool opt, --disable bool opt, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never) together --model-id,--provider
+schedule.rm(name string, --project-id projectId opt, --agent-id agentId opt, --json bool opt, --server string never)
+
+org.ls(--project-id projectId opt, --json bool opt, --server string never)
+
+config.model.list(--project-id projectId opt, --root string never) exits 0
+config.vault.list(--project-id projectId opt, --agent-id agentId opt, --root string never) exits 0
+
+auth.status(--root string never) exits 0
+
+server.status(--root string never) exits 0
+
+browser.status(--json bool opt, --server string never)
+
+include "skipped.txt"

@@ -1,0 +1,125 @@
+# Commands this leg does not drive, and why. One line each, `skip <command>`; the reason is
+# the comment above the group. A command that is neither described in `cli.txt` nor listed
+# here fails `specs/generate.ts --check`.
+
+# ---- the credential and the configuration the leg's own client owns
+
+# Writes, removes or mints the credential file the leg's client reads to reach its server.
+skip auth.login
+skip auth.logout
+skip auth.token
+
+# Writes the project's model configuration; `add` also carries an API key.
+skip config.model.add
+skip config.model.default
+skip config.model.vision
+skip config.model.remove
+
+# Writes an agent's secrets.
+skip config.vault.set
+skip config.vault.remove
+
+# Writes the project's language setting.
+skip config.lang
+
+# ---- processes and installations a call cannot be allowed to leave behind
+
+# Keeps a Session open for as long as the client waits, and this leg never waits.
+skip chat
+# Starts a long-lived web server.
+skip web
+# Installs a release from the network, outside the data root.
+skip update
+# Stops the server the harness is running on.
+skip server.stop
+# Moves the admin credential of the server it names.
+skip server.reset-admin-password
+
+# ---- agent directories, the agent's own API server and its keys
+
+# Writes an agent directory.
+skip agent.create
+# Probes the agent's own API server, which this leg does not run.
+skip agent.api.status
+# Starts, stops or reconfigures the agent's own API server.
+skip agent.api.enable
+skip agent.api.disable
+skip agent.api.set
+skip agent.api.server
+# Reads, mints or removes an agent API key.
+skip agent.api.keys.ls
+skip agent.api.keys.create
+skip agent.api.keys.rm
+
+# ---- plugins
+
+# Installs from the network.
+skip plugin.install
+# Removes an installed plugin.
+skip plugin.remove
+
+# ---- a real browser
+
+# Drives a browser; this leg attaches none, so the calls would only report their absence.
+skip browser.tabs
+skip browser.open
+skip browser.switch
+skip browser.close
+skip browser.scan
+skip browser.exec
+skip browser.click
+skip browser.type
+skip browser.screenshot
+skip browser.cdp
+skip browser.import
+skip browser.history
+
+# ---- company mode
+
+# Company mode is off in this leg: the call answers 404, so it adds nothing to `org.ls`.
+skip org.show
+skip org.chart
+skip org.calendar.ls
+skip org.ticket.ls
+skip org.ticket.show
+skip org.channel.ls
+skip org.channel.show
+skip org.channel.tail
+skip org.handbook.list
+skip org.handbook.show
+skip org.finance
+
+# Writes the organization's own records.
+skip org.create
+skip org.hire
+skip org.employee.set
+skip org.employee.avatar
+skip org.leave
+# Drives a desk session.
+skip org.desk.show
+skip org.desk.renew
+# Writes the organization's calendar.
+skip org.calendar.add
+skip org.calendar.update
+skip org.calendar.rm
+# Writes the organization's tickets.
+skip org.ticket.create
+skip org.ticket.move
+skip org.ticket.assign
+skip org.ticket.block
+skip org.ticket.unblock
+skip org.ticket.progress
+skip org.ticket.start
+skip org.ticket.attach
+# Writes the organization's channels.
+skip org.channel.create
+skip org.channel.invite
+skip org.channel.join
+skip org.channel.leave
+skip org.channel.remove
+skip org.channel.archive
+skip org.channel.unarchive
+skip org.channel.send
+# Writes the organization's handbook.
+skip org.handbook.write
+skip org.handbook.rm

@@ -32,17 +32,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { openExistingDatabase } from "../../../../packages/server/src/db/database.js";
-import {
-  addModel,
-  loadProjectConfig,
-} from "../../../../packages/core/src/state/project-config.js";
-import {
-  captureIds,
-  queryValue,
-  splitRecords,
-  type Pools,
-} from "../../specs/decode.js";
-import { httpSpecs } from "../../specs/server/main.js";
+import { addModel, loadProjectConfig } from "../../../../packages/core/src/state/project-config.js";
+import { captureIds, splitRecords, type Pools } from "../../specs/decode.js";
+import { stringOf, valueOf } from "../../specs/eval.js";
+import { httpSpecs, resources } from "../../specs/server/main.js";
 import { ByteChoices } from "./choices.js";
 import { permitLoopback } from "./bug-detectors.js";
 import { Epochs, databaseBytes, settleQuiet } from "./epoch.js";
@@ -532,7 +525,7 @@ async function sweepSpecs(): Promise<SweepResult> {
     const contentType = raced.value.headers.get("content-type") ?? "";
     if (contentType.includes("application/json")) {
       try {
-        captureIds(await raced.value.json(), pools);
+        captureIds(await raced.value.json(), pools, resources());
       } catch {
         // A 5xx body need not parse; the status line above is the reading that matters.
       }
@@ -552,7 +545,8 @@ interface QuerySweepResult {
 }
 
 /**
- * One request per route knob, with the shape the name implies — the ok half of the query surface.
+ * One request per route knob, with a value of the type its description declares — the ok half of
+ * the query surface.
  *
  * The fuzzing loop keeps the bare request as its default, because a knob value drawn from an
  * input is a guess at a domain this harness cannot know: `limit` alone is a 400 on the messages
@@ -560,6 +554,10 @@ interface QuerySweepResult {
  * Session cursor on another. A refusal spends the call that would have reached the deep path, so
  * the knobs are covered here instead: once each, deterministically, after the routes are warm.
  * Every filter, page and date parse is reached, and a 4xx is a reading rather than a finding.
+ *
+ * A knob whose accepted set the text states only as `string` draws nothing here: guessing a
+ * shape for it is what used to spend these calls on a 400. The description decides, so a knob
+ * becomes worth sweeping the moment its line names a closed set.
  *
  * Reads only: a knob on a write route can delete rows (`?force=1`), and the state the loop then
  * fuzzes is the premise its invariants are compared against.
@@ -576,12 +574,13 @@ async function sweepQueries(): Promise<QuerySweepResult> {
   const rng = new ByteChoices(Buffer.alloc(0));
   for (const spec of specs) {
     if (spec.method !== "GET" && spec.method !== "HEAD") continue;
-    for (const name of spec.query) {
-      const value = queryValue(name, "ok", rng, "");
-      if (value === null) {
+    for (const arg of spec.queryArgs) {
+      const value = stringOf(valueOf(arg.t, "ok", rng, "", pools));
+      if (value === "") {
         result.skipped += 1;
         continue;
       }
+      const name = arg.name;
       const url = `${spec.url("ok", rng, "", pools)}?${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
       result.requests += 1;
       const raced = await withSoftTimeout(
@@ -725,7 +724,7 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
         `${where} answered ${res.status} as JSON but its body did not parse: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    captureIds(json, pools);
+    captureIds(json, pools, resources());
   }
   // The stateful feed: a successful password change moves the credential the driver uses.
   if (
@@ -915,12 +914,8 @@ process.on("exit", () => {
       `- Query sweep: ${querySweep.requests} request(s) over the routes' knobs, ${querySweep.answered} answered, ` +
         `${querySweep.refused} refused (4xx), ${querySweep.serverErrors.length} answered ≥500, ` +
         `${querySweep.timeouts.length} timed out, ${querySweep.skipped} knob(s) with no known shape`,
-      ...querySweep.serverErrors
-        .slice(0, 10)
-        .map((entry) => `  - query server error: ${entry}`),
-      ...querySweep.timeouts
-        .slice(0, 10)
-        .map((entry) => `  - query timeout: ${entry}`),
+      ...querySweep.serverErrors.slice(0, 10).map((entry) => `  - query server error: ${entry}`),
+      ...querySweep.timeouts.slice(0, 10).map((entry) => `  - query timeout: ${entry}`),
       `- Fixture repairs: ${stats.repairs}`,
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
       `- Boot SSE sample: status ${sseSample.status}, ${sseSample.chunks} chunks / ${sseSample.bytes}B`,

@@ -1,0 +1,581 @@
+# The API surface, described.
+#
+# One line per route: `METHOD /path(arguments)`. An argument whose name is a `:slot` of the
+# path fills that slot; `body` is the JSON body, a struct declared below; every other argument
+# is a query knob. A type is a resource (an id the run has collected), `int32[lo:hi]`,
+# `enum["a", "b"]`, `bool`, `string` (the input's own bytes) or `array[...]`; a trailing `opt`
+# marks an argument a valid call may leave out.
+#
+# The route list is checked against `specs/surface.json`, which `specs/extract.mjs` reads off
+# the product's own declarations: a route the product adds and this file lacks fails
+# `specs/generate.ts --check`, and `--draft` prints the line to add. Routes the fuzzer must not
+# drive live in `skipped.txt`, with the reason.
+
+include "../common.txt"
+
+# ---- body shapes
+
+struct body_PATCH_api_projects {
+    name string
+}
+
+struct body_PATCH_api_sessions {
+    approvalMode enum["allow-all", "deny-all", "read-only", "always-ask"] opt
+    sandbox string opt
+    thinkingLevel string opt
+    archived bool opt
+    title string opt
+}
+
+struct body_POST_api_admin_users {
+    userId userId
+    password string
+}
+
+struct body_POST_api_admin_users_password {
+    password string
+}
+
+struct body_POST_api_auth_login {
+    userId userId
+    password string
+}
+
+struct body_POST_api_projects {
+    projectId projectId
+    name string opt
+}
+
+struct body_POST_api_projects_agents {
+    agentId agentId
+    name string opt
+    description string opt
+    plugins array[string] opt
+    skillsDirectory string opt
+    directorySkills array[string] opt
+    dataBase64 string opt
+}
+
+struct body_POST_api_projects_agents_import {
+    dataBase64 string
+    confirm bool opt
+}
+
+struct body_POST_api_projects_agents_sessions {
+    modelId string opt
+    provider string opt
+    workspace string opt
+    approvalMode enum["allow-all", "deny-all", "read-only", "always-ask"] opt
+    sandbox string opt
+    client enum["web", "cli", "org"] opt
+    source enum["cli"] opt
+}
+
+struct body_POST_api_projects_agents_traces_import {
+    dataBase64 string
+}
+
+struct body_POST_api_projects_benchmarks {
+    id string
+    title string
+    description string opt
+    runs int32[0:1000] opt
+    cases array[f_cases]
+}
+
+struct body_POST_api_projects_members {
+    userId userId
+}
+
+struct body_POST_api_projects_models_sync_presets {
+    mode enum["add", "restore"]
+}
+
+struct body_POST_api_projects_suggest_id {
+    name string
+    kind enum["org", "channel", "project", "agent", "benchmark"]
+    taken array[string] opt
+}
+
+struct body_POST_api_sessions_approvals {
+    decision enum["allow", "deny"]
+}
+
+struct body_POST_api_sessions_files_create {
+    path string
+    kind enum["file", "dir"]
+}
+
+struct body_POST_api_sessions_files_move {
+    from string
+    to string
+    ifVersion string opt
+}
+
+struct body_POST_api_sessions_fork {
+    position f_position
+}
+
+struct body_POST_api_sessions_steer {
+    text string
+    images array[string] opt
+    files array[f_files] opt
+}
+
+struct body_POST_api_sessions_switch_model {
+    provider string
+    modelId string
+}
+
+struct body_POST_api_sessions_tasks {
+    input array[input_any]
+    queueIfBusy bool opt
+    goal f_goal opt
+}
+
+struct body_PUT_api_admin_plugin_config {
+    name string
+    values string
+}
+
+struct body_PUT_api_admin_settings {
+    proxyForApp bool opt
+    proxyForAgent bool opt
+    companyMode bool opt
+    browserExtensionsEnabled bool opt
+    agentApiEnabled bool opt
+    proxyUrl string opt
+    attachmentMaxMb int32[0:1000] opt
+    attachmentTotalMb int32[0:1000] opt
+}
+
+struct body_PUT_api_me_password {
+    oldPassword string opt
+    newPassword string
+}
+
+struct body_PUT_api_me_prefs {
+    theme enum["light", "dark"] opt
+    lastProjectId string opt
+    credentialGuideSeen bool opt
+    initialPasswordBannerDismissed bool opt
+    todoDismissed string opt
+    noticesDismissed string opt
+    draftShortcuts array[f_draftShortcuts] opt
+    keybindings f_keybindings opt
+    companyMode bool opt
+    workMode enum["dev", "company"] opt
+    lastOrgKey string opt
+    pinnedBalance string opt
+    browserBackend enum["builtin", "chrome"] opt
+}
+
+struct body_PUT_api_me_profile {
+    displayName string opt
+    avatar string opt
+}
+
+struct body_PUT_api_projects_agents_config {
+    agentsMd string opt
+    config f_config opt
+}
+
+struct body_PUT_api_projects_agents_vault {
+    entries array[f_entries]
+}
+
+struct body_PUT_api_projects_chat_defaults {
+    agentId agentId opt
+    workspace string opt
+    approvalMode enum["allow-all", "deny-all", "read-only", "always-ask"] opt
+    thinkingLevel string opt
+    sandbox f_sandbox opt
+}
+
+struct body_PUT_api_projects_models {
+    defaultModel f_defaultModel opt
+    visionModel f_visionModel opt
+    providers string opt
+    models array[f_models]
+}
+
+struct body_PUT_api_projects_models_default {
+    provider string
+    modelId string
+}
+
+struct body_PUT_api_projects_models_providers {
+    baseUrl string opt
+    clientType string opt
+    apiKey string opt
+    clearApiKey bool opt
+}
+
+struct f_cases {
+    id string
+    title string
+    statement string
+    rubric string
+}
+
+struct f_compaction {
+    maxContextLength int32[0:1000] opt
+    maxSessionTurns int32[0:1000] opt
+    mode enum["summarize", "discard"] opt
+    prompt string opt
+}
+
+struct f_config {
+    name string opt
+    description string opt
+    systemPrompt string opt
+    maxTurns int32[0:1000] opt
+    model f_model opt
+    compaction f_compaction opt
+    memory string opt
+    vault f_vault opt
+    skills f_skills opt
+    schedules f_schedules opt
+    hooks f_hooks opt
+    toolsBuiltin array[string] opt
+    mcpServers array[string] opt
+}
+
+struct f_defaultModel {
+    provider string
+    modelId string
+}
+
+struct f_draftShortcuts {
+    id string
+    title string
+    prompt string
+}
+
+struct f_entries {
+    key string
+    value string opt
+}
+
+struct f_files {
+    fileName string
+    dataUrl string
+}
+
+struct f_goal {
+    budget int32[0:1000] opt
+}
+
+struct f_hooks {
+    enabled bool opt
+}
+
+struct f_keybindings {
+    v int32[0:1000]
+    mac string opt
+    windows string opt
+    linux string opt
+}
+
+struct f_model {
+    maxTokens int32[0:1000] opt
+    thinkingLevel string opt
+    timeoutMs int32[0:1000] opt
+}
+
+struct f_models {
+    provider string
+    modelId string
+    displayName string opt
+    renamedFrom f_renamedFrom opt
+    contextWindow int32[0:1000] opt
+    clientType string opt
+    vision bool opt
+    maxTokens int32[0:1000] opt
+    fastMode bool opt
+    pricing f_pricing opt
+    discount string opt
+    apiKey string opt
+    clearApiKey bool opt
+    baseUrl string opt
+}
+
+struct f_position {
+    fileIndex int32[0:1000]
+    ordinal int32[0:1000]
+}
+
+struct f_presets {
+    id string
+    name string
+    nameZh string opt
+    enabled string
+    mode string
+    network string
+    approvalMode string
+    aboveCeiling string opt
+}
+
+struct f_pricing {
+    cacheRead string
+    cacheWrite string
+    output string
+}
+
+struct f_renamedFrom {
+    provider string
+    modelId string
+}
+
+struct f_sandbox {
+    mode enum["read-only", "workspace-write", "danger-full-access"]
+    network enum["open", "local", "none"]
+    confinementSupported bool opt
+    noNetworkSupported bool opt
+    localNetworkSupported bool opt
+    maskPathsSupported bool opt
+    masksPaths bool opt
+    backendsInUse array[string] opt
+    unavailableBackends array[f_unavailableBackends] opt
+    presets array[f_presets] opt
+    advanced bool opt
+    defaultApprovalMode enum["allow-all", "deny-all", "read-only", "always-ask"] opt
+    switchOn bool opt
+}
+
+struct f_schedules {
+    enabled bool opt
+    prompt string opt
+}
+
+struct f_skills {
+    enabled bool opt
+    prompt string opt
+}
+
+struct f_unavailableBackends {
+    name string
+    reason string
+}
+
+struct f_vault {
+    enabled bool opt
+    prompt string opt
+}
+
+struct f_visionModel {
+    provider string
+    modelId string
+}
+
+struct input_0 {
+    type enum["text"]
+    text string
+}
+
+struct input_1 {
+    type enum["image_url"]
+    imageUrl string
+}
+
+struct input_2 {
+    type enum["file"]
+    fileName string
+    dataUrl string
+}
+
+union input_any {
+    input_0
+    input_1
+    input_2
+}
+
+# ---- routes
+
+GET /api/admin/plugin-config()
+PUT /api/admin/plugin-config(body body_PUT_api_admin_plugin_config)
+POST /api/admin/plugin-config/action()
+GET /api/admin/settings()
+PUT /api/admin/settings(body body_PUT_api_admin_settings)
+GET /api/admin/users()
+POST /api/admin/users(body body_POST_api_admin_users)
+DELETE /api/admin/users/:userId(userId userId)
+POST /api/admin/users/:userId/password(userId userId, body body_POST_api_admin_users_password)
+GET /api/amsp/v1/agents/:projectId/:agentId(projectId projectId, agentId agentId)
+POST /api/amsp/v1/agents/:projectId/:agentId/runs(projectId projectId, agentId agentId)
+GET /api/amsp/v1/sessions/:sessionId(sessionId sessionId)
+POST /api/amsp/v1/sessions/:sessionId/abort(sessionId sessionId)
+POST /api/amsp/v1/sessions/:sessionId/approvals/:toolCallId(sessionId sessionId, toolCallId toolCallId)
+GET /api/auth/claim(token enum["fuzz-token"] opt)
+POST /api/auth/login(token enum["fuzz-token"] opt, body body_POST_api_auth_login)
+POST /api/auth/logout(token enum["fuzz-token"] opt)
+GET /api/install()
+GET /api/languages()
+GET /api/languages/:id/grammar(id id)
+GET /api/me()
+GET /api/me/archived-sessions()
+POST /api/me/archived-sessions/delete()
+GET /api/me/archived-sessions/groups()
+POST /api/me/archived-sessions/unarchive()
+PUT /api/me/password(body body_PUT_api_me_password)
+GET /api/me/prefs()
+PUT /api/me/prefs(body body_PUT_api_me_prefs)
+PUT /api/me/profile(body body_PUT_api_me_profile)
+GET /api/plugins()
+GET /api/plugins/:plugin/archive(plugin id)
+GET /api/plugins/:plugin/files(plugin id)
+GET /api/plugins/:plugin/readme(plugin id)
+GET /api/projects()
+POST /api/projects(body body_POST_api_projects)
+DELETE /api/projects/:projectId(projectId projectId)
+PATCH /api/projects/:projectId(projectId projectId, body body_PATCH_api_projects)
+GET /api/projects/:projectId/agents(projectId projectId)
+POST /api/projects/:projectId/agents(projectId projectId, body body_POST_api_projects_agents)
+DELETE /api/projects/:projectId/agents/:agentId(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/api(projectId projectId, agentId agentId)
+PUT /api/projects/:projectId/agents/:agentId/api(projectId projectId, agentId agentId)
+POST /api/projects/:projectId/agents/:agentId/api/keys(projectId projectId, agentId agentId)
+DELETE /api/projects/:projectId/agents/:agentId/api/keys/:keyId(projectId projectId, agentId agentId, keyId keyId)
+POST /api/projects/:projectId/agents/:agentId/api/try(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/config(projectId projectId, agentId agentId)
+PUT /api/projects/:projectId/agents/:agentId/config(projectId projectId, agentId agentId, body body_PUT_api_projects_agents_config)
+POST /api/projects/:projectId/agents/:agentId/config/kernel-update(projectId projectId, agentId agentId)
+POST /api/projects/:projectId/agents/:agentId/config/reset(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/export(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/hooks(projectId projectId, agentId agentId)
+DELETE /api/projects/:projectId/agents/:agentId/hooks/:name(projectId projectId, agentId agentId, name id)
+GET /api/projects/:projectId/agents/:agentId/hooks/:name/archive(projectId projectId, agentId agentId, name id)
+POST /api/projects/:projectId/agents/:agentId/hooks/archive(projectId projectId, agentId agentId)
+POST /api/projects/:projectId/agents/:agentId/import(projectId projectId, agentId agentId, body body_POST_api_projects_agents_import)
+GET /api/projects/:projectId/agents/:agentId/mcp-servers(projectId projectId, agentId agentId)
+DELETE /api/projects/:projectId/agents/:agentId/mcp-servers/:name(projectId projectId, agentId agentId, name id)
+GET /api/projects/:projectId/agents/:agentId/memory(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/export(projectId projectId, agentId agentId, scopeKey id)
+GET /api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files(projectId projectId, agentId agentId, scopeKey id)
+DELETE /api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName(projectId projectId, agentId agentId, scopeKey id, fileName id)
+GET /api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName(projectId projectId, agentId agentId, scopeKey id, fileName id)
+POST /api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/import(projectId projectId, agentId agentId, scopeKey id)
+POST /api/projects/:projectId/agents/:agentId/memory/template-placeholder(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/plugins(projectId projectId, agentId agentId)
+POST /api/projects/:projectId/agents/:agentId/plugins(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/schedules(projectId projectId, agentId agentId)
+POST /api/projects/:projectId/agents/:agentId/schedules(projectId projectId, agentId agentId)
+DELETE /api/projects/:projectId/agents/:agentId/schedules/:name(projectId projectId, agentId agentId, name id)
+GET /api/projects/:projectId/agents/:agentId/schedules/:name(projectId projectId, agentId agentId, name id)
+PUT /api/projects/:projectId/agents/:agentId/schedules/:name(projectId projectId, agentId agentId, name id)
+POST /api/projects/:projectId/agents/:agentId/schedules/template-placeholder(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/sessions(projectId projectId, agentId agentId, category string opt, counts bool opt, excludeOrg bool opt, order string opt, workspaceGroup enum["default"] opt)
+POST /api/projects/:projectId/agents/:agentId/sessions(projectId projectId, agentId agentId, category string opt, counts bool opt, excludeOrg bool opt, order string opt, workspaceGroup enum["default"] opt, body body_POST_api_projects_agents_sessions)
+GET /api/projects/:projectId/agents/:agentId/skills(projectId projectId, agentId agentId)
+DELETE /api/projects/:projectId/agents/:agentId/skills/:name(projectId projectId, agentId agentId, name id)
+GET /api/projects/:projectId/agents/:agentId/skills/:name/archive(projectId projectId, agentId agentId, name id)
+POST /api/projects/:projectId/agents/:agentId/skills/archive(projectId projectId, agentId agentId)
+POST /api/projects/:projectId/agents/:agentId/skills/template-placeholder(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/traces(projectId projectId, agentId agentId, category string opt)
+GET /api/projects/:projectId/agents/:agentId/traces/:sessionId/:index(projectId projectId, agentId agentId, sessionId sessionId, index int32[0:1000], category string opt)
+GET /api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/analysis(projectId projectId, agentId agentId, sessionId sessionId, index int32[0:1000], category string opt)
+GET /api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/download(projectId projectId, agentId agentId, sessionId sessionId, index int32[0:1000], category string opt)
+POST /api/projects/:projectId/agents/:agentId/traces/import(projectId projectId, agentId agentId, category string opt, body body_POST_api_projects_agents_traces_import)
+GET /api/projects/:projectId/agents/:agentId/vault(projectId projectId, agentId agentId)
+PUT /api/projects/:projectId/agents/:agentId/vault(projectId projectId, agentId agentId, body body_PUT_api_projects_agents_vault)
+POST /api/projects/:projectId/agents/:agentId/vault/template-placeholder(projectId projectId, agentId agentId)
+GET /api/projects/:projectId/agents/:agentId/workbenches(projectId projectId, agentId agentId)
+DELETE /api/projects/:projectId/agents/:agentId/workbenches/:id(projectId projectId, agentId agentId, id id)
+GET /api/projects/:projectId/agents/:agentId/workbenches/:id/history(projectId projectId, agentId agentId, id id)
+POST /api/projects/:projectId/agents/:agentId/workbenches/:id/reload(projectId projectId, agentId agentId, id id)
+POST /api/projects/:projectId/agents/:agentId/workbenches/:id/rollback(projectId projectId, agentId agentId, id id)
+GET /api/projects/:projectId/benchmarks(projectId projectId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+POST /api/projects/:projectId/benchmarks(projectId projectId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt, body body_POST_api_projects_benchmarks)
+DELETE /api/projects/:projectId/benchmarks/:benchmarkId(projectId projectId, benchmarkId benchmarkId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/benchmarks/:benchmarkId/archive(projectId projectId, benchmarkId benchmarkId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/benchmarks/:benchmarkId/cases(projectId projectId, benchmarkId benchmarkId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files(projectId projectId, benchmarkId benchmarkId, caseId caseId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files/content(projectId projectId, benchmarkId benchmarkId, caseId caseId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files(projectId projectId, benchmarkId benchmarkId, caseId caseId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files/content(projectId projectId, benchmarkId benchmarkId, caseId caseId, download bool opt, path enum["note.txt", "sub/note.txt", "."] opt, preview bool opt)
+GET /api/projects/:projectId/chat-defaults(projectId projectId)
+PUT /api/projects/:projectId/chat-defaults(projectId projectId, body body_PUT_api_projects_chat_defaults)
+GET /api/projects/:projectId/command-policy(projectId projectId)
+PUT /api/projects/:projectId/command-policy(projectId projectId)
+GET /api/projects/:projectId/dirs(projectId projectId, path enum["note.txt", "sub/note.txt", "."] opt, places bool opt)
+POST /api/projects/:projectId/dirs/access(projectId projectId, path enum["note.txt", "sub/note.txt", "."] opt, places bool opt)
+GET /api/projects/:projectId/members(projectId projectId)
+POST /api/projects/:projectId/members(projectId projectId, body body_POST_api_projects_members)
+DELETE /api/projects/:projectId/members/:userId(projectId projectId, userId userId)
+DELETE /api/projects/:projectId/members/:username(projectId projectId, username id)
+GET /api/projects/:projectId/models(projectId projectId, force bool opt, provider enum["custom"] opt)
+PUT /api/projects/:projectId/models(projectId projectId, force bool opt, provider enum["custom"] opt, body body_PUT_api_projects_models)
+PUT /api/projects/:projectId/models/default(projectId projectId, force bool opt, provider enum["custom"] opt, body body_PUT_api_projects_models_default)
+PUT /api/projects/:projectId/models/providers/:provider(projectId projectId, provider id, force bool opt, ?provider enum["custom"] opt, body body_PUT_api_projects_models_providers)
+POST /api/projects/:projectId/models/sync-presets(projectId projectId, force bool opt, provider enum["custom"] opt, body body_POST_api_projects_models_sync_presets)
+GET /api/projects/:projectId/organizations(projectId projectId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/calendar(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name(projectId projectId, orgId orgId, agentId agentId, name id, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/channels(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/channels/:channelId(projectId projectId, orgId orgId, channelId channelId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/channels/:channelId/messages(projectId projectId, orgId orgId, channelId channelId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/chart(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar(projectId projectId, orgId orgId, agentId agentId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/employees/:agentId/desk(projectId projectId, orgId orgId, agentId agentId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/finance(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/handbook(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/handbook/files(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}(projectId projectId, orgId orgId, path id, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/sessions(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/tickets(projectId projectId, orgId orgId, date date opt, period period opt)
+GET /api/projects/:projectId/organizations/:orgId/tickets/:ticketId(projectId projectId, orgId orgId, ticketId ticketId, date date opt, period period opt)
+DELETE /api/projects/:projectId/plugins/installed(projectId projectId, machineId machineId opt, specifier enum["fuzz-plugin"] opt)
+GET /api/projects/:projectId/plugins/installed(projectId projectId, machineId machineId opt, specifier enum["fuzz-plugin"] opt)
+POST /api/projects/:projectId/plugins/installed(projectId projectId, machineId machineId opt, specifier enum["fuzz-plugin"] opt)
+PUT /api/projects/:projectId/plugins/installed(projectId projectId, machineId machineId opt, specifier enum["fuzz-plugin"] opt)
+POST /api/projects/:projectId/plugins/installed/archive(projectId projectId, machineId machineId opt, specifier enum["fuzz-plugin"] opt)
+GET /api/projects/:projectId/schedules(projectId projectId)
+POST /api/projects/:projectId/sessions/batch(projectId projectId)
+POST /api/projects/:projectId/suggest-id(projectId projectId, body body_POST_api_projects_suggest_id)
+GET /api/projects/:projectId/usage(projectId projectId, agentId agentId opt, from date opt, fromTs int32[0:2000000000] opt, granularity string opt, groupBy string opt, kind string opt, modelId enum["fuzz-model"] opt, provider enum["custom"] opt, to date opt, toTs int32[0:2000000000] opt, utcOffsetMinutes int32[-1440:1440] opt)
+DELETE /api/projects/:projectId/usage/errors(projectId projectId, agentId agentId opt, from date opt, fromTs int32[0:2000000000] opt, granularity string opt, groupBy string opt, kind string opt, modelId enum["fuzz-model"] opt, provider enum["custom"] opt, to date opt, toTs int32[0:2000000000] opt, utcOffsetMinutes int32[-1440:1440] opt)
+GET /api/projects/:projectId/usage/errors(projectId projectId, agentId agentId opt, from date opt, fromTs int32[0:2000000000] opt, granularity string opt, groupBy string opt, kind string opt, modelId enum["fuzz-model"] opt, provider enum["custom"] opt, to date opt, toTs int32[0:2000000000] opt, utcOffsetMinutes int32[-1440:1440] opt)
+GET /api/projects/:projectId/usage/model-totals(projectId projectId, agentId agentId opt, from date opt, fromTs int32[0:2000000000] opt, granularity string opt, groupBy string opt, kind string opt, modelId enum["fuzz-model"] opt, provider enum["custom"] opt, to date opt, toTs int32[0:2000000000] opt, utcOffsetMinutes int32[-1440:1440] opt)
+DELETE /api/sessions/:sessionId(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+PATCH /api/sessions/:sessionId(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt, body body_PATCH_api_sessions)
+POST /api/sessions/:sessionId/abort(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/approvals/:toolCallId(sessionId sessionId, toolCallId toolCallId, path enum["note.txt", "sub/note.txt", "."] opt, body body_POST_api_sessions_approvals)
+POST /api/sessions/:sessionId/compact(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/context(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/files(sessionId sessionId)
+DELETE /api/sessions/:sessionId/files/content(sessionId sessionId)
+POST /api/sessions/:sessionId/files/create(sessionId sessionId, body body_POST_api_sessions_files_create)
+POST /api/sessions/:sessionId/files/move(sessionId sessionId, body body_POST_api_sessions_files_move)
+GET /api/sessions/:sessionId/files/preview-redirect(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/files/search(sessionId sessionId)
+POST /api/sessions/:sessionId/files/stat(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+DELETE /api/sessions/:sessionId/follow-ups/:followUpId(sessionId sessionId, followUpId followUpId, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/fork(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt, body body_POST_api_sessions_fork)
+GET /api/sessions/:sessionId/goal(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/messages(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/messaging(sessionId sessionId)
+GET /api/sessions/:sessionId/processes(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+DELETE /api/sessions/:sessionId/processes/:processId(sessionId sessionId, processId int32[0:1000], path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/processes/:processId/kill(sessionId sessionId, processId int32[0:1000], path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/retry(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/retry-now(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/scratchpad/:fileName(sessionId sessionId, fileName id, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/steer(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt, body body_POST_api_sessions_steer)
+DELETE /api/sessions/:sessionId/steer/:steerId(sessionId sessionId, steerId steerId, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/subagents/:childSessionId/abort(sessionId sessionId, childSessionId childSessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/subagents/:childSessionId/message(sessionId sessionId, childSessionId childSessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+POST /api/sessions/:sessionId/switch-model(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt, body body_POST_api_sessions_switch_model)
+POST /api/sessions/:sessionId/tasks(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt, body body_POST_api_sessions_tasks)
+POST /api/sessions/:sessionId/tool-calls/:toolCallId/background(sessionId sessionId, toolCallId toolCallId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/trace-image(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/traces(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/traces/:index(sessionId sessionId, index int32[0:1000], path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/sessions/:sessionId/traces/:index/analysis(sessionId sessionId, index int32[0:1000], path enum["note.txt", "sub/note.txt", "."] opt)
+GET /api/version(force bool opt, from date opt, to date opt)
+GET /api/version/history(force bool opt, from date opt, to date opt)
+GET /api/version/history/diff(force bool opt, from date opt, to date opt)
+GET /api/version/history/ifaces/:hash(hash id, force bool opt, from date opt, to date opt)
+
+include "skipped.txt"

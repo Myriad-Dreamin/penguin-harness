@@ -1,0 +1,185 @@
+# Routes this leg does not drive, and why. One line each, `skip METHOD /path`; the reason is
+# the comment. A route that is neither described in `http.txt` nor listed here fails
+# `specs/generate.ts --check`.
+
+skip GET /api/admin/settings/proxy-probe    # probes a proxy
+skip POST /api/admin/settings/proxy-probe/:provider    # probes a proxy
+skip ALL /api/amsp/v1/*    # a catch-all route
+skip ALL /api/auth/*    # a catch-all route
+skip POST /api/builtin-browser    # drives the harness's browser
+skip GET /api/builtin-browser/backend    # drives the harness's browser
+skip PUT /api/builtin-browser/backend    # drives the harness's browser
+skip POST /api/builtin-browser/clear-data    # drives the harness's browser
+skip GET /api/builtin-browser/extension    # drives the harness's browser
+skip DELETE /api/builtin-browser/extension/:id    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/backend    # drives the harness's browser
+skip PUT /api/builtin-browser/extension/pair/backend    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/clear-data    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/extension    # drives the harness's browser
+skip DELETE /api/builtin-browser/extension/pair/extension/:id    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/extension/pairings    # drives the harness's browser
+skip DELETE /api/builtin-browser/extension/pair/history    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/history    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/import    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/import/sources    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/settings    # drives the harness's browser
+skip PUT /api/builtin-browser/extension/pair/settings    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/status    # drives the harness's browser
+skip GET /api/builtin-browser/extension/pair/tabs    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs    # drives the harness's browser
+skip DELETE /api/builtin-browser/extension/pair/tabs/:tab    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/activate    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/cdp    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/click    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/exec    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/navigate    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/scan    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/screenshot    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/:tab/type    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/claim    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/on-screen    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pair/tabs/session    # drives the harness's browser
+skip POST /api/builtin-browser/extension/pairings    # drives the harness's browser
+skip DELETE /api/builtin-browser/history    # drives the harness's browser
+skip GET /api/builtin-browser/history    # drives the harness's browser
+skip POST /api/builtin-browser/import    # drives the harness's browser
+skip GET /api/builtin-browser/import/sources    # drives the harness's browser
+skip GET /api/builtin-browser/settings    # drives the harness's browser
+skip PUT /api/builtin-browser/settings    # drives the harness's browser
+skip GET /api/builtin-browser/status    # drives the harness's browser
+skip GET /api/builtin-browser/tabs    # drives the harness's browser
+skip POST /api/builtin-browser/tabs    # drives the harness's browser
+skip DELETE /api/builtin-browser/tabs/:tab    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/activate    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/cdp    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/click    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/exec    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/navigate    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/scan    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/screenshot    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/:tab/type    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/claim    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/on-screen    # drives the harness's browser
+skip POST /api/builtin-browser/tabs/session    # drives the harness's browser
+skip POST /api/desktop    # drives the machine
+skip POST /api/desktop/privacy-settings    # drives the machine
+skip GET /api/desktop/tray    # drives the machine
+skip POST /api/desktop/tray    # drives the machine
+skip PUT /api/desktop/tray    # drives the machine
+skip GET /api/desktop/update    # drives the machine
+skip POST /api/desktop/update    # drives the machine
+skip POST /api/desktop/update/check    # drives the machine
+skip POST /api/desktop/update/download    # drives the machine
+skip POST /api/desktop/update/install    # drives the machine
+skip GET /api/events    # a request that only returns when the client hangs up
+skip GET /api/plugins/registry    # fetches the plugin registry
+skip GET /api/plugins/registry/archive    # fetches the plugin registry
+skip GET /api/plugins/registry/readme    # fetches the plugin registry
+skip POST /api/projects/:projectId/agents/:agentId/config/mcp-test    # spawns an MCP server
+skip ALL /api/projects/:projectId/agents/:agentId/workbenches/:id/api/*    # a catch-all route
+skip GET /api/projects/:projectId/agents/:agentId/workbenches/:id/ui/*    # a catch-all route
+skip POST /api/projects/:projectId/benchmarks/archive    # imports from the filesystem
+skip GET /api/projects/:projectId/dir-skills    # reads a directory of the machine the harness owns
+skip GET /api/projects/:projectId/machines    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/connect    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/diagnose    # drives a machine
+skip GET /api/projects/:projectId/machines/:machineId/dirs    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/disconnect    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/install    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/release    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/restart    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/stop    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/sync    # drives a machine
+skip POST /api/projects/:projectId/machines/:machineId/uninstall    # drives a machine
+skip POST /api/projects/:projectId/machines/add    # drives a machine
+skip POST /api/projects/:projectId/machines/probe    # drives a machine
+skip GET /api/projects/:projectId/machines/ssh-hosts    # drives a machine
+skip POST /api/projects/:projectId/machines/ssh-hosts    # drives a machine
+skip GET /api/projects/:projectId/machines/ssh-hosts/:alias    # drives a machine
+skip PUT /api/projects/:projectId/machines/ssh-hosts/:alias    # drives a machine
+skip POST /api/projects/:projectId/machines/stop-using    # drives a machine
+skip POST /api/projects/:projectId/machines/use    # drives a machine
+skip GET /api/projects/:projectId/model-oauth    # an outbound OAuth flow
+skip GET /api/projects/:projectId/model-oauth/:flowId    # an outbound OAuth flow
+skip POST /api/projects/:projectId/model-oauth/:flowId/code    # an outbound OAuth flow
+skip GET /api/projects/:projectId/model-oauth/callback    # an outbound OAuth flow
+skip GET /api/projects/:projectId/model-oauth/callback/:flowId    # an outbound OAuth flow
+skip POST /api/projects/:projectId/model-oauth/callback/:flowId/code    # an outbound OAuth flow
+skip POST /api/projects/:projectId/model-oauth/callback/start    # an outbound OAuth flow
+skip POST /api/projects/:projectId/model-oauth/start    # an outbound OAuth flow
+skip GET /api/projects/:projectId/models/balance    # probes a model API
+skip POST /api/projects/:projectId/models/detect    # probes a model API
+skip POST /api/projects/:projectId/models/detect-vision    # probes a model API
+skip POST /api/projects/:projectId/models/list    # probes a model API
+skip POST /api/projects/:projectId/models/test    # probes a model API
+skip POST /api/projects/:projectId/modelscope-auth/:flowId/cancel    # an outbound OAuth flow
+skip POST /api/projects/:projectId/modelscope-auth/:flowId/retry    # an outbound OAuth flow
+skip GET /api/projects/:projectId/modelscope-auth/:flowId/status    # an outbound OAuth flow
+skip POST /api/projects/:projectId/modelscope-auth/start    # an outbound OAuth flow
+skip POST /api/projects/:projectId/organizations    # an org write opens desk sessions
+skip DELETE /api/projects/:projectId/organizations/:orgId    # an org write opens desk sessions
+skip PATCH /api/projects/:projectId/organizations/:orgId    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/calendar    # an org write opens desk sessions
+skip DELETE /api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name    # an org write opens desk sessions
+skip PUT /api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/channels    # an org write opens desk sessions
+skip PATCH /api/projects/:projectId/organizations/:orgId/channels/:channelId    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/channels/:channelId/members    # an org write opens desk sessions
+skip DELETE /api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/channels/:channelId/messages    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/channels/:channelId/read    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/employees    # an org write opens desk sessions
+skip DELETE /api/projects/:projectId/organizations/:orgId/employees/:agentId    # an org write opens desk sessions
+skip PATCH /api/projects/:projectId/organizations/:orgId/employees/:agentId    # an org write opens desk sessions
+skip PUT /api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/employees/:agentId/desk    # an org write opens desk sessions
+skip PUT /api/projects/:projectId/organizations/:orgId/handbook    # an org write opens desk sessions
+skip DELETE /api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}    # an org write opens desk sessions
+skip PUT /api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets    # an org write opens desk sessions
+skip PUT /api/projects/:projectId/organizations/:orgId/tickets/:ticketId    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets/:ticketId/attach    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets/:ticketId/block    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets/:ticketId/move    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets/:ticketId/progress    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets/:ticketId/start    # an org write opens desk sessions
+skip POST /api/projects/:projectId/organizations/:orgId/tickets/:ticketId/unblock    # an org write opens desk sessions
+skip POST /api/projects/:projectId/platform-auth/:flowId/cancel    # an outbound OAuth flow
+skip POST /api/projects/:projectId/platform-auth/:flowId/retry    # an outbound OAuth flow
+skip GET /api/projects/:projectId/platform-auth/:flowId/status    # an outbound OAuth flow
+skip POST /api/projects/:projectId/platform-auth/start    # an outbound OAuth flow
+skip POST /api/projects/:projectId/platform-auth/sync    # an outbound OAuth flow
+skip POST /api/remote/session    # remote session control
+skip POST /api/sessions/:sessionId/files/reveal    # opens the machine's file manager
+skip POST /api/sessions/:sessionId/messaging/:channel/state    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/:channel/test-message    # talks to an IM platform
+skip PUT /api/sessions/:sessionId/messaging/feishu    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/feishu/test    # talks to an IM platform
+skip PUT /api/sessions/:sessionId/messaging/qq    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/qq/scan    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/qq/scan/cancel    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/qq/scan/poll    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/qq/test    # talks to an IM platform
+skip PUT /api/sessions/:sessionId/messaging/telegram    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/telegram/test    # talks to an IM platform
+skip PUT /api/sessions/:sessionId/messaging/wechat    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/wechat/scan    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/wechat/scan/cancel    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/wechat/scan/poll    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/wechat/scan/verify    # talks to an IM platform
+skip POST /api/sessions/:sessionId/messaging/wechat/test    # talks to an IM platform
+skip GET /api/sessions/:sessionId/stream    # a request that only returns when the client hangs up
+skip GET /api/terminals    # spawns a pty
+skip POST /api/terminals    # spawns a pty
+skip DELETE /api/terminals/:id    # spawns a pty
+skip GET /api/terminals/:id    # spawns a pty
+skip GET /api/terminals/:id/capture    # spawns a pty
+skip POST /api/terminals/:id/keys    # spawns a pty
+skip POST /api/version/history/rollback    # deploys or updates the harness
+skip POST /api/version/restart    # deploys or updates the harness
+skip GET /api/version/update    # deploys or updates the harness
+skip POST /api/version/update    # deploys or updates the harness
+skip GET /api/version/update-check    # deploys or updates the harness
+skip GET /preview/:token/*    # a catch-all route
+skip ALL /server*    # a catch-all route

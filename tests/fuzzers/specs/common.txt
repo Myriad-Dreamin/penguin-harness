@@ -1,0 +1,38 @@
+# Types both legs share. `resource` names the keys a response hands to the next call: whatever
+# a response carries under that name becomes an input for a later call (see `captureIds`). The
+# value after `:` is what a call uses before the run has collected one.
+
+resource projectId string : "default_project"
+resource lastProjectId string : "default_project"
+resource agentId string : "default_agent"
+resource sessionId string
+resource childSessionId string
+resource orgId string
+resource ticketId string
+resource channelId string : "default_channel"
+resource benchmarkId string
+resource caseId string
+resource scheduleId string : "fuzz_sched"
+resource userId string : "admin"
+resource ownerUserId string : "admin"
+resource machineId string
+resource modelId string
+resource fileId string
+resource skillId string
+resource pluginId string
+resource toolCallId string
+resource tabId string
+resource keyId string
+resource tokenId string
+resource messageId string
+resource serverId string
+resource flowId string
+resource steerId string
+resource followUpId string
+
+# Values the harness knows a parser accepts. A closed set the product defines is written as an
+# enum; a name whose accepted set is not known stays `string`, and a call draws no value for it
+# rather than guessing one.
+type date enum["2026-10-01", "2026-10-20"]
+type period enum["2026-10", "2026-10-26"]
+type cursor enum["2026-10-26T00:00:00.000Z,session-2026-10-26-00-00-00-fuzz"]

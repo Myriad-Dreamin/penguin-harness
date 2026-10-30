@@ -36,21 +36,62 @@ type. Changing one byte changes one field's value, which is what makes a mutatio
 typed surface; arbitrary JSON bytes would rarely get past the parser. A sequence is also the unit
 a finding is saved as, so a crash replays the calls that led to it.
 
-The specs are penguin's own declarations. `specs/extract.mjs` parses the sources with the
-TypeScript compiler API and writes `specs/surface.json`: every server route, taken from each
-`HttpModule.routes` contribution together with the `app.<method>("…")` call its factory makes;
-every client endpoint of the web client's endpoint table, with its request body; the shape of
-every DTO a body can name; and the paths a route builds at run time, which each extraction
-lists because no literal exists to extract. The CLI leg reads the commander tree that the CLI's
-own fifteen `register*Command` calls build, so a new command appears in the specs with no edit
-here.
+The specs are written down as text, the way syzkaller describes a system's syscalls: one line
+per call, in the product's own vocabulary (`GET /api/projects/:projectId/agents`, `cost`), with
+the name and type of every value the call takes.
 
-Regenerate the surface after adding or renaming a route, an endpoint or a DTO field:
+    specs/common.txt            the resources and types both legs share
+    specs/server/http.txt       one line per route
+    specs/server/skipped.txt    the routes this leg does not drive, with the reason
+    specs/cli/cli.txt           one line per command
+    specs/cli/skipped.txt       the commands this leg does not drive
+
+A line states the whole contract, for instance
+
+    GET /api/sessions/:sessionId/messages(sessionId sessionId, path enum["note.txt", "sub/note.txt", "."] opt)
+    cost(--days int32[1:365] opt, --from date opt, --to date opt, --by enum["date", "agent", "model", "session"] opt, --json bool opt) exits 0 together --from,--to
+
+— which route or command, an argument per value, a trailing `opt` for what a valid call may
+leave out, a trailing `never` for an option the leg does not pass (`--root`, `--server` and
+`--workspace` name where a command works, and the leg owns all three), `exits` for the codes a
+valid line may produce, `together` for options that only mean something as a set. An argument
+named after a `:slot` of the path fills that slot, `body` is the JSON body (a `struct` declared
+in the same file), and every other argument is a query knob.
+
+A value comes from its declared type, never from its name. `resource projectId` draws an id the
+run has already seen; `int32[1:1000]` draws inside its range; `enum[...]` draws a value the
+product's own validator accepts; `date` and the other named types are declared in
+`specs/common.txt`; `text` carries the input's own bytes; `array[T]` repeats one. A value the
+text can only state as `string` — because the product's accepted set is not known — draws
+nothing in a warm-up sweep rather than a guess, so a knob becomes worth sweeping the moment its
+line names a closed set. A route or command the text does not name is not called: the
+description is the allowlist, and `skipped.txt` is what makes its gaps deliberate.
+
+`specs/syz.ts` parses and checks the text; `specs/generate.ts` compiles it into
+`specs/generated/{server,cli,resources}.ts`, which the two legs import at run time — the legs
+hold only the calls, and no value is chosen outside `specs/eval.ts`. `node specs/generate.ts`
+rewrites the generated files; `--check` fails when they are stale, or when the text and the
+product disagree by name (a route in `specs/surface.json` or a command in the commander tree
+that is neither described nor skipped, a path slot without its argument, an option whose flags
+moved); `--draft` prints the line to add. All three run on plain `node` — the description is
+data, and reading it needs no build.
+
+The two sources of truth `--check` compares against are the product's own declarations.
+`specs/extract.mjs` parses the sources with the TypeScript compiler API and writes
+`specs/surface.json`: every server route, taken from each `HttpModule.routes` contribution
+together with the `app.<method>("…")` call its factory makes; every client endpoint of the web
+client's endpoint table, with its request body; the shape of every DTO a body can name; and the
+paths a route builds at run time, which each extraction lists because no literal exists to
+extract. `specs/cli/tree.ts` wires the CLI's own fifteen `register*Command` calls onto a
+`Command` and walks it. Regenerate the surface after adding or renaming a route, an endpoint or
+a DTO field:
 
     node tests/fuzzers/specs/extract.mjs
 
-`specs/surface.json` is committed so a run needs no extraction step: both legs read it at load,
-and the seed corpus is written from the same specs.
+`specs/surface.json` is committed so a run needs no extraction step, and `specs/generated/` is
+committed for the same reason. `run.mjs` compiles the descriptions before the build and checks
+them against it afterwards, so a route or a command that changes without a line of text stops
+the run by name instead of quietly leaving the surface.
 
 ## Why there is a build step
 
@@ -77,9 +118,17 @@ run the fuzzer on a newer base image or distribution.
 | `server/` | The API surface: sequences of requests against the in-process server. |
 | `server/src/fuzz.ts` | The Jazzer.js entry: cut the input into calls, send each, check, throw on a violation. |
 | `specs/extract.mjs` | Reads penguin's route metadata, client endpoints and DTOs into `specs/surface.json`. |
+| `specs/syz.ts` | The description language: parse the text, resolve its types, check the call set. |
+| `specs/generate.ts` | Compiles the text into `specs/generated/`; `--check` holds it against the product, `--draft` prints a missing line. |
+| `specs/common.txt` | The resources and named types both legs share. |
+| `specs/server/http.txt`, `specs/server/skipped.txt` | The API surface, described: the routes this leg drives, and the ones it does not, with the reason. |
+| `specs/cli/cli.txt`, `specs/cli/skipped.txt` | The CLI surface, described: the commands this leg drives, and the ones it does not, with the reason. |
+| `specs/cli/tree.ts` | The commander tree the CLI builds, read for `--check` and `--draft` — never at run time. |
+| `specs/types.ts` | The compiled shapes the generated tables carry. |
+| `specs/eval.ts` | One declared type, one value; and a value written the way a URL or an argv carries it. |
 | `specs/decode.ts` | The slot decoder both legs share: bytes → one named slot of a spec, by the slot's type. |
-| `specs/server/main.ts` | The API leg's specs, built from `specs/surface.json` (routes, paths, body fields). |
-| `specs/cli/main.ts` | The CLI leg's specs, built from the commander tree the CLI itself registers. |
+| `specs/server/main.ts` | The API leg's calls, from `specs/generated/server.ts`. |
+| `specs/cli/main.ts` | The CLI leg's calls, from `specs/generated/cli.ts`. |
 | `server/src/input.ts` | One call's format (two control bytes, then payload) and body payload injection. |
 | `server/src/invariants.ts` | The invariant checks, read off a second, read-only SQLite connection. |
 | `server/src/harness.ts`, `server/src/assemble.ts` | The boot both legs share (`bootAppDeps` → `seedAdmin` → `createApp`), with the production SessionLoader: every Session runs the real Agent, ContextEngine and Environment. |
@@ -94,7 +143,7 @@ run the fuzzer on a newer base image or distribution.
 | `server/src/finding.ts` | The replay kit a leg writes before it rethrows: kind, input, the calls that led there, and a copy of the database and file tree they ran against. |
 | `server/src/replay.ts` | The kit read back: boot from it, rebase the saved paths onto the new root, run the input once, say which face came back. |
 | `build.mjs` | Compiles the targets and the product modules they reach to `build/`. |
-| `run.mjs` | Build → seed the corpus → run the fuzzer → write the coverage report. |
+| `run.mjs` | Generate the specs → build → check them against it → seed the corpus → run the fuzzer → write the coverage report. |
 | `fuzz-runner.mjs` | Starts Jazzer.js from this process and closes the harness when the run ends. |
 | `report.mjs` | Rewrites the coverage keys back to source paths and writes the summary. |
 | `resolve-hook.mjs`, `resolve-hooks.mjs` | The `@prismshadow/*` mapping the compiled tree needs. |
