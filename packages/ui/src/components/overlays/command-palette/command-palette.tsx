@@ -103,7 +103,7 @@ export function CommandPalette({
         aria-label={title}
         tabIndex={-1}
         onKeyDown={onPanelKeyDown}
-        className="anim-pop h-fit w-full max-w-md overflow-hidden rounded-lg border border-line bg-surface shadow-xl"
+        className="anim-pop h-fit w-full sm:max-w-lg overflow-hidden rounded-lg border border-line bg-surface shadow-xl"
       >
         {/* Mounted per opening, so the query and the selection start over each time. */}
         <PaletteSearch
