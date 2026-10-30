@@ -59,11 +59,6 @@ options.merge(
       `-rss_limit_mb=${rssLimitMb}`,
       "-print_final_stats=1",
       `-artifact_prefix=${artifactPrefix}`,
-      // A rig that measures coverage over days must not stop at a finding it already knows: the
-      // artifact and the finding kit are still written, and libFuzzer records each distinct
-      // finding once, but the run keeps going. Off by default — a one-shot run should answer
-      // "does anything break" by stopping at the first thing that does.
-      ...(process.env.FUZZ_IGNORE_CRASHES === "1" ? ["-ignore_crashes=1"] : []),
       ...(runs === undefined || runs === "" ? [] : [`-runs=${runs}`]),
       // The call skeletons the seed step writes: the one mutation source that inserts a
       // well-formed call instead of hoping a random byte lands on the separator.

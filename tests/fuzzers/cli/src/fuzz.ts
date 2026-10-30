@@ -161,6 +161,13 @@ const kit: Kit | null = replayDir === undefined ? null : readKit(replayDir);
 const seed: DemoSeed | undefined =
   kit === null || kit.oldRoot === null ? undefined : { dir: kit.dir, oldRoot: kit.oldRoot };
 
+/**
+ * A resident rig measures coverage for days and must not stop at a finding it already knows
+ * (see `fuzz`): with `FUZZ_IGNORE_CRASHES=1` one message keeps one kit and the loop continues.
+ * A replay asks the opposite question, so it never ignores.
+ */
+const ignoreCrashes = process.env.FUZZ_IGNORE_CRASHES === "1" && kit === null;
+
 type Rig = Awaited<ReturnType<typeof bootHarness>>;
 /** Definite assignment: `bootRig` is its only writer and runs before the first read. */
 let harness!: Rig;
@@ -400,6 +407,16 @@ async function probeRig(): Promise<Record<string, number>> {
 const recent: { spec: string; argv: string[]; ms: number; exit: string }[] = [];
 const RECENT_CALLS = 16;
 
+/**
+ * The finding messages a long-lived rig has already kept.
+ *
+ * `FUZZ_IGNORE_CRASHES=1` makes a finding return instead of throw, one kit per message: the
+ * resident loop measures coverage for days and must not stop at something it already knows,
+ * while the kit on disk still names what broke. A second input that trips the same message is
+ * the same finding — rewriting the kit would only copy the database again.
+ */
+const swallowedFindings = new Set<string>();
+
 const epochs = new Epochs({
   // A replay runs one input on one rig: the state it is replaying is the whole point, and a
   // rotation would replace it halfway through the sequence.
@@ -589,6 +606,12 @@ export async function fuzz(data: Buffer): Promise<void> {
     }
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
+    // A resident rig measures coverage over days; a finding it has already kept must not end
+    // the run. With FUZZ_IGNORE_CRASHES=1 the call returns instead of throwing, once per
+    // message: libFuzzer keeps mutating, and the kit on disk still names what broke.
+    // A replay asks "does this kit still find what it found"; it must answer with the throw.
+    if (ignoreCrashes && swallowedFindings.has(error.message)) return;
+    swallowedFindings.add(error.message);
     // The replay kit (see finding.ts): the input, the calls that led here and the database they
     // ran against. Without the last of those a finding stops being reproducible the moment an
     // epoch replaces the rig — which is why it is written before anything else runs.
@@ -615,6 +638,10 @@ export async function fuzz(data: Buffer): Promise<void> {
       },
       dbPath: harness.app.dbPath,
     });
+    if (ignoreCrashes) {
+      console.log(`[cli] finding kept, the run continues: ${error.message.split("\n")[0]}`);
+      return;
+    }
     throw error;
   }
 }
