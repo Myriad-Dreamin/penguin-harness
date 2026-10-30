@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { HostCommand, HostCommandOffer } from "@prismshadow/penguin-server/api";
 import { CommandPalette, toastError, toastInfo } from "@prismshadow/penguin-ui";
 import type { PaletteAction } from "@prismshadow/penguin-ui";
+import type { CommandPaletteProps } from "@prismshadow/penguin-ui";
 import * as api from "../../api/endpoints";
 import { apiErrorText } from "../../lib/api-error";
 import { offersNewWindow } from "../../lib/desktop-window";
@@ -31,6 +32,9 @@ import { HarnessHistoryOverlay } from "../harness/harness-history-overlay";
 
 /** A mount point with nothing to add shares one empty list, so the action memo stays put. */
 const NO_EXTRA: readonly PaletteAction[] = [];
+
+/** The wait the palette draws while the completions are still working (see CommandPalette). */
+type PalettePending = CommandPaletteProps["pending"];
 
 const REPO_URL = "https://github.com/Prism-Shadow/penguin-harness";
 
@@ -93,16 +97,18 @@ export function hostCommandActions(
 /**
  * `extra` is what the mount point adds ahead of the standing actions — the full-page
  * workbench route registers its way out here, which is why it exists at all on that route.
- * `suggest` is the same mount point's dynamic completions — the mount point passes the session
- * completion; a mount point outside the app's providers passes nothing and the palette keeps
- * its standing actions alone.
+ * `suggest` is the same mount point's dynamic completions — the App root passes the published
+ * session completion, whose `pending` rides along to draw the wait; a mount with nothing to
+ * complete passes neither and the palette keeps its standing actions alone.
  */
 export function AppPalette({
   extra = NO_EXTRA,
   suggest,
+  pending,
 }: {
   extra?: readonly PaletteAction[];
   suggest?: (query: string) => readonly PaletteAction[];
+  pending?: PalettePending;
 }) {
   const added = useAddedPaletteActions();
   const safe = useSafeMode();
@@ -214,6 +220,7 @@ export function AppPalette({
         onClose={() => setOpen(false)}
         actions={actions}
         suggest={suggest}
+        pending={pending}
         title={S.commandPalette.title}
         placeholder={S.commandPalette.placeholder}
         emptyText={S.commandPalette.noResults}

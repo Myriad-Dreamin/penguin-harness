@@ -17,6 +17,7 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useDialogLayer } from "../esc-layers/esc-layers";
+import { Spinner } from "../../icons/spinner/spinner";
 
 export interface PaletteAction {
   id: string;
@@ -56,6 +57,15 @@ export interface CommandPaletteProps {
    * ones, so an empty standing match does not hide them.
    */
   suggest?: (query: string) => readonly PaletteAction[];
+  /**
+   * Drawn — beside a spinner — in the list's head row while the completions are still working.
+   * The palette only draws it: whether anything is pending and what the wait is called are the
+   * caller's to know. A function is read every time the list draws, the way `suggest` is called,
+   * so a wait computed outside the providers (a publication the App root reads) is fresh at the
+   * moment the list draws rather than at the last re-render above it. When the list holds
+   * actions anyway, the row rides under them, so the wait never hides what is ready.
+   */
+  pending?: ReactNode | (() => ReactNode);
   /** Names the dialog for assistive technology; the palette shows no title. */
   title: string;
   /** The search box's placeholder, which is also its accessible name. */
@@ -71,6 +81,7 @@ export function CommandPalette({
   onClose,
   actions,
   suggest,
+  pending,
   title,
   placeholder,
   emptyText,
@@ -109,6 +120,7 @@ export function CommandPalette({
         <PaletteSearch
           actions={actions}
           suggest={suggest}
+          pending={pending}
           placeholder={placeholder}
           emptyText={emptyText}
           onRun={run}
@@ -128,12 +140,14 @@ export function CommandPalette({
 function PaletteSearch({
   actions,
   suggest,
+  pending,
   placeholder,
   emptyText,
   onRun,
 }: {
   actions: readonly PaletteAction[];
   suggest?: (query: string) => readonly PaletteAction[];
+  pending?: ReactNode | (() => ReactNode);
   placeholder: string;
   emptyText: string;
   onRun: (action: PaletteAction) => void;
@@ -147,6 +161,20 @@ function PaletteSearch({
   const suggestions = suggest?.(query) ?? [];
   const listed = [...filtered, ...suggestions];
   const sel = Math.min(selected, Math.max(listed.length - 1, 0));
+  // The head row is the wait's word: the spinner sits inside the listbox (not an option, so it
+  // is never selectable nor filtered away) and rides under the actions that are already ready.
+  // With nothing listed yet, the spinner takes the empty row's place — the wait is the answer.
+  const wait = typeof pending === "function" ? pending() : pending;
+  const loadingRow = wait !== undefined && (
+    <li
+      className="flex items-center gap-2 px-4 py-2 text-xs text-fg-subtle"
+      role="status"
+      aria-live="polite"
+    >
+      <Spinner size="sm" label="" className="text-fg-subtle" />
+      {wait}
+    </li>
+  );
 
   const onInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -175,10 +203,11 @@ function PaletteSearch({
         aria-label={placeholder}
         className="w-full border-b border-line bg-transparent px-4 py-3 text-sm outline-none placeholder:text-fg-subtle"
       />
-      {listed.length === 0 ? (
+      {listed.length === 0 && loadingRow === false ? (
         <p className="px-4 py-3 text-sm text-fg-muted">{emptyText}</p>
       ) : (
         <ul className="max-h-[40vh] overflow-y-auto py-1" role="listbox">
+          {loadingRow}
           {listed.map((action, i) => (
             <li key={action.id} role="option" aria-selected={i === sel}>
               <button

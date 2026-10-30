@@ -28,7 +28,10 @@ import type { ComponentType } from "react";
 import { UnsavedPrompt } from "./lib/unsaved/unsaved-prompt";
 import { SafeModeMarker } from "./rescue/safe-mode-marker";
 import { AppPalette } from "./features/palette/app-palette";
-import { paletteSessionCompletion } from "./features/palette/session-completion";
+import {
+  paletteSessionCompletion,
+  paletteSessionPending,
+} from "./features/palette/session-completion";
 import { ErrorBoundary } from "./rescue/error-boundary";
 import { RescuePanel } from "./rescue/rescue-panel";
 import { writeClipboard } from "./lib/clipboard";
@@ -67,7 +70,7 @@ export function App({
                     <Root {...(initialPath === undefined ? {} : { initialPath })} />
                   </ErrorBoundary>
                   <ErrorBoundary fallback={() => null}>
-                    <AppPalette suggest={paletteSessionCompletion} />
+                    <AppPalette suggest={paletteSessionCompletion} pending={paletteSessionPending} />
                   </ErrorBoundary>
                   <ErrorBoundary fallback={() => null}>
                     <SafeModeMarker />

@@ -1175,6 +1175,8 @@ export const zh = {
     hint: (toggle: string | null): string =>
       toggle === null ? "↑↓ 选择 · Enter 执行" : `${toggle} 切换 · ↑↓ 选择 · Enter 执行`,
     harnessHistory: "Harness 历史",
+    /** Drawn while the completion's sources are still answering the typed session-id prefix. */
+    pending: "正在查找会话…",
     newWindow: "新建窗口",
     /** The desktop shell's native actions, offered here because its menu bar stays hidden. */
     installCli: "安装 penguin 命令…",

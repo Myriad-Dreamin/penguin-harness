@@ -886,6 +886,12 @@ export const listSessions = (
     withCounts?: boolean;
     /** The user's own rows only: an organization's desk, ticket and sub-sessions leave the page and the totals together (the development list's contract). */
     excludeOrg?: boolean;
+    /**
+     * Only the rows whose id starts this — the command palette's session completion asks with the
+     * prefix its user typed. The server requires the `session-` head and caps the length; paging
+     * applies within the filter.
+     */
+    sessionIdPrefix?: string;
   },
   /**
    * Which machine to ask. This path is NOT session-scoped, so nothing about it can be routed

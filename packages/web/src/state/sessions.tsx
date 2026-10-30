@@ -111,6 +111,7 @@ import {
 } from "../lib/session-grouping";
 import type { ActivityKey, StreamPosition } from "../lib/session-grouping";
 import { noteScheduleEvent } from "../features/schedules/schedule-store";
+import { rememberCompletionRows } from "../lib/completion-cache";
 import { useProject } from "./project";
 
 /** A session-list fan-out being timed (telemetry on): when it started and its slowest answer. */
@@ -894,6 +895,13 @@ export function createSessionsStore() {
             attrs: { slowestMs: Math.round(fanout.slowestMs * 10) / 10 },
           });
         }
+        // The completion cache (lib/completion-cache.ts) remembers what each Agent was seen
+        // holding, so the palette's next session-id completion offers it without the wait.
+        for (const r of results) {
+          for (const page of r.pages) {
+            rememberCompletionRows(projectId, r.source, r.agentId, page.items);
+          }
+        }
         // Whether each machine answered is a fact about the machine, whichever reload is
         // current by now — recorded before a newer one discards this one's rows.
         const unansweredMachines = new Set(
@@ -1312,6 +1320,8 @@ export function createSessionsStore() {
         ).flat();
         if (g !== gen) return; // Project switch / reload raced this page: drop it.
         const ok = results.filter((r) => r !== null);
+        // Remembered for the palette's completions too (lib/completion-cache.ts).
+        for (const r of ok) rememberCompletionRows(projectId, r.source, r.agentId, r.items);
         const prev = get().sessions;
         const seen = new Set(prev.map((s) => s.sessionId));
         const appended: SessionInfo[] = [];

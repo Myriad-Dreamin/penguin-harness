@@ -1065,6 +1065,8 @@ export const en: Strings = {
         ? "↑↓ to select · Enter to run"
         : `${toggle} to toggle · ↑↓ to select · Enter to run`,
     harnessHistory: "Harness history",
+    /** Drawn while the completion's sources are still answering the typed session-id prefix. */
+    pending: "Finding sessions…",
     newWindow: "New Window",
     installCli: "Install 'penguin' command…",
     checkUpdates: "Check for desktop updates…",
