@@ -97,7 +97,6 @@ import {
   resolvePushPlan,
   runningBuild,
   runsPlan,
-  sameBuild,
   shippedImage,
 } from "./install-server.js";
 import { parseProbeOutput, posixProbe } from "./detect.js";
@@ -1345,19 +1344,6 @@ export class MachinesService {
       : { ok: false, step: "check", message: refused, ...this.#sshCause(target, refused) };
   }
 
-  /**
-   * Whether the machine already carries the build `plan` names, asked of the machine: the
-   * version names the platform bundle only, so an image whose web, CLI or assets changed reads
-   * as the version the machine is recorded at. One probe over the session. Unknown — no answer,
-   * a Windows shell — reads as current, which is what the record said.
-   */
-  async #carries(target: RemoteTarget, plan: PushPlan): Promise<boolean> {
-    if (plan.harness === null) return true;
-    const answer = await this.#effects.runOn(target, posixProbe(this.#layout));
-    const identity = answer.code === 0 ? parseProbeOutput(answer.stdout) : null;
-    return identity === null || sameBuild(identity.harness, plan.harness);
-  }
-
   // --- jobs ---------------------------------------------------------------------------------
 
   /**
@@ -1647,6 +1633,7 @@ export class MachinesService {
         ...this.#sshCause(target, outcome.detail),
       };
     }
+    if (outcome.kind === "already-installed") say(`Already on ${outcome.version}.`, "check");
     // What the machine is, before anything below asks it again: the hand-over and the
     // restart both probe, and they should already speak its dialect.
     this.#record(address, { platform: outcome.identity.platform });
@@ -1665,10 +1652,38 @@ export class MachinesService {
       // asks the machine itself, so a runtime that cannot claim this platform refuses in
       // words rather than restarting into a silent fallback.
       say("Handing this build to its own update channel…", "handover");
-      const pushed = await this.#handOverBuild(address, target, plan, say);
+      let pushed = await this.#handOverBuild(address, target, plan, say);
       if (pushed.kind === "no-server") {
-        say("Its server is not running; this build will be used when it next starts.");
-      } else if (pushed.kind !== "upgraded") {
+        // The channel is the running server's, and this install copied nothing: with none up
+        // there was nothing to hand the build to and nothing that put it on that disk, while
+        // the record went on saying this version. So the server is started first, and the
+        // build then reaches it the way it reaches any running one — refusals included.
+        const port = this.repo.get(address)?.remotePort ?? this.#layout.defaultPort;
+        say(
+          `Its server is not running; starting it on port ${port} to hand the build over…`,
+          "restart",
+        );
+        const started = await this.#effects.startServer(target, port);
+        if (!started.ok) {
+          return {
+            ok: false,
+            step: "start its server",
+            message: started.detail,
+            // Another program's port is not something installing the program frees — the
+            // same rule this service's connect path follows.
+            ...(started.portTaken === true ? { canReplaceProgram: false as const } : {}),
+          };
+        }
+        pushed = await this.#handOverBuild(address, target, plan, say);
+        if (pushed.kind === "no-server") {
+          return {
+            ok: false,
+            step: "start its server",
+            message: "it was started, but no server answers over there.",
+          };
+        }
+      }
+      if (pushed.kind !== "upgraded") {
         return {
           ok: false,
           step: "hand over the pushed build",
@@ -1881,7 +1896,7 @@ export class MachinesService {
     return { refused };
   }
 
-  /** One machine's "use": install where the record says the build is missing or different, then connect. */
+  /** One machine's "use": ask the machine what it carries, install what is missing, then connect. */
   async #useWork(
     projectId: string,
     address: string,
@@ -1895,20 +1910,12 @@ export class MachinesService {
     if (machine === undefined) {
       return { ok: false, step: "use", message: "that host is no longer in the ssh config." };
     }
-    let needsInstall =
-      replaceProgram || machine.installed === null || machine.installed.version !== plan.version;
-    if (!needsInstall && this.repo.get(address)?.platform !== "win32") {
-      // Same version, maybe not the same build: a web, CLI or asset change keeps the version.
-      needsInstall = !(await this.#carries(this.#targetOf(machine.alias), plan));
-    }
-    if (needsInstall) {
-      const installed = await this.#installWork(projectId, machine, image, replaceProgram, say);
-      if (installed !== null && !installed.ok) return installed;
-    } else {
-      say(`Already on ${plan.version}.`, "check");
-      // The Project that asked is the Project that uses it, install or no install.
-      this.#setMember(projectId, address, true);
-    }
+    // The MACHINE answers this, never the record. The record is what the last job wrote, and
+    // one written while nothing reached that disk makes the machine that looks current the one
+    // thing "use" never touches. The installer's probe is that answer: an `already-installed`
+    // one copies nothing, and it costs the round trip whether or not anything is installed.
+    const installed = await this.#installWork(projectId, machine, image, replaceProgram, say);
+    if (installed !== null && !installed.ok) return installed;
     // A Windows machine has no shell to hold a session on (see startConnect): installed is
     // as far as "use" goes there, and the page says so from the platform on record.
     if (this.repo.get(address)?.platform === "win32") {
@@ -1916,7 +1923,7 @@ export class MachinesService {
     }
     const fresh = this.#allMachines().find((entry) => entry.id === address) ?? machine;
     // Behind an install, asking what runs there is already part of connecting.
-    return this.#connect(fresh, say, needsInstall ? "connect" : "check", plan);
+    return this.#connect(fresh, say, "connect", plan);
   }
 
   /**

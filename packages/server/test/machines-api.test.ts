@@ -544,25 +544,106 @@ describe("machines API", () => {
       );
     });
 
-    it("a machine with nothing running on it is done, not failed — its disk already has this", async () => {
-      // A hot swap replaces the code a RUNNING server is serving. With none there is nothing
-      // to swap and nothing wrong: the files are in place for its next start.
-      let asked = false;
+    it("a machine with nothing running on it is started, and the build is handed to what started", async () => {
+      // A state-only install copies nothing, and the update channel is the RUNNING server's:
+      // with none there is nothing to hand the build to and nothing that put it on that disk,
+      // so recording this version anyway left the machine on the build it already had. The
+      // server is started first, and the build reaches it like it reaches any running one.
+      let started = 0;
+      let asked = 0;
       await boot({
-        probe: async () => ({ state: { kind: "stopped" }, machineId: null }),
+        // Down until this server starts it; up from then on.
+        probe: async () =>
+          started === 0
+            ? { state: { kind: "stopped" as const }, machineId: null }
+            : { state: { kind: "running" as const, port: 7364, pid: 4242 }, machineId: null },
+        startServer: async () => {
+          started += 1;
+          return { ok: true };
+        },
         resolvePlan: () => PUSHED_PLAN,
         install: async () => ({ kind: "state-only", identity: IDENTITY }),
         upgrade: async () => {
-          asked = true;
+          asked += 1;
           return { kind: "upgraded", detail: "", persisted: true };
         },
       });
       await admin.post("/api/projects/default_project/machines/ssh:nas/install");
       await waitFor(() => t.deps.machines.job()?.running === false);
 
-      expect(asked).toBe(false);
-      expect(t.deps.machines.job()?.result).toMatchObject({ ok: true });
-      expect(t.deps.machines.job()?.log.join(" ")).toContain("next starts");
+      expect(started).toBe(1);
+      expect(asked).toBe(1);
+      expect(t.deps.machines.job()?.result).toMatchObject({ ok: true, version: "9.9.9+hmr.cafe" });
+      expect(t.deps.machines.job()?.log.join(" ")).toContain(
+        "starting it on port 7364 to hand the build over",
+      );
+    });
+
+    it("a machine that cannot be started is a failure, not a machine on this version", async () => {
+      await boot({
+        probe: async () => ({ state: { kind: "stopped" }, machineId: null }),
+        startServer: async () => ({ ok: false, detail: "it did not answer within 30s." }),
+        resolvePlan: () => PUSHED_PLAN,
+        install: async () => ({ kind: "state-only", identity: IDENTITY }),
+      });
+      await admin.post("/api/projects/default_project/machines/ssh:nas/install");
+      await waitFor(() => t.deps.machines.job()?.running === false);
+
+      expect(t.deps.machines.job()?.result).toMatchObject({
+        ok: false,
+        step: "start its server",
+        message: "it did not answer within 30s.",
+        canReplaceProgram: true,
+      });
+      // Nothing reached that disk, so the record does not say it did.
+      expect(machinesRepo.get("ssh:nas")?.version ?? null).not.toBe(PUSHED_PLAN.version);
+    });
+
+    it("a port another program holds over there does not offer installing the program", async () => {
+      await boot({
+        probe: async () => ({ state: { kind: "stopped" }, machineId: null }),
+        startServer: async () => ({
+          ok: false,
+          portTaken: true,
+          detail:
+            "Port 7364 on that machine is taken by another program, so its server could not start there. Stop that program or free the port, then try again.",
+        }),
+        resolvePlan: () => PUSHED_PLAN,
+        install: async () => ({ kind: "state-only", identity: IDENTITY }),
+      });
+      await admin.post("/api/projects/default_project/machines/ssh:nas/install");
+      await waitFor(() => t.deps.machines.job()?.running === false);
+
+      // The same rule the connect path follows: reinstalling frees no port another program holds.
+      expect(t.deps.machines.job()?.result).toMatchObject({
+        ok: false,
+        step: "start its server",
+        canReplaceProgram: false,
+      });
+      expect(machinesRepo.get("ssh:nas")?.version ?? null).not.toBe(PUSHED_PLAN.version);
+    });
+
+    it("a machine started but still not answering is a failure at the same step", async () => {
+      let started = 0;
+      await boot({
+        probe: async () => ({ state: { kind: "stopped" }, machineId: null }),
+        startServer: async () => {
+          started += 1;
+          return { ok: true };
+        },
+        resolvePlan: () => PUSHED_PLAN,
+        install: async () => ({ kind: "state-only", identity: IDENTITY }),
+      });
+      await admin.post("/api/projects/default_project/machines/ssh:nas/install");
+      await waitFor(() => t.deps.machines.job()?.running === false);
+
+      expect(started).toBe(1);
+      expect(t.deps.machines.job()?.result).toMatchObject({
+        ok: false,
+        step: "start its server",
+        message: "it was started, but no server answers over there.",
+      });
+      expect(machinesRepo.get("ssh:nas")?.version ?? null).not.toBe(PUSHED_PLAN.version);
     });
 
     it("a machine already carrying this build still gets it handed over: files are not the process", async () => {
@@ -2250,20 +2331,48 @@ describe("machines API", () => {
       expect(Object.keys(recordsInStore()).sort()).toEqual(["ssh:build-box", "ssh:nas"]);
     });
 
-    it("a machine already on this build is not reinstalled: use goes straight to connecting", async () => {
-      let installs = 0;
+    it("a machine already on this build is asked, not read: the machine says it is current", async () => {
+      // Asked of the MACHINE, not read off the record: the installer's own probe is what says
+      // "already on this", and an `already-installed` answer copies nothing. It costs one ssh
+      // round trip, every use, whatever the record says.
+      let asked = 0;
       await boot({
         install: async () => {
-          installs += 1;
-          return { kind: "installed", output: "done", identity: IDENTITY };
+          asked += 1;
+          return { kind: "already-installed", version: "9.9.9", identity: IDENTITY };
         },
       });
       machinesRepo.patch("ssh:nas", { version: "9.9.9", installedAt: "2026-08-01T00:00:00.000Z" });
       machinesRepo.setMembers("default_project", ["ssh:nas"]);
       await useBody(["ssh:nas"]);
       await waitFor(settled);
-      expect(installs).toBe(0);
-      expect(jobsOf()[0]?.log[0]).toBe("Already on 9.9.9.");
+      expect(asked).toBe(1);
+      expect(jobsOf()[0]?.log.join(" ")).toContain("Already on 9.9.9.");
+      expect(jobsOf()[0]?.result).toEqual({ ok: true, connected: true });
+    });
+
+    it("a machine recorded at this build but carrying another is brought forward: the record is not trusted", async () => {
+      // The record is what the last job wrote. A job that found no server to hand the build to
+      // used to write this version with nothing on that disk; "use" then saw nothing to do,
+      // and the machine stayed on the build it had. The machine answers now.
+      let handedOver = 0;
+      await boot({
+        resolvePlan: () => PUSHED_PLAN,
+        install: async () => ({ kind: "state-only", identity: IDENTITY }),
+        upgrade: async () => {
+          handedOver += 1;
+          return { kind: "upgraded", detail: "", persisted: true };
+        },
+      });
+      machinesRepo.patch("ssh:nas", {
+        version: PUSHED_PLAN.version,
+        installedAt: "2026-08-01T00:00:00.000Z",
+      });
+      machinesRepo.setMembers("default_project", ["ssh:nas"]);
+      await useBody(["ssh:nas"]);
+      await waitFor(settled);
+      expect(handedOver).toBe(1);
+      expect(jobsOf()[0]?.log.join(" ")).not.toContain("Already on");
       expect(jobsOf()[0]?.result).toEqual({ ok: true, connected: true });
     });
 
@@ -2329,7 +2438,10 @@ describe("machines API", () => {
         resolvePlan: () => PUSHED_PLAN,
         install: async () => {
           installs += 1;
-          return { kind: "already-installed", version: PUSHED_PLAN.version, identity: IDENTITY };
+          // What the installer says for a machine on this release whose pushed state is
+          // another: `state-only`, not `already-installed`, which is reserved for the same
+          // build on the disk. The build is handed over, so nothing says it is current.
+          return { kind: "state-only", identity: IDENTITY };
         },
         runOn: async (_target, command) => ({
           code: 0,
@@ -3645,11 +3757,15 @@ describe("machines API", () => {
     });
 
     it("rebuilding an unchanged checkout lands on the image already there: the machine on it gets nothing new", async () => {
-      let installs = 0;
+      let asked = 0;
       await checkout({
-        install: async () => {
-          installs += 1;
-          return { kind: "installed", output: "done", identity: IDENTITY };
+        install: async (opts) => {
+          asked += 1;
+          // The installer's own short-circuit: the machine carries this image already, so it
+          // copies nothing and says so.
+          return asked === 1
+            ? { kind: "installed", output: "done", identity: IDENTITY }
+            : { kind: "already-installed", version: opts.plan.version, identity: IDENTITY };
         },
       });
       await useBody(["ssh:nas"]);
@@ -3658,9 +3774,10 @@ describe("machines API", () => {
 
       await useBody(["ssh:nas"]);
       await waitFor(settled);
-      // Each ask builds from the checkout as it is then; the same tree is the same image.
+      // Each ask builds from the checkout as it is then; the same tree is the same image, and
+      // the machine is asked every time — nothing is copied for it.
       expect(packs).toHaveLength(2);
-      expect(installs).toBe(1);
+      expect(asked).toBe(2);
       expect((await listed()).imageVersion).toBe(first);
       expect(jobsOf()[0]?.log).toContain(`Already on ${first}.`);
     });
