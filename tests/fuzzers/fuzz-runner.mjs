@@ -52,9 +52,9 @@ options.merge(
       // An input is a sequence of calls with payloads on each; the engine's own default starts
       // at the longest seed it was given and raises that ceiling slowly (`len_control`), which
       // on a small seed corpus means it never generates the payload-bearing calls a tool, an
-      // a2ui block or a validated body needs. Both are explicit here: 256 bytes is roughly
-      // eight four-command calls with a sentence each.
-      "-max_len=256",
+      // a2ui block or a validated body needs. Both are explicit here: 10240 bytes is room for
+      // a full sequence of eight calls with a real body each.
+      "-max_len=10240",
       "-len_control=0",
       `-rss_limit_mb=${rssLimitMb}`,
       "-print_final_stats=1",
