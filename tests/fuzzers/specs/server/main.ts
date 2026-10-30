@@ -18,13 +18,22 @@
  */
 import fs from "node:fs";
 import type { Choices } from "../../server/src/choices.js";
-import { idValue, objectOf, type FieldSpec, type Pools, type Variant } from "../decode.js";
+import {
+  idValue,
+  objectOf,
+  queryValue,
+  type FieldSpec,
+  type Pools,
+  type Variant,
+} from "../decode.js";
 
 interface SurfaceRoute {
   group: string;
   auth: string;
   method: string;
   path: string;
+  /** Query names the factory reads (`c.req.query("…")`) — see extract.mjs. */
+  query?: string[];
 }
 
 interface SurfaceEndpoint {
@@ -48,6 +57,8 @@ export interface HttpSpec {
   path: string;
   group: string;
   auth: string;
+  /** Query-string knobs this route reads; each is filled for every call. */
+  query: string[];
   fields: FieldSpec[];
   /** The request path, each `:param` filled from the spec (pool, literal, or a hostile draw). */
   url(variant: Variant, choices: Choices, text: string, pools: Pools): string;
@@ -132,6 +143,31 @@ function fill(
     .join("/");
 }
 
+/**
+ * `?limit=abc` — the query string a `bad` call carries: one knob, with a value the route's parser
+ * must reject. Empty for every other variant.
+ *
+ * The ok path is covered by the setup's query sweep instead (see `server/src/fuzz.ts`): drawn per
+ * call, an ok value is a guess at a domain the decoder cannot know (`limit` is refused without
+ * `before` on the messages page and required by an `offset` on a list, `before` is a message
+ * cursor on one route and a Session cursor on another), and a refusal spends the call that would
+ * have reached the deep path — measured, that lost more statements than the knobs added. A
+ * hostile value carries no such cost: the call is already meant to be refused, and the parse
+ * failure is the branch with the bugs in it.
+ */
+function hostileQuery(
+  query: readonly string[],
+  variant: Variant,
+  choices: Choices,
+  text: string,
+): string {
+  if (variant !== "bad" || query.length === 0) return "";
+  const name = query[choices.int(0, query.length - 1)];
+  if (name === undefined) return "";
+  const value = queryValue(name, variant, choices, text);
+  return value === null ? "" : `?${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
+}
+
 export function httpSpecs(): HttpSpec[] {
   const fields = new Map<string, FieldSpec[]>();
   for (const endpoint of surface.endpoints) {
@@ -140,7 +176,13 @@ export function httpSpecs(): HttpSpec[] {
   }
 
   const specs = new Map<string, HttpSpec>();
-  const add = (method: string, path: string, group: string, auth: string): void => {
+  const add = (
+    method: string,
+    path: string,
+    group: string,
+    auth: string,
+    query: string[] = [],
+  ): void => {
     if (dangerOf(method, path) !== undefined) return;
     const id = `${method} ${path}`;
     if (specs.has(id)) return;
@@ -151,8 +193,10 @@ export function httpSpecs(): HttpSpec[] {
       path,
       group,
       auth,
+      query,
       fields: declared,
-      url: (variant, choices, text, pools) => fill(path, variant, choices, text, pools),
+      url: (variant, choices, text, pools) =>
+        `${fill(path, variant, choices, text, pools)}${hostileQuery(query, variant, choices, text)}`,
       // No declared DTO → no structured body. The raw-body flag still sends the payload as
       // the body, which is how a body-parsing failure is reached on any route.
       ...(declared.length === 0
@@ -165,7 +209,9 @@ export function httpSpecs(): HttpSpec[] {
   };
 
   // Route metadata first: it names the group and carries the platform's own auth class.
-  for (const route of surface.routes) add(route.method, route.path, route.group, route.auth);
+  for (const route of surface.routes) {
+    add(route.method, route.path, route.group, route.auth, route.query ?? []);
+  }
   // Then the client's endpoints: the ones with a typed body attach their fields by id, and a
   // route the platform metadata missed still appears.
   for (const endpoint of surface.endpoints) add(endpoint.method, endpoint.path, endpoint.fn, "user");

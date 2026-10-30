@@ -131,6 +131,81 @@ export function idValue(name: string, choices: Choices, pools: Pools, hostile = 
   return validIdValue(name, choices, pools);
 }
 
+/**
+ * One query-string value, by the name the route reads it under; `null` means "do not send this
+ * knob".
+ *
+ * Every route that lists, pages or filters reads its knobs from the query string, and until this
+ * existed no request ever carried one: the default page, the default order and the unfiltered
+ * list were the only paths any run could take, and the parse-and-refuse branch of each knob was
+ * unreachable by construction. The names come from the route source (`c.req.query("limit")`), so
+ * a route grows a knob the day it reads one.
+ *
+ * The value is shaped by the name, not by a type: these are `string | undefined` at the boundary
+ * and the handler parses them. Two rules follow from that:
+ *
+ * - The `ok` variant only draws a value the parser accepts, and a name whose accepted set is an
+ *   enum the decoder cannot know (`order` is `created|activity`, `category` a closed list) is not
+ *   sent at all. A guess is not free: the route answers 400 and the call never reaches the code
+ *   the bare request would have run, which measured worse than sending no knob.
+ * - The `bad` variant sends every value a parser exists to reject — that is where the refusing
+ *   branch, and the 500 a refusal path can turn into, actually is.
+ */
+export function queryValue(
+  name: string,
+  variant: Variant,
+  choices: Choices,
+  text: string,
+): string | null {
+  if (variant === "bad") {
+    return choices.pick([
+      "",
+      "abc",
+      "-1",
+      "999999999999999999999",
+      "%00",
+      "null",
+      "[]",
+      "x".repeat(300),
+    ]);
+  }
+  // A closed set the route defines; a value from outside it is refused before anything runs.
+  if (/^(category|kind|flow|granularity|groupBy|order|sort|direction|mode)$/i.test(name)) {
+    return null;
+  }
+  if (
+    /^(counts|download|excludeOrg|force|include|exclude|archived|all|group|only|places|preview)$/i.test(
+      name,
+    )
+  ) {
+    return "1";
+  }
+  if (name === "period") return "2026-10"; // yyyy-mm
+  if (/^(date|from|to|start|end)$/i.test(name)) return "2026-10-26"; // yyyy-mm-dd
+  if (/(Ts)$/.test(name)) return "1761408000000";
+  if (name === "utcOffsetMinutes") return "0";
+  if (name === "limit") return String(choices.pick([2, 5, 20, 100])); // 1–1000
+  if (name === "offset") return "0";
+  if (/(index|count|page|size|tail)/i.test(name)) return String(choices.pick([1, 2, 5]));
+  if (/(path|file|dir)$/i.test(name)) {
+    return choices.pick(["note.txt", "sub/note.txt", "."]);
+  }
+  if (name === "q") return choices.pick(["fuzz", "note", "a"]);
+  if (/sessionId$/.test(name)) return "session-2026-10-26-00-00-00-fuzz";
+  if (/agentId$/.test(name)) return "default_agent";
+  if (/machineId$/.test(name)) return "fuzz-machine";
+  if (/modelId$/.test(name)) return "fuzz-model";
+  // The Activity cursor the Session list pages by: `<lastActiveAt>,<sessionId>`.
+  if (/^(before|after|cursor|since|until)$/i.test(name)) {
+    return "2026-10-26T00:00:00.000Z,session-2026-10-26-00-00-00-fuzz";
+  }
+  if (/^(specifier|name)$/i.test(name)) return "fuzz-plugin";
+  if (/^(token|code)$/i.test(name)) return "fuzz-token";
+  if (name === "provider") return "custom";
+  if (name === "workspaceGroup") return "default";
+  return text === "" ? null : text;
+}
+
 /** A free-text value: the input's own payload, sometimes with a boundary shape around it. */
 export function textValue(name: string, choices: Choices, text: string): string {
   if (text === "") return "";

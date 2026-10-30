@@ -36,7 +36,12 @@ import {
   addModel,
   loadProjectConfig,
 } from "../../../../packages/core/src/state/project-config.js";
-import { captureIds, splitRecords, type Pools } from "../../specs/decode.js";
+import {
+  captureIds,
+  queryValue,
+  splitRecords,
+  type Pools,
+} from "../../specs/decode.js";
 import { httpSpecs } from "../../specs/server/main.js";
 import { ByteChoices } from "./choices.js";
 import { permitLoopback } from "./bug-detectors.js";
@@ -512,7 +517,73 @@ async function sweepSpecs(): Promise<SweepResult> {
   return result;
 }
 
+interface QuerySweepResult {
+  requests: number;
+  answered: number;
+  refused: number;
+  skipped: number;
+  serverErrors: string[];
+  timeouts: string[];
+}
+
+/**
+ * One request per route knob, with the shape the name implies — the ok half of the query surface.
+ *
+ * The fuzzing loop keeps the bare request as its default, because a knob value drawn from an
+ * input is a guess at a domain this harness cannot know: `limit` alone is a 400 on the messages
+ * page and required by an `offset` on a list, `before` is a message cursor on one route and a
+ * Session cursor on another. A refusal spends the call that would have reached the deep path, so
+ * the knobs are covered here instead: once each, deterministically, after the routes are warm.
+ * Every filter, page and date parse is reached, and a 4xx is a reading rather than a finding.
+ *
+ * Reads only: a knob on a write route can delete rows (`?force=1`), and the state the loop then
+ * fuzzes is the premise its invariants are compared against.
+ */
+async function sweepQueries(): Promise<QuerySweepResult> {
+  const result: QuerySweepResult = {
+    requests: 0,
+    answered: 0,
+    refused: 0,
+    skipped: 0,
+    serverErrors: [],
+    timeouts: [],
+  };
+  const rng = new ByteChoices(Buffer.alloc(0));
+  for (const spec of specs) {
+    if (spec.method !== "GET" && spec.method !== "HEAD") continue;
+    for (const name of spec.query) {
+      const value = queryValue(name, "ok", rng, "");
+      if (value === null) {
+        result.skipped += 1;
+        continue;
+      }
+      const url = `${spec.url("ok", rng, "", pools)}?${encodeURIComponent(name)}=${encodeURIComponent(value)}`;
+      result.requests += 1;
+      const raced = await withSoftTimeout(
+        Promise.resolve(
+          harness.app.app.request(url, {
+            headers: { authorization: `Bearer ${harness.app.apiToken}` },
+          }),
+        ),
+        STEP_TIMEOUT_MS,
+      );
+      if (!raced.ok) {
+        result.timeouts.push(`${spec.id} ?${name}`);
+        continue;
+      }
+      result.answered += 1;
+      if (raced.value.status >= 500) {
+        result.serverErrors.push(`${spec.id} ?${name} → ${raced.value.status}`);
+      } else if (raced.value.status >= 400) {
+        result.refused += 1;
+      }
+    }
+  }
+  return result;
+}
+
 const sweep = await sweepSpecs();
+const querySweep = await sweepQueries();
 /** Everything the fuzzing loop is measured against — taken after the sweep, so the sweep's own
  * rows are the premise rather than a violation the loop would report on its first call. */
 baseline = readSnapshot(harness.app.dbPath);
@@ -797,6 +868,15 @@ process.on("exit", () => {
       ...sweep.timeouts.slice(0, 10).map((entry) => `  - timeout: ${entry}`),
       ...sweep.serverErrors.slice(0, 10).map((entry) => `  - server error: ${entry}`),
       ...sweep.threw.slice(0, 10).map((entry) => `  - threw: ${entry}`),
+      `- Query sweep: ${querySweep.requests} request(s) over the routes' knobs, ${querySweep.answered} answered, ` +
+        `${querySweep.refused} refused (4xx), ${querySweep.serverErrors.length} answered ≥500, ` +
+        `${querySweep.timeouts.length} timed out, ${querySweep.skipped} knob(s) with no known shape`,
+      ...querySweep.serverErrors
+        .slice(0, 10)
+        .map((entry) => `  - query server error: ${entry}`),
+      ...querySweep.timeouts
+        .slice(0, 10)
+        .map((entry) => `  - query timeout: ${entry}`),
       `- Fixture repairs: ${stats.repairs}`,
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
       `- Boot SSE sample: status ${sseSample.status}, ${sseSample.chunks} chunks / ${sseSample.bytes}B`,

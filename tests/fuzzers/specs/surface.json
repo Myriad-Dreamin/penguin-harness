@@ -3078,2107 +3078,3172 @@
       "group": "AmspRoutes.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/amsp/v1/agents/:projectId/:agentId"
+      "path": "/api/amsp/v1/agents/:projectId/:agentId",
+      "query": []
     },
     {
       "group": "AmspRoutes.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/amsp/v1/agents/:projectId/:agentId/runs"
+      "path": "/api/amsp/v1/agents/:projectId/:agentId/runs",
+      "query": []
     },
     {
       "group": "AmspRoutes.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/amsp/v1/sessions/:sessionId"
+      "path": "/api/amsp/v1/sessions/:sessionId",
+      "query": []
     },
     {
       "group": "AmspRoutes.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/amsp/v1/sessions/:sessionId/abort"
+      "path": "/api/amsp/v1/sessions/:sessionId/abort",
+      "query": []
     },
     {
       "group": "AmspRoutes.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/amsp/v1/sessions/:sessionId/approvals/:toolCallId"
+      "path": "/api/amsp/v1/sessions/:sessionId/approvals/:toolCallId",
+      "query": []
     },
     {
       "group": "AmspRoutes.routes",
       "auth": "none",
       "method": "ALL",
-      "path": "/api/amsp/v1/*"
+      "path": "/api/amsp/v1/*",
+      "query": []
     },
     {
       "group": "AmspRoutes.try",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/api/try"
+      "path": "/api/projects/:projectId/agents/:agentId/api/try",
+      "query": []
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/status"
+      "path": "/api/builtin-browser/status",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/backend"
+      "path": "/api/builtin-browser/backend",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/builtin-browser/backend"
+      "path": "/api/builtin-browser/backend",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pairings"
+      "path": "/api/builtin-browser/extension/pairings",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/extension"
+      "path": "/api/builtin-browser/extension",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/builtin-browser/extension/:id"
+      "path": "/api/builtin-browser/extension/:id",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/tabs"
+      "path": "/api/builtin-browser/tabs",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs"
+      "path": "/api/builtin-browser/tabs",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/session"
+      "path": "/api/builtin-browser/tabs/session",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/claim"
+      "path": "/api/builtin-browser/tabs/claim",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/on-screen"
+      "path": "/api/builtin-browser/tabs/on-screen",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/activate"
+      "path": "/api/builtin-browser/tabs/:tab/activate",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/builtin-browser/tabs/:tab"
+      "path": "/api/builtin-browser/tabs/:tab",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/navigate"
+      "path": "/api/builtin-browser/tabs/:tab/navigate",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/scan"
+      "path": "/api/builtin-browser/tabs/:tab/scan",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/exec"
+      "path": "/api/builtin-browser/tabs/:tab/exec",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/click"
+      "path": "/api/builtin-browser/tabs/:tab/click",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/type"
+      "path": "/api/builtin-browser/tabs/:tab/type",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/screenshot"
+      "path": "/api/builtin-browser/tabs/:tab/screenshot",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/tabs/:tab/cdp"
+      "path": "/api/builtin-browser/tabs/:tab/cdp",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/import/sources"
+      "path": "/api/builtin-browser/import/sources",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/import"
+      "path": "/api/builtin-browser/import",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/settings"
+      "path": "/api/builtin-browser/settings",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/builtin-browser/settings"
+      "path": "/api/builtin-browser/settings",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/builtin-browser/history"
+      "path": "/api/builtin-browser/history",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/builtin-browser/history"
+      "path": "/api/builtin-browser/history",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser/clear-data"
+      "path": "/api/builtin-browser/clear-data",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/builtin-browser"
+      "path": "/api/builtin-browser",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/status"
+      "path": "/api/builtin-browser/extension/pair/status",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/backend"
+      "path": "/api/builtin-browser/extension/pair/backend",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "PUT",
-      "path": "/api/builtin-browser/extension/pair/backend"
+      "path": "/api/builtin-browser/extension/pair/backend",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/extension/pairings"
+      "path": "/api/builtin-browser/extension/pair/extension/pairings",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/extension"
+      "path": "/api/builtin-browser/extension/pair/extension",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "DELETE",
-      "path": "/api/builtin-browser/extension/pair/extension/:id"
+      "path": "/api/builtin-browser/extension/pair/extension/:id",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/tabs"
+      "path": "/api/builtin-browser/extension/pair/tabs",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs"
+      "path": "/api/builtin-browser/extension/pair/tabs",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/session"
+      "path": "/api/builtin-browser/extension/pair/tabs/session",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/claim"
+      "path": "/api/builtin-browser/extension/pair/tabs/claim",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/on-screen"
+      "path": "/api/builtin-browser/extension/pair/tabs/on-screen",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/activate"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/activate",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "DELETE",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/navigate"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/navigate",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/scan"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/scan",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/exec"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/exec",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/click"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/click",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/type"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/type",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/screenshot"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/screenshot",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/tabs/:tab/cdp"
+      "path": "/api/builtin-browser/extension/pair/tabs/:tab/cdp",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/import/sources"
+      "path": "/api/builtin-browser/extension/pair/import/sources",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/import"
+      "path": "/api/builtin-browser/extension/pair/import",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/settings"
+      "path": "/api/builtin-browser/extension/pair/settings",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "PUT",
-      "path": "/api/builtin-browser/extension/pair/settings"
+      "path": "/api/builtin-browser/extension/pair/settings",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "GET",
-      "path": "/api/builtin-browser/extension/pair/history"
+      "path": "/api/builtin-browser/extension/pair/history",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "DELETE",
-      "path": "/api/builtin-browser/extension/pair/history"
+      "path": "/api/builtin-browser/extension/pair/history",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair/clear-data"
+      "path": "/api/builtin-browser/extension/pair/clear-data",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "BuiltinBrowserRoutes.pair",
       "auth": "none",
       "method": "POST",
-      "path": "/api/builtin-browser/extension/pair"
+      "path": "/api/builtin-browser/extension/pair",
+      "query": [
+        "limit",
+        "q",
+        "sessionId"
+      ]
     },
     {
       "group": "admin-api.users",
       "auth": "user",
       "method": "GET",
-      "path": "/api/admin/users"
+      "path": "/api/admin/users",
+      "query": []
     },
     {
       "group": "admin-api.users",
       "auth": "user",
       "method": "POST",
-      "path": "/api/admin/users"
+      "path": "/api/admin/users",
+      "query": []
     },
     {
       "group": "admin-api.users",
       "auth": "user",
       "method": "POST",
-      "path": "/api/admin/users/:userId/password"
+      "path": "/api/admin/users/:userId/password",
+      "query": []
     },
     {
       "group": "admin-api.users",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/admin/users/:userId"
+      "path": "/api/admin/users/:userId",
+      "query": []
     },
     {
       "group": "admin-api.settings",
       "auth": "user",
       "method": "GET",
-      "path": "/api/admin/settings"
+      "path": "/api/admin/settings",
+      "query": []
     },
     {
       "group": "admin-api.settings",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/admin/settings"
+      "path": "/api/admin/settings",
+      "query": []
     },
     {
       "group": "admin-api.settings",
       "auth": "user",
       "method": "GET",
-      "path": "/api/admin/settings/proxy-probe"
+      "path": "/api/admin/settings/proxy-probe",
+      "query": []
     },
     {
       "group": "admin-api.settings",
       "auth": "user",
       "method": "POST",
-      "path": "/api/admin/settings/proxy-probe/:provider"
+      "path": "/api/admin/settings/proxy-probe/:provider",
+      "query": []
     },
     {
       "group": "admin-api.plugin-config",
       "auth": "user",
       "method": "GET",
-      "path": "/api/admin/plugin-config"
+      "path": "/api/admin/plugin-config",
+      "query": []
     },
     {
       "group": "admin-api.plugin-config",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/admin/plugin-config"
+      "path": "/api/admin/plugin-config",
+      "query": []
     },
     {
       "group": "admin-api.plugin-config",
       "auth": "user",
       "method": "POST",
-      "path": "/api/admin/plugin-config/action"
+      "path": "/api/admin/plugin-config/action",
+      "query": []
     },
     {
       "group": "AuthRoutes.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/auth/login"
+      "path": "/api/auth/login",
+      "query": [
+        "token"
+      ]
     },
     {
       "group": "AuthRoutes.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/auth/logout"
+      "path": "/api/auth/logout",
+      "query": [
+        "token"
+      ]
     },
     {
       "group": "AuthRoutes.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/auth/claim"
+      "path": "/api/auth/claim",
+      "query": [
+        "token"
+      ]
     },
     {
       "group": "AuthRoutes.routes",
       "auth": "none",
       "method": "ALL",
-      "path": "/api/auth/*"
+      "path": "/api/auth/*",
+      "query": [
+        "token"
+      ]
     },
     {
       "group": "DesktopRoutes.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/desktop"
+      "path": "/api/desktop",
+      "query": []
     },
     {
       "group": "DesktopUpdateRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/desktop/update"
+      "path": "/api/desktop/update",
+      "query": []
     },
     {
       "group": "DesktopTrayRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/desktop/tray"
+      "path": "/api/desktop/tray",
+      "query": []
     },
     {
       "group": "DesktopPrivacySettingsRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/desktop/privacy-settings"
+      "path": "/api/desktop/privacy-settings",
+      "query": []
     },
     {
       "group": "projects.dirs",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/dirs"
+      "path": "/api/projects/:projectId/dirs",
+      "query": [
+        "path",
+        "places"
+      ]
     },
     {
       "group": "projects.dirs",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/dirs/access"
+      "path": "/api/projects/:projectId/dirs/access",
+      "query": [
+        "path",
+        "places"
+      ]
     },
     {
       "group": "projects.dir-skills",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/dir-skills"
+      "path": "/api/projects/:projectId/dir-skills",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "EventsRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/events"
+      "path": "/api/events",
+      "query": []
     },
     {
       "group": "InstallRoutes.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/install"
+      "path": "/api/install",
+      "query": []
     },
     {
       "group": "LanguageRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/languages"
+      "path": "/api/languages",
+      "query": []
     },
     {
       "group": "LanguageRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/languages/:id/grammar"
+      "path": "/api/languages/:id/grammar",
+      "query": []
     },
     {
       "group": "MeRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/me"
+      "path": "/api/me",
+      "query": []
     },
     {
       "group": "MeRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/me/password"
+      "path": "/api/me/password",
+      "query": []
     },
     {
       "group": "MeRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/me/profile"
+      "path": "/api/me/profile",
+      "query": []
     },
     {
       "group": "MeRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/me/prefs"
+      "path": "/api/me/prefs",
+      "query": []
     },
     {
       "group": "MeRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/me/prefs"
+      "path": "/api/me/prefs",
+      "query": []
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations"
+      "path": "/api/projects/:projectId/organizations",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations"
+      "path": "/api/projects/:projectId/organizations",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId"
+      "path": "/api/projects/:projectId/organizations/:orgId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PATCH",
-      "path": "/api/projects/:projectId/organizations/:orgId"
+      "path": "/api/projects/:projectId/organizations/:orgId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/organizations/:orgId"
+      "path": "/api/projects/:projectId/organizations/:orgId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/chart"
+      "path": "/api/projects/:projectId/organizations/:orgId/chart",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PATCH",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/avatar",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk"
+      "path": "/api/projects/:projectId/organizations/:orgId/employees/:agentId/desk",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/handbook"
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/organizations/:orgId/handbook"
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files"
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}"
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}"
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}"
+      "path": "/api/projects/:projectId/organizations/:orgId/handbook/files/:path{.+}",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/calendar"
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/calendar"
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name"
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name"
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name"
+      "path": "/api/projects/:projectId/organizations/:orgId/calendar/:agentId/:name",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/move"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/move",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/block"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/block",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/unblock"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/unblock",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/progress"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/progress",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/start"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/start",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/attach"
+      "path": "/api/projects/:projectId/organizations/:orgId/tickets/:ticketId/attach",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "PATCH",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/members/:principal",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/messages",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/read"
+      "path": "/api/projects/:projectId/organizations/:orgId/channels/:channelId/read",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/finance"
+      "path": "/api/projects/:projectId/organizations/:orgId/finance",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "OrgRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/organizations/:orgId/sessions"
+      "path": "/api/projects/:projectId/organizations/:orgId/sessions",
+      "query": [
+        "date",
+        "period"
+      ]
     },
     {
       "group": "InstalledPluginRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/plugins/installed"
+      "path": "/api/projects/:projectId/plugins/installed",
+      "query": [
+        "machineId",
+        "specifier"
+      ]
     },
     {
       "group": "InstalledPluginRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/plugins/installed"
+      "path": "/api/projects/:projectId/plugins/installed",
+      "query": [
+        "machineId",
+        "specifier"
+      ]
     },
     {
       "group": "InstalledPluginRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/plugins/installed/archive"
+      "path": "/api/projects/:projectId/plugins/installed/archive",
+      "query": [
+        "machineId",
+        "specifier"
+      ]
     },
     {
       "group": "InstalledPluginRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/plugins/installed"
+      "path": "/api/projects/:projectId/plugins/installed",
+      "query": [
+        "machineId",
+        "specifier"
+      ]
     },
     {
       "group": "InstalledPluginRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/plugins/installed"
+      "path": "/api/projects/:projectId/plugins/installed",
+      "query": [
+        "machineId",
+        "specifier"
+      ]
     },
     {
       "group": "PluginRoutes.library",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins"
+      "path": "/api/plugins",
+      "query": []
     },
     {
       "group": "PluginRoutes.library",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins/:plugin/files"
+      "path": "/api/plugins/:plugin/files",
+      "query": []
     },
     {
       "group": "PluginRoutes.library",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins/:plugin/readme"
+      "path": "/api/plugins/:plugin/readme",
+      "query": []
     },
     {
       "group": "PluginRoutes.library",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins/:plugin/archive"
+      "path": "/api/plugins/:plugin/archive",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-plugins",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/plugins"
+      "path": "/api/projects/:projectId/agents/:agentId/plugins",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-plugins",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/plugins"
+      "path": "/api/projects/:projectId/agents/:agentId/plugins",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-hooks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/hooks"
+      "path": "/api/projects/:projectId/agents/:agentId/hooks",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-hooks",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/hooks/archive"
+      "path": "/api/projects/:projectId/agents/:agentId/hooks/archive",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-hooks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/hooks/:name/archive"
+      "path": "/api/projects/:projectId/agents/:agentId/hooks/:name/archive",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-hooks",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/hooks/:name"
+      "path": "/api/projects/:projectId/agents/:agentId/hooks/:name",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-mcp-servers",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers"
+      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers",
+      "query": []
     },
     {
       "group": "PluginRoutes.agent-mcp-servers",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers/:name"
+      "path": "/api/projects/:projectId/agents/:agentId/mcp-servers/:name",
+      "query": []
     },
     {
       "group": "PluginRegistryRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins/registry"
+      "path": "/api/plugins/registry",
+      "query": [
+        "name"
+      ]
     },
     {
       "group": "PluginRegistryRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins/registry/readme"
+      "path": "/api/plugins/registry/readme",
+      "query": [
+        "name"
+      ]
     },
     {
       "group": "PluginRegistryRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/plugins/registry/archive"
+      "path": "/api/plugins/registry/archive",
+      "query": [
+        "name"
+      ]
     },
     {
       "group": "workspace.preview",
       "auth": "none",
       "method": "GET",
-      "path": "/preview/:token/*"
+      "path": "/preview/:token/*",
+      "query": []
     },
     {
       "group": "project-admin.projects",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects"
+      "path": "/api/projects",
+      "query": []
     },
     {
       "group": "project-admin.projects",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects"
+      "path": "/api/projects",
+      "query": []
     },
     {
       "group": "project-admin.projects",
       "auth": "user",
       "method": "PATCH",
-      "path": "/api/projects/:projectId"
+      "path": "/api/projects/:projectId",
+      "query": []
     },
     {
       "group": "project-admin.projects",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId"
+      "path": "/api/projects/:projectId",
+      "query": []
     },
     {
       "group": "project-admin.members",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/members"
+      "path": "/api/projects/:projectId/members",
+      "query": []
     },
     {
       "group": "project-admin.members",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/members"
+      "path": "/api/projects/:projectId/members",
+      "query": []
     },
     {
       "group": "project-admin.members",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/members/:userId"
+      "path": "/api/projects/:projectId/members/:userId",
+      "query": []
     },
     {
       "group": "RemoteRoutes.routes",
       "auth": "token",
       "method": "POST",
-      "path": "/api/remote/session"
+      "path": "/api/remote/session",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/schedules"
+      "path": "/api/projects/:projectId/agents/:agentId/schedules",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/schedules"
+      "path": "/api/projects/:projectId/agents/:agentId/schedules",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/schedules/template-placeholder"
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/template-placeholder",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name"
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name"
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name"
+      "path": "/api/projects/:projectId/agents/:agentId/schedules/:name",
+      "query": []
     },
     {
       "group": "SchedulerRoutes.projectRoutes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/schedules"
+      "path": "/api/projects/:projectId/schedules",
+      "query": []
     },
     {
       "group": "session-api.model-oauth-callback",
       "auth": "none",
       "method": "GET",
-      "path": "/api/projects/:projectId/model-oauth/callback"
+      "path": "/api/projects/:projectId/model-oauth/callback",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.model-oauth-callback",
       "auth": "none",
       "method": "POST",
-      "path": "/api/projects/:projectId/model-oauth/callback/start"
+      "path": "/api/projects/:projectId/model-oauth/callback/start",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.model-oauth-callback",
       "auth": "none",
       "method": "POST",
-      "path": "/api/projects/:projectId/model-oauth/callback/:flowId/code"
+      "path": "/api/projects/:projectId/model-oauth/callback/:flowId/code",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.model-oauth-callback",
       "auth": "none",
       "method": "GET",
-      "path": "/api/projects/:projectId/model-oauth/callback/:flowId"
+      "path": "/api/projects/:projectId/model-oauth/callback/:flowId",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/models"
+      "path": "/api/projects/:projectId/models",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/models"
+      "path": "/api/projects/:projectId/models",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/models/providers/:provider"
+      "path": "/api/projects/:projectId/models/providers/:provider",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/models/sync-presets"
+      "path": "/api/projects/:projectId/models/sync-presets",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/models/balance"
+      "path": "/api/projects/:projectId/models/balance",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/models/default"
+      "path": "/api/projects/:projectId/models/default",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/models/test"
+      "path": "/api/projects/:projectId/models/test",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/models/detect"
+      "path": "/api/projects/:projectId/models/detect",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/models/list"
+      "path": "/api/projects/:projectId/models/list",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.models",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/models/detect-vision"
+      "path": "/api/projects/:projectId/models/detect-vision",
+      "query": [
+        "force",
+        "provider"
+      ]
     },
     {
       "group": "session-api.model-oauth",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/model-oauth"
+      "path": "/api/projects/:projectId/model-oauth",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.model-oauth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/model-oauth/start"
+      "path": "/api/projects/:projectId/model-oauth/start",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.model-oauth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/model-oauth/:flowId/code"
+      "path": "/api/projects/:projectId/model-oauth/:flowId/code",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.model-oauth",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/model-oauth/:flowId"
+      "path": "/api/projects/:projectId/model-oauth/:flowId",
+      "query": [
+        "code",
+        "flow"
+      ]
     },
     {
       "group": "session-api.platform-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/platform-auth/start"
+      "path": "/api/projects/:projectId/platform-auth/start",
+      "query": []
     },
     {
       "group": "session-api.platform-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/platform-auth/sync"
+      "path": "/api/projects/:projectId/platform-auth/sync",
+      "query": []
     },
     {
       "group": "session-api.platform-auth",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/platform-auth/:flowId/status"
+      "path": "/api/projects/:projectId/platform-auth/:flowId/status",
+      "query": []
     },
     {
       "group": "session-api.platform-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/platform-auth/:flowId/retry"
+      "path": "/api/projects/:projectId/platform-auth/:flowId/retry",
+      "query": []
     },
     {
       "group": "session-api.platform-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/platform-auth/:flowId/cancel"
+      "path": "/api/projects/:projectId/platform-auth/:flowId/cancel",
+      "query": []
     },
     {
       "group": "session-api.modelscope-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/modelscope-auth/start"
+      "path": "/api/projects/:projectId/modelscope-auth/start",
+      "query": []
     },
     {
       "group": "session-api.modelscope-auth",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/modelscope-auth/:flowId/status"
+      "path": "/api/projects/:projectId/modelscope-auth/:flowId/status",
+      "query": []
     },
     {
       "group": "session-api.modelscope-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/modelscope-auth/:flowId/retry"
+      "path": "/api/projects/:projectId/modelscope-auth/:flowId/retry",
+      "query": []
     },
     {
       "group": "session-api.modelscope-auth",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/modelscope-auth/:flowId/cancel"
+      "path": "/api/projects/:projectId/modelscope-auth/:flowId/cancel",
+      "query": []
     },
     {
       "group": "session-api.chat-defaults",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/chat-defaults"
+      "path": "/api/projects/:projectId/chat-defaults",
+      "query": []
     },
     {
       "group": "session-api.chat-defaults",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/chat-defaults"
+      "path": "/api/projects/:projectId/chat-defaults",
+      "query": []
     },
     {
       "group": "session-api.command-policy",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/command-policy"
+      "path": "/api/projects/:projectId/command-policy",
+      "query": []
     },
     {
       "group": "session-api.command-policy",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/command-policy"
+      "path": "/api/projects/:projectId/command-policy",
+      "query": []
     },
     {
       "group": "session-api.agents",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents"
+      "path": "/api/projects/:projectId/agents",
+      "query": []
     },
     {
       "group": "session-api.agents",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents"
+      "path": "/api/projects/:projectId/agents",
+      "query": []
     },
     {
       "group": "session-api.agents",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId"
+      "path": "/api/projects/:projectId/agents/:agentId",
+      "query": []
     },
     {
       "group": "session-api.agent-config",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/config"
+      "path": "/api/projects/:projectId/agents/:agentId/config",
+      "query": []
     },
     {
       "group": "session-api.agent-config",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/agents/:agentId/config"
+      "path": "/api/projects/:projectId/agents/:agentId/config",
+      "query": []
     },
     {
       "group": "session-api.agent-config",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/config/mcp-test"
+      "path": "/api/projects/:projectId/agents/:agentId/config/mcp-test",
+      "query": []
     },
     {
       "group": "session-api.agent-config",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/config/kernel-update"
+      "path": "/api/projects/:projectId/agents/:agentId/config/kernel-update",
+      "query": []
     },
     {
       "group": "session-api.agent-config",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/config/reset"
+      "path": "/api/projects/:projectId/agents/:agentId/config/reset",
+      "query": []
     },
     {
       "group": "session-api.vault",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/vault"
+      "path": "/api/projects/:projectId/agents/:agentId/vault",
+      "query": []
     },
     {
       "group": "session-api.vault",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/agents/:agentId/vault"
+      "path": "/api/projects/:projectId/agents/:agentId/vault",
+      "query": []
     },
     {
       "group": "session-api.vault",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/vault/template-placeholder"
+      "path": "/api/projects/:projectId/agents/:agentId/vault/template-placeholder",
+      "query": []
     },
     {
       "group": "session-api.agent-sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/sessions"
+      "path": "/api/projects/:projectId/agents/:agentId/sessions",
+      "query": [
+        "category",
+        "counts",
+        "excludeOrg",
+        "order",
+        "workspaceGroup"
+      ]
     },
     {
       "group": "session-api.agent-sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/sessions"
+      "path": "/api/projects/:projectId/agents/:agentId/sessions",
+      "query": [
+        "category",
+        "counts",
+        "excludeOrg",
+        "order",
+        "workspaceGroup"
+      ]
     },
     {
       "group": "session-api.sessions-batch",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/sessions/batch"
+      "path": "/api/projects/:projectId/sessions/batch",
+      "query": []
     },
     {
       "group": "session-api.usage",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/usage"
+      "path": "/api/projects/:projectId/usage",
+      "query": [
+        "agentId",
+        "from",
+        "fromTs",
+        "granularity",
+        "groupBy",
+        "kind",
+        "modelId",
+        "provider",
+        "to",
+        "toTs",
+        "utcOffsetMinutes"
+      ]
     },
     {
       "group": "session-api.usage",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/usage/model-totals"
+      "path": "/api/projects/:projectId/usage/model-totals",
+      "query": [
+        "agentId",
+        "from",
+        "fromTs",
+        "granularity",
+        "groupBy",
+        "kind",
+        "modelId",
+        "provider",
+        "to",
+        "toTs",
+        "utcOffsetMinutes"
+      ]
     },
     {
       "group": "session-api.usage",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/usage/errors"
+      "path": "/api/projects/:projectId/usage/errors",
+      "query": [
+        "agentId",
+        "from",
+        "fromTs",
+        "granularity",
+        "groupBy",
+        "kind",
+        "modelId",
+        "provider",
+        "to",
+        "toTs",
+        "utcOffsetMinutes"
+      ]
     },
     {
       "group": "session-api.usage",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/usage/errors"
+      "path": "/api/projects/:projectId/usage/errors",
+      "query": [
+        "agentId",
+        "from",
+        "fromTs",
+        "granularity",
+        "groupBy",
+        "kind",
+        "modelId",
+        "provider",
+        "to",
+        "toTs",
+        "utcOffsetMinutes"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId"
+      "path": "/api/sessions/:sessionId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "PATCH",
-      "path": "/api/sessions/:sessionId"
+      "path": "/api/sessions/:sessionId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/fork"
+      "path": "/api/sessions/:sessionId/fork",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/sessions/:sessionId"
+      "path": "/api/sessions/:sessionId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/scratchpad/:fileName"
+      "path": "/api/sessions/:sessionId/scratchpad/:fileName",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/trace-image"
+      "path": "/api/sessions/:sessionId/trace-image",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/messages"
+      "path": "/api/sessions/:sessionId/messages",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/stream"
+      "path": "/api/sessions/:sessionId/stream",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/tasks"
+      "path": "/api/sessions/:sessionId/tasks",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/steer"
+      "path": "/api/sessions/:sessionId/steer",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/sessions/:sessionId/steer/:steerId"
+      "path": "/api/sessions/:sessionId/steer/:steerId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/subagents/:childSessionId/message"
+      "path": "/api/sessions/:sessionId/subagents/:childSessionId/message",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/subagents/:childSessionId/abort"
+      "path": "/api/sessions/:sessionId/subagents/:childSessionId/abort",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/sessions/:sessionId/follow-ups/:followUpId"
+      "path": "/api/sessions/:sessionId/follow-ups/:followUpId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/goal"
+      "path": "/api/sessions/:sessionId/goal",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/approvals/:toolCallId"
+      "path": "/api/sessions/:sessionId/approvals/:toolCallId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/tool-calls/:toolCallId/background"
+      "path": "/api/sessions/:sessionId/tool-calls/:toolCallId/background",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/abort"
+      "path": "/api/sessions/:sessionId/abort",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/processes"
+      "path": "/api/sessions/:sessionId/processes",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/processes/:processId/kill"
+      "path": "/api/sessions/:sessionId/processes/:processId/kill",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/sessions/:sessionId/processes/:processId"
+      "path": "/api/sessions/:sessionId/processes/:processId",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/retry-now"
+      "path": "/api/sessions/:sessionId/retry-now",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/retry"
+      "path": "/api/sessions/:sessionId/retry",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/compact"
+      "path": "/api/sessions/:sessionId/compact",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/switch-model"
+      "path": "/api/sessions/:sessionId/switch-model",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/files/preview-redirect"
+      "path": "/api/sessions/:sessionId/files/preview-redirect",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/files/stat"
+      "path": "/api/sessions/:sessionId/files/stat",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/context"
+      "path": "/api/sessions/:sessionId/context",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/traces"
+      "path": "/api/sessions/:sessionId/traces",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/traces/:index"
+      "path": "/api/sessions/:sessionId/traces/:index",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/traces/:index/analysis"
+      "path": "/api/sessions/:sessionId/traces/:index/analysis",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "session-api.archived-sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/me/archived-sessions/groups"
+      "path": "/api/me/archived-sessions/groups",
+      "query": []
     },
     {
       "group": "session-api.archived-sessions",
       "auth": "user",
       "method": "GET",
-      "path": "/api/me/archived-sessions"
+      "path": "/api/me/archived-sessions",
+      "query": []
     },
     {
       "group": "session-api.archived-sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/me/archived-sessions/unarchive"
+      "path": "/api/me/archived-sessions/unarchive",
+      "query": []
     },
     {
       "group": "session-api.archived-sessions",
       "auth": "user",
       "method": "POST",
-      "path": "/api/me/archived-sessions/delete"
+      "path": "/api/me/archived-sessions/delete",
+      "query": []
     },
     {
       "group": "SuggestIdRoutes.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/suggest-id"
+      "path": "/api/projects/:projectId/suggest-id",
+      "query": []
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/use"
+      "path": "/api/projects/:projectId/machines/use",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/machines/ssh-hosts"
+      "path": "/api/projects/:projectId/machines/ssh-hosts",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/add"
+      "path": "/api/projects/:projectId/machines/add",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/ssh-hosts"
+      "path": "/api/projects/:projectId/machines/ssh-hosts",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias"
+      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias"
+      "path": "/api/projects/:projectId/machines/ssh-hosts/:alias",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/stop-using"
+      "path": "/api/projects/:projectId/machines/stop-using",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/machines"
+      "path": "/api/projects/:projectId/machines",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/probe"
+      "path": "/api/projects/:projectId/machines/probe",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/install"
+      "path": "/api/projects/:projectId/machines/:machineId/install",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/connect"
+      "path": "/api/projects/:projectId/machines/:machineId/connect",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/machines/:machineId/dirs"
+      "path": "/api/projects/:projectId/machines/:machineId/dirs",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/release"
+      "path": "/api/projects/:projectId/machines/:machineId/release",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/restart"
+      "path": "/api/projects/:projectId/machines/:machineId/restart",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/stop"
+      "path": "/api/projects/:projectId/machines/:machineId/stop",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/uninstall"
+      "path": "/api/projects/:projectId/machines/:machineId/uninstall",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/sync"
+      "path": "/api/projects/:projectId/machines/:machineId/sync",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/diagnose"
+      "path": "/api/projects/:projectId/machines/:machineId/diagnose",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/machines/:machineId/disconnect"
+      "path": "/api/projects/:projectId/machines/:machineId/disconnect",
+      "query": [
+        "path"
+      ]
     },
     {
       "group": "MachinesModule.server-proxy",
       "auth": "user",
       "method": "ALL",
-      "path": "/server*"
+      "path": "/server*",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/sessions/:sessionId/messaging"
+      "path": "/api/sessions/:sessionId/messaging",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/sessions/:sessionId/messaging/feishu"
+      "path": "/api/sessions/:sessionId/messaging/feishu",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/feishu/test"
+      "path": "/api/sessions/:sessionId/messaging/feishu/test",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/sessions/:sessionId/messaging/telegram"
+      "path": "/api/sessions/:sessionId/messaging/telegram",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/telegram/test"
+      "path": "/api/sessions/:sessionId/messaging/telegram/test",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/sessions/:sessionId/messaging/qq"
+      "path": "/api/sessions/:sessionId/messaging/qq",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/qq/scan"
+      "path": "/api/sessions/:sessionId/messaging/qq/scan",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/qq/scan/poll"
+      "path": "/api/sessions/:sessionId/messaging/qq/scan/poll",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/qq/scan/cancel"
+      "path": "/api/sessions/:sessionId/messaging/qq/scan/cancel",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/qq/test"
+      "path": "/api/sessions/:sessionId/messaging/qq/test",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/sessions/:sessionId/messaging/wechat"
+      "path": "/api/sessions/:sessionId/messaging/wechat",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/wechat/scan"
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/wechat/scan/poll"
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/poll",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/wechat/scan/verify"
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/verify",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/wechat/scan/cancel"
+      "path": "/api/sessions/:sessionId/messaging/wechat/scan/cancel",
+      "query": []
     },
     {
       "group": "messaging.session-routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/sessions/:sessionId/messaging/wechat/test"
+      "path": "/api/sessions/:sessionId/messaging/wechat/test",
+      "query": []
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks"
+      "path": "/api/projects/:projectId/benchmarks",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/benchmarks"
+      "path": "/api/projects/:projectId/benchmarks",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/benchmarks/archive"
+      "path": "/api/projects/:projectId/benchmarks/archive",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/archive"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/archive",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files/content"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/files/content",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.benchmarks",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files/content"
+      "path": "/api/projects/:projectId/benchmarks/:benchmarkId/cases/:caseId/rubric/files/content",
+      "query": [
+        "download",
+        "path",
+        "preview"
+      ]
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/memory"
+      "path": "/api/projects/:projectId/agents/:agentId/memory",
+      "query": []
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/memory/template-placeholder"
+      "path": "/api/projects/:projectId/agents/:agentId/memory/template-placeholder",
+      "query": []
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files"
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files",
+      "query": []
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName"
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName",
+      "query": []
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/export"
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/export",
+      "query": []
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/import"
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/import",
+      "query": []
     },
     {
       "group": "agents.memory",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName"
+      "path": "/api/projects/:projectId/agents/:agentId/memory/scopes/:scopeKey/files/:fileName",
+      "query": []
     },
     {
       "group": "agents.skills",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/skills"
+      "path": "/api/projects/:projectId/agents/:agentId/skills",
+      "query": []
     },
     {
       "group": "agents.skills",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/skills/template-placeholder"
+      "path": "/api/projects/:projectId/agents/:agentId/skills/template-placeholder",
+      "query": []
     },
     {
       "group": "agents.skills",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/skills/archive"
+      "path": "/api/projects/:projectId/agents/:agentId/skills/archive",
+      "query": []
     },
     {
       "group": "agents.skills",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/skills/:name/archive"
+      "path": "/api/projects/:projectId/agents/:agentId/skills/:name/archive",
+      "query": []
     },
     {
       "group": "agents.skills",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/skills/:name"
+      "path": "/api/projects/:projectId/agents/:agentId/skills/:name",
+      "query": []
     },
     {
       "group": "agents.api",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/api"
+      "path": "/api/projects/:projectId/agents/:agentId/api",
+      "query": []
     },
     {
       "group": "agents.api",
       "auth": "user",
       "method": "PUT",
-      "path": "/api/projects/:projectId/agents/:agentId/api"
+      "path": "/api/projects/:projectId/agents/:agentId/api",
+      "query": []
     },
     {
       "group": "agents.api",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/api/keys"
+      "path": "/api/projects/:projectId/agents/:agentId/api/keys",
+      "query": []
     },
     {
       "group": "agents.api",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/api/keys/:keyId"
+      "path": "/api/projects/:projectId/agents/:agentId/api/keys/:keyId",
+      "query": []
     },
     {
       "group": "agents.transfer",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/export"
+      "path": "/api/projects/:projectId/agents/:agentId/export",
+      "query": []
     },
     {
       "group": "agents.transfer",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/import"
+      "path": "/api/projects/:projectId/agents/:agentId/import",
+      "query": []
     },
     {
       "group": "agents.traces",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/traces"
+      "path": "/api/projects/:projectId/agents/:agentId/traces",
+      "query": [
+        "category"
+      ]
     },
     {
       "group": "agents.traces",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index"
+      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index",
+      "query": [
+        "category"
+      ]
     },
     {
       "group": "agents.traces",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/analysis"
+      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/analysis",
+      "query": [
+        "category"
+      ]
     },
     {
       "group": "agents.traces",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/download"
+      "path": "/api/projects/:projectId/agents/:agentId/traces/:sessionId/:index/download",
+      "query": [
+        "category"
+      ]
     },
     {
       "group": "agents.traces",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/traces/import"
+      "path": "/api/projects/:projectId/agents/:agentId/traces/import",
+      "query": [
+        "category"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/version"
+      "path": "/api/version",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/version/history"
+      "path": "/api/version/history",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/version/history/ifaces/:hash"
+      "path": "/api/version/history/ifaces/:hash",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/version/history/diff"
+      "path": "/api/version/history/diff",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/version/history/rollback"
+      "path": "/api/version/history/rollback",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/version/update-check"
+      "path": "/api/version/update-check",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/version/update"
+      "path": "/api/version/update",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/version/update"
+      "path": "/api/version/update",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "VersionModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/version/restart"
+      "path": "/api/version/restart",
+      "query": [
+        "force",
+        "from",
+        "to"
+      ]
     },
     {
       "group": "TerminalModule.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/terminals"
+      "path": "/api/terminals",
+      "query": [
+        "end",
+        "start"
+      ]
     },
     {
       "group": "TerminalModule.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/terminals"
+      "path": "/api/terminals",
+      "query": [
+        "end",
+        "start"
+      ]
     },
     {
       "group": "TerminalModule.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/terminals/:id"
+      "path": "/api/terminals/:id",
+      "query": [
+        "end",
+        "start"
+      ]
     },
     {
       "group": "TerminalModule.routes",
       "auth": "none",
       "method": "DELETE",
-      "path": "/api/terminals/:id"
+      "path": "/api/terminals/:id",
+      "query": [
+        "end",
+        "start"
+      ]
     },
     {
       "group": "TerminalModule.routes",
       "auth": "none",
       "method": "GET",
-      "path": "/api/terminals/:id/capture"
+      "path": "/api/terminals/:id/capture",
+      "query": [
+        "end",
+        "start"
+      ]
     },
     {
       "group": "TerminalModule.routes",
       "auth": "none",
       "method": "POST",
-      "path": "/api/terminals/:id/keys"
+      "path": "/api/terminals/:id/keys",
+      "query": [
+        "end",
+        "start"
+      ]
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches",
+      "query": []
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/reload"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/reload",
+      "query": []
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/history"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/history",
+      "query": []
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "POST",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/rollback"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/rollback",
+      "query": []
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "DELETE",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id",
+      "query": []
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "GET",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/ui/*"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/ui/*",
+      "query": []
     },
     {
       "group": "WorkbenchesModule.routes",
       "auth": "user",
       "method": "ALL",
-      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/api/*"
+      "path": "/api/projects/:projectId/agents/:agentId/workbenches/:id/api/*",
+      "query": []
     }
   ],
   "computed": [

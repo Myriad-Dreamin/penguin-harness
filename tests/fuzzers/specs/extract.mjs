@@ -411,6 +411,36 @@ function parseRoutes() {
     return map;
   }
 
+  /**
+   * The names a file's handlers read out of the query string: `c.req.query("limit")`.
+   *
+   * Per file, not per handler, because a route factory routinely hands its `Context` to a
+   * helper (`messagesPageQuery(c)`) and the helper is where the reads are. Attributing to the
+   * nearest registration would then miss exactly the paging and filtering reads that carry the
+   * most branches, so the union of the file travels with every route it registers — a route
+   * that ignores one of the names pays one branch for the extra parameter and nothing else.
+   *
+   * Destructured reads (`const { limit } = c.req.query()`) are not named here: the names are
+   * pattern keys, not strings, and the routes in this repo read them one by one.
+   */
+  function queryNamesOf(scope) {
+    const names = new Set();
+    const visit = (node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        // `getText()` without the SourceFile: the scope handed in is a node, not a file.
+        const method = node.expression.name.getText();
+        const receiver = node.expression.expression.getText();
+        if (method === "query" && receiver.endsWith(".req")) {
+          const first = node.arguments[0];
+          if (first !== undefined && ts.isStringLiteral(first)) names.add(first.text);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(scope);
+    return [...names].sort();
+  }
+
   /** `app.<method>("literal")` registrations in a route factory file. */
   function pathsOf(file, factory = null) {
     const source = sourceOf(file);
@@ -436,6 +466,7 @@ function parseRoutes() {
       };
       visitScope(source);
     }
+    const query = queryNamesOf(scope);
     const visit = (node) => {
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
         const method = node.expression.name.getText(source);
@@ -443,7 +474,7 @@ function parseRoutes() {
         if (["get", "post", "put", "patch", "delete", "all"].includes(method) && receiver === "app") {
           const first = node.arguments[0];
           if (first !== undefined && ts.isStringLiteral(first)) {
-            out.push({ method: method.toUpperCase(), path: first.text });
+            out.push({ method: method.toUpperCase(), path: first.text, query });
           } else if (first !== undefined) {
             const where = `${path.relative(repo, file)}:${source.getLineAndCharacterOfPosition(first.getStart(source)).line + 1}`;
             computed.push(`${where} ${method.toUpperCase()} ${first.getText(source).slice(0, 60)}`);
@@ -452,7 +483,7 @@ function parseRoutes() {
         if (method === "route" && receiver === "app") {
           const first = node.arguments[0];
           if (first !== undefined && ts.isStringLiteral(first)) {
-            out.push({ method: "ALL", path: `${first.text.replace(/\/$/, "")}/*` });
+            out.push({ method: "ALL", path: `${first.text.replace(/\/$/, "")}/*`, query });
           } else if (first !== undefined) {
             const where = `${path.relative(repo, file)}:${source.getLineAndCharacterOfPosition(first.getStart(source)).line + 1}`;
             computed.push(`${where} ROUTE ${first.getText(source).slice(0, 60)}`);
@@ -487,6 +518,8 @@ function parseRoutes() {
           auth: group.auth,
           method: registration.method,
           path: `${prefix}${suffix}` || "/",
+          // The names the factory reads out of the query string; the decoder fills them.
+          query: registration.query,
         });
       }
     }
