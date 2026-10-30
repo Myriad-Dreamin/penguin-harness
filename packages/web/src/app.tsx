@@ -70,7 +70,10 @@ export function App({
                     <Root {...(initialPath === undefined ? {} : { initialPath })} />
                   </ErrorBoundary>
                   <ErrorBoundary fallback={() => null}>
-                    <AppPalette suggest={paletteSessionCompletion} pending={paletteSessionPending} />
+                    <AppPalette
+                      suggest={paletteSessionCompletion}
+                      pending={paletteSessionPending}
+                    />
                   </ErrorBoundary>
                   <ErrorBoundary fallback={() => null}>
                     <SafeModeMarker />
