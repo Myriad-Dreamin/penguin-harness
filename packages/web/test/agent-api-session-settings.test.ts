@@ -96,11 +96,26 @@ describe("API Session settings", () => {
     await click(await buttonSoon(en.chat.chooseModel));
     await waitFor(() => option("API test model") !== null);
     await click(option("API test model").querySelector("button")!);
-    await click(await thinking());
+    // A pick's outside-click closes the dialog from the window's mousedown, a settle after
+    // the pick itself; the next picker's click waits for the closed read, or its trigger
+    // belongs to a tree the close is about to re-render and the menu never opens.
+    await waitFor(
+      () =>
+        (document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') as HTMLButtonElement)
+          .getAttribute("aria-expanded") === "false",
+    );
+    await click(await buttonSoon(en.chat.thinkingLevel));
+    await waitFor(
+      () =>
+        (document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]') as HTMLButtonElement)
+          .getAttribute("aria-expanded") === "true",
+    );
     await click(await buttonSoon("high"));
-    // The tier menu is still closing when this click lands; waiting here lets the outside-click
-    // that closes it finish its re-render, or the trigger this click hits is a stale element
-    // and the workspace finder never opens.
+    await waitFor(
+      () =>
+        (document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]') as HTMLButtonElement)
+          .getAttribute("aria-expanded") === "false",
+    );
     await click(await buttonSoon(en.chat.workspace));
     const choose = await buttonSoon(en.chat.finder.choose);
     await waitFor(() => !choose.disabled);
