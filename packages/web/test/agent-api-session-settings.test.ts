@@ -98,7 +98,10 @@ describe("API Session settings", () => {
     await click(option("API test model").querySelector("button")!);
     await click(await thinking());
     await click(await buttonSoon("high"));
-    await click(button(en.chat.workspace));
+    // The tier menu is still closing when this click lands; waiting here lets the outside-click
+    // that closes it finish its re-render, or the trigger this click hits is a stale element
+    // and the workspace finder never opens.
+    await click(await buttonSoon(en.chat.workspace));
     const choose = await buttonSoon(en.chat.finder.choose);
     await waitFor(() => !choose.disabled);
     await click(choose);
