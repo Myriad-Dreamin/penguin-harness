@@ -25,7 +25,7 @@ import { ApiTab } from "../src/features/agents/api-tab";
 import { setActiveStrings, zh } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import { AGENT_ID, PROJECT_ID, agentConfig, agentServer, mountAgentApp } from "./helpers/agent-app";
-import { button, click, field, type, run, unmountAll, waitFor } from "./helpers/dom";
+import { button, buttonSoon, click, field, type, run, unmountAll, waitFor } from "./helpers/dom";
 
 const model: ModelInfo = {
   provider: "custom",
@@ -60,18 +60,54 @@ async function open(
     ),
     { at: `/agents/${AGENT_ID}?tab=api` },
   );
-  await waitFor(
-    () => document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') !== null,
-  );
-  await waitFor(() => button(en.chat.thinkingLevel).textContent !== "…");
+  // The pickers' catalog rides the second wave of loads (models, the Agent's config, the
+  // chat defaults); a trigger that is mounted but still loading is disabled, and a click on
+  // it would be the flake this suite once was. Wait for the tab to be live, not just drawn.
+  await waitFor(() => {
+    const model = document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]');
+    const level = document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]');
+    if (isOwner) {
+      return model !== null && (model as HTMLButtonElement).disabled === false &&
+        level !== null && (level as HTMLButtonElement).disabled === false;
+    }
+    // A member's tab is disabled by design; it is live once the pickers stopped loading
+    // (a loading picker is disabled too, but shows the "…" of a tier still being resolved).
+    return model !== null && level !== null && level.textContent !== "…";
+  });
+  const level = await buttonSoon(en.chat.thinkingLevel);
+  await waitFor(() => level.textContent !== "…");
+  await buttonSoon(en.chat.workspace);
   return { server, router, copied };
 }
 
-const thinking = () => button(en.chat.thinkingLevel);
+const thinking = async () => buttonSoon(en.chat.thinkingLevel);
 const option = (value: string) =>
   [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((el) =>
     el.textContent?.startsWith(value),
   )!;
+
+/** The trigger named `name` reads open. */
+const expanded = (name: string) =>
+  (document.querySelector('button[aria-label="' + name + '"]') as HTMLButtonElement | null)
+    ?.getAttribute("aria-expanded") === "true";
+
+/**
+ * Opens the picker whose trigger is named `name`: a click racing the previous panel's
+ * outside-click close can lose to it and leave the picker shut, so the open read is waited
+ * for and a lost click is clicked again.
+ */
+const openPicker = async (name: string, attempts = 3) => {
+  for (let i = 0; i < attempts; i++) {
+    await click(await buttonSoon(name));
+    try {
+      await waitFor(() => expanded(name));
+      return;
+    } catch {
+      // shut again: the close before won this round; click once more
+    }
+  }
+  throw new Error("the picker " + JSON.stringify(name) + " never opened");
+};
 
 describe("API Session settings", () => {
   beforeAll(() => setActiveStrings(en));
@@ -80,13 +116,18 @@ describe("API Session settings", () => {
 
   it("uses the shared pickers, persists each choice alone, and clears back to defaults", async () => {
     const { server, router } = await open();
-    await click(button(en.chat.chooseModel));
+    await openPicker(en.chat.chooseModel);
+    await waitFor(() => option("API test model") !== null);
     await click(option("API test model").querySelector("button")!);
-    await click(thinking());
-    await click(button("high"));
-    await click(button(en.chat.workspace));
-    await waitFor(() => !button(en.chat.finder.choose).disabled);
-    await click(button(en.chat.finder.choose));
+    await waitFor(() => !expanded(en.chat.chooseModel));
+    await openPicker(en.chat.thinkingLevel);
+    await click(await buttonSoon("high"));
+    await waitFor(() => !expanded(en.chat.thinkingLevel));
+    await openPicker(en.chat.workspace);
+    const choose = await buttonSoon(en.chat.finder.choose);
+    await waitFor(() => !choose.disabled);
+    await click(choose);
+    await waitFor(() => server.writes("/api").length === 3);
     expect(server.writes("/api").map((r) => r.body)).toEqual([
       { model: { provider: model.provider, modelId: model.modelId } },
       { thinkingLevel: "high" },
@@ -97,19 +138,24 @@ describe("API Session settings", () => {
     await waitFor(
       () => document.querySelector('button[aria-label="' + en.chat.chooseModel + '"]') !== null,
     );
-    expect(button(en.chat.chooseModel).textContent).toContain("API test model");
-    expect(thinking().textContent).toContain("high");
-    expect(button(en.chat.workspace).textContent).toContain("work");
+    expect((await buttonSoon(en.chat.chooseModel)).textContent).toContain("API test model");
+    await waitFor(
+      () =>
+        (document.querySelector('button[aria-label="' + en.chat.thinkingLevel + '"]') as HTMLButtonElement | null)
+          ?.disabled === false,
+    );
+    expect((await thinking()).textContent).toContain("high");
+    expect((await buttonSoon(en.chat.workspace)).textContent).toContain("work");
     expect(hasUnsaved()).toBe(false);
-    await click(button(en.company.modelClear));
+    await click(await buttonSoon(en.company.modelClear));
     await click(
       [...document.querySelectorAll<HTMLButtonElement>("button")].find(
         (el) => el.textContent === en.common.reset && !el.disabled,
       )!,
     );
-    expect(thinking().textContent).toContain("medium");
-    await click(button(en.chat.workspace));
-    await click(button(en.chat.workspaceClear));
+    expect((await thinking()).textContent).toContain("medium");
+    await click(await buttonSoon(en.chat.workspace));
+    await click(await buttonSoon(en.chat.workspaceClear));
     expect(
       server
         .writes("/api")
@@ -134,26 +180,26 @@ describe("API Session settings", () => {
         config,
         project === undefined ? {} : { thinkingLevel: project },
       );
-      expect(thinking().textContent).toContain(expected);
+      expect((await thinking()).textContent).toContain(expected);
       expect(server.writes()).toEqual([]);
-      await click(thinking());
-      await click(button("high"));
-      expect(thinking().textContent).toContain("high");
+      await click(await thinking());
+      await click(await buttonSoon("high"));
+      expect((await thinking()).textContent).toContain("high");
       await click(
         [...document.querySelectorAll<HTMLButtonElement>("button")].find(
           (el) => el.textContent === en.common.reset && !el.disabled,
         )!,
       );
-      expect(thinking().textContent).toContain(expected);
+      expect((await thinking()).textContent).toContain(expected);
     },
   );
 
   it("rolls back a refused choice and displays the failure", async () => {
     const { server } = await open();
     server.refuseNext(400, "bad_request", "Cannot save this choice.");
-    await click(thinking());
-    await click(button("high"));
-    expect(thinking().textContent).toContain("medium");
+    await click(await thinking());
+    await click(await buttonSoon("high"));
+    expect((await thinking()).textContent).toContain("medium");
     expect(document.body.textContent).toContain("Cannot save this choice.");
     expect(hasUnsaved()).toBe(false);
   });
@@ -215,7 +261,7 @@ describe("API Session settings", () => {
   it("disables every picker for a member who is not the owner", async () => {
     const { server } = await open(false);
     expect(button(en.chat.chooseModel).disabled).toBe(true);
-    expect(thinking().disabled).toBe(true);
+    expect((await thinking()).disabled).toBe(true);
     expect(button(en.chat.workspace).disabled).toBe(true);
     expect(field(en.agent.apiConcurrency).disabled).toBe(true);
     expect(button(en.common.save).disabled).toBe(true);
