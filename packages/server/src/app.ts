@@ -324,7 +324,10 @@ export async function bootAppDeps(
   hmr.resources.register(HMR_CONFIG_RESOURCE_ID, config);
   hmr.resources.register(HMR_DB_RESOURCE_ID, db);
   hmr.resources.register(HMR_AUTH_STATE_RESOURCE_ID, authState);
-  hmr.resources.register(HMR_CHANNELS_RESOURCE_ID, channels);
+  // The hub's sweep interval is a process-global handle: without a disposer here, a
+  // generation torn down by host.dispose() leaves its interval armed forever, and the
+  // hub (its activity probe reaches the whole App) leaks with every hot swap.
+  hmr.resources.register(HMR_CHANNELS_RESOURCE_ID, channels, () => channels.dispose());
   hmr.resources.register(HMR_PROXY_RESOURCE_ID, applyProxySettings);
   hmr.resources.register(HMR_HOST_RESOURCE_ID, hmr);
   hmr.resources.register(HMR_CONTROL_RESOURCE_ID, ctl);
