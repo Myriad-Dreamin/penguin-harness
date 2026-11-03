@@ -19,6 +19,12 @@
  *    and writes the input down;
  *  - a non-loopback network attempt is thrown as well.
  *
+ * At the end of every input the rig is parked and released (see `park.ts`): park asserts the
+ * state serializes — quiet, checkpoint, empty write-ahead log — and release tears the rig down
+ * and boots a fresh one in the same process, asserting the fresh rig holds only its premises.
+ * Every input therefore starts from the same clean state, and a finding needs nothing but its
+ * input bytes to reproduce.
+ *
  * Beside the fuzzing loop the module also boots: it seeds the three session rows a restart
  * finds, drives them once with a plan that carries a tool call and a provider failure (so those
  * two paths always play, whatever the fuzzer hits), and samples the loopback SSE stream once
@@ -45,6 +51,7 @@ import { bootHarness } from "./harness.js";
 import { decodeApiControls, payloadText, withPayload, type ApiControls } from "./input.js";
 import { invariantViolations, readSnapshot, type DbSnapshot } from "./invariants.js";
 import { modelScriptFor } from "./model-script.js";
+import { parkRig, releaseViolations } from "./park.js";
 import { readKit, replayAndExit, seedPools, type Kit } from "./replay.js";
 import type { DemoSeed } from "./assemble.js";
 import { plays as modelPlays, resetModelPlan, setModelPlan } from "./stubs/mmsp/index.js";
@@ -110,6 +117,9 @@ const stats = {
   specHits: new Set<string>(),
   signatures: new Set<string>(),
   repairs: 0,
+  /** Inputs parked and released; and the wall time the cycle cost, summed. */
+  parks: 0,
+  parkMs: 0,
 };
 
 const guard = installOutboundGuard();
@@ -133,11 +143,14 @@ function optionValue(name: string): string | undefined {
 const replayDir = optionValue("--replay");
 const kit: Kit | null = replayDir === undefined ? null : readKit(replayDir);
 /**
- * The kit's state, planted into the first rig. A kit written before the root was recorded cannot
- * have its paths rebased, so it replays on an empty rig and says so.
+ * The kit's state, planted into the first rig. Only a kit that carries a database has state to
+ * plant (see `replay.ts`): an input-only kit — what the park/release harness writes — replays
+ * the input against a premises rig, which is the state every fuzzed input runs from.
  */
 const seed: DemoSeed | undefined =
-  kit === null || kit.oldRoot === null ? undefined : { dir: kit.dir, oldRoot: kit.oldRoot };
+  kit === null || !kit.hasDatabase || kit.oldRoot === null
+    ? undefined
+    : { dir: kit.dir, oldRoot: kit.oldRoot };
 
 /**
  * A resident rig measures coverage for days and must not stop at a finding it already knows
@@ -187,14 +200,19 @@ async function bootRig(): Promise<void> {
   cookie = null;
   // A seeded rig's admin row is the one the finding ran against, and a `PUT /api/me/password`
   // during that run moved the credential: the kit carries it, the boot's own default would log in
-  // with a password the saved database rejects.
-  adminPassword = kit?.adminPassword ?? harness.app.adminPassword;
+  // with a password the saved database rejects. An input-only kit runs from clean state, so the
+  // boot's own default is the credential its sequence will move.
+  adminPassword =
+    kit !== null && kit.hasDatabase
+      ? (kit.adminPassword ?? harness.app.adminPassword)
+      : harness.app.adminPassword;
   for (const key of Object.keys(pools)) delete pools[key as keyof Pools];
   quiet = new Quiescence();
-  // Below this line a rig gets its premises written into it. A replay must not: the kit IS the
-  // state, and `INSERT OR REPLACE` of the resume rows, a re-created fixture or a rewritten model
-  // config would overwrite exactly the rows the input has to meet again.
-  if (kit !== null) return;
+  // Below this line a rig gets its premises written into it. A seeded replay must not: the kit IS
+  // the state, and `INSERT OR REPLACE` of the resume rows, a re-created fixture or a rewritten
+  // model config would overwrite exactly the rows the input has to meet again. An input-only kit
+  // replays from clean state, so it gets the premises like any fuzzed input.
+  if (kit !== null && kit.hasDatabase) return;
   seedResumeSessions();
   await ensureFixture();
   await ensureModelConfig();
@@ -337,6 +355,12 @@ async function sampleEventStream(): Promise<{
 // ── Boot: one drive of each resume row, one SSE sample, and the epoch's baseline ───────────
 /** The snapshot the loop is compared against: re-taken after every boot drive and the sweep. */
 let baseline: DbSnapshot = readSnapshot(harness.app.dbPath);
+/**
+ * The premises of the current rig — what its boot itself wrote, before any input ran. The
+ * release invariant compares every fresh rig against this: a release that leaves a row behind
+ * names it (see `parkAndRelease`). Re-taken after the sweep, whose rows are premises too.
+ */
+let premisesBaseline: DbSnapshot = baseline;
 /** The boot SSE sample, for the summary. */
 let sseSample: { status: number | null; chunks: number; bytes: number } = {
   status: null,
@@ -434,7 +458,14 @@ const epochs = new Epochs({
   // would replace it halfway through the sequence.
   budget: kit === null ? EPOCH_CALLS : 0,
   boot: bootRig,
-  setup: bootDrive,
+  // The first rig takes the full boot drive (the proof a fresh rig works at all); a released rig
+  // takes only its premises — per input, the release itself is the proof the next rig works.
+  setup: async () => {
+    if (epochs.epoch === 1) await bootDrive();
+    else await settleQuiet(quiet);
+    premisesBaseline = readSnapshot(harness.app.dbPath);
+    baseline = premisesBaseline;
+  },
   teardown: async () => {
     await harness.app.cleanup().catch(() => {});
   },
@@ -611,6 +642,8 @@ const querySweep = await sweepQueries();
 /** Everything the fuzzing loop is measured against — taken after the sweep, so the sweep's own
  * rows are the premise rather than a violation the loop would report on its first call. */
 baseline = readSnapshot(harness.app.dbPath);
+// The sweep's rows are premises of the first rig; the release invariant counts them as such.
+premisesBaseline = baseline;
 /** Keep the slow calls visible: a count for the summary, the five slowest by name. */
 function recordSlowCall(specId: string, ms: number): void {
   if (ms < SLOW_CALL_MS) return;
@@ -794,6 +827,40 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
 }
 
 /**
+ * Park and release, at the input boundary (see `park.ts`).
+ *
+ * Park: the rig must go quiet and its SQLite state must serialize — checkpoint with TRUNCATE, an
+ * empty write-ahead log afterwards, `quick_check` clean. Release: the parked rig is torn down and
+ * a fresh one booted in this same process (libFuzzer never stops), and the fresh rig's snapshot
+ * must equal the premises its boot wrote — nothing the input created survives. Either invariant
+ * failing is a finding like any other: the throw is caught by `fuzz`, which writes the input down.
+ *
+ * A replay skips this: its rig IS the saved state, and replacing it would be the one thing a
+ * replay must never do.
+ */
+async function parkAndRelease(): Promise<void> {
+  if (kit !== null) return;
+  const began = performance.now();
+  await parkRig({
+    root: harness.app.root,
+    dbPath: harness.app.dbPath,
+    quiet,
+  });
+  await epochs.rotate();
+  const released = readSnapshot(harness.app.dbPath);
+  const violations = releaseViolations(premisesBaseline, released);
+  if (violations.length > 0) {
+    throw new Error(
+      `[park] release left state behind the fresh rig's premises: ${violations.join("; ")}`,
+    );
+  }
+  stats.parks += 1;
+  stats.parkMs += Math.round(performance.now() - began);
+  // The calls of this input named rows of the rig that no longer exists.
+  recent.length = 0;
+}
+
+/**
  * One fuzz call: run the sequence of calls the input encodes.
  *
  * The input is `record (0x0a record)*` — see `splitRecords` for why a separator byte and not a
@@ -816,6 +883,9 @@ export async function fuzz(data: Buffer): Promise<void> {
       }
       await runOneCall(record, index + 1, records.length);
     }
+    // Per-input clean state: the next input starts on a rig that holds only its premises, so a
+    // finding reproduces from the input bytes alone.
+    await parkAndRelease();
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     // A resident rig measures coverage over days; a finding it has already kept must not end
@@ -824,9 +894,8 @@ export async function fuzz(data: Buffer): Promise<void> {
     // A replay asks "does this kit still find what it found"; it must answer with the throw.
     if (ignoreCrashes && swallowedFindings.has(error.message)) return;
     swallowedFindings.add(error.message);
-    // The replay kit (see finding.ts): the input, the calls that led here and the database they
-    // ran against. Without the last of those a finding stops being reproducible the moment an
-    // epoch replaces the rig — which is why it is written before anything else runs.
+    // The kit (see finding.ts): the input and the calls that led here, and nothing else — with
+    // park/release every input runs from the same clean state, so the input alone replays it.
     writeFindingKit(OUT_DIR, {
       leg: "server",
       error,
@@ -835,19 +904,12 @@ export async function fuzz(data: Buffer): Promise<void> {
         (call) => `${call.spec} \`${call.request}\` → ${call.status} (${call.ms}ms)`,
       ),
       state: {
-        // The root every absolute path in the saved database names: a replay rebases them onto
-        // its own root, and without it the rows would point at a directory nothing created.
-        root: harness.app.root,
-        // The credential the driver logs in with at this moment: a `PUT /api/me/password` that
-        // succeeded earlier in the run moved it, and the saved database only accepts the new one.
-        adminPassword,
         epoch: epochs.epoch,
         epochCommands: epochs.spent,
         calls: stats.calls,
         inputs: stats.inputs,
         clock: harness.clock.iso(),
       },
-      dbPath: harness.app.dbPath,
     });
     if (ignoreCrashes) {
       console.log(`[api] finding kept, the run continues: ${error.message.split("\n")[0]}`);
@@ -917,6 +979,8 @@ process.on("exit", () => {
       ...querySweep.serverErrors.slice(0, 10).map((entry) => `  - query server error: ${entry}`),
       ...querySweep.timeouts.slice(0, 10).map((entry) => `  - query timeout: ${entry}`),
       `- Fixture repairs: ${stats.repairs}`,
+      `- Park/release: ${stats.parks} input(s) parked and released in ${stats.parkMs}ms` +
+        (stats.parks === 0 ? "" : ` (${Math.round(stats.parkMs / stats.parks)}ms avg)`),
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
       `- Boot SSE sample: status ${sseSample.status}, ${sseSample.chunks} chunks / ${sseSample.bytes}B`,
       ...epochs.report(),

@@ -20,6 +20,12 @@
  * non-loopback connection is thrown here — Jazzer.js records that as a crash and saves the input,
  * which is the whole sequence, so the commands that led to the finding replay with it.
  *
+ * At the end of every input the rig is parked and released (see `server/src/park.ts`): park
+ * asserts the state serializes — quiet, checkpoint, empty write-ahead log — and release tears
+ * the rig down and boots a fresh one in the same process, asserting the fresh rig holds only its
+ * premises. Every input therefore starts from the same clean state, and a finding needs nothing
+ * but its input bytes to reproduce.
+ *
  * Boot also runs the setup pipeline the commands need (a project model, an agent, one real
  * run) and the write-after-read oracle: the CLI writes `.project_config.toml` locally, and
  * after the server's freshness window the same server must see that write through
@@ -43,6 +49,8 @@ import { installOutboundGuard } from "../../server/src/guards.js";
 import { readKit, replayAndExit, seedPools, type Kit } from "../../server/src/replay.js";
 import type { DemoSeed } from "../../server/src/assemble.js";
 import { bootHarness } from "../../server/src/harness.js";
+import { parkRig, releaseViolations } from "../../server/src/park.js";
+import { readSnapshot, type DbSnapshot } from "../../server/src/invariants.js";
 import { modelScriptFor } from "../../server/src/model-script.js";
 import { resetModelPlan, setModelPlan } from "../../server/src/stubs/mmsp/index.js";
 import { Quiescence, VirtualTime, driveToCompletion, realMs } from "../../server/src/virtual-time.js";
@@ -80,6 +88,9 @@ const stats = {
   exits: {} as Record<string, number>,
   specHits: new Set<string>(),
   exitGuardCatches: 0,
+  /** Inputs parked and released; and the wall time the cycle cost, summed. */
+  parks: 0,
+  parkMs: 0,
 };
 
 /**
@@ -154,12 +165,14 @@ function optionValue(name: string): string | undefined {
 const replayDir = optionValue("--replay");
 const kit: Kit | null = replayDir === undefined ? null : readKit(replayDir);
 /**
- * What the first rig is planted with. A kit written before the root was recorded cannot have its
- * paths rebased, so it replays on an empty rig and says so rather than booting rows that point at
- * a directory nothing will ever create.
+ * What the first rig is planted with. Only a kit that carries a database has state to plant (see
+ * `replay.ts`): an input-only kit — what the park/release harness writes — replays the input
+ * against a premises rig, which is the state every fuzzed command runs from.
  */
 const seed: DemoSeed | undefined =
-  kit === null || kit.oldRoot === null ? undefined : { dir: kit.dir, oldRoot: kit.oldRoot };
+  kit === null || !kit.hasDatabase || kit.oldRoot === null
+    ? undefined
+    : { dir: kit.dir, oldRoot: kit.oldRoot };
 
 /**
  * A resident rig measures coverage for days and must not stop at a finding it already knows
@@ -417,6 +430,14 @@ const RECENT_CALLS = 16;
  */
 const swallowedFindings = new Set<string>();
 
+/**
+ * The premises of the current rig — what its boot's own setup wrote, before any input ran (and,
+ * for the first rig, after the spec sweep's rows). The release invariant compares every fresh
+ * rig against this: a release that leaves a row behind names it (see `parkAndRelease`).
+ * Declared before `epochs` because the rig's own setup takes the first reading mid-start.
+ */
+let premisesBaseline: DbSnapshot;
+
 const epochs = new Epochs({
   // A replay runs one input on one rig: the state it is replaying is the whole point, and a
   // rotation would replace it halfway through the sequence.
@@ -429,6 +450,9 @@ const epochs = new Epochs({
     // The new rig's ids are the only ones that name a real row: the old rig's rows are gone.
     for (const key of Object.keys(pools)) delete pools[key as keyof Pools];
     oracleVisible = await setup();
+    // The premises the release invariant counts against: whatever this boot's own setup wrote,
+    // before any input ran.
+    premisesBaseline = readSnapshot(harness.app.dbPath);
   },
   teardown: async () => {
     // The old rig's timers must not fire into the new one: uninstalling the clock drops them,
@@ -445,7 +469,13 @@ if (kit !== null) {
   // would write over the saved rows, the spec sweep would run every command before the one being
   // replayed, and a rotation would replace the rig mid-input. The pools come from the saved
   // database for the same reason — an input's argv is drawn from them (specs/decode.ts), and an
-  // empty pool would decode a different command line than the kit recorded.
+  // empty pool would decode a different command line than the kit recorded. An input-only kit
+  // has no saved state to protect: it replays from clean state, so it gets the premises like
+  // any fuzzed input.
+  if (!kit.hasDatabase) {
+    vtime.install();
+    oracleVisible = await setup();
+  }
   seedPools(harness.app.dbPath, pools);
   await replayAndExit(kit, {
     run: fuzz,
@@ -502,6 +532,8 @@ async function sweepSpecs(): Promise<SpecSweep> {
 }
 
 const sweep = await sweepSpecs();
+// The sweep's rows are premises of the first rig; the release invariant counts them as such.
+premisesBaseline = readSnapshot(harness.app.dbPath);
 
 /**
  * One command of a sequence: decode its record, run it, check its contract. A throw is the
@@ -582,6 +614,41 @@ async function runOneCall(record: Buffer, position: number, total: number): Prom
 }
 
 /**
+ * Park and release, at the input boundary (see `park.ts`).
+ *
+ * Park: the rig must go quiet and its SQLite state must serialize — checkpoint with TRUNCATE, an
+ * empty write-ahead log afterwards, `quick_check` clean. Release: the parked rig is torn down and
+ * a fresh one booted in this same process (libFuzzer never stops), and the fresh rig's snapshot
+ * must equal the premises its boot's own setup wrote — nothing the input created survives. Either
+ * invariant failing is a finding like any other: the throw is caught by `fuzz`, which writes the
+ * input down.
+ *
+ * A replay skips this: its rig IS the saved state, and replacing it would be the one thing a
+ * replay must never do.
+ */
+async function parkAndRelease(): Promise<void> {
+  if (kit !== null) return;
+  const began = performance.now();
+  await parkRig({
+    root: harness.app.root,
+    dbPath: harness.app.dbPath,
+    quiet,
+  });
+  await epochs.rotate();
+  const released = readSnapshot(harness.app.dbPath);
+  const violations = releaseViolations(premisesBaseline, released);
+  if (violations.length > 0) {
+    throw new Error(
+      `[park] release left state behind the fresh rig's premises: ${violations.join("; ")}`,
+    );
+  }
+  stats.parks += 1;
+  stats.parkMs += Math.round(performance.now() - began);
+  // The commands of this input named rows of the rig that no longer exists.
+  recent.length = 0;
+}
+
+/**
  * One fuzz call: run the sequence of commands the input encodes.
  *
  * The input is `record (0x0a record)*` — see `splitRecords` for why a separator byte and not a
@@ -604,6 +671,9 @@ export async function fuzz(data: Buffer): Promise<void> {
       }
       await runOneCall(record, index + 1, records.length);
     }
+    // Per-input clean state: the next input starts on a rig that holds only its premises, so a
+    // finding reproduces from the input bytes alone.
+    await parkAndRelease();
   } catch (err) {
     const error = err instanceof Error ? err : new Error(String(err));
     // A resident rig measures coverage over days; a finding it has already kept must not end
@@ -612,9 +682,8 @@ export async function fuzz(data: Buffer): Promise<void> {
     // A replay asks "does this kit still find what it found"; it must answer with the throw.
     if (ignoreCrashes && swallowedFindings.has(error.message)) return;
     swallowedFindings.add(error.message);
-    // The replay kit (see finding.ts): the input, the calls that led here and the database they
-    // ran against. Without the last of those a finding stops being reproducible the moment an
-    // epoch replaces the rig — which is why it is written before anything else runs.
+    // The kit (see finding.ts): the input and the commands that led here, and nothing else —
+    // with park/release every input runs from the same clean state, so the input alone replays it.
     writeFindingKit(OUT_DIR, {
       leg: "cli",
       error,
@@ -623,9 +692,6 @@ export async function fuzz(data: Buffer): Promise<void> {
         (call) => `${call.spec} \`${call.argv.join(" ")}\` → ${call.exit} (${call.ms}ms)`,
       ),
       state: {
-        // The root every absolute path in the saved database names: a replay rebases them onto
-        // its own root, and without it the rows would point at a directory nothing created.
-        root: harness.app.root,
         epoch: epochs.epoch,
         epochCommands: epochs.spent,
         commands: stats.calls,
@@ -636,7 +702,6 @@ export async function fuzz(data: Buffer): Promise<void> {
           pendingTimers: vtime.pending(),
         },
       },
-      dbPath: harness.app.dbPath,
     });
     if (ignoreCrashes) {
       console.log(`[cli] finding kept, the run continues: ${error.message.split("\n")[0]}`);
@@ -709,6 +774,8 @@ process.on("exit", () => {
       ...sweep.outside.slice(0, 10).map((line) => `  - outside: ${line}`),
       `- Commands hit: ${stats.specHits.size}/${specs.length}`,
       `- Exit-guard catches (process.exit intercepted): ${stats.exitGuardCatches}`,
+      `- Park/release: ${stats.parks} input(s) parked and released in ${stats.parkMs}ms` +
+        (stats.parks === 0 ? "" : ` (${Math.round(stats.parkMs / stats.parks)}ms avg)`),
       `- Config write-after-read oracle: ${oracleVisible ? "visible" : "NOT visible"}`,
       `- Outbound attempts (non-loopback): ${guard.attempts.length}`,
       `- Clock: ${Math.round(vtime.jumpedMs)}ms jumped past real time, ${vtime.pending()} timer(s) pending`,

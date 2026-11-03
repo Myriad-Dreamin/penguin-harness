@@ -46,6 +46,13 @@ export interface Kit {
   adminPassword: string | null;
   /** Whether the kit carries the rig's file tree (`root/`) beside the database. */
   hasTree: boolean;
+  /**
+   * Whether the kit carries a saved database. Kits from the park/release harness carry only the
+   * input — every input runs from the same clean state, so the reproduction is the input against
+   * a premises rig. Kits from older builds carry `web.db` (and often `root/`): those replay
+   * against their saved state, and the boot writes no premises on top of it.
+   */
+  hasDatabase: boolean;
 }
 
 /**
@@ -75,6 +82,7 @@ export function readKit(dir: string): Kit {
     oldRoot: typeof root === "string" && root !== "" ? root : null,
     adminPassword: typeof password === "string" ? password : null,
     hasTree: fs.existsSync(path.join(absolute, "root")),
+    hasDatabase: fs.existsSync(path.join(absolute, "web.db")),
   };
 }
 
