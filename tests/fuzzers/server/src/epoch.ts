@@ -41,7 +41,10 @@ export async function settleQuiet(quiet: Quiescence, timeoutMs = 10_000): Promis
     clean = quiet.busy() === "" ? clean + 1 : 0;
     if (clean >= 2) return true;
     if (realMs() >= deadline) return false;
-    await realSleep(10);
+    // 2ms, not 10: the two clean readings are the judgement, and per-input parks pay this
+    // wait on every release. Measured: 10ms here cost 10 of park's 12ms and bought nothing
+    // the second reading does not already confirm.
+    await realSleep(2);
   }
 }
 

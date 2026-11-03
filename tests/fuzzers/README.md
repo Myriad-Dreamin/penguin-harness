@@ -185,6 +185,15 @@ of executions, `--mode=regression` to replay the corpus without mutating it, `--
 reuse the last build, and `--self-check` to replay the corpus through the target with no
 fuzzer at all (the fastest way to tell a harness problem from a fuzzer problem).
 
+Where the rigs live: a rig's data root is `os.tmpdir()`, so pointing `TMPDIR` at a tmpfs
+directory (`docker run --tmpfs /dev/shm:rw,size=1g,mode=1777`, then `TMPDIR=/dev/shm/<run>`)
+puts every rig's SQLite work on memory-backed storage. Nothing in the harness needs the rig's
+durability — a park serializes the state in-process and a finding kit lands in `<leg>/out/` on
+the real filesystem — and the per-input park/release pays SQLite's fsyncs on every release.
+Measured on the API leg, same 120-second runs, per-input release on both: a data root on disk
+averaged 531 ms/input; the same run with `TMPDIR` on tmpfs averaged 61 ms/input, coverage and
+peak RSS unchanged.
+
 A type check runs over both legs at once:
 
 ```sh
