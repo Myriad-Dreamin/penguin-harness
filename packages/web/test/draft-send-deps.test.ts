@@ -12,7 +12,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const SOURCE = readFileSync(
-  new URL("../src/features/chat/draft-view.tsx", import.meta.url),
+  new URL("../src/features/chat/body/draft-view.tsx", import.meta.url),
   "utf8",
 );
 
@@ -58,7 +58,8 @@ function memoisedCallback(sf: ts.SourceFile, name: string): { body: ts.Node; dep
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  if (found === null) throw new Error(`no useCallback named ${name} in draft-view.tsx`);
+  if (found === null)
+    throw new Error(`no useCallback named ${name} in draft-view.tsx (features/chat/body)`);
   return found;
 }
 

@@ -23,7 +23,7 @@ import type {
 import { modelCalledKeyless } from "@prismshadow/penguin-server/model-catalog";
 import { groupShape } from "../models/connection";
 import { hasConfiguredKey, sameModelRef } from "../models/model-grouping";
-import { trailingCompaction, type ThinkingSwitchItem } from "./thinking-level";
+import { trailingCompaction, type ThinkingSwitchItem } from "../model-picker";
 
 /**
  * Whether the picker is disabled: a switch compacts, and the server neither starts nor queues a
