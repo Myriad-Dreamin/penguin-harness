@@ -41,9 +41,24 @@ it("registers a full-page exit with the root palette, never a second toggle hand
   stubFetch(({ path }) =>
     path === "/api/me"
       ? json({ user: null })
-      : path.endsWith("/workbenches")
-        ? json({ workbenches: [] })
-        : json({}),
+      : path === "/api/version"
+        ? // The app root's ReportEnvironmentSync reads the version report for the OS line
+          // (and the sidebar footer for the version): an empty 200 would crash `osName`
+          // on the missing runtime, so answer the real shape.
+          json({
+            version: "0.2.18",
+            describe: "v0.2.18",
+            channel: "release",
+            buildDate: "2026-10-30",
+            commit: null,
+            branch: null,
+            dirty: null,
+            runtime: { node: "24.20.0", platform: "darwin", arch: "arm64" },
+            harness: null,
+          })
+        : path.endsWith("/workbenches")
+          ? json({ workbenches: [] })
+          : json({}),
   );
   function Root() {
     return h(

@@ -51,6 +51,12 @@ export interface SessionTabProps {
   agentId: string;
   /** The machine the conversation runs on; null = this server (and the draft page). */
   machineId: string | null;
+  /**
+   * Whether the tab currently covers the page below its strip (a shown workbench frame does).
+   * The page stays mounted and laid out but hides what is covered, so no dock layer that paints
+   * above the page shows through it (the bottom dock's boundary handle, a fullscreen surface).
+   */
+  onCoveredChange?: (covered: boolean) => void;
 }
 
 /**

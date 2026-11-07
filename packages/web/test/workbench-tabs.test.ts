@@ -113,16 +113,23 @@ describe("the chat page under a workbench tab", () => {
     // boundary handle (z-20) lit up across the page as a line that took the cursor and resized
     // the hidden dock, and a fullscreen dock (z-40) lay over the page whole. So while the page
     // is shown, what it covers stays mounted but hidden: the toolbar and the dock area.
-    const page = readFileSync(
-      new URL("../src/features/chat/chat-page.tsx", import.meta.url),
-      "utf8",
-    ).replace(/\s+/g, " ");
-    const shown = "workbenchTabs.activeTab !== null && projectId !== null && pageAgentId !== null";
-    expect(page).toContain(
-      `{${shown} && ( <div className="absolute inset-x-0 bottom-0 top-9 z-10">`,
+    const read = (rel: string) =>
+      readFileSync(new URL(`../src/${rel}`, import.meta.url), "utf8").replace(/\s+/g, " ");
+    // The tab owns the cover: it draws the strip and the frame that lies over the page.
+    // session-tab names its tab store `workflowTabs` (chat-page calls the same one `workbenchTabs`).
+    expect(read("features/workbenches/session-tab.tsx")).toContain(
+      `{workflowTabs.activeTab !== null && projectId !== null && pageAgentId !== null && ( <div className="absolute inset-x-0 bottom-0 top-9 z-10">`,
     );
-    expect(page).toContain(`const coveredByWorkbench = ${shown} ? "invisible" : "";`);
-    expect(page).toMatch(/\{selected && \( <div className=\{`[^`]*\$\{coveredByWorkbench\}`\}/);
-    expect(page).toMatch(/<div data-dock-area className=\{`[^`]*\$\{coveredByWorkbench\}`\}>/);
+    // The page collects the tabs' reports into the one hiding class...
+    expect(read("features/chat/chat-page.tsx")).toContain(
+      `const coveredByWorkbench = coveredTabs.size > 0 ? "invisible" : "";`,
+    );
+    // ...and paints it on what the cover hides.
+    expect(read("features/chat/toolbar/main-chat-toolbar.tsx")).toMatch(
+      /\{selected && \( <div className=\{`[^`]*\$\{coveredByWorkbench\}`\}/,
+    );
+    expect(read("features/chat/body/main-chat-body.tsx")).toMatch(
+      /<div data-dock-area className=\{`[^`]*\$\{coveredByWorkbench\}`\}>/,
+    );
   });
 });

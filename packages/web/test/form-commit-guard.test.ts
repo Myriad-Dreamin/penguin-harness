@@ -40,7 +40,6 @@ const SCAN = scanSources([".tsx", ".ts"]);
 /** Modules under packages/web/src whose forms follow the model; check 3 runs on each. */
 const FORM_MODULES: readonly string[] = [
   "components/account/change-password-dialog.tsx",
-  "components/layout/project-dialogs.tsx",
   "features/admin/admin-users-page.tsx",
   "features/agents/agent-settings-page.tsx",
   "features/agents/api-tab.tsx",
@@ -70,6 +69,11 @@ const FORM_MODULES: readonly string[] = [
   "features/models/provider-settings-dialog.tsx",
   "features/plugins/plugin-import-modal.tsx",
   "features/plugins/plugin-mcp.tsx",
+  "features/projects/project-dialogs/chat-defaults-section.tsx",
+  "features/projects/project-dialogs/create-project-dialog.tsx",
+  "features/projects/project-dialogs/general-section.tsx",
+  "features/projects/project-dialogs/project-settings-dialog.tsx",
+  "features/projects/project-dialogs/security-policy-section.tsx",
   "features/schedules/schedule-form-modal.tsx",
   "features/settings/plugin-config-card.tsx",
   "features/settings/profile-section.tsx",
@@ -113,16 +117,18 @@ const EXCUSED_FILES: ReadonlyArray<readonly [string, string]> = [
     "features/chat/workspace-browser.tsx",
     "the Workspace file editor keeps its own guard and its file-naming discard prompt",
   ],
+  [
+    "features/session-list/main-session-dialogs.tsx",
+    "its rename prompts commit through the session controller and leave nothing behind on close",
+  ],
 ];
 
 const TYPED = new Set(["Input", "Textarea", "PasswordInput", "TagInput"]);
 const COMMITS = /^(?:save|persist|write|submit|put|post|send|commit|onSave|onSubmit|onCommit)/;
 
-/** The files check 1 and 2 read: everything under features/, and the project dialogs. */
+/** The files checks 1 and 2 read: the web app's feature modules (the project dialogs among them). */
 const inReach = (file: SourceFile) =>
-  file.root === "web" &&
-  file.rel.endsWith(".tsx") &&
-  (file.rel.startsWith("features/") || file.rel === "components/layout/project-dialogs.tsx");
+  file.root === "web" && file.rel.endsWith(".tsx") && file.rel.startsWith("features/");
 
 /** Each file is parsed once, however many checks read it. */
 const parsed = new WeakMap<SourceFile, ts.SourceFile>();

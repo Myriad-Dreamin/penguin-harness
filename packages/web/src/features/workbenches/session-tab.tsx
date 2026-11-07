@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation } from "react-router";
 import { WorkbenchFrame, WorkbenchTabStrip, useWorkbenchTabs } from "./workbench-tabs";
 import type { SessionTabProps } from "../chat";
@@ -7,6 +8,7 @@ export function WorkbenchSessionTab({
   projectId,
   agentId: pageAgentId,
   machineId,
+  onCoveredChange,
 }: SessionTabProps) {
   const location = useLocation();
   const returnWorkbench = (
@@ -25,6 +27,12 @@ export function WorkbenchSessionTab({
       ? returnWorkbench.tabId
       : null,
   );
+  /** A shown workbench frame covers the page below the strip; the page hides what is covered. */
+  const coversPage = workflowTabs.activeTab !== null && projectId !== null && pageAgentId !== null;
+  useEffect(() => {
+    onCoveredChange?.(coversPage);
+    return () => onCoveredChange?.(false);
+  }, [coversPage, onCoveredChange]);
   return (
     <>
       <WorkbenchTabStrip
