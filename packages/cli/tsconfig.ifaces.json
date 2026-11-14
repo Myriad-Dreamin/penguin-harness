@@ -1,0 +1,10 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.ifaces.json"],
+  "compilerOptions": {
+    "lib": ["es2023"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true
+  },
+  "include": ["src", "../server/src/cli"]
+}

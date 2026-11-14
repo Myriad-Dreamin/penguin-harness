@@ -42,6 +42,7 @@
  * A type that recurses into itself is cut at the cycle and compared by name (a warning).
  */
 import fs from "node:fs";
+import { readInterfaceProject } from "../packages/core/bin/iface-project.mjs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
@@ -55,9 +56,11 @@ const projects = args.flatMap((a, i) => (a === "--project" ? [args[i + 1]] : [])
 const outPath = opt("--out");
 const componentsOut = opt("--components-out");
 const checkOnly = args.includes("--check");
+// A target may read another target's types without collecting its runtime modules.
+const rootModulesOnly = args.includes("--root-modules");
 if (projects.length === 0 || outPath === null) {
   console.error(
-    "usage: gen-ifaces --project <tsconfig> [--project ...] --out <ifaces.json> [--components-out <cli-commands.gen.ts>] [--check]",
+    "usage: gen-ifaces --project <tsconfig> [--project ...] --out <ifaces.json> [--components-out <cli-commands.gen.ts>] [--root-modules] [--check]",
   );
   process.exit(2);
 }
@@ -101,6 +104,8 @@ function moduleNameOf(fileName) {
 }
 
 const table = {};
+/** Re-exports keep the interface available under each exporting package. */
+const exportAliases = new Map();
 /** `@Use` fields typed by a component class — a dependency on an implementation, not a mechanism. */
 const implementationDeps = [];
 /** Named data types, keyed like interfaces; signatures reference them as { "$ref": key }. */
@@ -114,31 +119,23 @@ const manifests = {};
  */
 let pluginDecl = null;
 
-// Per-project symbol → manifest name (rebound each project; read after the loop for the
-// last project's symbols) and class name → manifest name, across ALL projects: a module class one package imports from
-// another (a resource command contributed from the server package into the CLI's module
-// tree) resolves through the importing project's declaration file, whose symbol is not the
-// source symbol the declaring project registered — the class name is the shared key.
+// A single compiler graph supplies symbol identities for this target. The class-name
+// fallback resolves modules referenced through an external declaration file.
 const moduleNameByClassName = new Map();
 let moduleNameBySymbol = new Map();
-// Children whose symbol has not resolved yet; finished after every project is read.
+// Children whose symbol has not resolved yet; finished after module collection.
 const pendingChildren = [];
-/** Every project's @Module / @Component classes, keyed by class symbol; read after the loop. */
+/** This target's @Module / @Component classes, keyed by class symbol. */
 const moduleClasses = new Map(); // class symbol → { node, meta, file }
 
-for (const project of projects) {
-  const configPath = path.resolve(project);
-  const parsed = ts.getParsedCommandLineOfConfigFile(
-    configPath,
-    {},
-    {
-      ...ts.sys,
-      onUnRecoverableConfigFileDiagnostic: (d) => {
-        throw new Error(ts.flattenDiagnosticMessageText(d.messageText, "\n"));
-      },
-    },
-  );
-  const program = ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
+{
+  const inputs = readInterfaceProject(ts, projects);
+  const program = ts.createProgram(inputs);
+  const roots = new Set(inputs.rootNames.map((file) => path.resolve(file)));
+  const isModuleSource = (sf) =>
+    !sf.isDeclarationFile &&
+    !sf.fileName.includes("/node_modules/") &&
+    (!rootModulesOnly || roots.has(path.resolve(sf.fileName)));
   const checker = program.getTypeChecker();
 
   const sourceFiles = program
@@ -289,7 +286,7 @@ for (const project of projects) {
     return null;
   };
   for (const sf of program.getSourceFiles()) {
-    if (sf.isDeclarationFile || sf.fileName.includes("/node_modules/")) continue;
+    if (!isModuleSource(sf)) continue;
     const file = path.relative(process.cwd(), sf.fileName);
     const visit = (node) => {
       if (ts.isClassDeclaration(node) && node.name) {
@@ -335,7 +332,7 @@ for (const project of projects) {
       ? unwrap(e.expression)
       : e;
   for (const sf of program.getSourceFiles()) {
-    if (sf.isDeclarationFile || sf.fileName.includes("/node_modules/")) continue;
+    if (!isModuleSource(sf)) continue;
     for (const st of sf.statements) {
       if (!ts.isExportAssignment(st) || st.isExportEquals) continue;
       let literal = unwrap(st.expression);
@@ -394,7 +391,14 @@ for (const project of projects) {
   // the package keeps that module's name); a type only reached through a signature is
   // keyed by where it is declared.
   const keyOf = (symbol, decl, exportingFile = null) => {
-    if (keys.has(symbol)) return keys.get(symbol);
+    if (keys.has(symbol)) {
+      const primary = keys.get(symbol);
+      if (exportingFile !== null && !componentKeyBySymbol.has(symbol)) {
+        const alias = `${moduleNameOf(exportingFile.fileName)}#${symbol.getName()}`;
+        if (alias !== primary) exportAliases.set(alias, primary);
+      }
+      return primary;
+    }
     const owner = exportingFile ?? decl.getSourceFile();
     const key =
       componentKeyBySymbol.get(symbol) ?? `${moduleNameOf(owner.fileName)}#${symbol.getName()}`;
@@ -808,7 +812,7 @@ for (const project of projects) {
       // A plain object shape some member of which is not data (a Buffer field, a callback
       // property): structured, compared member by member.
       if (
-        !hasMethods(type, atNode) &&
+        (!hasMethods(type, atNode) || anonymous) &&
         !(symbol && symbol.flags & ts.SymbolFlags.Class) &&
         !stack.includes(type)
       ) {
@@ -1066,9 +1070,6 @@ for (const project of projects) {
     return sym && componentKeyBySymbol.has(sym) ? moduleNameBySymbol.get(sym) : undefined;
   };
   for (const [sym, { node, meta, file, kind, className }] of moduleClasses) {
-    // A class named by an earlier project has its manifest built: the map is shared across
-    // projects, and building it twice would read as a module defined twice.
-    if (manifests[meta.name]) continue;
     const m = {
       name: meta.name,
       kind,
@@ -1171,6 +1172,11 @@ for (const project of projects) {
     }
     table[key].slots = slotsOf(symbol, decl);
   }
+  // Manifests and slot code can discover interfaces after the first drain.
+  while (pending.length > 0) {
+    const { symbol, decl, key } = pending.shift();
+    table[key] = ifaceOf(symbol, decl);
+  }
 }
 
 // Resolve the deferred children now that every project's module classes are registered.
@@ -1180,8 +1186,15 @@ for (const { m, sym, file } of pendingChildren) {
     (sym &&
       moduleNameByClassName.get(typeof sym.getName === "function" ? sym.getName() : sym.name));
   if (childName === undefined) {
-    const dbg = sym === undefined || sym === null ? String(sym) : typeof sym.getName === "function" ? sym.getName() : String(sym?.name ?? sym);
-    errors.push(`${file}: children: an entry is not a @Module or @Component class: ${dbg} (module ${m.name}, child #${m.children.indexOf(sym)})`);
+    const dbg =
+      sym === undefined || sym === null
+        ? String(sym)
+        : typeof sym.getName === "function"
+          ? sym.getName()
+          : String(sym?.name ?? sym);
+    errors.push(
+      `${file}: children: an entry is not a @Module or @Component class: ${dbg} (module ${m.name}, child #${m.children.indexOf(sym)})`,
+    );
     continue;
   }
   const i = m.children.indexOf(sym);
@@ -1224,6 +1237,13 @@ for (const { m, sym, file } of pendingChildren) {
   }
 }
 
+for (const [alias, primary] of exportAliases) {
+  if (table[alias] && JSON.stringify(table[alias]) !== JSON.stringify(table[primary])) {
+    errors.push(`interface '${alias}' has conflicting declarations`);
+  } else {
+    table[alias] = table[primary];
+  }
+}
 for (const w of warnings) console.warn(`gen-ifaces: warning: ${w}`);
 // A node depends on mechanisms, never on implementations: a `@Use` field typed by a
 // @Component class is refused. The component implements an interface class; require that.
@@ -1264,14 +1284,19 @@ const componentsText = () => {
     if (!meta.contributes || !(SLOT_KEY in meta.contributes)) continue;
     found.push({ file, className });
   }
-  found.sort((a, b) => (a.file + a.className < b.file + b.className ? -1 : 1));
+  const outputDir = path.dirname(path.resolve(componentsOut));
+  const orderKey = ({ file, className }) =>
+    path.relative(outputDir, path.resolve(file)).replaceAll(path.sep, "/") + className;
+  found.sort((a, b) => (orderKey(a) < orderKey(b) ? -1 : 1));
   const byImport = new Map(); // import specifier → class names, in order
   for (const { file, className } of found) {
     // The CLI package's own classes come in by relative path (the file is under this
     // package's `src/`); the server package's classes come in through its `cli` subpath.
-    const spec = file.startsWith(`..${path.sep}server${path.sep}`)
+    const source = path.resolve(file);
+    const serverDir = path.resolve(outputDir, "../../server");
+    const spec = source.startsWith(serverDir + path.sep)
       ? "@prismshadow/penguin-server/cli"
-      : `./${path.relative("src", file).replaceAll(path.sep, "/").replace(/\.ts$/, ".js")}`;
+      : `./${path.relative(outputDir, source).replaceAll(path.sep, "/").replace(/\.ts$/, ".js")}`;
     if (!byImport.has(spec)) byImport.set(spec, []);
     byImport.get(spec).push(className);
   }

@@ -1,0 +1,28 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.ifaces.json"],
+  "compilerOptions": {
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true
+  },
+  "include": [
+    "src",
+    "../../plugins/company/src",
+    "../../plugins/terminal/src",
+    "../../plugins/browser/src",
+    "../../plugins/usage/src",
+    "../../plugins/schedules/src",
+    "../../plugins/machines/src",
+    "../../plugins/workbenches/src",
+    "../../plugins/projects/src",
+    "../../plugins/agents/src",
+    "../../plugins/settings/src",
+    "../../plugins/models/src",
+    "../../plugins/messaging/src",
+    "../../plugins/sessions/src",
+    "../../plugins/sandbox/src",
+    "../../plugins/plugins/src"
+  ],
+  "exclude": ["../../plugins/*/src/web/**"]
+}

@@ -275,9 +275,13 @@ async function compileEntry(entry, outfile) {
       [
         path.join(ROOT, "scripts/gen-ifaces.mjs"),
         "--project",
-        path.join(ROOT, "packages", pkg, "tsconfig.json"),
+        path.join(ROOT, "packages", pkg, "tsconfig.ifaces.json"),
+        "--root-modules",
         "--out",
         path.join(ROOT, "packages", pkg, "src", "ifaces.json"),
+        ...(pkg === "cli"
+          ? ["--components-out", path.join(ROOT, "packages/cli/src/cli-commands.gen.ts")]
+          : []),
       ],
       { stdio: "inherit" },
     );
