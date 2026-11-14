@@ -3,30 +3,14 @@
   "compilerOptions": {
     "paths": {
       "@prismshadow/penguin-core": ["./packages/core/src/index.ts"],
-      "@prismshadow/penguin-core/interfaces": ["./packages/core/src/interfaces/index.ts"],
-      "@prismshadow/penguin-core/plugin": ["./packages/core/src/plugin/index.ts"],
-      "@prismshadow/penguin-core/cli": ["./packages/core/src/cli/index.ts"],
+      "@prismshadow/penguin-core/*": ["./packages/core/src/*"],
       "@prismshadow/penguin-core/context-limits": ["./packages/core/src/llm/context-limits.ts"],
       "@prismshadow/penguin-core/model-connection": [
         "./packages/core/src/state/model-connection.ts"
       ],
-      "@prismshadow/penguin-core/kernel": ["./packages/core/src/kernel/index.ts"],
       "@prismshadow/penguin-server": ["./packages/server/src/index.ts"],
+      "@prismshadow/penguin-server/*": ["./packages/server/src/*"],
       "@prismshadow/penguin-server/api": ["./packages/server/src/api/types.ts"],
-      "@prismshadow/penguin-server/model-catalog": ["./packages/server/src/model-catalog/index.ts"],
-      "@prismshadow/penguin-server/machine-status": ["./packages/server/src/machine-status.ts"],
-      "@prismshadow/penguin-server/lock": ["./packages/server/src/lock.ts"],
-      "@prismshadow/penguin-server/initial-password": ["./packages/server/src/initial-password.ts"],
-      "@prismshadow/penguin-server/reset-admin-password": [
-        "./packages/server/src/reset-admin-password.ts"
-      ],
-      "@prismshadow/penguin-server/hmr/manifest": ["./packages/server/src/hmr/manifest.ts"],
-      "@prismshadow/penguin-server/harness-meta": ["./packages/server/src/harness-meta.ts"],
-      "@prismshadow/penguin-server/version-report": ["./packages/server/src/version-report.ts"],
-      "@prismshadow/penguin-server/auth-token": ["./packages/server/src/auth-token.ts"],
-      "@prismshadow/penguin-server/secret-file": ["./packages/server/src/secret-file.ts"],
-      "@prismshadow/penguin-server/plugin": ["./packages/server/src/plugin/index.ts"],
-      "@prismshadow/penguin-server/cli": ["./packages/server/src/cli/index.ts"],
       "@prismshadow/penguin-server/cli-shim": ["./packages/server/src/services/cli-shim.ts"]
     }
   }
