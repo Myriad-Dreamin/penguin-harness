@@ -1,0 +1,7 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.ifaces.json"],
+  "include": ["src"],
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  }
+}

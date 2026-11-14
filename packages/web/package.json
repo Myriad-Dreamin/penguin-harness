@@ -9,7 +9,7 @@
     "build": "pnpm gen:ifaces && vite build",
     "preview": "vite preview",
     "typecheck": "pnpm gen:ifaces && tsc --noEmit -p tsconfig.json",
-    "gen:ifaces": "node ../../scripts/gen-ifaces.mjs --project tsconfig.json --out src/ifaces.json",
+    "gen:ifaces": "node ../../scripts/gen-ifaces.mjs --project tsconfig.ifaces.json --out src/ifaces.json --root-modules",
     "test": "pnpm gen:ifaces && vitest run --passWithNoTests",
     "test:e2e": "bash e2e/run.sh"
   },
